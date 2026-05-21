@@ -1,0 +1,9 @@
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+@router.get("/")
+def build_report() -> dict:
+    return {"status": "pending"}
+
