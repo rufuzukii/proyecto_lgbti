@@ -1,0 +1,198 @@
+/* Mobile phones */
+@media (max-width: 599px) {
+  .navbar {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 0.85rem !important;
+    padding: 0.9rem 1rem !important;
+  }
+
+  .nav-left,
+  .nav-actions {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .nav-brand {
+    height: 72px !important;
+    max-width: 100% !important;
+    width: 240px !important;
+  }
+
+  .nav-links {
+    display: grid !important;
+    gap: 0.55rem !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+  }
+
+  .nav-link,
+  .nav-account {
+    align-items: center !important;
+    display: flex !important;
+    min-height: 40px !important;
+  }
+
+  .container,
+  .upload-header {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .page-container,
+  .auth-card,
+  .admin-card {
+    border-radius: var(--radius-md) !important;
+    margin: 1rem !important;
+    padding: 1.15rem !important;
+    width: auto !important;
+  }
+
+  .hero-section,
+  .features-section,
+  .mission-section {
+    padding: 1.5rem 0 !important;
+  }
+
+  .hero-grid,
+  .features-grid,
+  .mission-grid,
+  .hero-stats {
+    grid-template-columns: 1fr !important;
+  }
+
+  .hero-title {
+    font-size: 1.75rem !important;
+  }
+
+  .section-title {
+    font-size: 1.45rem !important;
+  }
+
+  .hero-map-graph {
+    height: 240px !important;
+  }
+
+  .auth-shell,
+  .admin-shell {
+    padding: 1.2rem 0 !important;
+  }
+
+  .profile-actions,
+  .admin-review-panel,
+  .admin-import-user-header,
+  .admin-import-file,
+  .admin-import-modal-header,
+  .upload-message li {
+    align-items: stretch !important;
+    flex-direction: column !important;
+  }
+
+  .admin-table-row {
+    grid-template-columns: 88px minmax(160px, 1fr) minmax(190px, 1fr) minmax(160px, 1fr) 120px 92px !important;
+    min-width: 860px !important;
+  }
+
+  .admin-import-modal:target {
+    padding: 0.6rem !important;
+  }
+
+  .admin-json-preview {
+    max-height: 52vh !important;
+  }
+
+  .admin-import-modal-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .upload-area {
+    min-height: 150px !important;
+  }
+}
+
+/* Tablets */
+@media (min-width: 600px) and (max-width: 1023px) {
+  .navbar {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 1rem !important;
+    padding: 1rem 1.5rem !important;
+  }
+
+  .nav-actions {
+    justify-content: flex-start !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .nav-brand {
+    height: 82px !important;
+    width: 280px !important;
+  }
+
+  .nav-links {
+    gap: 0.8rem !important;
+  }
+
+  .container,
+  .upload-header {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+  }
+
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .features-grid,
+  .mission-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .hero-map-graph {
+    height: 330px !important;
+  }
+
+  .page-container,
+  .auth-card,
+  .admin-card {
+    margin-left: 1.5rem !important;
+    margin-right: 1.5rem !important;
+  }
+
+  .admin-table-row {
+    min-width: 920px !important;
+  }
+}
+
+/* Laptops and smaller desktop screens */
+@media (min-width: 1024px) and (max-width: 1366px) {
+  .navbar {
+    gap: 1rem !important;
+    padding: 1rem 1.5rem !important;
+  }
+
+  .nav-brand {
+    height: 92px !important;
+    width: 290px !important;
+  }
+
+  .nav-links {
+    gap: 0.75rem !important;
+  }
+
+  .container {
+    max-width: 1040px !important;
+  }
+
+  .admin-card {
+    max-width: 1180px !important;
+  }
+
+  .hero-map-graph {
+    height: 360px !important;
+  }
+}

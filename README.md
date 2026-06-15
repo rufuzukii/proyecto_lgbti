@@ -7,3 +7,10 @@ Plataforma para el analisis y visualizacion de datos del colectivo LGBTIQ+ en Eu
 - Analisis comparativo por pais, categoria y periodo temporal.
 - Visualizaciones interactivas y exportables.
 - Informes de diversidad basados en evidencia.
+
+## Seguridad basica (configuracion)
+- `API_KEY` o `API_KEYS`: clave(s) para acceder a la API (cabecera `X-API-Key`).
+- `DASH_BASIC_AUTH`: credenciales para la interfaz Dash (`usuario:password,otro:password`).
+- `IMPORT_BASE_DIR`: carpeta base permitida para importar CSV en la API.
+- `AUTH_MAX_ATTEMPTS` y `AUTH_WINDOW_SECONDS`: limites de intentos para login/registro.
+

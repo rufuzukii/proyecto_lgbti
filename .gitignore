@@ -95,3 +95,9 @@ cython_debug/
 
 # Local functionality registry
 registro_funcionalidades/
+
+# Local dev entrypoints
+run_*.py
+
+# Local tests (ignored in repo)
+tests/

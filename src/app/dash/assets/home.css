@@ -1,0 +1,225 @@
+.hero-section {
+  padding: 2.5rem 0 1.5rem;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  align-items: center;
+}
+
+.hero-card {
+  background:
+    linear-gradient(180deg, rgba(255, 254, 254, 0.94), rgba(247, 241, 255, 0.94)),
+    var(--color-surface);
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.hero-eyebrow {
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 1.4px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.hero-title {
+  margin: 0.6rem 0 1rem;
+  font-size: 2.2rem;
+  line-height: 1.2;
+}
+
+.hero-text {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.hero-pill {
+  text-decoration: none;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-text-on-dark);
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.hero-pill.secondary {
+  background: var(--color-accent);
+  color: var(--color-primary-dark);
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.stat-card {
+  background:
+    linear-gradient(135deg, #fffefe 0%, #f0fbf8 100%);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.stat-label {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.hero-map-card {
+  background:
+    linear-gradient(180deg, #fffefe 0%, #f7f1ff 100%);
+  padding: 1rem 1rem 0.75rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+}
+
+.map-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.map-caption {
+  margin: 0.5rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.hero-map-graph {
+  height: 420px;
+}
+
+.features-section {
+  padding: 2.5rem 0;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.section-subtitle {
+  margin: 0.5rem 0 1.5rem;
+  color: var(--color-text-muted);
+  max-width: 680px;
+  line-height: 1.6;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+
+.feature-card {
+  background:
+    linear-gradient(135deg, #fffefe 0%, #fff6f1 100%);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.feature-card h3 {
+  margin: 0 0 0.5rem;
+}
+
+.feature-card p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.mission-section {
+  padding: 2.5rem 0 3rem;
+  background:
+    linear-gradient(135deg, #e7ddff 0%, #dff7ef 56%, #ffe3d8 100%);
+  color: var(--color-text);
+}
+
+.mission-section .section-subtitle {
+  color: var(--color-text-muted);
+}
+
+.mission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1.5rem;
+}
+
+.mission-card {
+  background: rgba(255, 255, 255, 0.56);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  border: 1px solid var(--color-glass-border);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.mission-card h3 {
+  margin: 0 0 0.5rem;
+}
+
+.mission-card p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.feature-card:hover,
+.hero-card:hover,
+.hero-map-card:hover,
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.mission-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.25);
+}
+
+@media (max-width: 720px) {
+  .hero-title {
+    font-size: 1.9rem;
+  }
+}
+
+@media (max-width: 960px) {
+  .hero-map-graph {
+    height: 320px;
+  }
+}
+
+@media (max-width: 560px) {
+  .hero-card,
+  .hero-map-card {
+    padding: 1.5rem;
+  }
+
+  .hero-map-graph {
+    height: 260px;
+  }
+}

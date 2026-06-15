@@ -99,7 +99,7 @@ def get_app_config() -> AppConfig:
         if local_mode:
             secret_key = "local-dev-secret-key"
         else:
-            raise RuntimeError("SECRET_KEY must be set when LOCAL_MODE=false or APP_ENV=production")
+            raise RuntimeError("")
 
     return AppConfig(
         env=env,

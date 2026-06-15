@@ -21,7 +21,7 @@ ROLE_PERMISSIONS = {
         Permission.GENERATE_REPORTS,
         Permission.ACCESS_EDU,
     },
-    UserRole.USER: {
+    UserRole.COMMON: {
         Permission.VIEW_DASHBOARD,
         Permission.EXPORT_DATA,
         Permission.EXPORT_CHARTS,
@@ -39,7 +39,7 @@ def has_permission(role: UserRole, permission: Permission) -> bool:
 def can_access_user_type(role: UserRole, user_type: UserType | None) -> bool:
     if role == UserRole.ADMIN:
         return True
-    if role == UserRole.USER:
+    if role == UserRole.COMMON:
         return user_type in {UserType.RRHH, UserType.PROFESOR, UserType.COMUN}
     return False
 
