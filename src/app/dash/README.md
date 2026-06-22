@@ -1,24 +1,32 @@
-# Dash frontend
+# Frontend Dash
 
-Interfaz principal construida con Dash. Esta vista se centra en una experiencia visual inicial, con un mapa interactivo de Europa y secciones de bienvenida, funcionalidades y objetivos.
+Esta carpeta contiene la presentación de RainbowLens. La composición y el enrutamiento viven en `src/app/dash_app.py`; aquí se almacenan componentes reutilizables, páginas y estilos.
 
-## Ejecucion rapida
+## Archivo Python
+
+- `compat.py`: importa dinámicamente Dash y reexporta `Dash`, `Input`, `Output`, `State`, `dcc` y `html`. Centraliza los imports usados por el frontend.
+- `__init__.py`: marcador de paquete.
+
+## Carpetas
+
+- `layouts/`: navegación, inicio y perfil.
+- `pages/`: pantallas de sesión, administración, estadísticas y carga.
+- `assets/`: CSS e imágenes servidos automáticamente por Dash.
+
+## Rutas efectivas
+
+- `/`: inicio con mapa ILGA.
+- `/statistics`: panel FRA/ILGA.
+- `/upload`: importación de CSV.
+- `/login`, `/register`, `/user`: sesión y perfil.
+- `/admin`, `/admin/imports`: administración.
+
+Los enlaces `/report`, `/didactics` y `/about` aparecen en la barra, pero `dash_app.py` no tiene ramas para ellos: actualmente muestran el inicio.
+
+## Ejecución
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
 python run_dash.py
 ```
 
-## Estructura
-
-- `src/app/dash/layouts/home.py`: layout de la pagina principal.
-- `src/app/dash/assets/styles.css`: estilos globales del frontend.
-- `src/app/dash/pages/upload.py`: pagina de carga de CSV.
-
-## Seguridad
-
-- `DASH_BASIC_AUTH`: credenciales en formato `usuario:password,otro:password`.
-
-
+La autenticación usa sesiones Flask-Login; no usa `DASH_BASIC_AUTH`.

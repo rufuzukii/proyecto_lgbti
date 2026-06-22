@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
 from dataclasses import dataclass
 import logging
 import os
-import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
@@ -13,7 +11,10 @@ from flask import redirect, request
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
 from pydantic import ValidationError
 
+from app.analytics import invalidate_analytics_cache
 from app.auth.csrf import validate_csrf_token
+from app.auth.rate_limit import create_rate_limiter
+from app.cache import init_cache
 from app.config import get_app_config
 from app.dash.layouts.home import build_home_layout
 from app.dash.layouts.user_page import build_user_page_layout
@@ -21,13 +22,18 @@ from app.dash.pages.admin.imports import build_admin_imports_layout
 from app.dash.pages.admin.users import build_access_denied_layout, build_admin_users_layout
 from app.dash.pages.session.login import build_login_layout
 from app.dash.pages.session.register import build_register_layout
+from app.dash.pages.statistics import (
+    build_statistics_layout,
+    register_statistics_callbacks,
+)
 from app.dash.pages.upload import build_upload_layout, register_upload_callbacks
 from app.import_to_db.import_log import (
     delete_import_log,
     get_pending_import_log,
     list_pending_import_logs,
 )
-from app.import_to_db.mongo_import import insert_indicator_fra_json
+from app.import_to_db.fra import insert_indicator_fra_json, upsert_indicators_from_json
+from app.import_to_db.ilga import insert_indicator_ilga_json
 from app.users.schemas import UserRegister, UserRole
 from app.users.service import (
     UserRecord,
@@ -51,31 +57,6 @@ class SessionUser(UserMixin):
     email: str
     role: UserRole
     organization: str | None
-
-
-class SimpleRateLimiter:
-    def __init__(self, max_attempts: int, window_seconds: int) -> None:
-        self.max_attempts = max_attempts
-        self.window_seconds = window_seconds
-        self._attempts: dict[str, deque[float]] = defaultdict(deque)
-
-    def _prune(self, key: str, now: float) -> None:
-        attempts = self._attempts[key]
-        while attempts and (now - attempts[0]) > self.window_seconds:
-            attempts.popleft()
-
-    def is_blocked(self, key: str) -> bool:
-        now = time.time()
-        self._prune(key, now)
-        return len(self._attempts[key]) >= self.max_attempts
-
-    def record_failure(self, key: str) -> None:
-        now = time.time()
-        self._prune(key, now)
-        self._attempts[key].append(now)
-
-    def reset(self, key: str) -> None:
-        self._attempts.pop(key, None)
 
 
 def create_dash_app() -> Dash:
@@ -113,9 +94,10 @@ def create_dash_app() -> Dash:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=not config.local_mode,
     )
+    init_cache(app.server)
 
     login_manager = LoginManager()
-    login_manager.session_protection = "strong"
+    login_manager.session_protection = "basic"
     login_manager.init_app(app.server)
     _register_user_loader(login_manager)
     _register_auth_routes(app)
@@ -134,6 +116,10 @@ def create_dash_app() -> Dash:
     )
     def display_page(pathname: str | None, search: str | None):
         params = _query_params(search)
+        if pathname == "/statistics":
+            return build_statistics_layout()
+        if pathname == "/stadistics":
+            return dcc.Location(href="/statistics", id="legacy-statistics-redirect")
         if pathname == "/upload":
             return build_upload_layout()
         if pathname == "/login":
@@ -197,6 +183,7 @@ def create_dash_app() -> Dash:
         return build_home_layout()
 
     register_upload_callbacks(app)
+    register_statistics_callbacks(app)
     return app
 
 
@@ -214,9 +201,10 @@ def _register_user_loader(login_manager: LoginManager) -> None:
 
 
 def _register_auth_routes(app: Dash) -> None:
-    rate_limiter = SimpleRateLimiter(
+    rate_limiter = create_rate_limiter(
         max_attempts=int(os.getenv("AUTH_MAX_ATTEMPTS", "6")),
         window_seconds=int(os.getenv("AUTH_WINDOW_SECONDS", "300")),
+        namespace="dash-auth",
     )
 
     @app.server.post("/auth/login")
@@ -395,7 +383,8 @@ def _register_auth_routes(app: Dash) -> None:
                 pending_import = get_pending_import_log(import_id)
                 if pending_import is None:
                     return _redirect("/admin/imports", error="import_not_found")
-                insert_indicator_fra_json(pending_import.file_json)
+                _insert_approved_import(pending_import.file_json)
+                invalidate_analytics_cache()
                 delete_import_log(import_id)
             except ValueError as exc:
                 return _redirect("/admin/imports", error=str(exc))
@@ -415,6 +404,22 @@ def _session_user_from_record(record: UserRecord) -> SessionUser:
         role=record.role,
         organization=record.organization,
     )
+
+
+def _insert_approved_import(file_json: dict | list) -> None:
+    documents = file_json if isinstance(file_json, list) else [file_json]
+    if not documents or not all(isinstance(document, dict) for document in documents):
+        raise ValueError("invalid_json_payload")
+
+    datasets = {document.get("dataset") for document in documents}
+    if datasets == {"eu_lgbtiq_survey_iii"}:
+        upsert_indicators_from_json(file_json)
+        insert_indicator_fra_json(file_json)
+        return
+    if datasets == {"ilga_rainbow_map"}:
+        insert_indicator_ilga_json(file_json)
+        return
+    raise ValueError("unsupported_import_dataset")
 
 
 def _query_params(search: str | None) -> dict[str, list[str]]:

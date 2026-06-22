@@ -1,0 +1,180 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any, Iterable
+
+from bson import ObjectId
+
+from app.import_to_db.fra.importer import (
+    parse_answer_survey_csv,
+    parse_answer_survey_csv_text,
+)
+
+JsonPayload = dict[str, Any] | list[dict[str, Any]]
+FRA_DATASET_CODE = "eu_lgbtiq_survey_iii"
+
+FILTER_LABELS: dict[str, str] = {
+    "age_group": "Age",
+    "minority_group": "Belonging to a minority group",
+    "education": "Education",
+    "openness": "Openness about being LGBTIQ",
+    "employment_status": "Employment status",
+    "place_of_residence": "Place of residence",
+    "activity_limitation": "Activity limitation",
+    "making_ends_meet": "Making ends meet",
+    "sexual_orientation": "Sexual Orientation",
+    "gender_expression": "Gender Expression",
+    "sex_characteristics": "Sex Characteristics",
+}
+
+FILTER_PRIORITY: tuple[str, ...] = (
+    "age_group",
+    "minority_group",
+    "education",
+    "openness",
+    "employment_status",
+    "place_of_residence",
+    "activity_limitation",
+    "making_ends_meet",
+    "sexual_orientation",
+    "gender_expression",
+    "sex_characteristics",
+)
+
+
+def parse_fra_csv(file_path: Path | str, *, root: Path | str | None = None) -> JsonPayload:
+    path = Path(file_path)
+    documents = parse_answer_survey_csv(path, root=root)
+    return build_fra_questions_payload(documents, file_name=path.name)
+
+
+def parse_fra_csv_text(
+    csv_text: str,
+    *,
+    file_name: Path | str | None = None,
+) -> JsonPayload:
+    documents = parse_answer_survey_csv_text(csv_text, file_name=file_name)
+    return build_fra_questions_payload(
+        documents,
+        file_name=Path(file_name).name if file_name else "",
+    )
+
+
+def generate_fra_questions_json(directory: Path | str) -> JsonPayload:
+    base_dir = Path(directory)
+    documents: list[dict[str, Any]] = []
+    for csv_path in sorted(base_dir.rglob("*.csv")):
+        documents.extend(parse_answer_survey_csv(csv_path, root=base_dir))
+    return build_fra_questions_payload(documents, file_name=base_dir.name)
+
+
+def build_fra_questions_payload(
+    documents: Iterable[dict[str, Any]],
+    *,
+    file_name: str = "",
+) -> JsonPayload:
+    question_documents_by_identity: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+
+    for document in documents:
+        code = _question_code(document)
+        if not code:
+            continue
+
+        identity = _question_identity(document, code)
+        question_document = question_documents_by_identity.get(identity)
+        if question_document is None:
+            question_document = _build_question_document(document, code)
+            question_documents_by_identity[identity] = question_document
+
+        for answer in document.get("answers", []):
+            if isinstance(answer, dict):
+                _append_unique(question_document["answers"], _build_answer(answer))
+
+    question_documents = list(question_documents_by_identity.values())
+    if len(question_documents) == 1:
+        return question_documents[0]
+    return question_documents
+
+
+def count_fra_questions(payload: Any) -> int:
+    if isinstance(payload, list):
+        return len(payload)
+    return 1 if isinstance(payload, dict) else 0
+
+
+def _build_question_document(document: dict[str, Any], code: str) -> dict[str, Any]:
+    specific_category = _specific_category(document)
+    question_text = str(document.get("question") or "").strip()
+
+    return {
+        "id": str(ObjectId()),
+        "code": code,
+        "dataset": FRA_DATASET_CODE,
+        "category": _category(document),
+        "specific_category": specific_category,
+        "question": question_text,
+        "answers": [],
+    }
+
+
+def _build_answer(answer: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "country": answer.get("country") or "",
+        "country_code": answer.get("country_code") or "",
+        "answer": answer.get("answer") or "",
+        "percentage": answer.get("percentage"),
+        "filters": _build_filters(answer.get("filters")),
+    }
+
+
+def _build_filters(filters: Any) -> list[dict[str, str]]:
+    if not isinstance(filters, dict):
+        return [{"type": "All", "value": "All"}]
+
+    output: list[dict[str, str]] = []
+    for key in FILTER_PRIORITY:
+        value = str(filters.get(key) or "").strip()
+        if value:
+            output.append({"type": FILTER_LABELS[key], "value": value})
+
+    return output or [{"type": "All", "value": "All"}]
+
+
+def _question_code(document: dict[str, Any]) -> str:
+    return str(
+        document.get("code")
+        or document.get("external_code")
+        or document.get("id")
+        or ""
+    ).strip()
+
+
+def _question_identity(document: dict[str, Any], code: str) -> tuple[str, str, str, str]:
+    return (
+        code,
+        _category(document),
+        _specific_category(document),
+        str(document.get("question") or "").strip(),
+    )
+
+
+def _category(document: dict[str, Any]) -> str:
+    return str(document.get("category") or document.get("topic") or "Uncategorized").strip()
+
+
+def _specific_category(document: dict[str, Any]) -> str:
+    return str(
+        document.get("specific_category")
+        or document.get("category")
+        or document.get("topic")
+        or "Uncategorized"
+    ).strip()
+
+
+def _append_unique(items: list[Any], item: Any) -> None:
+    marker = json.dumps(item, ensure_ascii=False, sort_keys=True)
+    for existing in items:
+        if json.dumps(existing, ensure_ascii=False, sort_keys=True) == marker:
+            return
+    items.append(item)

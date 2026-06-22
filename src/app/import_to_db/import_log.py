@@ -23,8 +23,8 @@ class PendingImportLog:
     file_json: JsonPayload
     created_at: str | None = None
 
-# Coge la variable del enntorno .env
-load_dotenv(override=True)
+# Load local .env values without replacing variables already provided by the process.
+load_dotenv()
 
 
 def _clean_dsn(value: str) -> str:

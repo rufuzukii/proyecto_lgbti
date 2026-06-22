@@ -1,15 +1,14 @@
 from dataclasses import dataclass
-from typing import Optional
 import logging
 import os
-import time
-from collections import defaultdict, deque
+from typing import Optional
 
 from flask import Flask, jsonify, request
 from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
 from pydantic import ValidationError
 
 from app.config import get_app_config
+from app.auth.rate_limit import create_rate_limiter
 from app.users.schemas import UserRegister, UserRole
 from app.users.service import UserStorageError, authenticate_user, create_user, get_user
 
@@ -19,31 +18,6 @@ class AuthUser(UserMixin):
     id: str
     email: Optional[str]
     role: UserRole
-
-
-class SimpleRateLimiter:
-    def __init__(self, max_attempts: int, window_seconds: int) -> None:
-        self.max_attempts = max_attempts
-        self.window_seconds = window_seconds
-        self._attempts: dict[str, deque[float]] = defaultdict(deque)
-
-    def _prune(self, key: str, now: float) -> None:
-        attempts = self._attempts[key]
-        while attempts and (now - attempts[0]) > self.window_seconds:
-            attempts.popleft()
-
-    def is_blocked(self, key: str) -> bool:
-        now = time.time()
-        self._prune(key, now)
-        return len(self._attempts[key]) >= self.max_attempts
-
-    def record_failure(self, key: str) -> None:
-        now = time.time()
-        self._prune(key, now)
-        self._attempts[key].append(now)
-
-    def reset(self, key: str) -> None:
-        self._attempts.pop(key, None)
 
 
 def create_auth_app() -> Flask:
@@ -57,9 +31,10 @@ def create_auth_app() -> Flask:
     )
 
     logger = logging.getLogger(__name__)
-    rate_limiter = SimpleRateLimiter(
+    rate_limiter = create_rate_limiter(
         max_attempts=int(os.getenv("AUTH_MAX_ATTEMPTS", "6")),
         window_seconds=int(os.getenv("AUTH_WINDOW_SECONDS", "300")),
+        namespace="auth-service",
     )
 
     login_manager = LoginManager()

@@ -7,10 +7,10 @@ from pydantic import BaseModel, Field
 
 from app.import_to_db import (
     generate_fra_json,
-    generate_rainbow_json,
+    parse_ilga_csv,
     register_pending_import,
 )
-from app.import_to_db.indicators import upsert_indicators_from_json
+from app.import_to_db.fra import upsert_indicators_from_json
 
 router = APIRouter(prefix="/data", tags=["data"])
 logger = logging.getLogger(__name__)
@@ -60,7 +60,12 @@ def import_data(request: MongoJsonImportRequest | None = None) -> dict:
     if discrimination_dir:
         results.extend(generate_fra_json(str(discrimination_dir)))
     if rainbow_csv:
-        results.extend(generate_rainbow_json(str(rainbow_csv), request_payload.year))
+        results.append(
+            (
+                rainbow_csv,
+                [parse_ilga_csv(rainbow_csv, year=request_payload.year)],
+            )
+        )
 
     if not results:
         return {"status": "error", "message": "No se proporcionaron rutas de CSV."}

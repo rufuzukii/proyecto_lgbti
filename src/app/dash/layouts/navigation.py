@@ -3,17 +3,18 @@ from __future__ import annotations
 from flask_login import current_user
 
 from app.dash.compat import html
+from app.dash.i18n import text
 from app.users.schemas import UserRole
 
 
 def build_navbar(active: str | None = None) -> html.Nav:
     links = [
-        ("Home", "/", "home"),
-        ("Stadistics", "/stadistics", "stadistics"),
-        ("Report", "/report", "report"),
-        ("Didactics", "/didactics", "didactics"),
-        ("About", "/about", "about"),
-        ("Import CSV", "/upload", "upload"),
+        ("Inicio", "Home", "/", "home"),
+        ("Estadísticas", "Statistics", "/statistics", "statistics"),
+        ("Informes", "Reports", "/report", "report"),
+        ("Didáctica", "Didactics", "/didactics", "didactics"),
+        ("Acerca de", "About", "/about", "about"),
+        ("Importar CSV", "Import CSV", "/upload", "upload"),
     ]
 
     return html.Nav(
@@ -40,15 +41,16 @@ def build_navbar(active: str | None = None) -> html.Nav:
                         [
                             html.Li(
                                 html.A(
-                                    label,
+                                    text(label_es, label_en),
                                     href=href,
                                     className=_nav_link_class(key, active),
                                 )
                             )
-                            for label, href, key in links
+                            for label_es, label_en, href, key in links
                         ],
                         className="nav-links",
                     ),
+                    _language_toggle(),
                     _account_link(),
                 ],
                 className="nav-actions",
@@ -62,7 +64,11 @@ def _account_link() -> html.A:
     if current_user.is_authenticated:
         display_name = getattr(current_user, "username", None) or getattr(current_user, "email", None)
         return html.A(display_name or "Account", href="/user", className="nav-link nav-account")
-    return html.A("Sign in", href="/login", className="nav-link nav-cta nav-account")
+    return html.A(
+        text("Entrar", "Sign in"),
+        href="/login",
+        className="nav-link nav-cta nav-account",
+    )
 
 
 def _admin_link(active: str | None) -> html.A | str:
@@ -75,7 +81,16 @@ def _admin_link(active: str | None) -> html.A | str:
     class_name = "nav-link nav-admin-cta"
     if active == "admin":
         class_name += " is-active"
-    return html.A("Admin", href="/admin", className=class_name)
+    return html.A(text("Admin", "Admin"), href="/admin", className=class_name)
+
+
+def _language_toggle() -> html.Button:
+    return html.Button(
+        "ES",
+        type="button",
+        className="language-toggle",
+        **{"data-language-toggle": "true"},
+    )
 
 
 def _nav_link_class(key: str, active: str | None) -> str:

@@ -1,73 +1,33 @@
+from __future__ import annotations
+
+from app.analytics.figures import build_ilga_choropleth
+from app.analytics.repository import get_fra_indicators, get_latest_ilga_document
 from app.dash.compat import dcc, html
+from app.dash.i18n import text_attrs
 from app.dash.layouts.navigation import build_navbar
-import plotly.graph_objects as go
-
-
-EUROPE_SNAPSHOT = [
-    {"country": "Spain", "score": 72, "note": "Legal framework improving"},
-    {"country": "Portugal", "score": 74, "note": "Strong local practices"},
-    {"country": "France", "score": 78, "note": "Stable public policies"},
-    {"country": "Germany", "score": 76, "note": "Active education programs"},
-    {"country": "Italy", "score": 62, "note": "Ongoing social debate"},
-    {"country": "Netherlands", "score": 90, "note": "Equality benchmark"},
-    {"country": "Belgium", "score": 86, "note": "Broad protections"},
-    {"country": "Ireland", "score": 80, "note": "Legislative progress"},
-    {"country": "Sweden", "score": 88, "note": "Strong support services"},
-    {"country": "Norway", "score": 87, "note": "Institutional commitment"},
-    {"country": "Poland", "score": 50, "note": "Pending challenges"},
-    {"country": "Hungary", "score": 52, "note": "Needs improvement"},
-    {"country": "Greece", "score": 60, "note": "Growing initiatives"},
-    {"country": "Romania", "score": 54, "note": "Emerging programs"},
-    {"country": "Czech Republic", "score": 66, "note": "New initiatives"},
-]
-
-
-def build_europe_map_figure() -> go.Figure:
-    countries = [entry["country"] for entry in EUROPE_SNAPSHOT]
-    scores = [entry["score"] for entry in EUROPE_SNAPSHOT]
-    notes = [entry["note"] for entry in EUROPE_SNAPSHOT]
-
-    figure = go.Figure(
-        go.Choropleth(
-            locations=countries,
-            locationmode="country names",
-            z=scores,
-            text=notes,
-            zmin=45,
-            zmax=95,
-            colorscale=[[0.0, "#e0e7ff"], [0.5, "#818cf8"], [1.0, "#312e81"]],
-            marker={"line": {"color": "#ffffff", "width": 0.6}},
-            colorbar={"title": "Index", "ticksuffix": "/100", "thickness": 12},
-            hovertemplate="<b>%{location}</b><br>Index: %{z}/100<br>%{text}<extra></extra>",
-        )
-    )
-    figure.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        geo=dict(
-            scope="europe",
-            projection_type="natural earth",
-            showframe=False,
-            showcoastlines=False,
-            bgcolor="rgba(0,0,0,0)",
-        ),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-    )
-    return figure
-
-
-def _stat_card(value: str, label: str) -> html.Div:
-    return html.Div(
-        [
-            html.Div(value, className="stat-value"),
-            html.Div(label, className="stat-label"),
-        ],
-        className="stat-card",
-    )
 
 
 def build_home_layout() -> html.Div:
-    map_figure = build_europe_map_figure()
+    ilga_document = get_latest_ilga_document()
+    indicators = get_fra_indicators()
+    countries = (
+        ilga_document.get("countries", [])
+        if isinstance(ilga_document, dict)
+        else []
+    )
+    year = ilga_document.get("year") if isinstance(ilga_document, dict) else None
+    map_figure = build_ilga_choropleth(ilga_document)
+    map_copy_es = (
+        f"Ranking oficial de {year}, leído desde Indicator_ilga en MongoDB."
+        if year
+        else "No hay un Rainbow Map disponible."
+    )
+    map_copy_en = (
+        f"Official {year} ranking, read from Indicator_ilga in MongoDB."
+        if year
+        else "No Rainbow Map is available yet."
+    )
+
     return html.Div(
         [
             build_navbar(active="home"),
@@ -79,214 +39,144 @@ def build_home_layout() -> html.Div:
                                 [
                                     html.Div(
                                         [
-                                            html.Span(
-                                                "RainbowLens",
-                                                className="hero-eyebrow",
+                                            html.P(
+                                                "ILGA Europe Rainbow Map",
+                                                className="home-map-eyebrow",
+                                                **text_attrs(
+                                                    "ILGA Europe Rainbow Map",
+                                                    "ILGA Europe Rainbow Map",
+                                                ),
                                             ),
                                             html.H1(
-                                                "Welcome to the LGBTIQ+ analysis and support platform",
-                                                className="hero-title",
+                                                "Situación legal LGBTIQ+ en Europa",
+                                                className="home-map-heading",
+                                                **text_attrs(
+                                                    "Situación legal LGBTIQ+ en Europa",
+                                                    "LGBTIQ+ legal situation in Europe",
+                                                ),
                                             ),
                                             html.P(
-                                                "Explore data, trends, and resources that strengthen LGBTIQ+ advocacy. "
-                                                "This version prioritizes a clear visual experience while detailed "
-                                                "analytics continue to evolve.",
-                                                className="hero-text",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.A(
-                                                        "View features",
-                                                        href="#features",
-                                                        className="hero-pill",
-                                                    ),
-                                                    html.A(
-                                                        "Learn the purpose",
-                                                        href="#purpose",
-                                                        className="hero-pill secondary",
-                                                    ),
-                                                ],
-                                                className="hero-actions",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    _stat_card(
-                                                        str(len(EUROPE_SNAPSHOT)),
-                                                        "Countries on the map",
-                                                    ),
-                                                    _stat_card("6", "Initial indicators"),
-                                                    _stat_card("4", "Sources in progress"),
-                                                ],
-                                                className="hero-stats",
+                                                map_copy_es,
+                                                className="home-map-copy",
+                                                **text_attrs(map_copy_es, map_copy_en),
                                             ),
                                         ],
-                                        className="hero-card",
+                                        className="home-map-intro",
                                     ),
                                     html.Div(
                                         [
-                                            html.H3(
-                                                "Interactive Europe map",
-                                                className="map-title",
+                                            _metric(str(year or "-"), "Año", "Year"),
+                                            _metric(
+                                                str(len(countries)),
+                                                "Países",
+                                                "Countries",
                                             ),
-                                            html.P(
-                                                "Hover over a country to view its summary and compare progress.",
-                                                className="map-caption",
-                                            ),
-                                            dcc.Graph(
-                                                id="europe-map",
-                                                figure=map_figure,
-                                                className="hero-map-graph",
-                                                config={
-                                                    "displayModeBar": False,
-                                                    "scrollZoom": True,
-                                                },
-                                            ),
-                                            html.P(
-                                                "Initial reference map. Values will be adjusted with real data.",
-                                                className="map-caption",
+                                            _metric(
+                                                str(len(indicators)),
+                                                "Indicadores FRA",
+                                                "FRA indicators",
                                             ),
                                         ],
-                                        id="map",
-                                        className="hero-map-card",
+                                        className="home-map-metrics",
                                     ),
                                 ],
-                                className="hero-grid container",
-                            )
+                                className="home-map-header",
+                            ),
+                            dcc.Graph(
+                                id="europe-map",
+                                figure=map_figure,
+                                className="home-europe-map",
+                                config={
+                                    "displayModeBar": True,
+                                    "displaylogo": False,
+                                    "scrollZoom": True,
+                                    "modeBarButtonsToRemove": [
+                                        "lasso2d",
+                                        "select2d",
+                                    ],
+                                },
+                            ),
+                            html.Div(
+                                [
+                                    html.Span(
+                                        "Fuente: ILGA Europe",
+                                        className="home-map-source",
+                                        **text_attrs(
+                                            "Fuente: ILGA Europe",
+                                            "Source: ILGA Europe",
+                                        ),
+                                    ),
+                                    html.A(
+                                        "Abrir estadísticas",
+                                        href="/statistics",
+                                        className="home-map-link",
+                                        **text_attrs(
+                                            "Abrir estadísticas",
+                                            "Open statistics",
+                                        ),
+                                    ),
+                                ],
+                                className="home-map-footer",
+                            ),
                         ],
-                        className="hero-section",
+                        className="home-map-stage",
                     ),
                     html.Section(
                         [
                             html.Div(
                                 [
                                     html.H2(
-                                        "Main features",
-                                        className="section-title",
-                                        id="features",
+                                        "Explora los indicadores FRA",
+                                        **text_attrs(
+                                            "Explora los indicadores FRA",
+                                            "Explore FRA indicators",
+                                        ),
                                     ),
                                     html.P(
-                                        "A general view of what the platform offers to research, compare, "
-                                        "and communicate key data.",
-                                        className="section-subtitle",
+                                        (
+                                            "El catálogo se consulta en PostgreSQL y "
+                                            "los porcentajes asociados se recuperan desde "
+                                            "MongoDB mediante el código del indicador."
+                                        ),
+                                        **text_attrs(
+                                            (
+                                                "El catálogo se consulta en PostgreSQL y "
+                                                "los porcentajes asociados se recuperan desde "
+                                                "MongoDB mediante el código del indicador."
+                                            ),
+                                            (
+                                                "The catalog is read from PostgreSQL and "
+                                                "the related percentages are retrieved from "
+                                                "MongoDB through the indicator code."
+                                            ),
+                                        ),
                                     ),
-                                    html.Div(
-                                        [
-                                            html.Div(
-                                                [
-                                                    html.H3("Data upload and cleaning"),
-                                                    html.P(
-                                                        "Import CSV files and centralize official-source information "
-                                                        "to analyze trends across Europe."
-                                                    ),
-                                                ],
-                                                className="feature-card",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.H3("Dynamic dashboard"),
-                                                    html.P(
-                                                        "View indicators, rankings, and country comparisons "
-                                                        "with maps, charts, and cards."
-                                                    ),
-                                                ],
-                                                className="feature-card",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.H3("Reports and export"),
-                                                    html.P(
-                                                        "Generate share-ready reports and export charts "
-                                                        "for institutions and working teams."
-                                                    ),
-                                                ],
-                                                className="feature-card",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.H3("Education module"),
-                                                    html.P(
-                                                        "Access educational resources and awareness guides "
-                                                        "focused on diversity and respect."
-                                                    ),
-                                                ],
-                                                className="feature-card",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.H3("User management"),
-                                                    html.P(
-                                                        "Define permissions and profiles for secure collaboration "
-                                                        "between institutions, HR teams, and educators."
-                                                    ),
-                                                ],
-                                                className="feature-card",
-                                            ),
-                                        ],
-                                        className="features-grid",
+                                    html.A(
+                                        "Ver panel de análisis",
+                                        href="/statistics",
+                                        className="home-analysis-link",
+                                        **text_attrs(
+                                            "Ver panel de análisis",
+                                            "View analysis panel",
+                                        ),
                                     ),
                                 ],
-                                className="container",
+                                className="home-analysis-band",
                             )
-                        ],
-                        className="features-section",
-                    ),
-                    html.Section(
-                        [
-                            html.Div(
-                                [
-                                    html.H2(
-                                        "Purpose and commitment",
-                                        className="section-title",
-                                        id="purpose",
-                                    ),
-                                    html.P(
-                                        "Our purpose is to support the LGBTIQ+ community by providing "
-                                        "evidence, visibility, and practical action tools.",
-                                        className="section-subtitle",
-                                    ),
-                                    html.Div(
-                                        [
-                                            html.Div(
-                                                [
-                                                    html.H3("Visibility through data"),
-                                                    html.P(
-                                                        "We turn scattered information into clear narratives "
-                                                        "that make real progress and challenges visible."
-                                                    ),
-                                                ],
-                                                className="mission-card",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.H3("Institutional support"),
-                                                    html.P(
-                                                        "We support evidence-based decisions for public, "
-                                                        "educational, and HR policies."
-                                                    ),
-                                                ],
-                                                className="mission-card",
-                                            ),
-                                            html.Div(
-                                                [
-                                                    html.H3("Education and empathy"),
-                                                    html.P(
-                                                        "We provide resources that promote awareness "
-                                                        "and respect for diversity across Europe."
-                                                    ),
-                                                ],
-                                                className="mission-card",
-                                            ),
-                                        ],
-                                        className="mission-grid",
-                                    ),
-                                ],
-                                className="container",
-                            )
-                        ],
-                        className="mission-section",
+                        ]
                     ),
                 ],
-                className="page-shell",
+                className="home-data-shell",
             ),
         ]
+    )
+
+
+def _metric(value: str, label_es: str, label_en: str) -> html.Div:
+    return html.Div(
+        [
+            html.Strong(value),
+            html.Span(label_es, **text_attrs(label_es, label_en)),
+        ],
+        className="home-map-metric",
     )

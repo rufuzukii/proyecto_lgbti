@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-from datetime import date
 import logging
 from pathlib import Path
 from typing import Any
@@ -11,13 +10,15 @@ from app.dash.compat import Dash, Input, Output, State, dcc, html
 from app.dash.layouts.navigation import build_navbar
 from flask_login import current_user
 
+from app.analytics import invalidate_analytics_cache
 from ...import_to_db.error_handler import ImportErrorHandler
 from ...import_to_db import (
-    parse_answer_survey_csv_text,
-    parse_rainbow_map_csv_text,
+    count_fra_questions,
+    parse_fra_csv_text,
+    parse_ilga_csv_text,
     register_pending_import,
 )
-from ...import_to_db.indicators import upsert_indicators_from_json
+from ...import_to_db.fra import upsert_indicators_from_json
 
 logger = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -179,6 +180,7 @@ def register_upload_callbacks(app: Dash) -> None:
             if data_source == "FRA":
                 try:
                     upsert_indicators_from_json(payload)
+                    invalidate_analytics_cache()
                 except Exception:
                     logger.exception(
                         "indicator_upsert_failed",
@@ -199,7 +201,7 @@ def register_upload_callbacks(app: Dash) -> None:
                 error_info = ImportErrorHandler.describe_import_log_error(exc)
                 return build_error_message(error_info.title, error_info.details)
 
-            document_count = len(payload)
+            document_count = count_payload_documents(payload)
             total_documents += document_count
             imported_files.append(
                 {
@@ -221,16 +223,22 @@ def normalize_upload_values(contents: Any, filenames: Any) -> tuple[list[str], l
     return contents_list, filenames_list
 
 
-def parse_csv_by_source(source: str, csv_text: str, file_name: str) -> list[dict]:
+def parse_csv_by_source(source: str, csv_text: str, file_name: str) -> dict | list[dict]:
     if source == "FRA":
-        return parse_answer_survey_csv_text(csv_text, file_name=file_name)
+        return parse_fra_csv_text(csv_text, file_name=file_name)
     if source == "ILGA":
-        return parse_rainbow_map_csv_text(csv_text, year=date.today().year)
+        return parse_ilga_csv_text(csv_text, file_name=file_name)
     if source == "FELGTB":
         raise NotImplementedError(
             "The FELGTB importer is not implemented yet. Select FRA or ILGA for this CSV."
         )
     raise ValueError(f"Unsupported source: {source}")
+
+
+def count_payload_documents(payload: Any) -> int:
+    if isinstance(payload, dict) and isinstance(payload.get("questions"), list):
+        return count_fra_questions(payload)
+    return len(payload) if isinstance(payload, list) else 1
 
 
 def build_error_message(message: str, details: list[str] | None = None) -> html.Div:

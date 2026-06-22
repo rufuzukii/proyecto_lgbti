@@ -19,10 +19,11 @@ def upsert_indicators_from_json(file_json: dict[str, Any] | list[Any]) -> int:
 
 
 def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> None:
-    code = (document.get("code") or document.get("external_code") or "").strip()
-    question = (document.get("question") or "").strip()
-    category = (document.get("category") or document.get("topic") or "Uncategorized").strip()
-    topic = (document.get("topic") or "").strip() or None
+    indicator = _indicator_payload(document)
+    code = (document.get("code") or indicator.get("code") or "").strip()
+    question = (indicator.get("question") or "").strip()
+    category = _resolve_category(indicator)
+    specific_category = _resolve_specific_category(indicator)
     if not code or not question:
         raise ValueError("invalid_indicator_payload")
 
@@ -40,16 +41,16 @@ def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> Non
     if row is None:
         conn.execute(
             """
-            INSERT INTO public.indicators (category_id, code, question, definition, answer_type, topic)
+            INSERT INTO public.indicators (category_id, code, question, definition, answer_type, specific_category)
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
                 category_id,
                 code,
                 question,
-                document.get("definition"),
+                indicator.get("definition"),
                 _serialize_answer_types(next_answer_types),
-                topic,
+                specific_category,
             ),
         )
         return
@@ -62,15 +63,15 @@ def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> Non
             question = %s,
             definition = COALESCE(%s, definition),
             answer_type = %s,
-            topic = %s
+            specific_category = %s
         WHERE code = %s
         """,
         (
             category_id,
             question,
-            document.get("definition"),
+            indicator.get("definition"),
             _serialize_answer_types(merged_answer_types),
-            topic,
+            specific_category,
             code,
         ),
     )
@@ -91,15 +92,18 @@ def _get_or_create_category(conn: psycopg.Connection, name: str) -> str:
 
 def _extract_answer_types(document: dict[str, Any]) -> list[str]:
     values: list[str] = []
-    for answer in document.get("answers", []):
-        if not isinstance(answer, dict):
-            continue
-        value = answer.get("answer")
-        if value is None:
-            continue
-        clean_value = str(value).strip()
-        if clean_value and clean_value not in values:
-            values.append(clean_value)
+
+    for question in _question_entries(document):
+        for answer in question.get("answers", []):
+            if not isinstance(answer, dict):
+                continue
+            value = answer.get("answer")
+            if value is None:
+                continue
+            clean_value = str(value).strip()
+            if clean_value and clean_value not in values:
+                values.append(clean_value)
+    values = [value for index, value in enumerate(values) if value and value not in values[:index]]
     return values
 
 
@@ -129,6 +133,13 @@ def _serialize_answer_types(values: list[str]) -> str:
 
 
 def _normalize_documents(file_json: dict[str, Any] | list[Any]) -> list[dict[str, Any]]:
+    if isinstance(file_json, dict) and file_json.get("code") and isinstance(file_json.get("answers"), list):
+        return [file_json]
+    if isinstance(file_json, dict) and isinstance(file_json.get("questions"), list):
+        questions = file_json["questions"]
+        if not all(isinstance(item, dict) for item in questions):
+            raise ValueError("invalid_indicator_payload")
+        return questions
     if isinstance(file_json, dict):
         return [file_json]
     if not isinstance(file_json, list) or not file_json:
@@ -136,3 +147,33 @@ def _normalize_documents(file_json: dict[str, Any] | list[Any]) -> list[dict[str
     if not all(isinstance(item, dict) for item in file_json):
         raise ValueError("invalid_indicator_payload")
     return file_json
+
+
+def _resolve_category(document: dict[str, Any]) -> str:
+    if document.get("specific_category"):
+        value = document.get("category") or document.get("topic")
+    else:
+        value = document.get("topic") or document.get("category")
+    return (value or "Uncategorized").strip()
+
+
+def _resolve_specific_category(document: dict[str, Any]) -> str | None:
+    value = document.get("specific_category")
+    if not value and document.get("topic") and document.get("category"):
+        value = document.get("category")
+    clean_value = str(value or "").strip()
+    return clean_value or None
+
+
+def _indicator_payload(document: dict[str, Any]) -> dict[str, Any]:
+    questions = document.get("questions")
+    if not document.get("question") and isinstance(questions, list) and questions and isinstance(questions[0], dict):
+        return questions[0]
+    return document
+
+
+def _question_entries(document: dict[str, Any]) -> list[dict[str, Any]]:
+    questions = document.get("questions")
+    if not document.get("answers") and isinstance(questions, list) and all(isinstance(item, dict) for item in questions):
+        return questions
+    return [document]

@@ -30,7 +30,8 @@
   }
 
   .nav-link,
-  .nav-account {
+  .nav-account,
+  .language-toggle {
     align-items: center !important;
     display: flex !important;
     min-height: 40px !important;

@@ -82,6 +82,8 @@ FILTER_KEY_ALIASES: dict[str, str] = {
     "belonging_to_a_minority_group": "minority_group",
     "minority": "minority_group",
     "minority_group": "minority_group",
+    "education": "education",
+    "education_level": "education",
     "openness_about_being_lgbtiq": "openness",
     "openness": "openness",
 }
@@ -205,6 +207,7 @@ class FraPathContext:
 @dataclass(frozen=True)
 class IndicatorQuestionParts:
     category: str
+    specific_category: str
     topic: str
     question: str
     raw_question: str
@@ -239,6 +242,7 @@ def _parse_answer_survey_rows(
             fallback_topic=raw_topic,
         )
         category = question_parts.category
+        specific_category = question_parts.specific_category
         topic = question_parts.topic
         question = question_parts.question
         source = row.get("source") or file_metadata.get("source") or FRA_SOURCE_NAME
@@ -249,14 +253,15 @@ def _parse_answer_survey_rows(
             topic=topic,
             question=question,
         )
-        code = build_question_code(question)
+        code = external_code or build_question_code(question)
 
-        key = (source, category, topic, question, external_code)
+        key = (source, category, specific_category, topic, question, external_code)
         if key not in documents:
             documents[key] = {
                 "source": source,
                 "source_type": FRA_SOURCE_TYPE,
                 "category": category,
+                "specific_category": specific_category,
                 "topic": topic,
                 "question": question,
                 "code": code,
@@ -562,28 +567,27 @@ def split_indicator_question(
     fallback_topic: str,
 ) -> IndicatorQuestionParts:
     clean_question = raw_question.strip()
-    category = fallback_category.strip() or fallback_topic.strip() or "Uncategorized"
-    topic = fallback_topic.strip()
+    category = fallback_topic.strip() or fallback_category.strip() or "Uncategorized"
+    specific_category = fallback_category.strip() or category
+    topic = category
     question = clean_question
 
     if ">" in clean_question:
         left, right = clean_question.split(">", 1)
         if left.strip():
-            category = left.strip()
+            specific_category = left.strip()
         question = right.strip()
 
     if "/" in question:
         left, right = question.split("/", 1)
         if left.strip():
-            topic = left.strip()
+            specific_category = left.strip()
         if right.strip():
             question = right.strip()
 
-    if not topic:
-        topic = category
-
     return IndicatorQuestionParts(
         category=category,
+        specific_category=specific_category,
         topic=topic,
         question=question,
         raw_question=clean_question,
@@ -620,8 +624,8 @@ def resolve_country_scope(country: str) -> str:
 
 def validate_fra_document(document: dict) -> dict:
     warnings: list[str] = []
-    if not document.get("external_code"):
-        warnings.append("missing_external_code")
+    if not document.get("code"):
+        warnings.append("missing_code")
     if not document.get("answers"):
         warnings.append("empty_answers")
 
