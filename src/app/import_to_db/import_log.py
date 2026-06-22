@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from typing import Any
 
 import json
@@ -9,6 +8,8 @@ from dotenv import load_dotenv
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
+
+from app.config import get_postgres_connect_timeout, get_postgres_dsn
 
 PENDING_STATUS = "pending"
 JsonPayload = dict[str, Any] | list[Any]
@@ -27,17 +28,8 @@ class PendingImportLog:
 load_dotenv()
 
 
-def _clean_dsn(value: str) -> str:
-    value = value.strip().strip('"').strip("'")
-    prefix = "DATABASE_URL="
-    return value[len(prefix) :] if value.startswith(prefix) else value
-
-
 def _resolve_postgres_dsn() -> str:
-    dsn = os.getenv("DATABASE_URL")
-    if not dsn:
-        raise RuntimeError("DATABASE_URL must be set to connect to PostgreSQL.")
-    return _clean_dsn(dsn)
+    return get_postgres_dsn()
 
 
 def insert_import_log(
@@ -56,7 +48,7 @@ def insert_import_log(
         "VALUES (%s, %s, %s, %s, %s, %s, %s)"
     )
 
-    with psycopg.connect(dsn) as conn:
+    with psycopg.connect(dsn, connect_timeout=get_postgres_connect_timeout()) as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 query,
@@ -132,7 +124,11 @@ def list_pending_import_logs() -> list[PendingImportLog]:
         WHERE l.status = %s AND l.file_json IS NOT NULL
         ORDER BY user_label ASC, l.created_at DESC NULLS LAST, l.file_name ASC
     """
-    with psycopg.connect(_resolve_postgres_dsn(), row_factory=dict_row) as conn:
+    with psycopg.connect(
+        _resolve_postgres_dsn(),
+        row_factory=dict_row,
+        connect_timeout=get_postgres_connect_timeout(),
+    ) as conn:
         rows = conn.execute(query, (PENDING_STATUS,)).fetchall()
     return [_row_to_pending_import_log(row) for row in rows]
 
@@ -150,13 +146,20 @@ def get_pending_import_log(import_id: str) -> PendingImportLog | None:
         LEFT JOIN public.users u ON u.id = l.user_id
         WHERE l.id = %s::uuid AND l.status = %s AND l.file_json IS NOT NULL
     """
-    with psycopg.connect(_resolve_postgres_dsn(), row_factory=dict_row) as conn:
+    with psycopg.connect(
+        _resolve_postgres_dsn(),
+        row_factory=dict_row,
+        connect_timeout=get_postgres_connect_timeout(),
+    ) as conn:
         row = conn.execute(query, (import_id, PENDING_STATUS)).fetchone()
     return _row_to_pending_import_log(row) if row else None
 
 
 def delete_import_log(import_id: str) -> None:
-    with psycopg.connect(_resolve_postgres_dsn()) as conn:
+    with psycopg.connect(
+        _resolve_postgres_dsn(),
+        connect_timeout=get_postgres_connect_timeout(),
+    ) as conn:
         result = conn.execute("DELETE FROM import_logs WHERE id = %s::uuid", (import_id,))
         conn.commit()
     if result.rowcount == 0:
@@ -176,7 +179,7 @@ def _row_to_pending_import_log(row: dict[str, Any]) -> PendingImportLog:
 
 def test_connection() -> dict[str, Any]:
     dsn = _resolve_postgres_dsn()
-    with psycopg.connect(dsn) as conn:
+    with psycopg.connect(dsn, connect_timeout=get_postgres_connect_timeout()) as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT 1")
             result = cursor.fetchone()

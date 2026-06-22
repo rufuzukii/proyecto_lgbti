@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from typing import Optional
 
 import psycopg
@@ -9,7 +8,7 @@ from psycopg.rows import dict_row
 from psycopg.errors import UniqueViolation
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from app.config import get_postgres_config
+from app.config import get_postgres_connect_timeout, get_postgres_dsn
 from app.users.schemas import UserRead, UserRegister, UserRole, UserType
 
 
@@ -230,14 +229,15 @@ def delete_user_as_admin(*, user_id: str) -> None:
 
 
 def _connect() -> psycopg.Connection:
-    return psycopg.connect(_postgres_dsn(), row_factory=dict_row)
+    return psycopg.connect(
+        _postgres_dsn(),
+        row_factory=dict_row,
+        connect_timeout=get_postgres_connect_timeout(),
+    )
 
 
 def _postgres_dsn() -> str:
-    database_url = os.getenv("DATABASE_URL", "").strip().strip('"').strip("'")
-    if database_url:
-        return os.path.expandvars(database_url)
-    return get_postgres_config().dsn()
+    return get_postgres_dsn()
 
 
 def _normalize_email(email: str | None) -> str:

@@ -15,8 +15,18 @@ def insert_indicator_fra_json(file_json: dict[str, Any] | list[Any]) -> int:
     documents = _normalize_documents(file_json)
     config = get_mongo_config()
 
-    with MongoClient(config.dsn(), serverSelectionTimeoutMS=5000) as client:
+    with MongoClient(
+        config.dsn(),
+        serverSelectionTimeoutMS=config.server_selection_timeout_ms,
+        connectTimeoutMS=config.server_selection_timeout_ms,
+        socketTimeoutMS=config.server_selection_timeout_ms,
+    ) as client:
         collection = client[config.database][INDICATOR_FRA_COLLECTION]
+        collection.create_index("code", background=True)
+        collection.create_index(
+            [("category", 1), ("specific_category", 1), ("question", 1)],
+            background=True,
+        )
         for document in documents:
             prepared = _prepare_indicator_document(document)
             answers = prepared.pop("answers", [])

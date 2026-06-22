@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, unquote, urlparse
 
 from dotenv import load_dotenv
 
@@ -25,6 +25,18 @@ def _get_int(name: str, default: int) -> int:
     if value is None or value == "":
         return default
     return int(value)
+
+
+def _get_clean_env(name: str, default: str | None = None) -> str | None:
+    value = _get_env(name, default)
+    if value is None:
+        return None
+    return value.strip().strip('"').strip("'") or None
+
+
+def _is_production() -> bool:
+    env = (_get_env("APP_ENV", "local") or "local").strip().lower()
+    return env == "production" and not _get_bool("LOCAL_MODE", False)
 
 
 @dataclass(frozen=True)
@@ -75,6 +87,7 @@ class MongoConfig:
     auth_source: str | None = None
     tls: bool = False
     uri: str | None = None
+    server_selection_timeout_ms: int = 2500
 
     def dsn(self) -> str:
         if self.uri:
@@ -127,16 +140,48 @@ def get_postgres_config() -> PostgresConfig:
     )
 
 
+def get_postgres_dsn() -> str:
+    database_url = _get_clean_env("DATABASE_URL")
+    if database_url:
+        prefix = "DATABASE_URL="
+        if database_url.startswith(prefix):
+            database_url = database_url[len(prefix) :]
+        ssl_mode = _get_clean_env("POSTGRES_SSL_MODE")
+        if ssl_mode and "sslmode=" not in database_url:
+            separator = "&" if "?" in database_url else "?"
+            database_url = f"{database_url}{separator}sslmode={quote_plus(ssl_mode)}"
+        return os.path.expandvars(database_url)
+    if _is_production() and not _get_clean_env("POSTGRES_HOST"):
+        raise RuntimeError("DATABASE_URL or POSTGRES_HOST must be set in production.")
+    return get_postgres_config().dsn()
+
+
+def get_postgres_connect_timeout() -> int:
+    return _get_int("DB_CONNECT_TIMEOUT_SECONDS", 3)
+
+
 def get_mongo_config() -> MongoConfig:
+    uri = _get_clean_env("MONGO_URI")
+    host = _get_clean_env("MONGO_HOST")
+    if _is_production() and not uri and not host:
+        raise RuntimeError("MONGO_URI or MONGO_HOST must be set in production.")
+
+    database = _get_clean_env("MONGO_DB") or _mongo_database_from_uri(uri)
     return MongoConfig(
-        host=_get_env("MONGO_HOST", "localhost") or "localhost",
+        host=host or "localhost",
         port=_get_int("MONGO_PORT", 27017),
-        database=_get_env("MONGO_DB", "proyecto_lgbti_no_relacional")
-        or "proyecto_lgbti_no_relacional",
+        database=database or "proyecto_lgbti_no_relacional",
         user=_get_env("MONGO_USER"),
         password=_get_env("MONGO_PASSWORD"),
         auth_source=_get_env("MONGO_AUTH_SOURCE"),
         tls=_get_bool("MONGO_TLS", False),
-        uri=_get_env("MONGO_URI"),
+        uri=uri,
+        server_selection_timeout_ms=_get_int("MONGO_SERVER_SELECTION_TIMEOUT_MS", 2500),
     )
 
+
+def _mongo_database_from_uri(uri: str | None) -> str | None:
+    if not uri:
+        return None
+    path = urlparse(uri).path.strip("/")
+    return unquote(path.split("/", 1)[0]) if path else None

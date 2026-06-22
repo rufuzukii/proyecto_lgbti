@@ -12,8 +12,9 @@ from app.analytics.figures import (
 )
 from app.analytics.geography import build_ilga_geodataframe
 from app.analytics.repository import (
+    get_fra_categories,
     get_fra_indicator_answers,
-    get_fra_indicators,
+    get_fra_mongo_indicators_by_category,
     get_latest_ilga_document,
 )
 from app.dash.compat import Dash, Input, Output, dcc, html
@@ -21,10 +22,8 @@ from app.dash.layouts.navigation import build_navbar
 
 
 def build_statistics_layout() -> html.Div:
-    indicators = get_fra_indicators()
+    categories = get_fra_categories()
     ilga_document = get_latest_ilga_document()
-    initial_code = indicators[0].code if indicators else None
-    initial_fra = get_fra_indicator_answers(initial_code) if initial_code else None
     geodataframe = build_ilga_geodataframe(ilga_document)
 
     return html.Div(
@@ -37,8 +36,7 @@ def build_statistics_layout() -> html.Div:
                             html.P("Panel exploratorio", className="stats-eyebrow"),
                             html.H1("Estadísticas europeas LGBTIQ+"),
                             html.P(
-                                "Catálogo FRA desde PostgreSQL y valores FRA/ILGA "
-                                "desde MongoDB.",
+                                "",
                                 className="stats-lead",
                             ),
                         ],
@@ -46,19 +44,41 @@ def build_statistics_layout() -> html.Div:
                     ),
                     html.Section(
                         [
-                            html.Label("Indicador FRA", htmlFor="fra-indicator-select"),
-                            dcc.Dropdown(
-                                id="fra-indicator-select",
-                                options=[
-                                    {"label": indicator.label, "value": indicator.code}
-                                    for indicator in indicators
+                            html.Div(
+                                [
+                                    html.Label("Categoría", htmlFor="fra-category-select"),
+                                    dcc.Dropdown(
+                                        id="fra-category-select",
+                                        options=[
+                                            {"label": category, "value": category}
+                                            for category in categories
+                                        ],
+                                        value=None,
+                                        clearable=True,
+                                        placeholder="Selecciona una categoría",
+                                    ),
                                 ],
-                                value=initial_code,
-                                clearable=False,
-                                placeholder="No hay indicadores disponibles",
+                                className="stats-control-field",
+                            ),
+                            html.Div(
+                                [
+                                    html.Label(
+                                        "Tópico",
+                                        htmlFor="fra-indicator-select",
+                                    ),
+                                    dcc.Dropdown(
+                                        id="fra-indicator-select",
+                                        options=[],
+                                        value=None,
+                                        clearable=False,
+                                        disabled=True,
+                                        placeholder="Selecciona primero una categoría",
+                                    ),
+                                ],
+                                className="stats-control-field",
                             ),
                             html.P(
-                                _fra_summary(initial_fra),
+                                "Selecciona una categoría y después un tópico",
                                 id="fra-indicator-summary",
                                 className="stats-control-summary",
                             ),
@@ -71,7 +91,7 @@ def build_statistics_layout() -> html.Div:
                                 "Distribución FRA por país · Plotly",
                                 dcc.Graph(
                                     id="fra-indicator-chart",
-                                    figure=build_fra_country_bar(initial_fra),
+                                    figure=build_fra_country_bar(None),
                                     config={"displaylogo": False},
                                 ),
                                 "stats-panel stats-panel-wide",
@@ -131,11 +151,37 @@ def build_statistics_layout() -> html.Div:
 
 def register_statistics_callbacks(app: Dash) -> None:
     @app.callback(
+        Output("fra-indicator-select", "options"),
+        Output("fra-indicator-select", "value"),
+        Output("fra-indicator-select", "disabled"),
+        Output("fra-indicator-select", "placeholder"),
+        Input("fra-category-select", "value"),
+    )
+    def update_fra_documents(category: str | None):
+        if not category:
+            return [], None, True, "Selecciona primero una categoría"
+
+        indicators = get_fra_mongo_indicators_by_category(category)
+        if not indicators:
+            return [], None, True, "No hay documentos para esta categoría"
+
+        options = [
+            {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
+            for indicator in indicators
+        ]
+        return options, None, False, "Selecciona un tópico"
+
+    @app.callback(
         Output("fra-indicator-chart", "figure"),
         Output("fra-indicator-summary", "children"),
         Input("fra-indicator-select", "value"),
     )
     def update_fra_indicator(code: str | None):
+        if not code:
+            return (
+                build_fra_country_bar(None),
+                "Selecciona una categoría y después un tópico.",
+            )
         document = get_fra_indicator_answers(code or "")
         return build_fra_country_bar(document), _fra_summary(document)
 
@@ -200,3 +246,10 @@ def _fra_summary(document: dict[str, Any] | None) -> str:
         f"{document.get('specific_category', '')} · "
         f"{len(document.get('answers', []))} observaciones"
     )
+
+
+def _fra_indicator_option_label(indicator) -> str:
+    detail = indicator.specific_category.strip()
+    if detail:
+        return f"{detail} Â· {indicator.question}"
+    return indicator.question or indicator.code

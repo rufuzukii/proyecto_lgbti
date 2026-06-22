@@ -11,3 +11,19 @@ services:
         value: "false"
       - key: SECRET_KEY
         generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: POSTGRES_SSL_MODE
+        value: require
+      - key: MONGO_URI
+        sync: false
+      - key: MONGO_DB
+        sync: false
+      - key: CACHE_TYPE
+        value: SimpleCache
+      - key: DB_CONNECT_TIMEOUT_SECONDS
+        value: "3"
+      - key: MONGO_SERVER_SELECTION_TIMEOUT_MS
+        value: "2500"
+      - key: ANALYTICS_CACHE_TIMEOUT_SECONDS
+        value: "3600"
