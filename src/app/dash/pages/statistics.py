@@ -251,5 +251,5 @@ def _fra_summary(document: dict[str, Any] | None) -> str:
 def _fra_indicator_option_label(indicator) -> str:
     detail = indicator.specific_category.strip()
     if detail:
-        return f"{detail} Â· {indicator.question}"
+        return f"{detail} - {indicator.question}"
     return indicator.question or indicator.code

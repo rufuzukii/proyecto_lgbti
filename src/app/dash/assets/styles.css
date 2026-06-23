@@ -261,6 +261,44 @@ body {
   border-radius: var(--radius-sm);
 }
 
+.Select-control,
+.Select-menu-outer {
+  background: #ffffff !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.Select-control,
+.Select-input,
+.Select-placeholder,
+.Select-value,
+.Select-value-label,
+.Select-option,
+.VirtualizedSelectOption {
+  color: var(--color-text) !important;
+}
+
+.Select-placeholder {
+  color: var(--color-text-muted) !important;
+}
+
+.Select-option,
+.VirtualizedSelectOption {
+  background: #ffffff !important;
+}
+
+.Select-option.is-focused,
+.Select-option.is-selected,
+.VirtualizedSelectSelectedOption,
+.VirtualizedSelectFocusedOption {
+  background: var(--color-surface-muted) !important;
+  color: var(--color-text) !important;
+}
+
+.Select-input > input {
+  color: var(--color-text) !important;
+}
+
 body[data-theme="dark"] .nav-brand-logo {
   filter: brightness(0.92) contrast(1.05);
 }
@@ -338,6 +376,8 @@ body[data-theme="dark"] .user-theme-button {
 body[data-theme="dark"] .home-map-eyebrow,
 body[data-theme="dark"] .home-map-link,
 body[data-theme="dark"] .home-analysis-link,
+body[data-theme="dark"] .auth-eyebrow,
+body[data-theme="dark"] .upload-eyebrow,
 body[data-theme="dark"] .user-eyebrow,
 body[data-theme="dark"] .user-action-tile strong,
 body[data-theme="dark"] .user-link-button,
@@ -376,6 +416,18 @@ body[data-theme="dark"] .user-link-button {
   color: #f7f9fc;
 }
 
+body[data-theme="dark"] .auth-message-error {
+  background: #4d1f2b;
+  border-color: rgba(254, 205, 211, 0.34);
+  color: #fecdd3;
+}
+
+body[data-theme="dark"] .auth-message-success {
+  background: #16382f;
+  border-color: rgba(167, 243, 208, 0.28);
+  color: #bbf7d0;
+}
+
 body[data-theme="dark"] .user-theme-button.is-active,
 body[data-theme="dark"] .user-theme-button[aria-pressed="true"] {
   background: #0a0e17;
@@ -390,6 +442,88 @@ body[data-theme="dark"] .user-language-chip {
 
 body[data-theme="dark"] .home-map-metric {
   border-left-color: var(--link-green);
+}
+
+:root[data-theme="dark"] .dash-dropdown,
+:root[data-theme="dark"] .dash-dropdown-wrapper,
+:root[data-theme="dark"] .Select,
+:root[data-theme="dark"] .Select-control,
+:root[data-theme="dark"] .Select-menu,
+:root[data-theme="dark"] .Select-menu-outer,
+:root[data-theme="dark"] .Select-menu-outer div,
+body[data-theme="dark"] .dash-dropdown,
+body[data-theme="dark"] .dash-dropdown-wrapper,
+body[data-theme="dark"] .Select,
+body[data-theme="dark"] .Select-control,
+body[data-theme="dark"] .Select-menu,
+body[data-theme="dark"] .Select-menu-outer,
+body[data-theme="dark"] .Select-menu-outer div {
+  background: #0f1522 !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+:root[data-theme="dark"] .Select-placeholder,
+body[data-theme="dark"] .Select-placeholder {
+  color: var(--color-text-muted) !important;
+}
+
+:root[data-theme="dark"] .Select-value,
+:root[data-theme="dark"] .Select-value-label,
+:root[data-theme="dark"] .Select-input,
+:root[data-theme="dark"] .Select-input > input,
+:root[data-theme="dark"] .Select--single > .Select-control .Select-value,
+:root[data-theme="dark"] .Select--single > .Select-control .Select-value .Select-value-label,
+:root[data-theme="dark"] .has-value.Select--single > .Select-control .Select-value .Select-value-label,
+body[data-theme="dark"] .Select-value,
+body[data-theme="dark"] .Select-value-label,
+body[data-theme="dark"] .Select-input,
+body[data-theme="dark"] .Select-input > input,
+body[data-theme="dark"] .Select--single > .Select-control .Select-value,
+body[data-theme="dark"] .Select--single > .Select-control .Select-value .Select-value-label,
+body[data-theme="dark"] .has-value.Select--single > .Select-control .Select-value .Select-value-label {
+  color: var(--color-text) !important;
+}
+
+:root[data-theme="dark"] .Select-arrow,
+body[data-theme="dark"] .Select-arrow {
+  border-top-color: var(--color-text-muted);
+}
+
+:root[data-theme="dark"] .is-open > .Select-control .Select-arrow,
+body[data-theme="dark"] .is-open > .Select-control .Select-arrow {
+  border-bottom-color: var(--color-text-muted);
+  border-top-color: transparent;
+}
+
+:root[data-theme="dark"] .Select-option,
+:root[data-theme="dark"] .VirtualizedSelectOption,
+:root[data-theme="dark"] .VirtualizedSelectSelectedOption,
+body[data-theme="dark"] .Select-option,
+body[data-theme="dark"] .VirtualizedSelectOption,
+body[data-theme="dark"] .VirtualizedSelectSelectedOption {
+  background: #0f1522 !important;
+  color: var(--color-text) !important;
+}
+
+:root[data-theme="dark"] .Select-option.is-focused,
+:root[data-theme="dark"] .Select-option.is-selected,
+:root[data-theme="dark"] .VirtualizedSelectFocusedOption,
+:root[data-theme="dark"] .VirtualizedSelectSelectedOption,
+body[data-theme="dark"] .Select-option.is-focused,
+body[data-theme="dark"] .Select-option.is-selected,
+body[data-theme="dark"] .VirtualizedSelectFocusedOption,
+body[data-theme="dark"] .VirtualizedSelectSelectedOption {
+  background: #1a2232 !important;
+  color: var(--color-text) !important;
+}
+
+:root[data-theme="dark"] .Select-option:hover,
+:root[data-theme="dark"] .VirtualizedSelectOption:hover,
+body[data-theme="dark"] .Select-option:hover,
+body[data-theme="dark"] .VirtualizedSelectOption:hover {
+  background: #243044 !important;
+  color: var(--color-text) !important;
 }
 
 body[data-theme="light"] .user-theme-button.is-active,

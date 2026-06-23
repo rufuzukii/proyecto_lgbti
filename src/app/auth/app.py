@@ -92,8 +92,13 @@ def create_auth_app() -> Flask:
         email = payload.get("email")
         password = payload.get("password")
         rate_key: str = _rate_key(email)
+
         if rate_limiter.is_blocked(rate_key):
             return jsonify({"status": "error", "message": "rate_limited"}), 429
+
+        if not isinstance(email, str) or not isinstance(password, str):
+            rate_limiter.record_failure(_rate_key(email if isinstance(email, str) else None))
+            return jsonify({"status": "error", "message": "invalid_payload"}), 400
 
         try:
             record = authenticate_user(email, password)

@@ -49,8 +49,12 @@
   margin-bottom: 0.45rem;
 }
 
-.stats-controls .dash-dropdown-wrapper{
-  color: black;
+.stats-controls .dash-dropdown-wrapper {
+  color: var(--color-text);
+}
+
+.dash-dropdown-value.dash-dropdown-placeholder {
+  color: var(--color-text-muted);
 }
 
 .stats-control-summary {

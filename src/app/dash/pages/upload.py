@@ -12,13 +12,6 @@ from flask_login import current_user
 
 from app.analytics import invalidate_analytics_cache
 from ...import_to_db.error_handler import ImportErrorHandler
-from ...import_to_db import (
-    count_fra_questions,
-    parse_fra_csv_text,
-    parse_ilga_csv_text,
-    register_pending_import,
-)
-from ...import_to_db.fra import upsert_indicators_from_json
 
 logger = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -50,9 +43,9 @@ def build_upload_layout() -> html.Div:
                     html.Header(
                         [
                             html.P("Reviewable import", className="upload-eyebrow"),
-                            html.H1("Upload CSV for review"),
+                            html.H1("Upload data for review"),
                             html.P(
-                                "Convert CSV files into temporary JSON and leave the import pending for administrative validation."
+                                "Convert CSV or ILGA JSON files into temporary JSON and leave the import pending for administrative validation."
                             ),
                         ],
                         className="page-header upload-header",
@@ -100,7 +93,7 @@ def build_upload_layout() -> html.Div:
                                     html.H2("Review flow"),
                                     html.Ol(
                                         [
-                                            html.Li("The CSV is validated and transformed into JSON."),
+                                            html.Li("The file is validated and transformed into JSON."),
                                             html.Li(
                                                 "The JSON is recorded in PostgreSQL with pending status."
                                             ),
@@ -150,17 +143,19 @@ def register_upload_callbacks(app: Dash) -> None:
 
         for data, name in zip(contents_list, filenames_list):
             safe_name = Path(name).name if name else "upload.csv"
-            if not safe_name.lower().endswith(".csv"):
-                return build_error_message(f"Unsupported file: {safe_name}.")
+            if not is_supported_upload_file(data_source, safe_name):
+                return build_error_message(
+                    f"Unsupported file: {safe_name}. FRA accepts CSV; ILGA accepts CSV or JSON."
+                )
 
-            csv_text, payload_size = _decode_upload_contents(data)
+            file_text, payload_size = _decode_upload_contents(data)
             if payload_size > MAX_UPLOAD_BYTES:
                 return build_error_message(f"{safe_name} exceeds the allowed size.")
 
             try:
-                payload = parse_csv_by_source(
+                payload = parse_file_by_source(
                     source=data_source,
-                    csv_text=csv_text,
+                    file_text=file_text,
                     file_name=safe_name,
                 )
             except NotImplementedError as exc:
@@ -179,6 +174,8 @@ def register_upload_callbacks(app: Dash) -> None:
 
             if data_source == "FRA":
                 try:
+                    from ...import_to_db.fra import upsert_indicators_from_json
+
                     upsert_indicators_from_json(payload)
                     invalidate_analytics_cache()
                 except Exception:
@@ -191,6 +188,8 @@ def register_upload_callbacks(app: Dash) -> None:
                     )
 
             try:
+                from ...import_to_db import register_pending_import
+
                 user_id = current_user.get_id() if current_user.is_authenticated else None
                 register_pending_import(file_name=safe_name, file_json=payload, user_id=user_id)
             except Exception as exc:
@@ -223,11 +222,26 @@ def normalize_upload_values(contents: Any, filenames: Any) -> tuple[list[str], l
     return contents_list, filenames_list
 
 
-def parse_csv_by_source(source: str, csv_text: str, file_name: str) -> dict | list[dict]:
-    if source == "FRA":
-        return parse_fra_csv_text(csv_text, file_name=file_name)
+def is_supported_upload_file(source: str, file_name: str) -> bool:
+    suffix = Path(file_name).suffix.lower()
     if source == "ILGA":
-        return parse_ilga_csv_text(csv_text, file_name=file_name)
+        return suffix in {".csv", ".json"}
+    return suffix == ".csv"
+
+
+def parse_file_by_source(source: str, file_text: str, file_name: str) -> dict | list[dict]:
+    if source == "FRA":
+        from ...import_to_db import parse_fra_csv_text
+
+        return parse_fra_csv_text(file_text, file_name=file_name)
+    if source == "ILGA":
+        if Path(file_name).suffix.lower() == ".json":
+            from ...import_to_db import parse_ilga_json_text
+
+            return parse_ilga_json_text(file_text)
+        from ...import_to_db import parse_ilga_csv_text
+
+        return parse_ilga_csv_text(file_text, file_name=file_name)
     if source == "FELGTB":
         raise NotImplementedError(
             "The FELGTB importer is not implemented yet. Select FRA or ILGA for this CSV."
@@ -237,6 +251,8 @@ def parse_csv_by_source(source: str, csv_text: str, file_name: str) -> dict | li
 
 def count_payload_documents(payload: Any) -> int:
     if isinstance(payload, dict) and isinstance(payload.get("questions"), list):
+        from ...import_to_db import count_fra_questions
+
         return count_fra_questions(payload)
     return len(payload) if isinstance(payload, list) else 1
 

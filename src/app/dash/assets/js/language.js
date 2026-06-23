@@ -3,6 +3,15 @@
   const THEME_KEY = "rainbowlens-theme";
   const SUPPORTED = new Set(["es", "en"]);
   const THEMES = new Set(["light", "dark"]);
+  const LABELS = [
+    ["Situacion legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"],
+    ["FRA: discriminacion y datos sociales", "FRA: discrimination and social data"],
+    ["Selecciona una categoria", "Select a category"],
+    ["Selecciona primero una categoria", "Select a category first"],
+    ["Selecciona un topico", "Select a topic"],
+    ["Activa la vista FRA", "Enable the FRA view"],
+    ["No hay documentos para esta categoria", "No documents for this category"],
+  ];
 
   function currentLanguage() {
     const saved = window.localStorage.getItem(LANGUAGE_KEY);
@@ -35,6 +44,7 @@
         node.textContent = value;
       }
     });
+    applySelectTranslations(language);
 
     document.querySelectorAll("[data-language-toggle]").forEach((button) => {
       const label = labelFor(language);
@@ -67,7 +77,7 @@
       button.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
 
-    restylePlotly(selected);
+    restylePlotly(selected, 0);
   }
 
   function setTheme(theme) {
@@ -93,40 +103,101 @@
     applyTheme(currentTheme());
   });
 
+  let pendingRefresh = null;
   const observer = new MutationObserver(() => {
-    applyLanguage(currentLanguage());
-    applyTheme(currentTheme());
+    if (pendingRefresh !== null) {
+      return;
+    }
+    pendingRefresh = window.setTimeout(() => {
+      pendingRefresh = null;
+      applyLanguage(currentLanguage());
+      restylePlotly(currentTheme(), 0);
+    }, 80);
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   applyTheme(currentTheme());
 
-  function restylePlotly(theme) {
+  function restylePlotly(theme, attempt) {
     if (!window.Plotly) {
+      if (attempt < 12) {
+        window.setTimeout(() => restylePlotly(theme, attempt + 1), 120);
+      }
       return;
     }
 
     const dark = theme === "dark";
+    const colors = {
+      paper: dark ? "#111827" : "#ffffff",
+      plot: dark ? "#111827" : "#ffffff",
+      font: dark ? "#f7f9fc" : "#252a31",
+      axis: dark ? "#aeb8c7" : "#252a31",
+      grid: dark ? "#2d3748" : "#e5e9eb",
+      geoBg: dark ? "#111827" : "#ffffff",
+      geoLand: dark ? "#1a2232" : "#edf1f4",
+      geoOcean: dark ? "#0a0e17" : "#dcebf2",
+      geoCoast: dark ? "#536176" : "#b9c0ca",
+      mapbox: dark ? "carto-darkmatter" : "open-street-map",
+    };
     const layout = {
-      paper_bgcolor: dark ? "#111827" : "#ffffff",
-      plot_bgcolor: dark ? "#111827" : "#ffffff",
-      "font.color": dark ? "#f7f9fc" : "#252a31",
-      "xaxis.color": dark ? "#aeb8c7" : "#252a31",
-      "yaxis.color": dark ? "#aeb8c7" : "#252a31",
-      "xaxis.gridcolor": dark ? "#2d3748" : "#e5e9eb",
-      "yaxis.gridcolor": dark ? "#2d3748" : "#e5e9eb",
-      "geo.bgcolor": dark ? "#111827" : "#ffffff",
-      "geo.landcolor": dark ? "#1a2232" : "#edf1f4",
-      "geo.oceancolor": dark ? "#0a0e17" : "#dcebf2",
-      "geo.coastlinecolor": dark ? "#536176" : "#b9c0ca",
-      "mapbox.style": dark ? "carto-darkmatter" : "open-street-map",
+      paper_bgcolor: colors.paper,
+      plot_bgcolor: colors.plot,
+      "font.color": colors.font,
+      "xaxis.color": colors.axis,
+      "yaxis.color": colors.axis,
+      "xaxis.gridcolor": colors.grid,
+      "yaxis.gridcolor": colors.grid,
+      "geo.bgcolor": colors.geoBg,
+      "geo.landcolor": colors.geoLand,
+      "geo.oceancolor": colors.geoOcean,
+      "geo.coastlinecolor": colors.geoCoast,
+      "mapbox.style": colors.mapbox,
     };
 
     document.querySelectorAll(".js-plotly-plot").forEach((graph) => {
-      if (graph.dataset.themeApplied === theme) {
+      if (isPlotlyThemeApplied(graph, colors)) {
+        graph.dataset.themeApplied = theme;
         return;
       }
       graph.dataset.themeApplied = theme;
       window.Plotly.relayout(graph, layout).catch(() => {});
     });
+  }
+
+  function isPlotlyThemeApplied(graph, colors) {
+    const layout = graph.layout;
+    if (!layout) {
+      return false;
+    }
+    if (layout.paper_bgcolor !== colors.paper || layout.plot_bgcolor !== colors.plot) {
+      return false;
+    }
+    if (layout.geo) {
+      return (
+        layout.geo.bgcolor === colors.geoBg &&
+        layout.geo.landcolor === colors.geoLand &&
+        layout.geo.oceancolor === colors.geoOcean &&
+        layout.geo.coastlinecolor === colors.geoCoast
+      );
+    }
+    if (layout.mapbox) {
+      return layout.mapbox.style === colors.mapbox;
+    }
+    return true;
+  }
+
+  function applySelectTranslations(language) {
+    const fromIndex = language === "es" ? 1 : 0;
+    const toIndex = language === "es" ? 0 : 1;
+    document
+      .querySelectorAll(
+        ".Select-value-label, .Select-placeholder, .Select-option, .VirtualizedSelectOption, .dash-dropdown-value"
+      )
+      .forEach((node) => {
+        const cleanText = node.textContent.trim();
+        const match = LABELS.find((pair) => pair[fromIndex] === cleanText);
+        if (match && node.textContent !== match[toIndex]) {
+          node.textContent = match[toIndex];
+        }
+      });
   }
 })();

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import csv
+import json
 import re
 from io import StringIO
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from bson import ObjectId
 
@@ -51,6 +52,20 @@ def parse_ilga_csv_text(
     }
 
 
+def parse_ilga_json_text(json_text: str) -> dict | list[dict]:
+    try:
+        payload = json.loads(json_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("invalid_ilga_json") from exc
+
+    documents = payload if isinstance(payload, list) else [payload]
+    if not documents or not all(isinstance(document, dict) for document in documents):
+        raise ValueError("invalid_ilga_json")
+
+    normalized = [_normalize_ilga_document(document) for document in documents]
+    return normalized if isinstance(payload, list) else normalized[0]
+
+
 def generate_ilga_json(
     file_paths: Iterable[Path | str],
 ) -> list[dict]:
@@ -64,6 +79,66 @@ def generate_ilga_json(
 def extract_ilga_year(file_name: str) -> int | None:
     match = YEAR_PATTERN.search(file_name)
     return int(match.group(1)) if match else None
+
+
+def _normalize_ilga_document(document: dict[str, Any]) -> dict:
+    if document.get("dataset") != ILGA_DATASET_CODE:
+        raise ValueError("invalid_ilga_payload")
+
+    try:
+        year = int(document.get("year"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid_ilga_payload") from exc
+
+    countries = document.get("countries")
+    if not isinstance(countries, list) or not countries:
+        raise ValueError("invalid_ilga_payload")
+
+    normalized_countries = [_normalize_country(country) for country in countries]
+    return {
+        "id": str(ObjectId()),
+        "dataset": ILGA_DATASET_CODE,
+        "year": year,
+        "countries": normalized_countries,
+    }
+
+
+def _normalize_country(country: Any) -> dict:
+    if not isinstance(country, dict):
+        raise ValueError("invalid_ilga_payload")
+
+    country_name = str(country.get("country") or "").strip()
+    country_code = str(country.get("country_code") or "").strip()
+    ranking = _ranking_from_country(country)
+    if not country_name or ranking is None:
+        raise ValueError("invalid_ilga_payload")
+
+    criteria = country.get("criteria")
+    if not isinstance(criteria, list):
+        criteria = None
+
+    return {
+        "country": country_name,
+        "ranking": ranking,
+        "criteria": criteria,
+        "country_code": country_code,
+    }
+
+
+def _ranking_from_country(country: dict[str, Any]) -> float | None:
+    ranking = country.get("ranking")
+    if isinstance(ranking, (int, float)):
+        return float(ranking)
+    parsed_ranking = parse_float(str(ranking)) if ranking is not None else None
+    if parsed_ranking is not None:
+        return parsed_ranking
+
+    criteria = country.get("criteria")
+    if isinstance(criteria, (int, float)):
+        return float(criteria)
+    if isinstance(criteria, str):
+        return parse_float(criteria)
+    return None
 
 
 def _parse_criteria(header_rows: list[list[str]]) -> list[dict]:

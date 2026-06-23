@@ -16,7 +16,8 @@ from app.auth.csrf import validate_csrf_token
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
-from app.dash.layouts.home import build_home_layout
+from app.dash.layouts.about import build_about_layout, register_about_callbacks
+from app.dash.layouts.home import build_home_layout, register_home_callbacks
 from app.dash.layouts.user_page import build_user_page_layout
 from app.dash.pages.admin.imports import build_admin_imports_layout
 from app.dash.pages.admin.users import build_access_denied_layout, build_admin_users_layout
@@ -32,8 +33,6 @@ from app.import_to_db.import_log import (
     get_pending_import_log,
     list_pending_import_logs,
 )
-from app.import_to_db.fra import insert_indicator_fra_json, upsert_indicators_from_json
-from app.import_to_db.ilga import insert_indicator_ilga_json
 from app.users.schemas import UserRegister, UserRole
 from app.users.service import (
     UserRecord,
@@ -122,6 +121,8 @@ def create_dash_app() -> Dash:
             return dcc.Location(href="/statistics", id="legacy-statistics-redirect")
         if pathname == "/upload":
             return build_upload_layout()
+        if pathname == "/about":
+            return build_about_layout()
         if pathname == "/login":
             if current_user.is_authenticated:
                 return build_user_page_layout(
@@ -184,6 +185,8 @@ def create_dash_app() -> Dash:
 
     register_upload_callbacks(app)
     register_statistics_callbacks(app)
+    register_home_callbacks(app)
+    register_about_callbacks(app)
     return app
 
 
@@ -413,10 +416,17 @@ def _insert_approved_import(file_json: dict | list) -> None:
 
     datasets = {document.get("dataset") for document in documents}
     if datasets == {"eu_lgbtiq_survey_iii"}:
+        from app.import_to_db.fra import (
+            insert_indicator_fra_json,
+            upsert_indicators_from_json,
+        )
+
         upsert_indicators_from_json(file_json)
         insert_indicator_fra_json(file_json)
         return
     if datasets == {"ilga_rainbow_map"}:
+        from app.import_to_db.ilga import insert_indicator_ilga_json
+
         insert_indicator_ilga_json(file_json)
         return
     raise ValueError("unsupported_import_dataset")

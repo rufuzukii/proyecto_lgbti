@@ -9,7 +9,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
-from app.analytics.geography import build_ilga_geodataframe
 from app.analytics.repository import get_latest_ilga_document
 from app.cache import cache
 
@@ -131,6 +130,71 @@ def build_fra_country_bar(document: dict[str, Any] | None) -> go.Figure:
     return figure
 
 
+def build_fra_choropleth(document: dict[str, Any] | None) -> go.Figure:
+    answers = _aggregate_fra_answers(document)
+    figure = go.Figure()
+    if answers:
+        figure.add_trace(
+            go.Choropleth(
+                locations=[item["country"] for item in answers],
+                locationmode="country names",
+                z=[item["percentage"] for item in answers],
+                customdata=[item["observations"] for item in answers],
+                zmin=0,
+                zmax=100,
+                colorscale=[
+                    [0.0, "#f7fbff"],
+                    [0.25, "#c6dbef"],
+                    [0.5, "#6baed6"],
+                    [0.75, "#2171b5"],
+                    [1.0, "#08306b"],
+                ],
+                marker={"line": {"color": "#ffffff", "width": 0.7}},
+                colorbar={
+                    "title": "Media",
+                    "ticksuffix": "%",
+                    "thickness": 13,
+                },
+                hovertemplate=(
+                    "<b>%{location}</b><br>"
+                    "Media FRA: %{z:.2f}%<br>"
+                    "Observaciones: %{customdata}<extra></extra>"
+                ),
+            )
+        )
+    else:
+        figure.add_annotation(
+            text="Selecciona un indicador FRA con valores por pais.",
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            font={"size": 18, "color": "#5f6672"},
+        )
+
+    figure.update_layout(
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        geo={
+            "scope": "europe",
+            "projection_type": "natural earth",
+            "showframe": False,
+            "showcoastlines": True,
+            "coastlinecolor": "#b9c0ca",
+            "showland": True,
+            "landcolor": "#edf1f4",
+            "showocean": True,
+            "oceancolor": "#dcebf2",
+            "bgcolor": "#ffffff",
+        },
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font={"family": "Segoe UI, Arial, sans-serif", "color": "#252a31"},
+        uirevision="fra-europe",
+    )
+    return figure
+
+
 def build_matplotlib_ranking_image(document: dict[str, Any] | None) -> str:
     countries = sorted(
         _countries(document),
@@ -163,6 +227,8 @@ def build_cached_matplotlib_ranking_image(year: int | None) -> str:
 
 
 def build_ilga_mapbox_figure(document: dict[str, Any] | None) -> go.Figure:
+    from app.analytics.geography import build_ilga_geodataframe
+
     geodataframe = build_ilga_geodataframe(document)
     figure = go.Figure()
     if not geodataframe.empty:

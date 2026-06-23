@@ -11,14 +11,13 @@ from psycopg.rows import dict_row
 from pymongo import MongoClient
 
 from app.cache import cache
-from app.config import get_mongo_config, get_postgres_connect_timeout
-from app.import_to_db.import_log import _resolve_postgres_dsn
+from app.config import get_mongo_config, get_postgres_connect_timeout, get_postgres_dsn
 
 logger = logging.getLogger(__name__)
 ANALYTICS_CACHE_TIMEOUT_SECONDS = int(os.getenv("ANALYTICS_CACHE_TIMEOUT_SECONDS", "3600"))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True) # frozen=true significa que el objeto no puede ser modificado
 class FraIndicator:
     code: str
     category: str
@@ -41,7 +40,7 @@ def get_fra_categories() -> list[str]:
     """
     try:
         with psycopg.connect(
-            _resolve_postgres_dsn(),
+            get_postgres_dsn(),
             row_factory=dict_row,
             connect_timeout=get_postgres_connect_timeout(),
         ) as conn:
@@ -68,7 +67,7 @@ def get_fra_indicators() -> list[FraIndicator]:
     """
     try:
         with psycopg.connect(
-            _resolve_postgres_dsn(),
+            get_postgres_dsn(),
             row_factory=dict_row,
             connect_timeout=get_postgres_connect_timeout(),
         ) as conn:
@@ -140,6 +139,48 @@ def get_fra_indicator_answers(code: str) -> dict[str, Any] | None:
         )
     except Exception:
         logger.exception("fra_indicator_values_read_failed", extra={"code": clean_code})
+        return None
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_ilga_years() -> list[int]:
+    try:
+        _ensure_analytics_indexes()
+        years = _mongo_collection("Indicator_ilga").distinct(
+            "year",
+            {"dataset": "ilga_rainbow_map"},
+        )
+    except Exception:
+        logger.exception("ilga_years_read_failed")
+        return []
+
+    clean_years = []
+    for year in years:
+        try:
+            clean_years.append(int(year))
+        except (TypeError, ValueError):
+            continue
+    return sorted(clean_years, reverse=True)
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
+    try:
+        clean_year = int(year) if year is not None and str(year).strip() else None
+    except (TypeError, ValueError):
+        clean_year = None
+
+    if clean_year is None:
+        return get_latest_ilga_document()
+
+    try:
+        _ensure_analytics_indexes()
+        return _mongo_collection("Indicator_ilga").find_one(
+            {"dataset": "ilga_rainbow_map", "year": clean_year},
+            {"_id": 0, "dataset": 1, "year": 1, "countries": 1},
+        )
+    except Exception:
+        logger.exception("ilga_year_read_failed", extra={"year": clean_year})
         return None
 
 

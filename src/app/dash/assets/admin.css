@@ -268,6 +268,80 @@
   padding: 1rem 1.1rem;
 }
 
+body[data-theme="dark"] .admin-shell {
+  background: var(--body-gradient);
+}
+
+body[data-theme="dark"] .admin-card {
+  background: var(--panel-bg);
+  border-color: var(--panel-border);
+  color: var(--color-text);
+}
+
+body[data-theme="dark"] .admin-review-panel,
+body[data-theme="dark"] .admin-import-user-group,
+body[data-theme="dark"] .admin-empty-state,
+body[data-theme="dark"] .admin-import-file,
+body[data-theme="dark"] .admin-import-modal-header,
+body[data-theme="dark"] .admin-import-modal-actions {
+  background: var(--panel-muted);
+  border-color: var(--panel-border);
+  color: var(--color-text);
+}
+
+body[data-theme="dark"] .admin-table {
+  border-color: var(--panel-border);
+}
+
+body[data-theme="dark"] .admin-table-row {
+  border-bottom-color: var(--panel-border);
+  color: var(--color-text);
+}
+
+body[data-theme="dark"] .admin-table-header {
+  background: #1a2232;
+  color: var(--color-primary-dark);
+}
+
+body[data-theme="dark"] .admin-input {
+  background: #0f1522;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+body[data-theme="dark"] .admin-input:focus {
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 0 0 3px rgba(246, 186, 208, 0.18);
+}
+
+body[data-theme="dark"] .admin-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+body[data-theme="dark"] .admin-role-select option {
+  background: #0f1522;
+  color: var(--color-text);
+}
+
+body[data-theme="dark"] .admin-save-button {
+  background: #f4a8c0;
+  color: #0a0e17;
+}
+
+body[data-theme="dark"] .admin-delete-button {
+  background: #4d1f2b;
+  color: #fecdd3;
+}
+
+body[data-theme="dark"] .admin-import-file:hover {
+  border-color: var(--color-primary-dark);
+}
+
+body[data-theme="dark"] .admin-import-modal-panel {
+  background: var(--panel-bg);
+  color: var(--color-text);
+}
+
 @media (max-width: 720px) {
   .admin-review-panel,
   .admin-import-user-header,

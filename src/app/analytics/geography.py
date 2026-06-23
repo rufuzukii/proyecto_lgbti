@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import geopandas as gpd
-from shapely.geometry import Point
-
-
 EUROPE_CENTROIDS: dict[str, tuple[float, float]] = {
     "AL": (41.15, 20.17),
     "AD": (42.51, 1.52),
@@ -59,7 +55,7 @@ EUROPE_CENTROIDS: dict[str, tuple[float, float]] = {
 }
 
 
-def build_ilga_geodataframe(document: dict[str, Any] | None) -> gpd.GeoDataFrame:
+def build_ilga_geo_records(document: dict[str, Any] | None) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if isinstance(document, dict):
         for country in document.get("countries", []):
@@ -78,20 +74,34 @@ def build_ilga_geodataframe(document: dict[str, Any] | None) -> gpd.GeoDataFrame
                     "ranking": float(ranking),
                     "latitude": latitude,
                     "longitude": longitude,
-                    "geometry": Point(longitude, latitude),
                 }
             )
-    if not records:
-        return gpd.GeoDataFrame(
-            {
-                "country_code": [],
-                "country": [],
-                "ranking": [],
-                "latitude": [],
-                "longitude": [],
-                "geometry": [],
-            },
-            geometry="geometry",
-            crs="EPSG:4326",
-        )
-    return gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
+    return records
+
+
+def build_ilga_geodataframe(document: dict[str, Any] | None) -> Any:
+    # Keep GeoPandas out of Dash startup; the statistics views still use it here.
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    records = [
+        {
+            **record,
+            "geometry": Point(record["longitude"], record["latitude"]),
+        }
+        for record in build_ilga_geo_records(document)
+    ]
+    if records:
+        return gpd.GeoDataFrame(records, geometry="geometry", crs="EPSG:4326")
+    return gpd.GeoDataFrame(
+        {
+            "country_code": [],
+            "country": [],
+            "ranking": [],
+            "latitude": [],
+            "longitude": [],
+            "geometry": [],
+        },
+        geometry="geometry",
+        crs="EPSG:4326",
+    )
