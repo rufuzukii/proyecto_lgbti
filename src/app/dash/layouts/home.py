@@ -19,7 +19,7 @@ from app.dash.layouts.navigation import build_navbar
 
 MAP_MODE_OPTIONS = [
     {"label": "Situacion legal LGBTIQ+ en Europa", "value": "ilga"},
-    {"label": "FRA: discriminacion y datos sociales", "value": "fra"},
+    {"label": "Discriminacion y datos sociales", "value": "fra"},
 ]
 
 
@@ -133,11 +133,12 @@ def build_home_layout() -> html.Div:
                             ),
                             dcc.Graph(
                                 id="home-main-map",
-                                figure=build_ilga_choropleth(ilga_document),
+                                figure=_home_map_figure(build_ilga_choropleth(ilga_document)),
                                 className="home-europe-map",
                                 config={
                                     "displayModeBar": True,
                                     "displaylogo": False,
+                                    "responsive": True,
                                     "scrollZoom": True,
                                     "modeBarButtonsToRemove": ["lasso2d", "select2d"],
                                 },
@@ -259,7 +260,7 @@ def register_home_callbacks(app: Dash) -> None:
         if mode == "fra":
             document = get_fra_indicator_answers(fra_code or "")
             return (
-                build_fra_choropleth(document),
+                _home_map_figure(build_fra_choropleth(document)),
                 text("Mapa europeo de indicadores FRA", "European FRA indicators map"),
                 _fra_copy(document),
                 _fra_source(document),
@@ -268,12 +269,24 @@ def register_home_callbacks(app: Dash) -> None:
 
         document = get_ilga_document_by_year(ilga_year)
         return (
-            build_ilga_choropleth(document),
+            _home_map_figure(build_ilga_choropleth(document)),
             text("Situacion legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"),
             _ilga_copy(document),
             _ilga_source(document),
             _ilga_metrics(document),
         )
+
+
+def _home_map_figure(figure: Any) -> Any:
+    figure.update_layout(
+        autosize=True,
+        geo={
+            "center": {"lon": 20, "lat": 54},
+            "projection": {"scale": 1.18},
+        },
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+    )
+    return figure
 
 
 def _control_field(

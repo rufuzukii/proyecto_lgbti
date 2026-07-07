@@ -12,11 +12,16 @@ from flask_login import LoginManager, UserMixin, current_user, login_user, logou
 from pydantic import ValidationError
 
 from app.analytics import invalidate_analytics_cache
+from app.analytics.repository import assert_analytics_databases_available
 from app.auth.csrf import validate_csrf_token
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
 from app.dash.layouts.about import build_about_layout, register_about_callbacks
+from app.dash.layouts.error_page import (
+    build_database_unavailable_layout,
+    render_database_unavailable_response,
+)
 from app.dash.layouts.home import build_home_layout, register_home_callbacks
 from app.dash.layouts.user_page import build_user_page_layout
 from app.dash.pages.admin.imports import build_admin_imports_layout
@@ -28,6 +33,7 @@ from app.dash.pages.statistics import (
     register_statistics_callbacks,
 )
 from app.dash.pages.upload import build_upload_layout, register_upload_callbacks
+from app.errors import DatabaseUnavailableError
 from app.import_to_db.import_log import (
     delete_import_log,
     get_pending_import_log,
@@ -94,6 +100,7 @@ def create_dash_app() -> Dash:
         SESSION_COOKIE_SECURE=not config.local_mode,
     )
     init_cache(app.server)
+    _register_error_routes(app)
 
     login_manager = LoginManager()
     login_manager.session_protection = "basic"
@@ -105,6 +112,13 @@ def create_dash_app() -> Dash:
         [
             dcc.Location(id="url"),
             html.Div(id="page-content"),
+            html.Footer(
+                [
+                    html.Strong("RainbowLens"),
+                    html.Span("Version 1.0.0"),
+                ],
+                className="site-footer",
+            ),
         ]
     )
 
@@ -115,79 +129,112 @@ def create_dash_app() -> Dash:
     )
     def display_page(pathname: str | None, search: str | None):
         params = _query_params(search)
-        if pathname == "/statistics":
-            return build_statistics_layout()
-        if pathname == "/stadistics":
-            return dcc.Location(href="/statistics", id="legacy-statistics-redirect")
-        if pathname == "/upload":
-            return build_upload_layout()
-        if pathname == "/about":
-            return build_about_layout()
-        if pathname == "/login":
-            if current_user.is_authenticated:
+        try:
+            if pathname == "/statistics":
+                return build_statistics_layout()
+            if pathname == "/stadistics":
+                return dcc.Location(href="/statistics", id="legacy-statistics-redirect")
+            if pathname == "/upload":
+                return build_upload_layout()
+            if pathname == "/about":
+                return build_about_layout()
+            if pathname == "/login":
+                if current_user.is_authenticated:
+                    return build_user_page_layout(
+                        status_code=_first_param(params, "status"),
+                        error_code=_first_param(params, "error"),
+                        mode=_first_param(params, "mode"),
+                    )
+                return build_login_layout(
+                    next_path=_safe_next(_first_param(params, "next"), "/user"),
+                    error_code=_first_param(params, "error"),
+                )
+            if pathname == "/register":
+                if current_user.is_authenticated:
+                    return build_user_page_layout()
+                return build_register_layout(
+                    next_path=_safe_next(_first_param(params, "next"), "/user"),
+                    error_code=_first_param(params, "error"),
+                )
+            if pathname == "/admin":
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path="/admin")
+                if not _is_admin():
+                    return build_access_denied_layout()
+                try:
+                    users = list_users()
+                except Exception:
+                    logger.exception("admin_users_list_failed")
+                    users = []
+                    params["error"] = ["storage"]
+                return build_admin_users_layout(
+                    users,
+                    status_code=_first_param(params, "status"),
+                    error_code=_first_param(params, "error"),
+                )
+            if pathname == "/admin/imports":
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path="/admin/imports")
+                if not _is_admin():
+                    return build_access_denied_layout()
+                try:
+                    logs = list_pending_import_logs()
+                except Exception:
+                    logger.exception("admin_imports_list_failed")
+                    logs = []
+                    params["error"] = ["storage"]
+                return build_admin_imports_layout(
+                    logs,
+                    status_code=_first_param(params, "status"),
+                    error_code=_first_param(params, "error"),
+                )
+            if pathname == "/user":
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path="/user")
                 return build_user_page_layout(
                     status_code=_first_param(params, "status"),
                     error_code=_first_param(params, "error"),
                     mode=_first_param(params, "mode"),
                 )
-            return build_login_layout(
-                next_path=_safe_next(_first_param(params, "next"), "/user"),
-                error_code=_first_param(params, "error"),
+            return build_home_layout()
+        except DatabaseUnavailableError as exc:
+            logger.warning(
+                "database_unavailable_layout",
+                extra={"path": pathname, "service": exc.service},
             )
-        if pathname == "/register":
-            if current_user.is_authenticated:
-                return build_user_page_layout()
-            return build_register_layout(
-                next_path=_safe_next(_first_param(params, "next"), "/user"),
-                error_code=_first_param(params, "error"),
-            )
-        if pathname == "/admin":
-            if not current_user.is_authenticated:
-                return build_login_layout(next_path="/admin")
-            if not _is_admin():
-                return build_access_denied_layout()
-            try:
-                users = list_users()
-            except Exception:
-                logger.exception("admin_users_list_failed")
-                users = []
-                params["error"] = ["storage"]
-            return build_admin_users_layout(
-                users,
-                status_code=_first_param(params, "status"),
-                error_code=_first_param(params, "error"),
-            )
-        if pathname == "/admin/imports":
-            if not current_user.is_authenticated:
-                return build_login_layout(next_path="/admin/imports")
-            if not _is_admin():
-                return build_access_denied_layout()
-            try:
-                logs = list_pending_import_logs()
-            except Exception:
-                logger.exception("admin_imports_list_failed")
-                logs = []
-                params["error"] = ["storage"]
-            return build_admin_imports_layout(
-                logs,
-                status_code=_first_param(params, "status"),
-                error_code=_first_param(params, "error"),
-            )
-        if pathname == "/user":
-            if not current_user.is_authenticated:
-                return build_login_layout(next_path="/user")
-            return build_user_page_layout(
-                status_code=_first_param(params, "status"),
-                error_code=_first_param(params, "error"),
-                mode=_first_param(params, "mode"),
-            )
-        return build_home_layout()
+            return build_database_unavailable_layout(exc)
 
     register_upload_callbacks(app)
     register_statistics_callbacks(app)
     register_home_callbacks(app)
     register_about_callbacks(app)
     return app
+
+
+def _register_error_routes(app: Dash) -> None:
+    @app.server.before_request
+    def database_dependent_page_guard():
+        if request.method != "GET":
+            return None
+        if request.path.rstrip("/") not in {"/statistics", "/stadistics"}:
+            return None
+        try:
+            assert_analytics_databases_available()
+        except DatabaseUnavailableError as exc:
+            logger.warning(
+                "database_unavailable_response",
+                extra={"path": request.path, "service": exc.service},
+            )
+            return render_database_unavailable_response(exc)
+        return None
+
+    @app.server.errorhandler(DatabaseUnavailableError)
+    def database_unavailable_error(error: DatabaseUnavailableError):
+        logger.warning(
+            "database_unavailable_error",
+            extra={"path": request.path, "service": error.service},
+        )
+        return render_database_unavailable_response(error)
 
 
 def _register_user_loader(login_manager: LoginManager) -> None:

@@ -9,12 +9,15 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 from pymongo import MongoClient
+from pymongo.errors import AutoReconnect, ConfigurationError, NetworkTimeout
 
 from app.cache import cache
 from app.config import get_mongo_config, get_postgres_connect_timeout, get_postgres_dsn
+from app.errors import DatabaseUnavailableError
 
 logger = logging.getLogger(__name__)
 ANALYTICS_CACHE_TIMEOUT_SECONDS = int(os.getenv("ANALYTICS_CACHE_TIMEOUT_SECONDS", "3600"))
+MONGO_UNAVAILABLE_ERRORS = (AutoReconnect, ConfigurationError, NetworkTimeout)
 
 
 @dataclass(frozen=True) # frozen=true significa que el objeto no puede ser modificado
@@ -27,6 +30,44 @@ class FraIndicator:
     @property
     def label(self) -> str:
         return f"{self.category} · {self.specific_category} · {self.question}"
+
+
+def assert_analytics_databases_available() -> None:
+    try:
+        with psycopg.connect(
+            get_postgres_dsn(),
+            connect_timeout=get_postgres_connect_timeout(),
+        ) as conn:
+            conn.execute("SELECT 1").fetchone()
+    except psycopg.OperationalError as exc:
+        raise DatabaseUnavailableError("PostgreSQL") from exc
+
+    try:
+        client, _database = _mongo_client_and_database()
+        client.admin.command("ping")
+    except MONGO_UNAVAILABLE_ERRORS as exc:
+        raise DatabaseUnavailableError("MongoDB") from exc
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_categories() -> list[str]:
+    query = """
+        SELECT name
+        FROM public.categories
+        ORDER BY name
+    """
+    try:
+        with psycopg.connect(
+            get_postgres_dsn(),
+            row_factory=dict_row,
+            connect_timeout=get_postgres_connect_timeout(),
+        ) as conn:
+            rows = conn.execute(query).fetchall()
+    except Exception:
+        logger.exception("categories_read_failed")
+        return []
+
+    return [str(row["name"]) for row in rows if row.get("name")]
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
@@ -196,6 +237,28 @@ def get_latest_ilga_document() -> dict[str, Any] | None:
     except Exception:
         logger.exception("ilga_latest_read_failed")
         return None
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_latest_ilga_criteria_categories() -> list[str]:
+    document = get_latest_ilga_document()
+    if not isinstance(document, dict):
+        return []
+
+    categories = set()
+    for country in document.get("countries", []):
+        if not isinstance(country, dict):
+            continue
+        criteria = country.get("criteria")
+        if not isinstance(criteria, list):
+            continue
+        for criterion in criteria:
+            if not isinstance(criterion, dict):
+                continue
+            category = str(criterion.get("category") or "").strip()
+            if category:
+                categories.add(category)
+    return sorted(categories)
 
 
 def invalidate_analytics_cache() -> None:

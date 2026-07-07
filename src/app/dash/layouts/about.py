@@ -113,6 +113,42 @@ def build_about_layout() -> html.Div:
                                     ),
                                 ],
                             ),
+                            _about_block(
+                                "FELGTBI+",
+                                [
+                                    (
+                                        "La FELGTBI+ defiende y promueve los derechos humanos y la "
+                                        "igualdad de las personas LGTBI+ y sus familias en el Estado "
+                                        "espanol, con atencion especial a quienes afrontan mayor "
+                                        "vulnerabilidad.",
+                                        (
+                                            "FELGTBI+ defends and promotes human rights and equality "
+                                            "for LGTBI+ people and their families in Spain, with special "
+                                            "attention to those facing greater vulnerability."
+                                        ),
+                                    ),
+                                    (
+                                        "Su trabajo combina incidencia social y politica, apoyo al "
+                                        "movimiento asociativo, cooperacion en red, transparencia, "
+                                        "interseccionalidad y compromiso con la justicia social.",
+                                        (
+                                            "Its work combines social and policy advocacy, support for "
+                                            "the associative movement, network-based cooperation, "
+                                            "transparency, intersectionality and a commitment to social "
+                                            "justice."
+                                        ),
+                                    ),
+                                    (
+                                        "En RainbowLens, FELGTBI+ aporta contexto estatal sobre activismo, "
+                                        "derechos y organizacion social LGTBI+.",
+                                        (
+                                            "In RainbowLens, FELGTBI+ adds national context on LGTBI+ "
+                                            "activism, rights and social organisation."
+                                        ),
+                                    ),
+                                ],
+                                link=("https://felgtbi.org", "Web de FELGTBI+", "FELGTBI+ website"),
+                            ),
                         ],
                         className="about-grid",
                     ),
@@ -144,12 +180,29 @@ def register_about_callbacks(app: Dash) -> None:
         return _country_criteria_panel(country)
 
 
-def _about_block(title: str, paragraphs: list[tuple[str, str]]) -> html.Article:
+def _about_block(
+    title: str,
+    paragraphs: list[tuple[str, str]],
+    link: tuple[str, str, str] | None = None,
+) -> html.Article:
+    children: list[Any] = [
+        html.H2(title),
+        *[html.P(es, **text_attrs(es, en)) for es, en in paragraphs],
+    ]
+    if link:
+        href, label_es, label_en = link
+        children.append(
+            html.A(
+                label_es,
+                href=href,
+                target="_blank",
+                rel="noopener noreferrer",
+                className="about-source-link",
+                **text_attrs(label_es, label_en),
+            )
+        )
     return html.Article(
-        [
-            html.H2(title),
-            *[html.P(es, **text_attrs(es, en)) for es, en in paragraphs],
-        ],
+        children,
         className="about-card",
     )
 

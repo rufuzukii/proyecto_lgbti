@@ -50,7 +50,13 @@ def build_navbar(active: str | None = None) -> html.Nav:
                         ],
                         className="nav-links",
                     ),
-                    _language_toggle(),
+                    html.Div(
+                        [
+                            _language_toggle(),
+                            _theme_toggle(),
+                        ],
+                        className="nav-preference-actions",
+                    ),
                     _account_link(),
                 ],
                 className="nav-actions",
@@ -84,12 +90,40 @@ def _admin_link(active: str | None) -> html.A | str:
     return html.A(text("Admin", "Admin"), href="/admin", className=class_name)
 
 
-def _language_toggle() -> html.Button:
-    return html.Button(
-        "ES",
-        type="button",
-        className="language-toggle",
-        **{"data-language-toggle": "true"},
+def _language_toggle() -> html.Div:
+    return html.Div(
+        [
+            html.Button(
+                "ES",
+                type="button",
+                className="language-toggle",
+                **{"data-language-toggle": "true"},
+            ),
+            html.Span("Idioma", className="nav-control-caption"),
+        ],
+        className="nav-control-stack",
+    )
+
+
+def _theme_toggle() -> html.Div:
+    return html.Div(
+        [
+            html.Button(
+                html.Span(className="theme-toggle-dot"),
+                type="button",
+                className="theme-toggle",
+                **{
+                    "data-theme-toggle": "true",
+                    "data-theme-state": "light",
+                },
+            ),
+            html.Span(
+                "Modo claro",
+                className="nav-control-caption theme-mode-caption",
+                **{"data-theme-label": "true"},
+            ),
+        ],
+        className="nav-control-stack",
     )
 
 

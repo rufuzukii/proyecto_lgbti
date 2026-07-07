@@ -416,10 +416,6 @@
   padding: 0.75rem;
 }
 
-.user-permission-item-muted {
-  background: #faf8f3;
-}
-
 .user-permission-title {
   color: #3f4c52;
   font-weight: 800;
@@ -431,78 +427,10 @@
   white-space: nowrap;
 }
 
-.user-permission-item-muted .user-permission-state {
-  color: #8a6a24;
-}
-
 .user-muted {
   color: #64717a;
   line-height: 1.5;
   margin: 0.75rem 0 0;
-}
-
-.user-language-row {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.user-preference-block {
-  display: grid;
-  gap: 0.65rem;
-  margin-top: 1rem;
-}
-
-.user-preference-label {
-  color: #3f4c52;
-  font-size: 0.82rem;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.user-theme-row {
-  background: #f7faf9;
-  border: 1px solid #dce6e3;
-  border-radius: 8px;
-  display: grid;
-  gap: 0.4rem;
-  grid-template-columns: 1fr 1fr;
-  padding: 0.35rem;
-}
-
-.user-theme-button {
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  color: #435158;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 900;
-  min-height: 38px;
-  padding: 0.45rem 0.55rem;
-}
-
-.user-theme-button.is-active,
-.user-theme-button[aria-pressed="true"] {
-  background: #fce4ec;
-  color: #9a335f;
-  box-shadow: 0 6px 14px rgba(154, 51, 95, 0.12);
-}
-
-.user-theme-button:focus-visible {
-  outline: 3px solid rgba(184, 77, 119, 0.22);
-  outline-offset: 2px;
-}
-
-.user-language-chip {
-  background: #ffffff;
-  border: 1px solid #cfe1dc;
-  border-radius: 8px;
-  color: #155f52;
-  font-weight: 900;
-  min-width: 44px;
-  padding: 0.48rem 0.65rem;
-  text-align: center;
 }
 
 .user-edit-card {

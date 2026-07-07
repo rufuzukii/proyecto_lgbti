@@ -105,7 +105,7 @@ def build_ilga_ranking_bar(document: dict[str, Any] | None, limit: int = 12) -> 
 
 
 def build_fra_country_bar(document: dict[str, Any] | None) -> go.Figure:
-    answers = _aggregate_fra_answers(document)
+    answers = _aggregate_fra_answers(document, answer=_default_fra_answer(document))
     answers = sorted(answers, key=lambda item: item["percentage"], reverse=True)
     figure = go.Figure(
         go.Bar(
@@ -130,8 +130,148 @@ def build_fra_country_bar(document: dict[str, Any] | None) -> go.Figure:
     return figure
 
 
-def build_fra_choropleth(document: dict[str, Any] | None) -> go.Figure:
-    answers = _aggregate_fra_answers(document)
+def build_fra_answer_distribution(document: dict[str, Any] | None) -> go.Figure:
+    grouped: dict[str, list[float]] = {}
+    for row in _fra_answer_rows(document):
+        grouped.setdefault(row["answer"], []).append(row["percentage"])
+
+    answers = [
+        {
+            "answer": answer,
+            "percentage": sum(values) / len(values),
+            "observations": len(values),
+        }
+        for answer, values in grouped.items()
+    ]
+    answers = sorted(answers, key=lambda item: item["percentage"], reverse=True)
+
+    figure = go.Figure(
+        go.Bar(
+            x=[item["answer"] for item in answers],
+            y=[item["percentage"] for item in answers],
+            customdata=[item["observations"] for item in answers],
+            marker={"color": "#3266a8"},
+            hovertemplate=(
+                "<b>%{x}</b><br>Media: %{y:.2f}%"
+                "<br>Observaciones: %{customdata}<extra></extra>"
+            ),
+        )
+    )
+    if not answers:
+        _add_empty_annotation(figure, "Selecciona un indicador FRA con respuestas.")
+    figure.update_layout(
+        margin={"l": 45, "r": 20, "t": 20, "b": 65},
+        xaxis={"title": "Respuesta"},
+        yaxis={"title": "Porcentaje medio", "range": [0, 100]},
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+    )
+    return figure
+
+
+def build_fra_country_answer_bar(
+    document: dict[str, Any] | None,
+    answer: str | None = None,
+    limit: int = 18,
+) -> go.Figure:
+    selected_answer = answer or _default_fra_answer(document)
+    answers = _aggregate_fra_answers(document, answer=selected_answer)
+    answers = [
+        item for item in answers
+        if item["country_code"] != "EU27" and item["country"].upper() != "EU27"
+    ]
+    answers = sorted(answers, key=lambda item: item["percentage"], reverse=True)[:limit]
+
+    figure = go.Figure(
+        go.Bar(
+            x=[item["percentage"] for item in reversed(answers)],
+            y=[item["country"] for item in reversed(answers)],
+            orientation="h",
+            marker={"color": "#a55233"},
+            customdata=[item["observations"] for item in reversed(answers)],
+            hovertemplate=(
+                "<b>%{y}</b><br>%{x:.2f}%"
+                "<br>Observaciones: %{customdata}<extra></extra>"
+            ),
+        )
+    )
+    if not answers:
+        _add_empty_annotation(figure, "No hay datos por pais para esta respuesta.")
+    figure.update_layout(
+        margin={"l": 10, "r": 20, "t": 20, "b": 35},
+        xaxis={"title": f"% {selected_answer or 'respuesta'}", "range": [0, 100]},
+        yaxis={"title": ""},
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+    )
+    return figure
+
+
+def build_fra_filter_heatmap(document: dict[str, Any] | None) -> go.Figure:
+    rows = _fra_answer_rows(document)
+    filter_type = _representative_filter_type(rows)
+    figure = go.Figure()
+    if not rows or not filter_type:
+        _add_empty_annotation(figure, "No hay filtros demograficos suficientes.")
+    else:
+        answers = sorted({row["answer"] for row in rows})
+        filter_values = sorted(
+            {
+                filter_item["value"]
+                for row in rows
+                for filter_item in row["filters"]
+                if filter_item["type"] == filter_type and filter_item["value"] != "All"
+            }
+        )
+        matrix = []
+        for filter_value in filter_values:
+            line = []
+            for answer in answers:
+                values = [
+                    row["percentage"]
+                    for row in rows
+                    if row["answer"] == answer
+                    and any(
+                        item["type"] == filter_type and item["value"] == filter_value
+                        for item in row["filters"]
+                    )
+                ]
+                line.append(sum(values) / len(values) if values else None)
+            matrix.append(line)
+
+        figure.add_trace(
+            go.Heatmap(
+                z=matrix,
+                x=answers,
+                y=filter_values,
+                zmin=0,
+                zmax=100,
+                colorscale="YlGnBu",
+                colorbar={"title": "%"},
+                hovertemplate=(
+                    f"{filter_type}: %{{y}}<br>"
+                    "Respuesta: %{x}<br>Media: %{z:.2f}%<extra></extra>"
+                ),
+            )
+        )
+    figure.update_layout(
+        margin={"l": 120, "r": 20, "t": 20, "b": 75},
+        xaxis={"title": "Respuesta"},
+        yaxis={"title": filter_type or ""},
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+    )
+    return figure
+
+
+def build_fra_choropleth(
+    document: dict[str, Any] | None,
+    answer: str | None = None,
+) -> go.Figure:
+    selected_answer = answer or _default_fra_answer(document)
+    answers = _aggregate_fra_answers(document, answer=selected_answer)
     figure = go.Figure()
     if answers:
         figure.add_trace(
@@ -191,6 +331,215 @@ def build_fra_choropleth(document: dict[str, Any] | None) -> go.Figure:
         plot_bgcolor="#ffffff",
         font={"family": "Segoe UI, Arial, sans-serif", "color": "#252a31"},
         uirevision="fra-europe",
+    )
+    return figure
+
+
+def build_ilga_category_score_bar(
+    document: dict[str, Any] | None,
+    category: str | None,
+    limit: int = 15,
+) -> go.Figure:
+    scores = _ilga_category_scores(document, category)
+    scores = sorted(scores, key=lambda item: item["score"], reverse=True)[:limit]
+    figure = go.Figure(
+        go.Bar(
+            x=[item["score"] for item in reversed(scores)],
+            y=[item["country"] for item in reversed(scores)],
+            orientation="h",
+            customdata=[item["matched_weight"] for item in reversed(scores)],
+            marker={"color": "#167d68"},
+            hovertemplate=(
+                "<b>%{y}</b><br>Puntuacion: %{x:.2f}%"
+                "<br>Peso analizado: %{customdata:.2f}<extra></extra>"
+            ),
+        )
+    )
+    if not scores:
+        _add_empty_annotation(figure, "No hay criterios ILGA para esta categoria.")
+    figure.update_layout(
+        margin={"l": 10, "r": 20, "t": 20, "b": 35},
+        xaxis={"title": "Cumplimiento ponderado (%)", "range": [0, 100]},
+        yaxis={"title": ""},
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+    )
+    return figure
+
+
+def build_ilga_category_map(
+    document: dict[str, Any] | None,
+    category: str | None,
+) -> go.Figure:
+    scores = _ilga_category_scores(document, category)
+    figure = go.Figure()
+    if scores:
+        figure.add_trace(
+            go.Choropleth(
+                locations=[item["country"] for item in scores],
+                locationmode="country names",
+                z=[item["score"] for item in scores],
+                customdata=[item["country_code"] for item in scores],
+                zmin=0,
+                zmax=100,
+                colorscale=[
+                    [0.0, "#d73027"],
+                    [0.35, "#fdae61"],
+                    [0.6, "#fee08b"],
+                    [0.8, "#66c2a5"],
+                    [1.0, "#177245"],
+                ],
+                marker={"line": {"color": "#ffffff", "width": 0.7}},
+                colorbar={"title": "%", "thickness": 13},
+                hovertemplate=(
+                    "<b>%{location}</b><br>Codigo: %{customdata}<br>"
+                    "Cumplimiento: %{z:.2f}%<extra></extra>"
+                ),
+            )
+        )
+    else:
+        _add_empty_annotation(figure, "No hay datos ILGA cartografiables.")
+
+    figure.update_layout(
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        geo={
+            "scope": "europe",
+            "projection_type": "natural earth",
+            "showframe": False,
+            "showcoastlines": True,
+            "coastlinecolor": "#b9c0ca",
+            "showland": True,
+            "landcolor": "#edf1f4",
+            "showocean": True,
+            "oceancolor": "#dcebf2",
+            "bgcolor": "#ffffff",
+        },
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        font={"family": "Segoe UI, Arial, sans-serif", "color": "#252a31"},
+        uirevision=f"ilga-category-{category or 'all'}",
+    )
+    return figure
+
+
+def build_ilga_indicator_coverage_bar(
+    document: dict[str, Any] | None,
+    category: str | None,
+    limit: int = 14,
+) -> go.Figure:
+    grouped: dict[str, list[float]] = {}
+    for criterion in _ilga_category_criteria(document, category):
+        indicator = str(criterion.get("indicator") or "").strip()
+        value = criterion.get("value")
+        if not indicator or not isinstance(value, (int, float)):
+            continue
+        grouped.setdefault(indicator, []).append(1.0 if float(value) > 0 else 0.0)
+
+    coverage = [
+        {
+            "indicator": indicator,
+            "percentage": 100 * sum(values) / len(values),
+            "countries": len(values),
+        }
+        for indicator, values in grouped.items()
+        if values
+    ]
+    coverage = sorted(coverage, key=lambda item: item["percentage"], reverse=True)[:limit]
+    figure = go.Figure(
+        go.Bar(
+            x=[item["percentage"] for item in reversed(coverage)],
+            y=[item["indicator"] for item in reversed(coverage)],
+            orientation="h",
+            customdata=[item["countries"] for item in reversed(coverage)],
+            marker={"color": "#705aa8"},
+            hovertemplate=(
+                "<b>%{y}</b><br>Paises que cumplen: %{x:.1f}%"
+                "<br>Paises evaluados: %{customdata}<extra></extra>"
+            ),
+        )
+    )
+    if not coverage:
+        _add_empty_annotation(figure, "No hay indicadores ILGA para esta categoria.")
+    figure.update_layout(
+        margin={"l": 180, "r": 20, "t": 20, "b": 35},
+        xaxis={"title": "Paises que cumplen (%)", "range": [0, 100]},
+        yaxis={"title": ""},
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+    )
+    return figure
+
+
+def build_ilga_category_heatmap(
+    document: dict[str, Any] | None,
+    category: str | None,
+    country_limit: int = 16,
+    indicator_limit: int = 12,
+) -> go.Figure:
+    scores = sorted(
+        _ilga_category_scores(document, category),
+        key=lambda item: item["score"],
+        reverse=True,
+    )[:country_limit]
+    countries = [item["country"] for item in scores]
+    criteria = _ilga_category_criteria(document, category)
+    indicators = []
+    for criterion in criteria:
+        indicator = str(criterion.get("indicator") or "").strip()
+        if indicator and indicator not in indicators:
+            indicators.append(indicator)
+        if len(indicators) >= indicator_limit:
+            break
+
+    values_by_country: dict[str, dict[str, float | None]] = {}
+    if isinstance(document, dict):
+        for country in document.get("countries", []):
+            if not isinstance(country, dict):
+                continue
+            country_name = str(country.get("country") or "").strip()
+            if country_name not in countries:
+                continue
+            values_by_country[country_name] = {}
+            for criterion in _country_matching_criteria(country, category):
+                indicator = str(criterion.get("indicator") or "").strip()
+                value = criterion.get("value")
+                if indicator in indicators and isinstance(value, (int, float)):
+                    values_by_country[country_name][indicator] = float(value)
+
+    matrix = [
+        [values_by_country.get(country, {}).get(indicator) for indicator in indicators]
+        for country in countries
+    ]
+    figure = go.Figure()
+    if countries and indicators:
+        figure.add_trace(
+            go.Heatmap(
+                z=matrix,
+                x=indicators,
+                y=countries,
+                zmin=0,
+                zmax=1,
+                colorscale=[
+                    [0.0, "#f1f4f8"],
+                    [0.5, "#fdae61"],
+                    [1.0, "#167d68"],
+                ],
+                colorbar={"title": "Valor"},
+                hovertemplate=(
+                    "<b>%{y}</b><br>%{x}<br>Valor: %{z}<extra></extra>"
+                ),
+            )
+        )
+    else:
+        _add_empty_annotation(figure, "No hay matriz ILGA para esta categoria.")
+    figure.update_layout(
+        margin={"l": 120, "r": 20, "t": 20, "b": 150},
+        xaxis={"title": "Indicador"},
+        yaxis={"title": ""},
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
     )
     return figure
 
@@ -286,22 +635,219 @@ def _countries(document: dict[str, Any] | None) -> list[dict[str, Any]]:
     return [country for country in output if country["country"]]
 
 
-def _aggregate_fra_answers(document: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _aggregate_fra_answers(
+    document: dict[str, Any] | None,
+    answer: str | None = None,
+) -> list[dict[str, Any]]:
     if not isinstance(document, dict):
         return []
     grouped: dict[str, list[float]] = {}
-    for answer in document.get("answers", []):
-        if not isinstance(answer, dict):
+    country_codes: dict[str, str] = {}
+    selected_answer = str(answer or "").strip()
+    for row in _fra_answer_rows(document):
+        if selected_answer and row["answer"] != selected_answer:
             continue
-        country = str(answer.get("country") or "").strip()
-        percentage = answer.get("percentage")
-        if country and isinstance(percentage, (int, float)):
-            grouped.setdefault(country, []).append(float(percentage))
+        country = row["country"]
+        grouped.setdefault(country, []).append(row["percentage"])
+        country_codes[country] = row["country_code"]
     return [
         {
             "country": country,
+            "country_code": country_codes.get(country, ""),
             "percentage": sum(values) / len(values),
             "observations": len(values),
         }
         for country, values in grouped.items()
     ]
+
+
+def _fra_answer_rows(document: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(document, dict):
+        return []
+
+    rows = []
+    for answer in document.get("answers", []):
+        if not isinstance(answer, dict):
+            continue
+        country = str(answer.get("country") or "").strip()
+        answer_value = str(answer.get("answer") or "").strip()
+        percentage = answer.get("percentage")
+        if not country or not answer_value or not isinstance(percentage, (int, float)):
+            continue
+        rows.append(
+            {
+                "country": country,
+                "country_code": str(answer.get("country_code") or "").strip(),
+                "answer": answer_value,
+                "percentage": float(percentage),
+                "filters": _clean_fra_filters(answer.get("filters")),
+            }
+        )
+    return rows
+
+
+def _clean_fra_filters(filters: Any) -> list[dict[str, str]]:
+    if not isinstance(filters, list):
+        return [{"type": "All", "value": "All"}]
+
+    cleaned = []
+    for item in filters:
+        if not isinstance(item, dict):
+            continue
+        filter_type = str(item.get("type") or "").strip()
+        filter_value = str(item.get("value") or "").strip()
+        if filter_type and filter_value:
+            cleaned.append({"type": filter_type, "value": filter_value})
+    return cleaned or [{"type": "All", "value": "All"}]
+
+
+def _default_fra_answer(document: dict[str, Any] | None) -> str | None:
+    rows = _fra_answer_rows(document)
+    if not rows:
+        return None
+
+    answers = [row["answer"] for row in rows]
+    preferred = [
+        "Yes",
+        "Often",
+        "Always",
+        "Very often",
+        "Never",
+        "No",
+    ]
+    for value in preferred:
+        if value in answers:
+            return value
+
+    counts: dict[str, int] = {}
+    for answer in answers:
+        counts[answer] = counts.get(answer, 0) + 1
+    return max(counts, key=counts.get)
+
+
+def _representative_filter_type(rows: list[dict[str, Any]]) -> str | None:
+    candidates: dict[str, set[str]] = {}
+    for row in rows:
+        for item in row["filters"]:
+            filter_type = item["type"]
+            filter_value = item["value"]
+            if filter_type == "All" or filter_value == "All":
+                continue
+            candidates.setdefault(filter_type, set()).add(filter_value)
+
+    scored = [
+        (filter_type, len(values))
+        for filter_type, values in candidates.items()
+        if 2 <= len(values) <= 12
+    ]
+    if not scored:
+        return None
+    return sorted(scored, key=lambda item: item[1], reverse=True)[0][0]
+
+
+def _add_empty_annotation(figure: go.Figure, text: str) -> None:
+    figure.add_annotation(
+        text=text,
+        x=0.5,
+        y=0.5,
+        xref="paper",
+        yref="paper",
+        showarrow=False,
+        font={"size": 16, "color": "#5f6672"},
+    )
+
+
+def _ilga_category_scores(
+    document: dict[str, Any] | None,
+    category: str | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(document, dict):
+        return []
+
+    scores = []
+    for country in document.get("countries", []):
+        if not isinstance(country, dict):
+            continue
+        criteria = _country_matching_criteria(country, category)
+        if criteria:
+            total_weight = 0.0
+            achieved = 0.0
+            for criterion in criteria:
+                value = criterion.get("value")
+                weight = criterion.get("weight")
+                if not isinstance(value, (int, float)) or not isinstance(weight, (int, float)):
+                    continue
+                total_weight += float(weight)
+                achieved += float(value) * float(weight)
+            if total_weight <= 0:
+                continue
+            score = 100 * achieved / total_weight
+        else:
+            ranking = country.get("ranking")
+            if not isinstance(ranking, (int, float)):
+                continue
+            total_weight = 100.0
+            score = float(ranking)
+
+        country_name = str(country.get("country") or "").strip()
+        if not country_name:
+            continue
+        scores.append(
+            {
+                "country": country_name,
+                "country_code": str(country.get("country_code") or "").strip(),
+                "score": max(0.0, min(100.0, score)),
+                "matched_weight": total_weight,
+            }
+        )
+    return scores
+
+
+def _ilga_category_criteria(
+    document: dict[str, Any] | None,
+    category: str | None,
+) -> list[dict[str, Any]]:
+    if not isinstance(document, dict):
+        return []
+
+    criteria = []
+    for country in document.get("countries", []):
+        if isinstance(country, dict):
+            criteria.extend(_country_matching_criteria(country, category))
+    return criteria
+
+
+def _country_matching_criteria(
+    country: dict[str, Any],
+    category: str | None,
+) -> list[dict[str, Any]]:
+    criteria = country.get("criteria")
+    if not isinstance(criteria, list):
+        return []
+
+    selected = _normalize_category_key(category)
+    output = []
+    for criterion in criteria:
+        if not isinstance(criterion, dict):
+            continue
+        criterion_category = str(criterion.get("category") or "").strip()
+        if selected and _normalize_category_key(criterion_category) != selected:
+            continue
+        output.append(criterion)
+    return output
+
+
+def _normalize_category_key(value: str | None) -> str:
+    aliases = {
+        "civilsocietyspace": "civilsocietyspace",
+        "equalityandnondiscrimination": "equalitynondiscrimination",
+        "equalitynondiscrimination": "equalitynondiscrimination",
+        "hatecrimeandhatespeech": "hatecrimehatespeech",
+        "hatecrimehatespeech": "hatecrimehatespeech",
+        "intersexrights": "intersexbodilyintegrity",
+        "intersexbodilyintegrity": "intersexbodilyintegrity",
+        "legal": "",
+        "legalgenderrecognition": "legalgenderrecognition",
+    }
+    raw = "".join(ch for ch in str(value or "").lower() if ch.isalnum())
+    return aliases.get(raw, raw)

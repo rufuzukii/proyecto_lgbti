@@ -112,7 +112,7 @@
 }
 
 .home-europe-map {
-  height: 100%;
+  height: min(68vh, 680px);
   min-height: 480px;
   width: 100%;
 }
@@ -207,7 +207,7 @@
 .about-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 auto;
   max-width: 1100px;
 }
@@ -228,6 +228,18 @@
 .about-card p {
   color: var(--color-text-muted);
   line-height: 1.65;
+}
+
+.about-source-link {
+  align-self: end;
+  color: var(--link-green);
+  font-weight: 900;
+  margin-top: 0.15rem;
+  text-decoration: none;
+}
+
+.about-source-link:hover {
+  text-decoration: underline;
 }
 
 .about-detail-section {
@@ -379,10 +391,56 @@ body[data-theme="dark"] .about-empty {
   border-color: var(--panel-border);
 }
 
+body[data-theme="dark"] .dash-dropdown,
+body[data-theme="dark"] .dash-dropdown-content {
+  --Dash-Fill-Inverse-Strong: #0f1522;
+  --Dash-Fill-Interactive-Strong: #f6bad0;
+  --Dash-Fill-Interactive-Weak: #1a2232;
+  --Dash-Fill-Disabled: #2d3748;
+  --Dash-Stroke-Strong: var(--color-border);
+  --Dash-Text-Strong: var(--color-text);
+  --Dash-Text-Weak: var(--color-text-muted);
+  --Dash-Text-Disabled: var(--color-text-muted);
+  --Dash-Shading-Strong: rgba(0, 0, 0, 0.42);
+  --Dash-Shading-Weak: rgba(0, 0, 0, 0.3);
+  background: #0f1522 !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+body[data-theme="dark"] .dash-dropdown:disabled {
+  background: #111827 !important;
+  color: var(--color-text-muted) !important;
+}
+
+body[data-theme="dark"] .dash-dropdown-content .dash-dropdown-search-container {
+  background: #111827 !important;
+  border-color: var(--color-border) !important;
+}
+
+body[data-theme="dark"] .dash-dropdown-content .dash-dropdown-option {
+  background: #0f1522 !important;
+  color: var(--color-text) !important;
+  box-shadow: 0 -1px 0 0 var(--color-border) inset !important;
+}
+
+body[data-theme="dark"] .dash-dropdown-content .dash-dropdown-option:hover,
+body[data-theme="dark"] .dash-dropdown-content .dash-dropdown-option:focus-within {
+  background: #1a2232 !important;
+}
+
+body[data-theme="dark"] .dash-dropdown-content .dash-dropdown-option:has(input:checked) {
+  background: #243044 !important;
+}
+
 @media (max-width: 1100px) {
   .home-map-header,
   .home-map-controls {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .about-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .home-map-metrics {
@@ -392,11 +450,12 @@ body[data-theme="dark"] .about-empty {
 
 @media (max-width: 760px) {
   .home-data-shell {
-    padding: 0.75rem 0.75rem 2rem;
+    gap: 0.85rem;
+    padding: 0.6rem 0.6rem 1.4rem;
   }
 
   .home-map-stage {
-    min-height: calc(100vh - 120px);
+    min-height: auto;
   }
 
   .home-map-header,
@@ -406,8 +465,19 @@ body[data-theme="dark"] .about-empty {
     grid-template-columns: 1fr;
   }
 
+  .home-map-header {
+    align-items: start;
+    gap: 0.9rem;
+    padding: 0.9rem;
+  }
+
   .home-map-heading {
-    font-size: 1.45rem;
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+
+  .home-map-copy {
+    font-size: 0.92rem;
   }
 
   .home-map-metrics {
@@ -417,15 +487,36 @@ body[data-theme="dark"] .about-empty {
 
   .home-map-metric {
     min-width: 0;
+    padding-left: 0.55rem;
+  }
+
+  .home-map-metric strong {
+    font-size: 1.05rem;
+  }
+
+  .home-map-metric span {
+    font-size: 0.7rem;
+  }
+
+  .home-map-controls {
+    gap: 0.65rem;
+    padding: 0.8rem 0.9rem;
   }
 
   .home-europe-map {
-    min-height: 420px;
+    height: 58vh;
+    min-height: 340px;
   }
 
   .home-map-footer {
     align-items: flex-start;
     flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .home-source-card {
+    padding: 1rem;
   }
 
   .about-country-summary,
@@ -435,5 +526,16 @@ body[data-theme="dark"] .about-empty {
 
   .about-criterion-values {
     max-width: 180px;
+  }
+}
+
+@media (max-width: 430px) {
+  .home-map-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .home-europe-map {
+    height: 52vh;
+    min-height: 300px;
   }
 }

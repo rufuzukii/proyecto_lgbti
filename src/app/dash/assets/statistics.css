@@ -36,7 +36,7 @@
   color: var(--color-text);
   display: grid;
   gap: 0.9rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 auto 1.25rem;
   max-width: 1500px;
   padding: 1rem;
@@ -55,6 +55,10 @@
 
 .dash-dropdown-value.dash-dropdown-placeholder {
   color: var(--color-text-muted);
+}
+
+.stats-control-field-hidden {
+  display: none;
 }
 
 .stats-control-summary {
@@ -87,6 +91,48 @@
 .stats-panel h2 {
   font-size: 1rem;
   margin: 0 0 0.75rem;
+}
+
+.stats-panel .dash-graph {
+  min-height: 420px;
+}
+
+.stats-empty-state {
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.stats-empty-state h2 {
+  color: var(--color-text);
+}
+
+.stats-metric-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.stats-metric-card {
+  background: color-mix(in srgb, var(--panel-bg) 88%, var(--link-green));
+  border: 1px solid var(--panel-border);
+  display: grid;
+  min-height: 76px;
+  padding: 0.85rem;
+}
+
+.stats-metric-card span {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.stats-metric-card strong {
+  align-self: end;
+  color: var(--color-text);
+  font-size: 1.2rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .stats-leaflet-map,
@@ -173,5 +219,15 @@ body[data-theme="dark"] .stats-matplotlib-image {
 
   .stats-panel-wide {
     grid-column: auto;
+  }
+
+  .stats-metric-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .stats-metric-row {
+    grid-template-columns: 1fr;
   }
 }

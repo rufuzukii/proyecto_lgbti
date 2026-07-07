@@ -149,7 +149,6 @@ def _build_dashboard(
             html.Section(
                 [
                     _permission_panel(role),
-                    _language_panel(),
                 ],
                 className="user-dashboard-side",
             ),
@@ -250,93 +249,39 @@ def _quick_actions(role: UserRole | str) -> html.Section:
 
 def _permission_panel(role: UserRole | str) -> html.Section:
     can_admin = _is_admin_role(role)
+    permissions = [
+        (
+            "Analítica",
+            "Analytics",
+            "Disponible",
+            "Available",
+            True,
+        ),
+        (
+            "Importación",
+            "Import",
+            "Disponible",
+            "Available",
+            True,
+        ),
+        (
+            "Gestión de usuarios",
+            "User management",
+            "Disponible",
+            "Available",
+            can_admin,
+        ),
+    ]
     return html.Section(
         [
             html.H2("Permisos", **text_attrs("Permisos", "Permissions")),
             html.Div(
                 [
-                    _permission_item(
-                        "Analítica",
-                        "Analytics",
-                        "Disponible",
-                        "Available",
-                        True,
-                    ),
-                    _permission_item(
-                        "Importación",
-                        "Import",
-                        "Disponible",
-                        "Available",
-                        True,
-                    ),
-                    _permission_item(
-                        "Gestión de usuarios",
-                        "User management",
-                        "Solo admin" if not can_admin else "Disponible",
-                        "Admin only" if not can_admin else "Available",
-                        can_admin,
-                    ),
+                    _permission_item(title_es, title_en, value_es, value_en)
+                    for title_es, title_en, value_es, value_en, enabled in permissions
+                    if enabled
                 ],
                 className="user-permission-list",
-            ),
-        ],
-        className="user-card",
-    )
-
-
-def _language_panel() -> html.Section:
-    return html.Section(
-        [
-            html.H2("Preferencias", **text_attrs("Preferencias", "Preferences")),
-            html.Div(
-                [
-                    html.Span(
-                        "Tema de color",
-                        className="user-preference-label",
-                        **text_attrs("Tema de color", "Color theme"),
-                    ),
-                    html.Div(
-                        [
-                            html.Button(
-                                "Tema claro",
-                                type="button",
-                                className="user-theme-button",
-                                **{
-                                    "data-theme-option": "light",
-                                    "aria-pressed": "true",
-                                    **text_attrs("Tema claro", "Light theme"),
-                                },
-                            ),
-                            html.Button(
-                                "Tema oscuro",
-                                type="button",
-                                className="user-theme-button",
-                                **{
-                                    "data-theme-option": "dark",
-                                    "aria-pressed": "false",
-                                    **text_attrs("Tema oscuro", "Dark theme"),
-                                },
-                            ),
-                        ],
-                        className="user-theme-row",
-                    ),
-                ],
-                className="user-preference-block",
-            ),
-            html.P(
-                "El botón de idioma de la barra superior guarda tu elección en este navegador.",
-                className="user-muted",
-                **text_attrs(
-                    "El botón de idioma de la barra superior guarda tu elección en este navegador.",
-                    "The language button in the top bar stores your choice in this browser.",
-                ),
-            ),
-            html.Div(
-                [
-                    html.Span("ES", className="user-language-chip"),
-                    html.Span("EN", className="user-language-chip"),
-                ],
-                className="user-language-row",
             ),
         ],
         className="user-card",
@@ -521,7 +466,6 @@ def _permission_item(
     title_en: str,
     value_es: str,
     value_en: str,
-    enabled: bool,
 ) -> html.Div:
     return html.Div(
         [
@@ -536,11 +480,7 @@ def _permission_item(
                 **text_attrs(value_es, value_en),
             ),
         ],
-        className=(
-            "user-permission-item"
-            if enabled
-            else "user-permission-item user-permission-item-muted"
-        ),
+        className="user-permission-item",
     )
 
 

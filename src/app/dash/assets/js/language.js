@@ -5,7 +5,7 @@
   const THEMES = new Set(["light", "dark"]);
   const LABELS = [
     ["Situacion legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"],
-    ["FRA: discriminacion y datos sociales", "FRA: discrimination and social data"],
+    ["Discriminacion y datos sociales", "Discrimination and social data"],
     ["Selecciona una categoria", "Select a category"],
     ["Selecciona primero una categoria", "Select a category first"],
     ["Selecciona un topico", "Select a topic"],
@@ -29,6 +29,10 @@
 
   function nextLanguage(lang) {
     return lang === "es" ? "en" : "es";
+  }
+
+  function nextTheme(theme) {
+    return theme === "dark" ? "light" : "dark";
   }
 
   function applyLanguage(lang) {
@@ -57,6 +61,7 @@
         button.textContent = label;
       }
     });
+    applyThemeToggleLabels(currentTheme(), language);
   }
 
   function setLanguage(lang) {
@@ -76,6 +81,7 @@
       button.classList.toggle("is-active", isActive);
       button.setAttribute("aria-pressed", isActive ? "true" : "false");
     });
+    applyThemeToggleLabels(selected, currentLanguage());
 
     restylePlotly(selected, 0);
   }
@@ -95,6 +101,12 @@
     const themeButton = event.target.closest("[data-theme-option]");
     if (themeButton) {
       setTheme(themeButton.dataset.themeOption);
+      return;
+    }
+
+    const themeToggle = event.target.closest("[data-theme-toggle]");
+    if (themeToggle) {
+      setTheme(themeToggle.dataset.themeTarget || nextTheme(currentTheme()));
     }
   });
 
@@ -183,6 +195,42 @@
       return layout.mapbox.style === colors.mapbox;
     }
     return true;
+  }
+
+  function applyThemeToggleLabels(theme, language) {
+    const selected = THEMES.has(theme) ? theme : "light";
+    const lang = SUPPORTED.has(language) ? language : "es";
+    const next = nextTheme(selected);
+    const label =
+      selected === "dark"
+        ? lang === "es"
+          ? "Modo oscuro"
+          : "Dark mode"
+        : lang === "es"
+          ? "Modo claro"
+          : "Light mode";
+    const accessibleLabel =
+      selected === "dark"
+        ? lang === "es"
+          ? "Cambiar a modo claro"
+          : "Switch to light mode"
+        : lang === "es"
+          ? "Cambiar a modo oscuro"
+          : "Switch to dark mode";
+
+    document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+      button.dataset.themeTarget = next;
+      button.dataset.themeState = selected;
+      button.setAttribute("aria-label", accessibleLabel);
+      button.setAttribute("title", accessibleLabel);
+      button.setAttribute("aria-pressed", selected === "dark" ? "true" : "false");
+    });
+
+    document.querySelectorAll("[data-theme-label]").forEach((labelNode) => {
+      if (labelNode && labelNode.textContent !== label) {
+        labelNode.textContent = label;
+      }
+    });
   }
 
   function applySelectTranslations(language) {
