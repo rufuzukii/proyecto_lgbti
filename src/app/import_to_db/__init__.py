@@ -3,6 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .felgtbi import (
+        parse_felgtbi_pdf,
+        parse_felgtbi_pdf_bytes,
+        parse_felgtbi_text_pages,
+        discover_felgtbi_pdfs,
+        parse_felgtbi_pdf_links,
+    )
     from .fra import (
         build_fra_questions_payload,
         count_fra_questions,
@@ -24,6 +31,11 @@ if TYPE_CHECKING:
 
 
 _LAZY_EXPORTS = {
+    "parse_felgtbi_pdf": ("app.import_to_db.felgtbi", "parse_felgtbi_pdf"),
+    "parse_felgtbi_pdf_bytes": ("app.import_to_db.felgtbi", "parse_felgtbi_pdf_bytes"),
+    "parse_felgtbi_text_pages": ("app.import_to_db.felgtbi", "parse_felgtbi_text_pages"),
+    "discover_felgtbi_pdfs": ("app.import_to_db.felgtbi", "discover_felgtbi_pdfs"),
+    "parse_felgtbi_pdf_links": ("app.import_to_db.felgtbi", "parse_felgtbi_pdf_links"),
     "build_fra_questions_payload": ("app.import_to_db.fra", "build_fra_questions_payload"),
     "count_fra_questions": ("app.import_to_db.fra", "count_fra_questions"),
     "convert_fra_csv_files": ("app.import_to_db.fra", "convert_fra_csv_files"),

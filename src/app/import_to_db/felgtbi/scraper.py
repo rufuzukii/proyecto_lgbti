@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+from html.parser import HTMLParser
+from urllib.parse import urljoin
+from urllib.request import Request, urlopen
+
+from app.import_to_db.felgtbi.importer import YEAR_PATTERN
+
+DEFAULT_FELGTBI_STATE_URL = "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/"
+
+
+@dataclass(frozen=True)
+class FelgtbiPdfLink:
+    title: str
+    url: str
+    year: int | None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+def discover_felgtbi_pdfs(
+    page_url: str = DEFAULT_FELGTBI_STATE_URL,
+    *,
+    timeout_seconds: int = 10,
+) -> list[dict]:
+    request = Request(page_url, headers={"User-Agent": "RainbowLens/1.0"})
+    with urlopen(request, timeout=timeout_seconds) as response:
+        html_text = response.read().decode("utf-8", errors="replace")
+    return [
+        link.to_dict()
+        for link in parse_felgtbi_pdf_links(html_text, base_url=page_url)
+    ]
+
+
+def parse_felgtbi_pdf_links(html_text: str, *, base_url: str) -> list[FelgtbiPdfLink]:
+    parser = _PdfAnchorParser(base_url)
+    parser.feed(html_text)
+    return parser.links
+
+
+class _PdfAnchorParser(HTMLParser):
+    def __init__(self, base_url: str) -> None:
+        super().__init__()
+        self.base_url = base_url
+        self.links: list[FelgtbiPdfLink] = []
+        self._current_href: str | None = None
+        self._current_text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() != "a":
+            return
+        attributes = {key.lower(): value for key, value in attrs if value}
+        href = attributes.get("href")
+        if href and ".pdf" in href.lower():
+            self._current_href = href
+            self._current_text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._current_href:
+            self._current_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() != "a" or not self._current_href:
+            return
+        url = urljoin(self.base_url, self._current_href)
+        title = " ".join(" ".join(self._current_text).split()) or url.rsplit("/", 1)[-1]
+        self.links.append(FelgtbiPdfLink(title=title, url=url, year=_extract_year(title, url)))
+        self._current_href = None
+        self._current_text = []
+
+
+def _extract_year(*values: str) -> int | None:
+    for value in values:
+        match = YEAR_PATTERN.search(value)
+        if match:
+            return int(match.group(1))
+    return None

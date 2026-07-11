@@ -10,11 +10,12 @@ from app.users.schemas import UserRole
 def build_navbar(active: str | None = None) -> html.Nav:
     links = [
         ("Inicio", "Home", "/", "home"),
+        ("España", "Spain", "/spain", "spain"),
         ("Estadísticas", "Statistics", "/statistics", "statistics"),
         ("Informes", "Reports", "/report", "report"),
         ("Didáctica", "Didactics", "/didactics", "didactics"),
         ("Acerca de", "About", "/about", "about"),
-        ("Importar CSV", "Import CSV", "/upload", "upload"),
+        ("Importar datos", "Import data", "/upload", "upload"),
     ]
 
     return html.Nav(

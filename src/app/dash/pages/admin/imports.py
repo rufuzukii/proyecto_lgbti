@@ -21,7 +21,8 @@ ERROR_MESSAGES = {
     "import_not_found": "The selected import is no longer pending.",
     "invalid_json_payload": "The JSON must be an object or a non-empty array of objects.",
     "invalid_ilga_payload": "The ILGA JSON does not have the expected annual structure.",
-    "unsupported_import_dataset": "The JSON dataset is not supported.",
+    "invalid_felgtbi_payload": "The FELGTBI+ JSON does not have the expected indicator structure.",
+    "unsupported_import_dataset": "The JSON source is not supported.",
     "mongo": "MongoDB insertion failed. The JSON remains pending.",
     "storage": "Pending imports are not available right now.",
 }

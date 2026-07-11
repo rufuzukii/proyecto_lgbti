@@ -101,3 +101,6 @@ run_*.py
 
 # Local tests (ignored in repo)
 tests/
+
+# Generated Dash assets
+src/app/dash/assets/generated/

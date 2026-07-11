@@ -14,24 +14,23 @@ from app.analytics import invalidate_analytics_cache
 from ...import_to_db.error_handler import ImportErrorHandler
 
 logger = logging.getLogger(__name__)
-MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_UPLOAD_FILES = 3
 
 DATA_SOURCE_OPTIONS = [
     {"label": "FRA - EU LGBTIQ Survey", "value": "FRA"},
     {"label": "ILGA - Rainbow Map", "value": "ILGA"},
-    {"label": "FELGTB - Informes estatales", "value": "FELGTB"},
+    {"label": "FELGTBI+ - Estado LGTBI+", "value": "FELGTB"},
 ]
 
 
-def _decode_upload_contents(contents: str) -> tuple[str, int]:
+def _decode_upload_payload(contents: str) -> tuple[bytes, int]:
     data = contents.split(",", 1)[1] if "," in contents else contents
     try:
         payload = base64.b64decode(data, validate=True)
     except (binascii.Error, ValueError):
-        raw_text = data
-        return raw_text, len(raw_text.encode("utf-8"))
-    return payload.decode("utf-8", errors="replace"), len(payload)
+        payload = data.encode("utf-8")
+    return payload, len(payload)
 
 
 def build_upload_layout() -> html.Div:
@@ -45,7 +44,7 @@ def build_upload_layout() -> html.Div:
                             html.P("Reviewable import", className="upload-eyebrow"),
                             html.H1("Upload data for review"),
                             html.P(
-                                "Convert CSV or ILGA JSON files into temporary JSON and leave the import pending for administrative validation."
+                                "Convert CSV, ILGA JSON or FELGTBI+ PDF files into temporary JSON and leave the import pending for administrative validation."
                             ),
                         ],
                         className="page-header upload-header",
@@ -55,7 +54,7 @@ def build_upload_layout() -> html.Div:
                             html.Div(
                                 [
                                     html.Label(
-                                        "CSV source",
+                                        "Data source",
                                         htmlFor="data-source",
                                         className="upload-label",
                                     ),
@@ -77,7 +76,7 @@ def build_upload_layout() -> html.Div:
                                 id="upload-csv",
                                 children=html.Div(
                                     [
-                                        html.Strong("Drag CSV files here"),
+                                        html.Strong("Drag files here"),
                                         html.Span(" or click to select files"),
                                         html.Small(
                                             f"Maximum {MAX_UPLOAD_FILES} files, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB per file."
@@ -132,7 +131,7 @@ def register_upload_callbacks(app: Dash) -> None:
         if not filenames:
             return build_error_message("No file was received.")
         if not data_source:
-            return build_error_message("Select the CSV source before uploading.")
+            return build_error_message("Select the data source before uploading.")
 
         contents_list, filenames_list = normalize_upload_values(contents, filenames)
         if len(contents_list) > MAX_UPLOAD_FILES:
@@ -145,31 +144,37 @@ def register_upload_callbacks(app: Dash) -> None:
             safe_name = Path(name).name if name else "upload.csv"
             if not is_supported_upload_file(data_source, safe_name):
                 return build_error_message(
-                    f"Unsupported file: {safe_name}. FRA accepts CSV; ILGA accepts CSV or JSON."
+                    f"Unsupported file: {safe_name}. FRA accepts CSV; ILGA accepts CSV or JSON; FELGTBI+ accepts PDF."
                 )
 
-            file_text, payload_size = _decode_upload_contents(data)
+            payload_bytes, payload_size = _decode_upload_payload(data)
             if payload_size > MAX_UPLOAD_BYTES:
                 return build_error_message(f"{safe_name} exceeds the allowed size.")
 
             try:
                 payload = parse_file_by_source(
                     source=data_source,
-                    file_text=file_text,
+                    file_bytes=payload_bytes,
                     file_name=safe_name,
                 )
             except NotImplementedError as exc:
                 return build_error_message(str(exc))
+            except RuntimeError as exc:
+                if str(exc) == "missing_pdf_dependency":
+                    return build_error_message(
+                        "PDF parsing is not available because PyMuPDF is not installed."
+                    )
+                raise
             except Exception:
                 logger.exception(
-                    "csv_parse_failed",
+                    "file_parse_failed",
                     extra={"file": safe_name, "data_source": data_source},
                 )
-                return build_error_message(f"No se pudo procesar el CSV ({safe_name}).")
+                return build_error_message(f"No se pudo procesar el archivo ({safe_name}).")
 
             if not payload:
                 return build_error_message(
-                    f"No data was generated for {safe_name}. Check that the selected source matches the CSV format."
+                    f"No data was generated for {safe_name}. Check that the selected source matches the file format."
                 )
 
             if data_source == "FRA":
@@ -226,15 +231,19 @@ def is_supported_upload_file(source: str, file_name: str) -> bool:
     suffix = Path(file_name).suffix.lower()
     if source == "ILGA":
         return suffix in {".csv", ".json"}
+    if source == "FELGTB":
+        return suffix == ".pdf"
     return suffix == ".csv"
 
 
-def parse_file_by_source(source: str, file_text: str, file_name: str) -> dict | list[dict]:
+def parse_file_by_source(source: str, file_bytes: bytes, file_name: str) -> dict | list[dict]:
     if source == "FRA":
         from ...import_to_db import parse_fra_csv_text
 
+        file_text = file_bytes.decode("utf-8", errors="replace")
         return parse_fra_csv_text(file_text, file_name=file_name)
     if source == "ILGA":
+        file_text = file_bytes.decode("utf-8", errors="replace")
         if Path(file_name).suffix.lower() == ".json":
             from ...import_to_db import parse_ilga_json_text
 
@@ -243,9 +252,9 @@ def parse_file_by_source(source: str, file_text: str, file_name: str) -> dict | 
 
         return parse_ilga_csv_text(file_text, file_name=file_name)
     if source == "FELGTB":
-        raise NotImplementedError(
-            "The FELGTB importer is not implemented yet. Select FRA or ILGA for this CSV."
-        )
+        from ...import_to_db import parse_felgtbi_pdf_bytes
+
+        return parse_felgtbi_pdf_bytes(file_bytes, file_name=file_name)
     raise ValueError(f"Unsupported source: {source}")
 
 

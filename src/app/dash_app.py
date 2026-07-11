@@ -32,6 +32,7 @@ from app.dash.pages.statistics import (
     build_statistics_layout,
     register_statistics_callbacks,
 )
+from app.dash.pages.spain import build_spain_layout, register_spain_callbacks
 from app.dash.pages.upload import build_upload_layout, register_upload_callbacks
 from app.errors import DatabaseUnavailableError
 from app.import_to_db.import_log import (
@@ -134,6 +135,8 @@ def create_dash_app() -> Dash:
                 return build_statistics_layout()
             if pathname == "/stadistics":
                 return dcc.Location(href="/statistics", id="legacy-statistics-redirect")
+            if pathname == "/spain":
+                return build_spain_layout()
             if pathname == "/upload":
                 return build_upload_layout()
             if pathname == "/about":
@@ -206,6 +209,7 @@ def create_dash_app() -> Dash:
 
     register_upload_callbacks(app)
     register_statistics_callbacks(app)
+    register_spain_callbacks(app)
     register_home_callbacks(app)
     register_about_callbacks(app)
     return app
@@ -462,6 +466,7 @@ def _insert_approved_import(file_json: dict | list) -> None:
         raise ValueError("invalid_json_payload")
 
     datasets = {document.get("dataset") for document in documents}
+    sources = {document.get("source") for document in documents}
     if datasets == {"eu_lgbtiq_survey_iii"}:
         from app.import_to_db.fra import (
             insert_indicator_fra_json,
@@ -475,6 +480,13 @@ def _insert_approved_import(file_json: dict | list) -> None:
         from app.import_to_db.ilga import insert_indicator_ilga_json
 
         insert_indicator_ilga_json(file_json)
+        return
+    if sources == {"felgtbi_estado_lgtbi"}:
+        from app.import_to_db.felgtbi import insert_indicator_felgtbi_json
+        from app.import_to_db.fra import upsert_indicators_from_json
+
+        upsert_indicators_from_json(file_json)
+        insert_indicator_felgtbi_json(file_json)
         return
     raise ValueError("unsupported_import_dataset")
 
