@@ -8,6 +8,91 @@ from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
 
+PRIMARY_SOURCES = [
+    {
+        "entity": "FELGTBI+",
+        "title": "Estado LGTBI+ - FELGTBI+",
+        "url": "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/",
+        "description": (
+            "Informes y estudios sobre la situacion social, la discriminacion y las "
+            "experiencias de las personas LGTBI+ en Espana."
+        ),
+        "type": "Fuente principal",
+    },
+    {
+        "entity": "Agencia de los Derechos Fundamentales de la Union Europea",
+        "title": "EU LGBTIQ Survey III - FRA",
+        "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii",
+        "description": (
+            "Resultados de la tercera encuesta europea sobre las experiencias, "
+            "condiciones de vida y discriminacion de las personas LGBTIQ."
+        ),
+        "type": "Fuente principal",
+    },
+    {
+        "entity": "ILGA-Europe",
+        "title": "Rainbow Map - ILGA-Europe",
+        "url": "https://rainbowmap.ilga-europe.org",
+        "description": (
+            "Comparacion anual de la situacion legal y politica de las personas "
+            "LGBTI+ en 49 paises europeos."
+        ),
+        "type": "Fuente principal",
+    },
+]
+
+RECOMMENDED_SOURCE_GROUPS = [
+    {
+        "category": "Situacion social y resultados de la encuesta",
+        "sources": [
+            {
+                "entity": "FRA",
+                "title": "LGBTIQ Equality at a Crossroads - FRA",
+                "url": "https://fra.europa.eu/sites/default/files/fra_uploads/fra-2024-lgbtiq-equality_en.pdf",
+                "description": (
+                    "Informe detallado de la FRA sobre los principales resultados de la "
+                    "encuesta europea LGBTIQ y las desigualdades que persisten en "
+                    "distintos ambitos de la vida."
+                ),
+                "type": "Lectura recomendada",
+                "note": "Especialmente recomendada para interpretar los datos sociodemograficos.",
+            }
+        ],
+    },
+    {
+        "category": "Politicas y acciones de la Union Europea",
+        "sources": [
+            {
+                "entity": "Comision Europea",
+                "title": "LGBTIQ Equality Strategy 2026-2030 - Comision Europea",
+                "url": "https://commission.europa.eu/strategy-and-policy/policies/justice-and-fundamental-rights/combatting-discrimination/lesbian-gay-bi-trans-and-intersex-equality/lgbtiq-equality-strategy-2026-2030_en",
+                "description": (
+                    "Estrategia de la Comision Europea que establece prioridades, "
+                    "acciones y compromisos para avanzar en la igualdad LGBTIQ durante "
+                    "el periodo 2026-2030."
+                ),
+                "type": "Lectura recomendada",
+            }
+        ],
+    },
+    {
+        "category": "Contexto normativo y objetivos estrategicos",
+        "sources": [
+            {
+                "entity": "Union Europea",
+                "title": "LGBTI Equality - Fichas informativas de la Union Europea",
+                "url": "https://op.europa.eu/webpub/com/factsheets/lgbti/en/",
+                "description": (
+                    "Resumen accesible de las politicas, marcos de actuacion y "
+                    "principales objetivos de la Union Europea en materia de igualdad LGBTI."
+                ),
+                "type": "Lectura recomendada",
+            }
+        ],
+    },
+]
+
+
 def build_about_layout() -> html.Div:
     ilga_document = get_latest_ilga_document()
     return html.Div(
@@ -45,6 +130,43 @@ def build_about_layout() -> html.Div:
                             ),
                         ],
                         className="about-header",
+                    ),
+                    _source_cards_section(
+                        "Fuentes principales de datos y situacion social",
+                        PRIMARY_SOURCES,
+                        class_name="about-source-section",
+                    ),
+                    html.Section(
+                        [
+                            html.Div(
+                                [
+                                    html.P("Para profundizar", className="about-eyebrow"),
+                                    html.H2("Fuentes recomendadas para profundizar"),
+                                    html.P(
+                                        (
+                                            "Para comprender mejor los datos y su contexto, "
+                                            "recomendamos consultar tambien las siguientes "
+                                            "publicaciones y estrategias oficiales."
+                                        ),
+                                        className="about-lead",
+                                    ),
+                                ],
+                                className="about-section-header",
+                            ),
+                            *[
+                                _recommended_source_group(group)
+                                for group in RECOMMENDED_SOURCE_GROUPS
+                            ],
+                        ],
+                        className="about-recommended-section",
+                    ),
+                    html.P(
+                        (
+                            "Rainbow Lens recopila, organiza y visualiza informacion procedente "
+                            "de fuentes externas. La autoria, metodologia y responsabilidad de "
+                            "los datos corresponden a las organizaciones que publican cada recurso."
+                        ),
+                        className="about-attribution",
                     ),
                     html.Section(
                         [
@@ -158,6 +280,70 @@ def build_about_layout() -> html.Div:
             ),
         ]
     )
+
+
+def _source_cards_section(
+    title: str,
+    sources: list[dict[str, str]],
+    *,
+    class_name: str,
+) -> html.Section:
+    return html.Section(
+        [
+            html.Div(
+                [
+                    html.P("Fuentes oficiales", className="about-eyebrow"),
+                    html.H2(title),
+                ],
+                className="about-section-header",
+            ),
+            html.Div(
+                [_source_card(source) for source in sources],
+                className="about-source-grid",
+            ),
+        ],
+        className=class_name,
+    )
+
+
+def _recommended_source_group(group: dict[str, Any]) -> html.Section:
+    return html.Section(
+        [
+            html.H3(str(group.get("category") or "Fuente recomendada")),
+            html.Div(
+                [_source_card(source) for source in group.get("sources", [])],
+                className="about-source-grid about-source-grid--single",
+            ),
+        ],
+        className="about-source-category",
+    )
+
+
+def _source_card(source: dict[str, str]) -> html.Article:
+    note = str(source.get("note") or "").strip()
+    children: list[Any] = [
+        html.Div(
+            [
+                html.Span(str(source.get("type") or "Fuente"), className="about-resource-card__tag"),
+                html.Span(str(source.get("entity") or ""), className="about-resource-card__entity"),
+            ],
+            className="about-resource-card__meta",
+        ),
+        html.H3(str(source.get("title") or "")),
+        html.P(str(source.get("description") or "")),
+    ]
+    if note:
+        children.append(html.P(note, className="about-resource-card__note"))
+    children.append(
+        html.A(
+            f"Abrir {source.get('title') or 'recurso oficial'} en una pestana nueva",
+            href=str(source.get("url") or "#"),
+            target="_blank",
+            rel="noopener noreferrer",
+            className="about-resource-card__link",
+        )
+    )
+    return html.Article(children, className="about-resource-card")
 
 
 def register_about_callbacks(app: Dash) -> None:

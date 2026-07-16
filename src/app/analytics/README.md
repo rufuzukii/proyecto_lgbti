@@ -35,3 +35,17 @@ Contiene centroides aproximados de países europeos y `build_ilga_geodataframe()
 ## Dependencias
 
 PostgreSQL, MongoDB, Flask-Caching, Plotly, Matplotlib, GeoPandas y Shapely.
+
+## Estadisticas europeas FRA / ILGA-Europe
+
+La pagina `/statistics` usa una capa modular nueva:
+
+- `statistics_models.py`: modelos de consulta y validacion de un unico filtro FRA del grupo A y un unico filtro del grupo B.
+- `statistics_normalizers.py`: normalizacion de codigos ISO, tipos de filtro y erratas conocidas sin perder el valor bruto usado por los datos.
+- `statistics_service.py`: conversion de documentos Mongo a `DataFrame`, filtrado, agregacion y estados sin datos.
+- `statistics_charts.py`: generacion centralizada de graficos Plotly para mapa, ranking, distribucion, comparador, heatmap ILGA y scatter FRA/ILGA.
+- `statistics_geodata.py`: union reusable GeoPandas por codigo ISO y deteccion de paises sin geometria o duplicados.
+
+El mapa mantiene Plotly `Choropleth` en vez de introducir Dash Leaflet porque la aplicacion ya usaba Plotly para estos mapas, no necesita token privado de Mapbox, se integra con `clickData` y reduce el cambio de dependencias y callbacks. La union GeoPandas queda preparada para incorporar geometria real europea cuando el proyecto incluya un GeoJSON o `GeoDataFrame` fuente.
+
+Los documentos FRA se esperan en `Indicator_fra` con `answers[]` que contengan `country`, `country_code`, `answer`, `percentage` y `filters[]` como pares `{type, value}`. Los documentos ILGA se esperan en `Indicator_ilga` con `countries[]`, `ranking` y `criteria[]`. Los criterios ILGA disponibles se extraen de los metadatos importados (`category`, `indicator`, `weight`); no se inventan descripciones juridicas si el dataset no las trae.

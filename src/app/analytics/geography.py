@@ -2,6 +2,58 @@ from __future__ import annotations
 
 from typing import Any
 
+ISO2_TO_ISO3: dict[str, str] = {
+    "AL": "ALB",
+    "AD": "AND",
+    "AM": "ARM",
+    "AT": "AUT",
+    "AZ": "AZE",
+    "BY": "BLR",
+    "BE": "BEL",
+    "BA": "BIH",
+    "BG": "BGR",
+    "HR": "HRV",
+    "CY": "CYP",
+    "CZ": "CZE",
+    "DK": "DNK",
+    "EE": "EST",
+    "FI": "FIN",
+    "FR": "FRA",
+    "GE": "GEO",
+    "DE": "DEU",
+    "GR": "GRC",
+    "HU": "HUN",
+    "IS": "ISL",
+    "IE": "IRL",
+    "IT": "ITA",
+    "XK": "XKX",
+    "LV": "LVA",
+    "LI": "LIE",
+    "LT": "LTU",
+    "LU": "LUX",
+    "MT": "MLT",
+    "MD": "MDA",
+    "MC": "MCO",
+    "ME": "MNE",
+    "NL": "NLD",
+    "MK": "MKD",
+    "NO": "NOR",
+    "PL": "POL",
+    "PT": "PRT",
+    "RO": "ROU",
+    "RU": "RUS",
+    "SM": "SMR",
+    "RS": "SRB",
+    "SK": "SVK",
+    "SI": "SVN",
+    "ES": "ESP",
+    "SE": "SWE",
+    "CH": "CHE",
+    "TR": "TUR",
+    "UA": "UKR",
+    "GB": "GBR",
+}
+
 EUROPE_CENTROIDS: dict[str, tuple[float, float]] = {
     "AL": (41.15, 20.17),
     "AD": (42.51, 1.52),
@@ -53,6 +105,11 @@ EUROPE_CENTROIDS: dict[str, tuple[float, float]] = {
     "UA": (48.38, 31.17),
     "GB": (55.38, -3.44),
 }
+
+
+def to_iso3_country_code(country_code: Any) -> str:
+    clean_code = str(country_code or "").strip().upper()
+    return ISO2_TO_ISO3.get(clean_code, clean_code if len(clean_code) == 3 else "")
 
 
 def build_ilga_geo_records(document: dict[str, Any] | None) -> list[dict[str, Any]]:

@@ -36,6 +36,12 @@ def has_permission(role: UserRole, permission: Permission) -> bool:
     return permission in ROLE_PERMISSIONS.get(role, set())
 
 
+def is_admin_user(user: object) -> bool:
+    role = getattr(user, "role", None)
+    role_value = role.value if isinstance(role, UserRole) else str(role or "")
+    return role_value.lower() == UserRole.ADMIN.value
+
+
 def can_access_user_type(role: UserRole, user_type: UserType | None) -> bool:
     if role == UserRole.ADMIN:
         return True

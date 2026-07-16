@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.analytics import invalidate_analytics_cache
 from app.analytics.repository import assert_analytics_databases_available
 from app.auth.csrf import validate_csrf_token
+from app.auth.permissions import is_admin_user
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
@@ -509,9 +510,7 @@ def _safe_next(value: str | None, default: str = "/user") -> str:
 
 
 def _is_admin() -> bool:
-    role = getattr(current_user, "role", None)
-    role_value = role.value if isinstance(role, UserRole) else str(role)
-    return role_value == UserRole.ADMIN.value
+    return is_admin_user(current_user)
 
 
 def _redirect(path: str, **params: str | None):

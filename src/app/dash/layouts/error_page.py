@@ -18,7 +18,7 @@ def build_database_unavailable_layout(
                     html.H1("Base de datos no disponible"),
                     html.P(
                         f"No se puede conectar con {service}. "
-                        "Si el proyecto estaba pausado, reanudalo y vuelve a cargar la pagina en unos minutos.",
+                        "Intentalo más tarde",
                         className="error-page-message",
                     ),
                     html.A("Volver al inicio", href="/", className="error-page-action"),
@@ -48,7 +48,7 @@ def render_database_unavailable_response(
     <section class="error-page-panel">
       <p class="error-page-code">Error 503</p>
       <h1>Base de datos no disponible</h1>
-      <p class="error-page-message">No se puede conectar con {service}. Si el proyecto estaba pausado, reanudalo y vuelve a cargar la pagina en unos minutos.</p>
+      <p class="error-page-message">No se puede conectar con {service}. Intentalo más tarde</p>
       <a class="error-page-action" href="/">Volver al inicio</a>
     </section>
   </main>

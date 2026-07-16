@@ -18,6 +18,7 @@ from app.errors import DatabaseUnavailableError
 logger = logging.getLogger(__name__)
 ANALYTICS_CACHE_TIMEOUT_SECONDS = int(os.getenv("ANALYTICS_CACHE_TIMEOUT_SECONDS", "3600"))
 MONGO_UNAVAILABLE_ERRORS = (AutoReconnect, ConfigurationError, NetworkTimeout)
+COUNTRY_LGBTI_STATUS_COLLECTION = "country_lgbti_status"
 
 
 @dataclass(frozen=True) # frozen=true significa que el objeto no puede ser modificado
@@ -199,6 +200,90 @@ def get_fra_indicator_answers(code: str) -> dict[str, Any] | None:
     except Exception:
         logger.exception("fra_indicator_values_read_failed", extra={"code": clean_code})
         return None
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_fra_years(code: str | None = None) -> list[int]:
+    query: dict[str, Any] = {}
+    clean_code = str(code or "").strip()
+    if clean_code:
+        query["code"] = clean_code
+    try:
+        _ensure_analytics_indexes()
+        raw_dates = _mongo_collection("Indicator_fra").distinct("answers.date", query)
+    except Exception:
+        logger.exception("fra_years_read_failed", extra={"code": clean_code})
+        return []
+
+    years: set[int] = set()
+    for raw_date in raw_dates:
+        text = str(raw_date or "")
+        for token in text.replace("/", "-").split("-"):
+            token = token.strip()
+            if token.isdigit() and len(token) == 4:
+                years.add(int(token))
+    return sorted(years, reverse=True)
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_ilga_criteria_categories_by_year(year: int | str | None = None) -> list[str]:
+    document = get_ilga_document_by_year(year)
+    if not isinstance(document, dict):
+        return []
+
+    categories = set()
+    for country in document.get("countries", []):
+        if not isinstance(country, dict):
+            continue
+        criteria = country.get("criteria")
+        if not isinstance(criteria, list):
+            continue
+        for criterion in criteria:
+            if not isinstance(criterion, dict):
+                continue
+            category = str(criterion.get("category") or "").strip()
+            if category:
+                categories.add(category)
+    return sorted(categories)
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_ilga_criteria_by_year(
+    year: int | str | None = None,
+    category: str | None = None,
+) -> list[dict[str, Any]]:
+    document = get_ilga_document_by_year(year)
+    if not isinstance(document, dict):
+        return []
+
+    clean_category = str(category or "").strip()
+    criteria_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for country in document.get("countries", []):
+        if not isinstance(country, dict):
+            continue
+        criteria = country.get("criteria")
+        if not isinstance(criteria, list):
+            continue
+        for criterion in criteria:
+            if not isinstance(criterion, dict):
+                continue
+            criterion_category = str(criterion.get("category") or "").strip()
+            if clean_category and criterion_category != clean_category:
+                continue
+            indicator = str(criterion.get("indicator") or "").strip()
+            if not indicator:
+                continue
+            key = (criterion_category, indicator)
+            criteria_by_key.setdefault(
+                key,
+                {
+                    "category": criterion_category,
+                    "indicator": indicator,
+                    "weight": criterion.get("weight"),
+                    "description": "",
+                },
+            )
+    return list(criteria_by_key.values())
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
@@ -419,6 +504,118 @@ def get_latest_ilga_criteria_categories() -> list[str]:
     return sorted(categories)
 
 
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_country_lgbti_status_records(
+    country_codes: tuple[str, ...],
+    requested_year: int | None = None,
+) -> list[dict[str, Any]]:
+    clean_codes = []
+    seen = set()
+    for country_code in country_codes:
+        clean_code = str(country_code or "").strip().upper()
+        if clean_code and clean_code not in seen:
+            seen.add(clean_code)
+            clean_codes.append(clean_code)
+    if not clean_codes:
+        return []
+
+    query: dict[str, Any] = {
+        "country_code": {"$in": clean_codes},
+        "active": True,
+    }
+    if requested_year is not None:
+        query["year"] = {"$lte": int(requested_year)}
+
+    try:
+        _ensure_country_lgbti_status_indexes()
+        rows = list(
+            _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).find(
+                query,
+                {"_id": 0},
+                sort=[("country_code", 1), ("year", -1)],
+            )
+        )
+    except Exception:
+        logger.exception(
+            "country_lgbti_status_read_failed",
+            extra={"country_codes": clean_codes, "requested_year": requested_year},
+        )
+        return []
+
+    latest_by_code: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        code = str(row.get("country_code") or "").strip().upper()
+        if code and code not in latest_by_code:
+            latest_by_code[code] = row
+    return [latest_by_code[code] for code in clean_codes if code in latest_by_code]
+
+
+def get_country_lgbti_status_record(
+    country_code: str,
+    year: int,
+    *,
+    active_only: bool = False,
+) -> dict[str, Any] | None:
+    clean_code = str(country_code or "").strip().upper()
+    if not clean_code:
+        return None
+    try:
+        clean_year = int(year)
+    except (TypeError, ValueError):
+        return None
+
+    query: dict[str, Any] = {"country_code": clean_code, "year": clean_year}
+    if active_only:
+        query["active"] = True
+
+    try:
+        _ensure_country_lgbti_status_indexes()
+        return _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).find_one(query, {"_id": 0})
+    except Exception:
+        logger.exception(
+            "country_lgbti_status_record_read_failed",
+            extra={"country_code": clean_code, "year": clean_year},
+        )
+        return None
+
+
+def upsert_country_lgbti_status_record(record: dict[str, Any]) -> None:
+    clean_code = str(record.get("country_code") or "").strip().upper()
+    clean_year = int(record.get("year"))
+    try:
+        _ensure_country_lgbti_status_indexes()
+        _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).update_one(
+            {"country_code": clean_code, "year": clean_year},
+            {"$set": record},
+            upsert=True,
+        )
+    except Exception:
+        logger.exception(
+            "country_lgbti_status_record_upsert_failed",
+            extra={"country_code": clean_code, "year": clean_year},
+        )
+        raise
+
+
+def deactivate_country_lgbti_status_record(country_code: str, year: int) -> bool:
+    clean_code = str(country_code or "").strip().upper()
+    clean_year = int(year)
+    try:
+        _ensure_country_lgbti_status_indexes()
+        result = _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).update_one(
+            {"country_code": clean_code, "year": clean_year},
+            {"$set": {"active": False}},
+            upsert=False,
+        )
+    except Exception:
+        logger.exception(
+            "country_lgbti_status_record_deactivate_failed",
+            extra={"country_code": clean_code, "year": clean_year},
+        )
+        raise
+    return bool(result.matched_count)
+
+
 def invalidate_analytics_cache() -> None:
     cache.clear()
 
@@ -470,5 +667,19 @@ def _ensure_analytics_indexes() -> None:
     )
     _mongo_collection("Indicator_felgtbi").create_index(
         [("source", 1), ("report_type", 1)],
+        background=True,
+    )
+
+
+@lru_cache(maxsize=1)
+def _ensure_country_lgbti_status_indexes() -> None:
+    collection = _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION)
+    collection.create_index(
+        [("country_code", 1), ("year", 1)],
+        unique=True,
+        background=True,
+    )
+    collection.create_index(
+        [("active", 1), ("country_code", 1), ("year", -1)],
         background=True,
     )

@@ -22,7 +22,7 @@ def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
                 locations=[country["country"] for country in countries],
                 locationmode="country names",
                 z=[country["ranking"] for country in countries],
-                customdata=[country["country_code"] for country in countries],
+                customdata=[[country["country_code"]] for country in countries],
                 zmin=0,
                 zmax=100,
                 colorscale=[
@@ -40,7 +40,7 @@ def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
                 },
                 hovertemplate=(
                     "<b>%{location}</b><br>"
-                    "Código: %{customdata}<br>"
+                    "Código: %{customdata[0]}<br>"
                     "Ranking ILGA: %{z:.2f}%<extra></extra>"
                 ),
             )
@@ -279,7 +279,7 @@ def build_fra_choropleth(
                 locations=[item["country"] for item in answers],
                 locationmode="country names",
                 z=[item["percentage"] for item in answers],
-                customdata=[item["observations"] for item in answers],
+                customdata=[[item["country_code"], item["observations"]] for item in answers],
                 zmin=0,
                 zmax=100,
                 colorscale=[
@@ -297,8 +297,9 @@ def build_fra_choropleth(
                 },
                 hovertemplate=(
                     "<b>%{location}</b><br>"
+                    "Código: %{customdata[0]}<br>"
                     "Media FRA: %{z:.2f}%<br>"
-                    "Observaciones: %{customdata}<extra></extra>"
+                    "Observaciones: %{customdata[1]}<extra></extra>"
                 ),
             )
         )

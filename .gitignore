@@ -101,6 +101,13 @@ run_*.py
 
 # Local tests (ignored in repo)
 tests/
+!tests/
+tests/**
+!tests/unit/
+tests/unit/**
+!tests/unit/analytics/
+tests/unit/analytics/**
+!tests/unit/analytics/test_statistics.py
 
 # Generated Dash assets
 src/app/dash/assets/generated/
