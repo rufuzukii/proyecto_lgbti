@@ -13,6 +13,13 @@ from app.analytics.legal_criteria import (
     get_criterion_score_label,
     get_criterion_status,
 )
+from app.analytics.percentage_display import (
+    MISSING_PERCENTAGE_COLOR,
+    coerce_percentage,
+    format_percentage,
+    prepare_percentage_display_values,
+)
+from app.dash.i18n import ui_text
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +32,14 @@ CHART_COLORS = {
 }
 RESPONSE_COLOR_PALETTE = [
     "#3266a8",
-    "#a55233",
+    "#d73027",
     "#167d68",
     "#7c4dff",
     "#d14f7b",
     "#8a6f1d",
     "#2f8f9d",
-    "#c46a1a",
-    "#5f6c7b",
+    "#c62828",
+    "#2e7d32",
     "#b83280",
     "#4c7f2f",
     "#6d5a8d",
@@ -61,24 +68,34 @@ def build_europe_choropleth(
     *,
     source: str,
     selected_iso: str | None = None,
+    language: str = "es",
 ) -> go.Figure:
     dataframe = pd.DataFrame(ranking_rows)
-    required_columns = {"country", "iso", "value"}
+    required_columns = {"country", "iso"}
     if dataframe.empty or not required_columns.issubset(dataframe.columns):
         return empty_figure("No hay datos cartografiables para los filtros seleccionados.")
+    if "value" not in dataframe.columns:
+        dataframe["value"] = None
 
     dataframe = dataframe.copy()
-    dataframe["value"] = dataframe["value"].apply(normalize_percentage)
+    dataframe["value"] = dataframe["value"].apply(
+        lambda value: coerce_percentage(
+            value,
+            logger=logger,
+            context={"chart": "europe_choropleth", "source": source},
+        )
+    )
     dataframe["iso"] = dataframe["iso"].astype(str).str.strip().str.upper()
     dataframe["iso3"] = dataframe["iso"].apply(to_iso3_country_code)
-    valid_values = dataframe["value"].dropna()
-    if valid_values.empty:
-        return empty_figure("No hay datos disponibles para esta combinación de filtros.")
-
-    if float(valid_values.max()) <= 1 and float(valid_values.min()) >= 0:
-        dataframe.loc[dataframe["value"].notna(), "value"] = dataframe.loc[dataframe["value"].notna(), "value"] * 100
-        valid_values = dataframe["value"].dropna()
-
+    display_values, normalized = prepare_percentage_display_values(
+        dataframe["value"].tolist(),
+        normalize_when_total_is_not_100=False,
+        logger=logger,
+        context={"chart": "europe_choropleth", "source": source},
+    )
+    dataframe["display_value"] = display_values
+    dataframe["display_value_text"] = dataframe["display_value"].apply(format_percentage)
+    valid_values = dataframe["display_value"].dropna()
     missing_codes = sorted(
         set(dataframe.loc[dataframe["iso3"].eq(""), "iso"].dropna()).difference(NON_GEOGRAPHIC_CODES)
     )
@@ -91,21 +108,23 @@ def build_europe_choropleth(
         "statistics_map_dataframe",
         extra={
             "columns": dataframe.columns.tolist(),
-            "value_dtype": str(dataframe["value"].dtype),
-            "value_min": float(valid_values.min()),
-            "value_max": float(valid_values.max()),
-            "value_nulls": int(dataframe["value"].isna().sum()),
+            "value_dtype": str(dataframe["display_value"].dtype),
+            "value_min": float(valid_values.min()) if not valid_values.empty else None,
+            "value_max": float(valid_values.max()) if not valid_values.empty else None,
+            "value_nulls": int(dataframe["display_value"].isna().sum()),
             "iso_codes": sorted(dataframe["iso"].dropna().unique().tolist()),
+            "normalized": normalized,
         },
     )
 
-    drawable = dataframe[dataframe["iso3"].ne("") & dataframe["value"].notna()]
-    if drawable.empty:
+    drawable = dataframe[dataframe["iso3"].ne("") & dataframe["display_value"].notna()]
+    unavailable = dataframe[dataframe["iso3"].ne("") & dataframe["display_value"].isna()]
+    if drawable.empty and unavailable.empty:
         return empty_figure("No hay países con correspondencia geográfica para esta consulta.")
 
-    minimum = float(valid_values.min())
-    maximum = float(valid_values.max())
-    if minimum == maximum:
+    minimum = float(valid_values.min()) if not valid_values.empty else 0
+    maximum = float(valid_values.max()) if not valid_values.empty else 100
+    if not valid_values.empty and minimum == maximum:
         minimum = max(0, minimum - 1)
         maximum = min(100, maximum + 1)
 
@@ -114,27 +133,46 @@ def build_europe_choropleth(
         if source == "FRA"
         else [[0.0, "#d73027"], [0.35, "#fdae61"], [0.65, "#fee08b"], [0.82, "#66c2a5"], [1.0, "#177245"]]
     )
-    figure = go.Figure(
-        go.Choropleth(
-            locations=drawable["iso3"],
-            locationmode="ISO-3",
-            z=drawable["value"],
-            text=drawable["country"],
-            customdata=drawable[["iso"]].fillna("").to_numpy(),
-            zmin=minimum,
-            zmax=maximum,
-            colorscale=color_scale,
-            marker={"line": {"color": "#ffffff", "width": 0.75}},
-            colorbar={"title": "Porcentaje", "ticksuffix": "%", "thickness": 13},
-            hovertemplate=(
-                "<b>%{text}</b><br>"
-                "ISO: %{customdata[0]}<br>"
-                f"{source}: %{{z:.2f}}%<extra></extra>"
-            ),
+    figure = go.Figure()
+    if not drawable.empty:
+        drawable = drawable.assign(value_label=ui_text("chart_value", language))
+        figure.add_trace(
+            go.Choropleth(
+                locations=drawable["iso3"],
+                locationmode="ISO-3",
+                z=drawable["display_value"],
+                text=drawable["country"],
+                customdata=drawable[["iso", "value_label", "display_value_text"]].fillna("").to_numpy(),
+                zmin=minimum,
+                zmax=maximum,
+                colorscale=color_scale,
+                marker={"line": {"color": "#ffffff", "width": 0.75}},
+                colorbar={"title": ui_text("chart_percentage", language), "ticksuffix": "%", "thickness": 13},
+                hovertemplate=(
+                    "<b>%{text}</b><br>"
+                    "%{customdata[1]}: %{customdata[2]}<extra></extra>"
+                ),
+            )
         )
-    )
+    if not unavailable.empty:
+        unavailable = unavailable.assign(missing_message=ui_text("chart_not_enough_information", language))
+        figure.add_trace(
+            go.Choropleth(
+                locations=unavailable["iso3"],
+                locationmode="ISO-3",
+                z=[0] * len(unavailable),
+                text=unavailable["country"],
+                customdata=unavailable[["iso", "missing_message"]].fillna("").to_numpy(),
+                zmin=0,
+                zmax=1,
+                colorscale=[[0.0, MISSING_PERCENTAGE_COLOR], [1.0, MISSING_PERCENTAGE_COLOR]],
+                marker={"line": {"color": "#ffffff", "width": 0.75}},
+                showscale=False,
+                hovertemplate="<b>%{text}</b><br>%{customdata[1]}<extra></extra>",
+            )
+        )
     if selected_iso:
-        selected = drawable[drawable["iso"] == selected_iso]
+        selected = dataframe[(dataframe["iso"] == selected_iso) & dataframe["iso3"].ne("")]
         if not selected.empty:
             centroid = EUROPE_CENTROIDS.get(selected_iso)
             if centroid:
@@ -166,47 +204,49 @@ def build_europe_choropleth(
         uirevision=f"statistics-{source}",
     )
     _apply_base_layout(figure, margin={"l": 0, "r": 0, "t": 12, "b": 0})
-    figure.add_annotation(
-        text="Sin datos: gris",
-        x=0,
-        y=0,
-        xref="paper",
-        yref="paper",
-        showarrow=False,
-        xanchor="left",
-        yanchor="bottom",
-        font={"size": 11, "color": "#5f6672"},
-        bgcolor="rgba(255,255,255,0.75)",
-        bordercolor="#d1d5db",
-        borderwidth=1,
-    )
+    if not unavailable.empty:
+        figure.add_annotation(
+            text=ui_text("chart_no_data_grey", language),
+            x=0,
+            y=0,
+            xref="paper",
+            yref="paper",
+            showarrow=False,
+            xanchor="left",
+            yanchor="bottom",
+            font={"size": 11, "color": "#5f6672"},
+            bgcolor="rgba(255,255,255,0.75)",
+            bordercolor="#d1d5db",
+            borderwidth=1,
+        )
     return figure
 
 
 def normalize_percentage(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        value = value.strip().replace("%", "").replace(",", ".")
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return coerce_percentage(value)
 
 
-def build_ranking_chart(ranking_rows: list[dict[str, Any]], *, source: str, limit: int = 20) -> go.Figure:
+def build_ranking_chart(
+    ranking_rows: list[dict[str, Any]],
+    *,
+    source: str,
+    limit: int = 20,
+    language: str = "es",
+) -> go.Figure:
     dataframe = pd.DataFrame(ranking_rows)
     if dataframe.empty:
         return empty_figure("No hay ranking para mostrar.")
     dataframe = dataframe.sort_values("value", ascending=False).head(limit)
+    dataframe["value_text"] = dataframe["value"].apply(format_percentage)
+    dataframe["value_label"] = ui_text("chart_value", language)
     figure = go.Figure(
         go.Bar(
             x=dataframe["value"].iloc[::-1],
             y=dataframe["country"].iloc[::-1],
             orientation="h",
             marker={"color": CHART_COLORS["fra" if source == "FRA" else "ilga"]},
-            customdata=dataframe[["iso"]].iloc[::-1].fillna("").to_numpy(),
-            hovertemplate="<b>%{y}</b><br>ISO: %{customdata[0]}<br>%{x:.2f}%<extra></extra>",
+            customdata=dataframe[["iso", "value_label", "value_text"]].iloc[::-1].fillna("").to_numpy(),
+            hovertemplate="<b>%{y}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>",
         )
     )
     figure.update_layout(xaxis={"title": "Porcentaje", "range": [0, 100]}, yaxis={"title": ""})
@@ -237,6 +277,7 @@ def build_fra_response_comparison_chart(
     data_rows: list[dict[str, Any]],
     *,
     selected_countries: list[str] | None = None,
+    language: str = "es",
 ) -> go.Figure:
     dataframe = _response_comparison_dataframe(data_rows)
     if dataframe.empty:
@@ -245,11 +286,11 @@ def build_fra_response_comparison_chart(
     mode = _response_comparison_mode(dataframe)
     selected_keys = _selected_country_keys(selected_countries)
     if mode == "stacked_percentage":
-        figure = _build_stacked_response_chart(dataframe, selected_keys)
+        figure = _build_stacked_response_chart(dataframe, selected_keys, language=language)
     elif mode == "categorical":
         figure = _build_categorical_response_chart(dataframe, selected_keys)
     else:
-        figure = _build_numeric_response_chart(dataframe, selected_keys)
+        figure = _build_numeric_response_chart(dataframe, selected_keys, language=language)
     _apply_comparison_height(figure, dataframe["country_key"].nunique())
     return figure
 
@@ -286,18 +327,25 @@ def summarize_response_comparison(data_rows: list[dict[str, Any]]) -> dict[str, 
     }
 
 
-def build_comparison_chart(ranking_rows: list[dict[str, Any]], *, source: str) -> go.Figure:
+def build_comparison_chart(
+    ranking_rows: list[dict[str, Any]],
+    *,
+    source: str,
+    language: str = "es",
+) -> go.Figure:
     dataframe = pd.DataFrame(ranking_rows)
     if dataframe.empty:
         return empty_figure("Selecciona entre 2 y 6 países para comparar.")
     dataframe = dataframe.sort_values("value", ascending=False)
+    dataframe["value_text"] = dataframe["value"].apply(format_percentage)
+    dataframe["value_label"] = ui_text("chart_value", language)
     figure = go.Figure(
         go.Bar(
             x=dataframe["country"],
             y=dataframe["value"],
             marker={"color": CHART_COLORS["fra_alt" if source == "FRA" else "ilga"]},
-            customdata=dataframe[["iso"]].fillna("").to_numpy(),
-            hovertemplate="<b>%{x}</b><br>ISO: %{customdata[0]}<br>%{y:.2f}%<extra></extra>",
+            customdata=dataframe[["iso", "value_label", "value_text"]].fillna("").to_numpy(),
+            hovertemplate="<b>%{x}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>",
         )
     )
     figure.update_layout(xaxis={"title": ""}, yaxis={"title": "Porcentaje", "range": [0, 100]})
@@ -338,7 +386,13 @@ def _response_comparison_dataframe(data_rows: list[dict[str, Any]]) -> pd.DataFr
 
     numeric_source = "percentage" if "percentage" in dataframe else "value" if "value" in dataframe else None
     if numeric_source:
-        dataframe["numeric_value"] = dataframe[numeric_source].apply(normalize_percentage)
+        dataframe["numeric_value"] = dataframe[numeric_source].apply(
+            lambda value: coerce_percentage(
+                value,
+                logger=logger,
+                context={"chart": "fra_response_comparison", "field": numeric_source},
+            )
+        )
     else:
         dataframe["numeric_value"] = None
     dataframe["country_key"] = dataframe.apply(
@@ -359,7 +413,12 @@ def _response_comparison_mode(dataframe: pd.DataFrame) -> str:
     return "numeric"
 
 
-def _build_stacked_response_chart(dataframe: pd.DataFrame, selected_keys: set[str]) -> go.Figure:
+def _build_stacked_response_chart(
+    dataframe: pd.DataFrame,
+    selected_keys: set[str],
+    *,
+    language: str = "es",
+) -> go.Figure:
     pivot = _response_percentage_pivot(dataframe)
     labels = _response_labels(dataframe)
     normalized = _normalize_percentage_pivot(pivot)
@@ -374,7 +433,8 @@ def _build_stacked_response_chart(dataframe: pd.DataFrame, selected_keys: set[st
     figure = go.Figure()
     for response_key in sorted(normalized.columns, key=lambda key: labels.get(str(key), str(key)).casefold()):
         values = normalized[response_key].tolist()
-        original_values = pivot[response_key].where(pivot[response_key].notna(), None).tolist()
+        formatted_values = [format_percentage(value) or "" for value in values]
+        value_label = ui_text("chart_value", language)
         figure.add_trace(
             go.Bar(
                 x=values,
@@ -385,14 +445,8 @@ def _build_stacked_response_chart(dataframe: pd.DataFrame, selected_keys: set[st
                     "color": _response_color(str(response_key)),
                     "line": _selected_marker_line(selected),
                 },
-                customdata=[[iso, original] for iso, original in zip(isos, original_values)],
-                hovertemplate=(
-                    "<b>%{y}</b><br>"
-                    "ISO: %{customdata[0]}<br>"
-                    f"Respuesta: {labels.get(str(response_key), str(response_key))}<br>"
-                    "Valor original: %{customdata[1]:.0f}%<br>"
-                    "Porcentaje dentro del país: %{x:.2f}%<extra></extra>"
-                ),
+                customdata=[[iso, value_label, formatted] for iso, formatted in zip(isos, formatted_values)],
+                hovertemplate="<b>%{y}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>",
             )
         )
     _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 95})
@@ -407,7 +461,12 @@ def _build_stacked_response_chart(dataframe: pd.DataFrame, selected_keys: set[st
     return figure
 
 
-def _build_numeric_response_chart(dataframe: pd.DataFrame, selected_keys: set[str]) -> go.Figure:
+def _build_numeric_response_chart(
+    dataframe: pd.DataFrame,
+    selected_keys: set[str],
+    *,
+    language: str = "es",
+) -> go.Figure:
     grouped = (
         dataframe[dataframe["numeric_value"].notna()]
         .groupby(["country", "iso", "country_key"], dropna=False)
@@ -419,23 +478,32 @@ def _build_numeric_response_chart(dataframe: pd.DataFrame, selected_keys: set[st
         return empty_figure("No hay valores numéricos comparables para esta consulta.")
 
     selected = grouped["country_key"].isin(selected_keys).tolist()
+    grouped["value_text"] = grouped["value"].apply(format_percentage)
+    grouped["value_label"] = ui_text("chart_value", language)
     colors = [
         _response_color(str(row.response_key)) if row.response_key else CHART_COLORS["fra"]
         for row in grouped.itertuples()
     ]
+    response_label = str(grouped["response_label"].dropna().iloc[0]) if not grouped["response_label"].dropna().empty else ui_text("chart_value", language)
     figure = go.Figure(
         go.Bar(
             x=grouped["value"],
             y=grouped["country"],
+            name=response_label,
             orientation="h",
             marker={"color": colors, "line": _selected_marker_line(selected)},
-            customdata=grouped[["iso", "response_label"]].fillna("").to_numpy(),
-            hovertemplate="<b>%{y}</b><br>ISO: %{customdata[0]}<br>%{customdata[1]}: %{x:.2f}%<extra></extra>",
-            showlegend=False,
+            customdata=grouped[["iso", "value_label", "value_text"]].fillna("").to_numpy(),
+            hovertemplate="<b>%{y}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>",
+            showlegend=True,
         )
     )
-    figure.update_layout(xaxis={"title": "Valor", "range": [0, 100]}, yaxis={"title": "", "automargin": True})
     _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 55})
+    figure.update_layout(
+        xaxis={"title": "Valor", "range": [0, 100]},
+        yaxis={"title": "", "automargin": True},
+        legend={"title": {"text": "Respuesta"}, "orientation": "h", "y": -0.12},
+        showlegend=True,
+    )
     _add_selected_country_annotations(figure, grouped["country"].tolist(), grouped["iso"].tolist(), selected_keys)
     return figure
 
@@ -491,13 +559,25 @@ def _response_percentage_pivot(dataframe: pd.DataFrame) -> pd.DataFrame:
 def _normalize_percentage_pivot(pivot: pd.DataFrame) -> pd.DataFrame:
     if pivot.empty:
         return pivot
-    clean = pivot.apply(pd.to_numeric, errors="coerce").fillna(0)
-    clean = clean.clip(lower=0)
-    totals = clean.sum(axis=1)
-    normalized = clean.div(totals.where(totals > 0), axis=0) * 100
-    normalized = normalized.fillna(0).clip(lower=0, upper=100)
-    row_totals = normalized.sum(axis=1)
-    return normalized.div(row_totals.where(row_totals > 0), axis=0).fillna(0) * 100
+    clean = pivot.apply(pd.to_numeric, errors="coerce")
+    normalized = pd.DataFrame(index=clean.index, columns=clean.columns, dtype=float)
+    for index, row in clean.iterrows():
+        display_values, was_normalized = prepare_percentage_display_values(
+            row.tolist(),
+            normalize_when_total_is_not_100=True,
+            logger=logger,
+            context={"chart": "fra_response_comparison", "country": index[0] if isinstance(index, tuple) else index},
+        )
+        normalized.loc[index] = [
+            0 if value is None else value
+            for value in display_values
+        ]
+        if was_normalized:
+            logger.debug(
+                "fra_response_comparison_percentages_normalized",
+                extra={"country": index[0] if isinstance(index, tuple) else index},
+            )
+    return normalized
 
 
 def _stacked_country_order(normalized: pd.DataFrame) -> list[tuple[str, str]]:

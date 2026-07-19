@@ -16,12 +16,33 @@ from app.dash.layouts.navigation import build_navbar
 PRIMARY_SOURCES = [
     {
         "entity": "FELGTBI+",
-        "title": "Estado LGTBI+ - FELGTBI+",
+        "title": "Estado LGBTIQ+ - FELGTBI+",
         "url": "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/",
         "description": (
             "Informes y estudios sobre la situación social, la discriminación y las "
-            "experiencias de las personas LGTBI+ en España."
+            "experiencias de las personas LGBTIQ+ en España."
         ),
+        "details": [
+            (
+                "La FELGTBI+ defiende y promueve los derechos humanos y la "
+                "igualdad de las personas LGBTIQ+ y sus familias en el Estado "
+                "español, con atención especial a quienes afrontan mayor "
+                "vulnerabilidad.",
+                (
+                    "FELGTBI+ defends and promotes human rights and equality "
+                    "for LGBTIQ+ people and their families in Spain, with special "
+                    "attention to those facing greater vulnerability."
+                ),
+            ),
+            (
+                "En RainbowLens, FELGTBI+ aporta contexto estatal sobre activismo, "
+                "derechos y organización social LGBTIQ+.",
+                (
+                    "In RainbowLens, FELGTBI+ adds national context on LGBTIQ+ "
+                    "activism, rights and social organisation."
+                ),
+            ),
+        ],
         "type": "Fuente principal",
     },
     {
@@ -30,8 +51,37 @@ PRIMARY_SOURCES = [
         "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii",
         "description": (
             "Resultados de la tercera encuesta europea sobre las experiencias, "
-            "condiciones de vida y discriminación de las personas LGBTIQ."
+            "condiciones de vida y discriminación de las personas LGBTIQ+."
         ),
+        "details": [
+            (
+                "La Agencia de los Derechos Fundamentales de la Unión Europea "
+                "recoge datos de encuesta sobre experiencias reales de la "
+                "población LGBTIQ+.",
+                (
+                    "The European Union Agency for Fundamental Rights collects "
+                    "survey data on real experiences of the LGBTIQ+ population."
+                ),
+            ),
+            (
+                "Sus indicadores cubren dimensiones como discriminación, "
+                "visibilidad, seguridad, acoso, condiciones socioeconómicas "
+                "y relación con instituciones.",
+                (
+                    "Its indicators cover dimensions such as discrimination, "
+                    "visibility, safety, harassment, socioeconomic conditions "
+                    "and relationships with institutions."
+                ),
+            ),
+            (
+                "En RainbowLens, FRA complementa el mapa legal de ILGA con "
+                "evidencia social comparable entre países.",
+                (
+                    "In RainbowLens, FRA complements ILGA's legal map with "
+                    "social evidence that can be compared across countries."
+                ),
+            ),
+        ],
         "type": "Fuente principal",
     },
     {
@@ -40,8 +90,38 @@ PRIMARY_SOURCES = [
         "url": "https://rainbowmap.ilga-europe.org",
         "description": (
             "Comparación anual de la situación legal y política de las personas "
-            "LGBTI+ en 49 países europeos."
+            "LGBTIQ+ en 49 países europeos."
         ),
+        "details": [
+            (
+                "ILGA Europe evalúa leyes y políticas públicas que afectan "
+                "a las personas LGBTIQ+ en Europa.",
+                (
+                    "ILGA Europe evaluates laws and public policies affecting "
+                    "LGBTIQ+ people in Europe."
+                ),
+            ),
+            (
+                "El Rainbow Map organiza esa información en indicadores "
+                "relacionados con igualdad y no discriminación, familia, "
+                "delitos y discursos de odio, reconocimiento legal de género, "
+                "integridad corporal, asilo y espacio de sociedad civil.",
+                (
+                    "The Rainbow Map organises this information into indicators "
+                    "related to equality and non-discrimination, family, hate "
+                    "crime and speech, legal gender recognition, bodily integrity, "
+                    "asylum and civil society space."
+                ),
+            ),
+            (
+                "En la aplicación, estos datos permiten comparar países y "
+                "visualizar la evolución del marco legal por año.",
+                (
+                    "In the application, these data make it possible to compare "
+                    "countries and visualise the legal framework over time."
+                ),
+            ),
+        ],
         "type": "Fuente principal",
     },
 ]
@@ -52,11 +132,11 @@ RECOMMENDED_SOURCE_GROUPS = [
         "sources": [
             {
                 "entity": "FRA",
-                "title": "LGBTIQ Equality at a Crossroads - FRA",
+                "title": "LGBTIQ+ Equality at a Crossroads - FRA",
                 "url": "https://fra.europa.eu/sites/default/files/fra_uploads/fra-2024-lgbtiq-equality_en.pdf",
                 "description": (
                     "Informe detallado de la FRA sobre los principales resultados de la "
-                    "encuesta europea LGBTIQ y las desigualdades que persisten en "
+                    "encuesta europea LGBTIQ+ y las desigualdades que persisten en "
                     "distintos ámbitos de la vida."
                 ),
                 "type": "Lectura recomendada",
@@ -69,11 +149,11 @@ RECOMMENDED_SOURCE_GROUPS = [
         "sources": [
             {
                 "entity": "Comision Europea",
-                "title": "LGBTIQ Equality Strategy 2026-2030 - Comision Europea",
+                "title": "LGBTIQ+ Equality Strategy 2026-2030 - Comision Europea",
                 "url": "https://commission.europa.eu/strategy-and-policy/policies/justice-and-fundamental-rights/combatting-discrimination/lesbian-gay-bi-trans-and-intersex-equality/lgbtiq-equality-strategy-2026-2030_en",
                 "description": (
                     "Estrategia de la Comision Europea que establece prioridades, "
-                    "acciones y compromisos para avanzar en la igualdad LGBTIQ durante "
+                    "acciones y compromisos para avanzar en la igualdad LGBTIQ+ durante "
                     "el periodo 2026-2030."
                 ),
                 "type": "Lectura recomendada",
@@ -85,11 +165,11 @@ RECOMMENDED_SOURCE_GROUPS = [
         "sources": [
             {
                 "entity": "Unión Europea",
-                "title": "LGBTI Equality - Fichas informativas de la Unión Europea",
+                "title": "LGBTIQ+ Equality - Fichas informativas de la Unión Europea",
                 "url": "https://op.europa.eu/webpub/com/factsheets/lgbti/en/",
                 "description": (
                     "Resumen accesible de las políticas, marcos de actuación y "
-                    "principales objetivos de la Unión Europea en materia de igualdad LGBTI."
+                    "principales objetivos de la Unión Europea en materia de igualdad LGBTIQ+."
                 ),
                 "type": "Lectura recomendada",
             }
@@ -173,112 +253,6 @@ def build_about_layout() -> html.Div:
                         ),
                         className="about-attribution",
                     ),
-                    html.Section(
-                        [
-                            _about_block(
-                                "ILGA Europe Rainbow Map",
-                                [
-                                    (
-                                        "ILGA Europe evalúa leyes y políticas públicas que afectan "
-                                        "a las personas LGBTIQ+ en Europa y Asia Central.",
-                                        (
-                                            "ILGA Europe evaluates laws and public policies affecting "
-                                            "LGBTIQ+ people in Europe and Central Asia."
-                                        ),
-                                    ),
-                                    (
-                                        "El Rainbow Map organiza esa información en indicadores "
-                                        "relacionados con igualdad y no discriminación, familia, "
-                                        "delitos y discursos de odio, reconocimiento legal de género, "
-                                        "integridad corporal, asilo y espacio de sociedad civil.",
-                                        (
-                                            "The Rainbow Map organises this information into indicators "
-                                            "related to equality and non-discrimination, family, hate "
-                                            "crime and speech, legal gender recognition, bodily integrity, "
-                                            "asylum and civil society space."
-                                        ),
-                                    ),
-                                    (
-                                        "En la aplicación, estos datos permiten comparar países y "
-                                        "visualizar la evolución del marco legal por año.",
-                                        (
-                                            "In the application, these data make it possible to compare "
-                                            "countries and visualise the legal framework over time."
-                                        ),
-                                    ),
-                                ],
-                            ),
-                            _about_block(
-                                "FRA",
-                                [
-                                    (
-                                        "La Agencia de los Derechos Fundamentales de la Unión Europea "
-                                        "recoge datos de encuesta sobre experiencias reales de la "
-                                        "población LGBTIQ+.",
-                                        (
-                                            "The European Union Agency for Fundamental Rights collects "
-                                            "survey data on real experiences of the LGBTIQ+ population."
-                                        ),
-                                    ),
-                                    (
-                                        "Sus indicadores cubren dimensiones como discriminación, "
-                                        "visibilidad, seguridad, acoso, condiciones socioeconómicas "
-                                        "y relación con instituciones.",
-                                        (
-                                            "Its indicators cover dimensions such as discrimination, "
-                                            "visibility, safety, harassment, socioeconomic conditions "
-                                            "and relationships with institutions."
-                                        ),
-                                    ),
-                                    (
-                                        "En RainbowLens, FRA complementa el mapa legal de ILGA con "
-                                        "evidencia social comparable entre países.",
-                                        (
-                                            "In RainbowLens, FRA complements ILGA's legal map with "
-                                            "social evidence that can be compared across countries."
-                                        ),
-                                    ),
-                                ],
-                            ),
-                            _about_block(
-                                "FELGTBI+",
-                                [
-                                    (
-                                        "La FELGTBI+ defiende y promueve los derechos humanos y la "
-                                        "igualdad de las personas LGTBI+ y sus familias en el Estado "
-                                        "español, con atención especial a quienes afrontan mayor "
-                                        "vulnerabilidad.",
-                                        (
-                                            "FELGTBI+ defends and promotes human rights and equality "
-                                            "for LGTBI+ people and their families in Spain, with special "
-                                            "attention to those facing greater vulnerability."
-                                        ),
-                                    ),
-                                    (
-                                        "Su trabajo combina incidencia social y política, apoyo al "
-                                        "movimiento asociativo, cooperación en red, transparencia, "
-                                        "interseccionalidad y compromiso con la justicia social.",
-                                        (
-                                            "Its work combines social and policy advocacy, support for "
-                                            "the associative movement, network-based cooperation, "
-                                            "transparency, intersectionality and a commitment to social "
-                                            "justice."
-                                        ),
-                                    ),
-                                    (
-                                        "En RainbowLens, FELGTBI+ aporta contexto estatal sobre activismo, "
-                                        "derechos y organización social LGTBI+.",
-                                        (
-                                            "In RainbowLens, FELGTBI+ adds national context on LGTBI+ "
-                                            "activism, rights and social organisation."
-                                        ),
-                                    ),
-                                ],
-                                link=("https://felgtbi.org", "Web de FELGTBI+", "FELGTBI+ website"),
-                            ),
-                        ],
-                        className="about-grid",
-                    ),
                     _ilga_detail_section(ilga_document),
                 ],
                 className="about-shell",
@@ -289,7 +263,7 @@ def build_about_layout() -> html.Div:
 
 def _source_cards_section(
     title: str,
-    sources: list[dict[str, str]],
+    sources: list[dict[str, Any]],
     *,
     class_name: str,
 ) -> html.Section:
@@ -324,7 +298,7 @@ def _recommended_source_group(group: dict[str, Any]) -> html.Section:
     )
 
 
-def _source_card(source: dict[str, str]) -> html.Article:
+def _source_card(source: dict[str, Any]) -> html.Article:
     note = str(source.get("note") or "").strip()
     children: list[Any] = [
         html.Div(
@@ -337,6 +311,10 @@ def _source_card(source: dict[str, str]) -> html.Article:
         html.H3(str(source.get("title") or "")),
         html.P(str(source.get("description") or "")),
     ]
+    detail_paragraphs = source.get("details") or []
+    for paragraph in detail_paragraphs:
+        if isinstance(paragraph, tuple) and len(paragraph) == 2:
+            children.append(html.P(paragraph[0], **text_attrs(paragraph[0], paragraph[1])))
     if note:
         children.append(html.P(note, className="about-resource-card__note"))
     children.append(
@@ -364,33 +342,6 @@ def register_about_callbacks(app: Dash) -> None:
         if not country:
             return _about_ilga_empty_state()
         return _country_criteria_panel(country)
-
-
-def _about_block(
-    title: str,
-    paragraphs: list[tuple[str, str]],
-    link: tuple[str, str, str] | None = None,
-) -> html.Article:
-    children: list[Any] = [
-        html.H2(title),
-        *[html.P(es, **text_attrs(es, en)) for es, en in paragraphs],
-    ]
-    if link:
-        href, label_es, label_en = link
-        children.append(
-            html.A(
-                label_es,
-                href=href,
-                target="_blank",
-                rel="noopener noreferrer",
-                className="about-source-link",
-                **text_attrs(label_es, label_en),
-            )
-        )
-    return html.Article(
-        children,
-        className="about-card",
-    )
 
 
 def _about_ilga_empty_state() -> html.P:

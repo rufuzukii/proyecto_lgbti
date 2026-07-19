@@ -11,7 +11,7 @@ from pandas.errors import EmptyDataError
 
 from app.import_to_db.utils import normalize_header, parse_float
 
-FRA_SOURCE_NAME = "EU LGBTIQ Survey III (FRA 2023)"
+FRA_SOURCE_NAME = "EU LGBTIQ+ Survey III (FRA 2023)"
 FRA_SOURCE_TYPE = "EU_SURVEY"
 
 COLUMN_ALIASES: dict[str, str] = {

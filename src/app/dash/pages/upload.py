@@ -22,7 +22,7 @@ MAX_UPLOAD_FILES = 3
 DATA_SOURCE_OPTIONS = [
     {"label": "Encuesta europea LGBTIQ+", "value": "FRA"},
     {"label": "Mapa legal europeo", "value": "ILGA"},
-    {"label": "Estado LGTBI+ en España", "value": "FELGTB"},
+    {"label": "Estado LGBTIQ+ en España", "value": "FELGTB"},
 ]
 
 

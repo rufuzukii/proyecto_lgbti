@@ -18,7 +18,7 @@ FILTER_LABELS: dict[str, str] = {
     "age_group": "Age",
     "minority_group": "Belonging to a minority group",
     "education": "Education",
-    "openness": "Openness about being LGBTIQ",
+    "openness": "Openness about being LGBTIQ+",
     "employment_status": "Employment status",
     "place_of_residence": "Place of residence",
     "activity_limitation": "Activity limitation",

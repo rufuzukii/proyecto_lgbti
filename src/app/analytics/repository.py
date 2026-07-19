@@ -28,7 +28,7 @@ COUNTRY_LGBTI_STATUS_COLLECTION = "country_lgbti_status"
 DEFAULT_FELGTBI_COLLECTION = "Indicator_felgtbi"
 FELGTBI_SOURCE_CODE = "felgtbi_estado_lgtbi"
 SPAIN_COLLECTION_LABELS = {
-    DEFAULT_FELGTBI_COLLECTION: ("Estado LGTBI+ en España", "LGTBI+ status in Spain"),
+    DEFAULT_FELGTBI_COLLECTION: ("Estado LGBTIQ+ en España", "LGBTIQ+ status in Spain"),
 }
 SPAIN_COLLECTION_INCLUDE_TOKENS = ("felgtbi", "lgtbi", "spain", "espana", "españa", "estado_lgtbi")
 SPAIN_COLLECTION_EXCLUDED_PREFIXES = (
@@ -1131,7 +1131,13 @@ def _display_name_from_pdf_filename(value: str) -> str:
     filename = _basename(value)
     if filename.lower().endswith(".pdf"):
         filename = filename[:-4]
-    return filename.strip()
+    return _normalize_lgbtiq_display_label(filename.strip())
+
+
+def _normalize_lgbtiq_display_label(value: str) -> str:
+    label = re.sub(r"(?<![A-Za-z])LGTBI\+", "LGBTIQ+", value)
+    label = re.sub(r"(?<![A-Za-z])LGBTI\+", "LGBTIQ+", label)
+    return re.sub(r"(?<![A-Za-z])LGBTIQ(?!\+)", "LGBTIQ+", label)
 
 
 def _basename(value: str) -> str:
@@ -1447,8 +1453,8 @@ def _readable_collection_label(name: str, *, language: str = "es") -> str:
 
     translations_es = {
         "felgtbi": "FELGTBI",
-        "lgtbi": "LGTBI+",
-        "lgbti": "LGBTI+",
+        "lgtbi": "LGBTIQ+",
+        "lgbti": "LGBTIQ+",
         "lgbtiq": "LGBTIQ+",
         "spain": "España",
         "espana": "España",
@@ -1464,8 +1470,8 @@ def _readable_collection_label(name: str, *, language: str = "es") -> str:
     }
     translations_en = {
         "felgtbi": "FELGTBI",
-        "lgtbi": "LGTBI+",
-        "lgbti": "LGBTI+",
+        "lgtbi": "LGBTIQ+",
+        "lgbti": "LGBTIQ+",
         "lgbtiq": "LGBTIQ+",
         "spain": "Spain",
         "espana": "Spain",
@@ -1482,7 +1488,7 @@ def _readable_collection_label(name: str, *, language: str = "es") -> str:
     translations = translations_en if language == "en" else translations_es
     label_parts = [translations.get(token.lower(), _title_token(token)) for token in tokens]
     label = " ".join(label_parts)
-    return label.replace("FELGTBI LGTBI+", "FELGTBI")
+    return label.replace("FELGTBI LGBTIQ+", "FELGTBI")
 
 
 def _title_token(token: str) -> str:

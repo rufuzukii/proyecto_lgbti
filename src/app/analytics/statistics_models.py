@@ -7,7 +7,7 @@ FRA_FILTER_GROUP_A: tuple[str, ...] = (
     "Age",
     "Belonging to a minority group",
     "Education",
-    "Openness about being LGBTIQ",
+    "Openness about being LGBTIQ+",
     "Employment status",
     "Place of residence",
     "Activity limitation",

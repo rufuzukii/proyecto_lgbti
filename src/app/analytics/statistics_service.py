@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 
+from app.analytics.percentage_display import coerce_percentage
 from app.analytics.repository import (
     get_fra_indicator_answers,
     get_ilga_document_by_year,
@@ -40,9 +41,18 @@ def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
     for answer in document.get("answers", []):
         if not isinstance(answer, dict):
             continue
-        percentage = _safe_float(answer.get("percentage"))
-        if percentage is None:
-            continue
+        percentage = coerce_percentage(
+            _answer_percentage_value(answer),
+            logger=logger,
+            context={
+                "collection": "Indicator_fra",
+                "document_code": document.get("code"),
+                "country": answer.get("country"),
+                "country_code": answer.get("country_code"),
+                "answer": answer.get("answer"),
+                "field": "answers.percentage",
+            },
+        )
         country = repair_text_encoding(answer.get("country")).strip()
         answer_value = repair_text_encoding(answer.get("answer")).strip()
         if not country or not answer_value:
@@ -126,9 +136,36 @@ def build_fra_filter_type_options(document: dict[str, Any] | None, group: str) -
     present = _present_filter_types(dataframe)
     options = []
     for filter_type in allowed:
-        disabled = filter_type != "All" and filter_type not in present
+        disabled = (
+            not _all_filter_type_available(dataframe, group)
+            if filter_type == "All"
+            else filter_type not in present
+        )
         options.append(display_option(filter_type, filter_type, disabled=disabled))
     return options
+
+
+def build_fra_default_filter_types(document: dict[str, Any] | None) -> tuple[str, str]:
+    dataframe = fra_document_to_dataframe(document)
+    if dataframe.empty:
+        return "All", "All"
+    if _has_exact_filter_labels(dataframe, "All", "All"):
+        return "All", "All"
+
+    for filter_type in FRA_FILTER_GROUP_B[1:]:
+        if _has_rows_with_filter_types(dataframe, filter_a_type=None, filter_b_type=filter_type):
+            return "All", filter_type
+    for filter_type in FRA_FILTER_GROUP_A[1:]:
+        if _has_rows_with_filter_types(dataframe, filter_a_type=filter_type, filter_b_type=None):
+            return filter_type, "All"
+
+    present_a = [filter_type for filter_type in FRA_FILTER_GROUP_A[1:] if filter_type in _present_filter_types(dataframe)]
+    present_b = [filter_type for filter_type in FRA_FILTER_GROUP_B[1:] if filter_type in _present_filter_types(dataframe)]
+    for filter_a_type in present_a:
+        for filter_b_type in present_b:
+            if _has_rows_with_filter_types(dataframe, filter_a_type=filter_a_type, filter_b_type=filter_b_type):
+                return filter_a_type, filter_b_type
+    return "All", "All"
 
 
 def build_fra_filter_value_options(
@@ -203,13 +240,30 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     dataframe = fra_document_to_dataframe(document)
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
-    detail_dataframe = filter_fra_detail_dataframe(dataframe, query)
-    dataframe = filter_fra_dataframe(dataframe, query)
+    source_dataframe = dataframe
+    effective_answer = query.answer or _default_fra_answer_from_dataframe(dataframe)
+    dataframe = filter_fra_dataframe(dataframe, query, effective_answer=effective_answer)
+    effective_filter_scope = None
+    if dataframe.empty:
+        effective_filter_scope = _available_filter_label_scope(dataframe=source_dataframe, answer=effective_answer)
+        if effective_filter_scope is not None:
+            dataframe = filter_fra_dataframe(
+                source_dataframe,
+                query,
+                effective_answer=effective_answer,
+                filter_scope=effective_filter_scope,
+            )
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
+    detail_dataframe = filter_fra_detail_dataframe(
+        source_dataframe,
+        query,
+        filter_scope=effective_filter_scope,
+    )
 
     ranking = aggregate_fra_data(dataframe, ["country", "iso"], "percentage", "mean")
     ranking = ranking.rename(columns={"percentage": "value"}).sort_values("value", ascending=False)
+    ranking["value"] = ranking["value"].astype(object).where(pd.notna(ranking["value"]), None)
     return {
         "status": "ok",
         "message": "",
@@ -255,26 +309,36 @@ def get_ilga_statistics(query: IlgaStatisticsQuery) -> dict[str, Any]:
     }
 
 
-def filter_fra_dataframe(dataframe: pd.DataFrame, query: FraStatisticsQuery) -> pd.DataFrame:
+def filter_fra_dataframe(
+    dataframe: pd.DataFrame,
+    query: FraStatisticsQuery,
+    *,
+    effective_answer: str | None = None,
+    filter_scope: tuple[str, str] | None = None,
+) -> pd.DataFrame:
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
         filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
     if query.countries:
         selected = {normalize_country_code(country) or str(country) for country in query.countries}
         filtered = filtered[filtered["iso"].isin(selected) | filtered["country"].isin(selected)]
-    if query.answer:
-        filtered = filtered[filtered["answer"] == query.answer]
-    filtered = _apply_filter_pair(filtered, query.filter_a_name, query.filter_a_value)
-    filtered = _apply_filter_pair(filtered, query.filter_b_name, query.filter_b_value)
+    selected_answer = effective_answer if effective_answer is not None else query.answer
+    if selected_answer:
+        filtered = filtered[filtered["answer"] == selected_answer]
+    filtered = _apply_exact_filter_scope(filtered, query, filter_scope=filter_scope)
     return filtered
 
 
-def filter_fra_detail_dataframe(dataframe: pd.DataFrame, query: FraStatisticsQuery) -> pd.DataFrame:
+def filter_fra_detail_dataframe(
+    dataframe: pd.DataFrame,
+    query: FraStatisticsQuery,
+    *,
+    filter_scope: tuple[str, str] | None = None,
+) -> pd.DataFrame:
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
         filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
-    filtered = _apply_filter_pair(filtered, query.filter_a_name, query.filter_a_value)
-    filtered = _apply_filter_pair(filtered, query.filter_b_name, query.filter_b_value)
+    filtered = _apply_exact_filter_scope(filtered, query, filter_scope=filter_scope)
     return filtered
 
 
@@ -307,7 +371,9 @@ def aggregate_fra_data(
     missing = [column for column in group_by if column not in dataframe.columns]
     if missing:
         raise ValueError("invalid_group_by")
-    grouped = dataframe.groupby(group_by, dropna=False)[value_column]
+    numeric_dataframe = dataframe.copy()
+    numeric_dataframe[value_column] = pd.to_numeric(numeric_dataframe[value_column], errors="coerce")
+    grouped = numeric_dataframe.groupby(group_by, dropna=False)[value_column]
     if aggregation == "mean":
         result = grouped.mean()
     elif aggregation == "median":
@@ -352,6 +418,91 @@ def _apply_filter_pair(
     ]
 
 
+def _apply_exact_filter_scope(
+    dataframe: pd.DataFrame,
+    query: FraStatisticsQuery,
+    *,
+    filter_scope: tuple[str, str] | None = None,
+) -> pd.DataFrame:
+    if dataframe.empty:
+        return dataframe
+    if "filter_a" not in dataframe.columns or "filter_b" not in dataframe.columns:
+        return dataframe
+
+    expected_a, expected_b = filter_scope or (
+        _selected_filter_label(query.filter_a_name, query.filter_a_value),
+        _selected_filter_label(query.filter_b_name, query.filter_b_value),
+    )
+    return dataframe[
+        dataframe["filter_a"].apply(lambda value: _same_filter_label(value, expected_a))
+        & dataframe["filter_b"].apply(lambda value: _same_filter_label(value, expected_b))
+    ]
+
+
+def _selected_filter_label(filter_name: str | None, filter_value: str | None) -> str:
+    clean_name = normalize_filter_type(filter_name)
+    clean_value = repair_text_encoding(filter_value).strip()
+    if not clean_name or clean_name == "All" or not clean_value or clean_value == "All":
+        return "All"
+    return normalize_filter_value(clean_value)
+
+
+def _same_filter_label(value: Any, expected: str) -> bool:
+    return normalize_filter_value(repair_text_encoding(value).strip()) == expected
+
+
+def _available_filter_label_scope(
+    *,
+    dataframe: pd.DataFrame,
+    answer: str | None,
+) -> tuple[str, str] | None:
+    if dataframe.empty or "filter_a" not in dataframe or "filter_b" not in dataframe:
+        return None
+    candidates = dataframe.copy()
+    if answer:
+        candidates = candidates[candidates["answer"] == answer]
+    if candidates.empty:
+        return None
+
+    valid_candidates = candidates[candidates["percentage"].notna()] if "percentage" in candidates else candidates
+    if valid_candidates.empty:
+        valid_candidates = candidates
+
+    if _has_exact_filter_labels(valid_candidates, "All", "All"):
+        return "All", "All"
+
+    all_a = valid_candidates[valid_candidates["filter_a"].apply(lambda value: _same_filter_label(value, "All"))]
+    non_all_b_values = _sorted_non_all_filter_values(all_a, "filter_b")
+    if non_all_b_values:
+        return "All", non_all_b_values[0]
+
+    all_b = valid_candidates[valid_candidates["filter_b"].apply(lambda value: _same_filter_label(value, "All"))]
+    non_all_a_values = _sorted_non_all_filter_values(all_b, "filter_a")
+    if non_all_a_values:
+        return non_all_a_values[0], "All"
+
+    pairs = sorted(
+        {
+            (normalize_filter_value(row.filter_a), normalize_filter_value(row.filter_b))
+            for row in valid_candidates[["filter_a", "filter_b"]].itertuples()
+            if not _same_filter_label(row.filter_a, "All") and not _same_filter_label(row.filter_b, "All")
+        },
+        key=lambda item: (item[0].casefold(), item[1].casefold()),
+    )
+    return pairs[0] if pairs else None
+
+
+def _sorted_non_all_filter_values(dataframe: pd.DataFrame, column: str) -> list[str]:
+    if dataframe.empty or column not in dataframe:
+        return []
+    values = {
+        normalize_filter_value(value)
+        for value in dataframe[column].dropna().tolist()
+        if not _same_filter_label(value, "All")
+    }
+    return sorted(values, key=str.casefold)
+
+
 def _filter_matches(filters: Any, filter_name: str, filter_value: str) -> bool:
     if not isinstance(filters, dict):
         return False
@@ -386,6 +537,74 @@ def _present_filter_types(dataframe: pd.DataFrame) -> set[str]:
         if isinstance(filters, dict):
             present.update(normalize_filter_type(key) for key in filters)
     return present
+
+
+def _all_filter_type_available(dataframe: pd.DataFrame, group: str) -> bool:
+    if dataframe.empty or "filters" not in dataframe:
+        return True
+    allowed = FRA_FILTER_GROUP_A if group == "a" else FRA_FILTER_GROUP_B
+    return any(
+        not _row_has_group_filter(filters, allowed)
+        for filters in dataframe["filters"]
+    )
+
+
+def _has_exact_filter_labels(dataframe: pd.DataFrame, filter_a: str, filter_b: str) -> bool:
+    if dataframe.empty or "filter_a" not in dataframe or "filter_b" not in dataframe:
+        return False
+    return bool(
+        (
+            dataframe["filter_a"].apply(lambda value: _same_filter_label(value, filter_a))
+            & dataframe["filter_b"].apply(lambda value: _same_filter_label(value, filter_b))
+        ).any()
+    )
+
+
+def _has_rows_with_filter_types(
+    dataframe: pd.DataFrame,
+    *,
+    filter_a_type: str | None,
+    filter_b_type: str | None,
+) -> bool:
+    if dataframe.empty or "filters" not in dataframe:
+        return False
+    return any(
+        _row_filter_scope_matches(filters, filter_a_type=filter_a_type, filter_b_type=filter_b_type)
+        for filters in dataframe["filters"]
+    )
+
+
+def _row_filter_scope_matches(
+    filters: Any,
+    *,
+    filter_a_type: str | None,
+    filter_b_type: str | None,
+) -> bool:
+    if not isinstance(filters, dict):
+        filters = {"All": "All"}
+    if filter_a_type is None and _row_has_group_filter(filters, FRA_FILTER_GROUP_A):
+        return False
+    if filter_b_type is None and _row_has_group_filter(filters, FRA_FILTER_GROUP_B):
+        return False
+    if filter_a_type is not None and not _row_has_filter_type(filters, filter_a_type):
+        return False
+    if filter_b_type is not None and not _row_has_filter_type(filters, filter_b_type):
+        return False
+    return True
+
+
+def _row_has_group_filter(filters: Any, allowed: tuple[str, ...]) -> bool:
+    if not isinstance(filters, dict):
+        return False
+    allowed_keys = {normalize_filter_type(filter_type) for filter_type in allowed if filter_type != "All"}
+    return any(normalize_filter_type(key) in allowed_keys for key in filters)
+
+
+def _row_has_filter_type(filters: Any, filter_type: str) -> bool:
+    if not isinstance(filters, dict):
+        return False
+    expected = normalize_filter_type(filter_type)
+    return any(normalize_filter_type(key) == expected for key in filters)
 
 
 def _first_matching_filter(filters: dict[str, str], allowed: tuple[str, ...]) -> str:
@@ -438,14 +657,26 @@ def _safe_int(value: Any) -> int | None:
 
 
 def _safe_float(value: Any) -> float | None:
-    if value is None:
+    return coerce_percentage(value)
+
+
+def _answer_percentage_value(answer: dict[str, Any]) -> Any:
+    if "percentage" in answer:
+        return answer.get("percentage")
+    return answer.get("value")
+
+
+def _default_fra_answer_from_dataframe(dataframe: pd.DataFrame) -> str | None:
+    if dataframe.empty or "answer" not in dataframe:
         return None
-    if isinstance(value, str):
-        value = value.strip().replace("%", "").replace(",", ".")
-    try:
-        return float(value)
-    except (TypeError, ValueError):
+    values = {
+        str(row.answer): normalize_filter_value(row.answer)
+        for row in dataframe[["answer"]].drop_duplicates().itertuples()
+        if str(row.answer or "").strip()
+    }
+    if not values:
         return None
+    return sorted(values.items(), key=lambda item: item[1])[0][0]
 
 
 def _status(status: str, message: str) -> dict[str, Any]:

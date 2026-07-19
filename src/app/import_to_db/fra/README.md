@@ -1,6 +1,6 @@
 # Importador FRA
 
-Procesa CSV de EU LGBTIQ Survey III y produce un documento por pregunta.
+Procesa CSV de EU LGBTIQ+ Survey III y produce un documento por pregunta.
 
 ## `importer.py`
 

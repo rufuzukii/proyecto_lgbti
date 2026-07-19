@@ -76,11 +76,11 @@ def build_spain_layout() -> html.Div:
                     html.Header(
                         [
                             html.P("España", className="stats-eyebrow", **text_attrs("España", "Spain")),
-                            html.H1(text("Indicadores estatales LGBTI+", "National LGBTI+ indicators")),
+                            html.H1(text("Indicadores estatales LGBTIQ+", "National LGBTIQ+ indicators")),
                             html.P(
                                 text(
-                                    "Explora información estatal sobre derechos, percepción social y experiencias de las personas LGTBI+.",
-                                    "Explore national information on rights, social perception, and experiences of LGTBI+ people.",
+                                    "Explora información estatal sobre derechos, percepción social y experiencias de las personas LGBTIQ+.",
+                                    "Explore national information on rights, social perception, and experiences of LGBTIQ+ people.",
                                 ),
                                 className="stats-lead",
                             ),

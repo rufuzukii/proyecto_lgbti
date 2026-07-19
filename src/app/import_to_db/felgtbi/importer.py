@@ -17,7 +17,7 @@ from bson import ObjectId
 from app.import_to_db.utils import normalize_header, parse_float
 
 FELGTBI_SOURCE_CODE = "felgtbi_estado_lgtbi"
-FELGTBI_SOURCE_NAME = "FELGTBI+ Estado LGTBI+"
+FELGTBI_SOURCE_NAME = "FELGTBI+ Estado LGBTIQ+"
 SPAIN_COUNTRY = "Spain"
 SPAIN_COUNTRY_CODE = "ES"
 FELGTBI_ASSET_ROOT = (
@@ -276,8 +276,8 @@ CONTROLLED_TOPIC_KEYWORDS: tuple[tuple[str, str], ...] = (
     ("sanitari", "Healthcare"),
     ("vivienda", "Housing"),
     ("familia", "Family"),
-    ("juventud", "LGBTI+ youth"),
-    ("joven", "LGBTI+ youth"),
+    ("juventud", "LGBTIQ+ youth"),
+    ("joven", "LGBTIQ+ youth"),
     ("trans", "Trans rights"),
     ("aceptacion", "Social acceptance"),
     ("aceptaci\u00f3n", "Social acceptance"),
@@ -298,8 +298,8 @@ REPORT_TYPE_KEYWORDS: tuple[tuple[str, str], ...] = (
 BROAD_REPORT_CATEGORIES: tuple[tuple[str, str], ...] = (
     ("odio", "Hate crime & hate speech"),
     ("activismo", "Political participation"),
-    ("derechos", "Spanish LGBTI+ indicators"),
-    ("socioeconomico", "Spanish LGBTI+ indicators"),
+    ("derechos", "Spanish LGBTIQ+ indicators"),
+    ("socioeconomico", "Spanish LGBTIQ+ indicators"),
     ("salud", "Health"),
     ("educacion", "Education"),
     ("rural", "Territory"),
@@ -1384,7 +1384,7 @@ def _infer_controlled_topics(
         for topic in ("Harassment", "Discrimination"):
             if topic not in topics:
                 topics.append(topic)
-    return topics or ["Spanish LGBTI+ indicators"]
+    return topics or ["Spanish LGBTIQ+ indicators"]
 
 
 def _figure_subsection_title(segment: dict[str, Any]) -> str:
@@ -2280,7 +2280,7 @@ def _is_relevant_sentence(text: str) -> bool:
 
 def _infer_section_from_sentence(sentence: str) -> str:
     category = _infer_category(sentence)
-    return category if category != "Spanish LGBTI+ indicators" else ""
+    return category if category != "Spanish LGBTIQ+ indicators" else ""
 
 
 def _infer_topic(
@@ -2295,7 +2295,7 @@ def _infer_topic(
         for keyword, topic in TOPIC_KEYWORDS:
             if keyword in normalized:
                 return topic
-    return fallback or "Spanish LGBTI+ indicators"
+    return fallback or "Spanish LGBTIQ+ indicators"
 
 
 def _section_from_previous_lines(lines: list[str], index: int) -> str:
@@ -2354,7 +2354,7 @@ def _infer_category(text: str) -> str:
     for keyword, category in CATEGORY_KEYWORDS:
         if keyword in normalized:
             return category
-    return "Spanish LGBTI+ indicators"
+    return "Spanish LGBTIQ+ indicators"
 
 
 def _build_code(year: int, report_title: str, question: str, percentage: float, page: int) -> str:

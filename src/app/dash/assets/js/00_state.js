@@ -10,7 +10,7 @@
     ["Discriminaci\u00f3n y datos sociales", "Discrimination and social data"],
     ["Encuesta europea LGBTIQ+", "European LGBTIQ+ survey"],
     ["Mapa legal europeo", "European legal map"],
-    ["Estado LGTBI+ en Espa\u00f1a", "LGTBI+ status in Spain"],
+    ["Estado LGBTIQ+ en Espa\u00f1a", "LGBTIQ+ status in Spain"],
     ["Fuente de datos", "Data source"],
     ["Selecciona una fuente", "Select a data source"],
     ["No hay fuentes de datos disponibles.", "No data sources are available."],

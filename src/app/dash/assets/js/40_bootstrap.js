@@ -5,7 +5,12 @@
   document.addEventListener("click", (event) => {
     const languageButton = event.target.closest("[data-language-toggle]");
     if (languageButton) {
-      app.i18n.setLanguage(state.nextLanguage(state.currentLanguage()));
+      const dashLanguageToggle = document.getElementById("app-language-toggle");
+      if (dashLanguageToggle) {
+        dashLanguageToggle.click();
+      } else {
+        app.i18n.setLanguage(state.nextLanguage(state.currentLanguage()));
+      }
       return;
     }
 

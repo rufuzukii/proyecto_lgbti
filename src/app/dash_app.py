@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
-from app.dash.compat import Dash, Input, Output, dcc, html
+from app.dash.compat import Dash, Input, Output, State, dcc, html
 from flask import redirect, request
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
 from pydantic import ValidationError
@@ -113,6 +113,15 @@ def create_dash_app() -> Dash:
     app.layout = html.Div(
         [
             dcc.Location(id="url"),
+            dcc.Store(id="app-language-store", data="es"),
+            dcc.Interval(id="app-language-init", interval=150, max_intervals=1),
+            html.Button(
+                "",
+                id="app-language-toggle",
+                type="button",
+                style={"display": "none"},
+                **{"aria-hidden": "true"},
+            ),
             html.Div(id="page-content"),
             html.Footer(
                 [
@@ -208,12 +217,54 @@ def create_dash_app() -> Dash:
             )
             return build_database_unavailable_layout(exc)
 
+    _register_client_preferences_callbacks(app)
     register_upload_callbacks(app)
     register_statistics_callbacks(app)
     register_spain_callbacks(app)
     register_home_callbacks(app)
     register_about_callbacks(app)
     return app
+
+
+def _register_client_preferences_callbacks(app: Dash) -> None:
+    app.clientside_callback(
+        """
+        function(initTick, nClicks, currentLanguage) {
+            const appState = window.RainbowLens || {};
+            const state = appState.state || {};
+            const i18n = appState.i18n || {};
+            const theme = appState.theme || {};
+            const config = appState.config || {};
+            const ctx = window.dash_clientside.callback_context;
+            const triggered = ctx.triggered && ctx.triggered.length ? ctx.triggered[0].prop_id : "";
+            const supported = typeof state.isSupportedLanguage === "function";
+            const current =
+                supported && state.isSupportedLanguage(currentLanguage)
+                    ? currentLanguage
+                    : typeof state.currentLanguage === "function"
+                        ? state.currentLanguage()
+                        : "es";
+            const selected =
+                triggered.indexOf("app-language-toggle") === 0 && typeof state.nextLanguage === "function"
+                    ? state.nextLanguage(current)
+                    : current;
+            if (config.LANGUAGE_KEY) {
+                window.localStorage.setItem(config.LANGUAGE_KEY, selected);
+            }
+            if (typeof i18n.applyLanguage === "function") {
+                i18n.applyLanguage(selected);
+            }
+            if (typeof theme.applyToggleLabels === "function" && typeof state.currentTheme === "function") {
+                theme.applyToggleLabels(state.currentTheme(), selected);
+            }
+            return selected;
+        }
+        """,
+        Output("app-language-store", "data"),
+        Input("app-language-init", "n_intervals"),
+        Input("app-language-toggle", "n_clicks"),
+        State("app-language-store", "data"),
+    )
 
 
 def _register_error_routes(app: Dash) -> None:

@@ -331,12 +331,18 @@ def register_home_callbacks(app: Dash) -> None:
         Input("home-map-mode", "value"),
         Input("home-ilga-year", "value"),
         Input("home-fra-indicator", "value"),
+        Input("app-language-store", "data"),
     )
-    def update_home_map(mode: str | None, ilga_year: int | None, fra_code: str | None):
+    def update_home_map(
+        mode: str | None,
+        ilga_year: int | None,
+        fra_code: str | None,
+        language: str | None,
+    ):
         if mode == "fra":
             document = get_fra_indicator_answers(fra_code or "")
             return (
-                _home_map_figure(build_fra_choropleth(document)),
+                _home_map_figure(build_fra_choropleth(document, language=language or "es")),
                 text("Mapa europeo de indicadores sociales", "European social indicators map"),
                 _fra_copy(document),
                 "home-map-helper-text is-hidden",
@@ -346,8 +352,8 @@ def register_home_callbacks(app: Dash) -> None:
 
         document = get_ilga_document_by_year(ilga_year)
         return (
-            _home_map_figure(build_ilga_choropleth(document)),
-            text("Situación legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"),
+            _home_map_figure(build_ilga_choropleth(document, language=language or "es")),
+            text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map"),
             _ilga_copy(document),
             "home-map-helper-text",
             _ilga_source(document),

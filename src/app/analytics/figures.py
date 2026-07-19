@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import plotly.graph_objects as go
 
+from app.analytics.percentage_display import (
+    MISSING_PERCENTAGE_COLOR,
+    coerce_percentage,
+    format_percentage,
+    prepare_percentage_display_values,
+)
 from app.analytics.statistics_normalizers import normalize_country_code
+from app.dash.i18n import ui_text
+
+logger = logging.getLogger(__name__)
 
 PLOTLY_TRANSPARENT = "rgba(0,0,0,0)"
 ISO2_TO_ISO3 = {
@@ -61,18 +71,24 @@ ISO2_TO_ISO3 = {
 }
 
 
-def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
+def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "es") -> go.Figure:
     countries = _countries(document)
     countries = [country for country in countries if _iso3_location(country)]
     figure = go.Figure()
     if countries:
+        for country in countries:
+            country["ranking_text"] = format_percentage(country["ranking"]) or ""
+            country["value_label"] = ui_text("chart_value", language)
         figure.add_trace(
             go.Choropleth(
                 locations=[_iso3_location(country) for country in countries],
                 locationmode="ISO-3",
                 text=[country["country"] for country in countries],
                 z=[country["ranking"] for country in countries],
-                customdata=[[country["country_code"]] for country in countries],
+                customdata=[
+                    [country["country_code"], country["value_label"], country["ranking_text"]]
+                    for country in countries
+                ],
                 zmin=0,
                 zmax=100,
                 colorscale=[
@@ -84,14 +100,13 @@ def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
                 ],
                 marker={"line": {"color": "#ffffff", "width": 0.7}},
                 colorbar={
-                    "title": "Ranking",
+                    "title": ui_text("chart_percentage", language),
                     "ticksuffix": "%",
                     "thickness": 13,
                 },
                 hovertemplate=(
                     "<b>%{text}</b><br>"
-                    "Código: %{customdata[0]}<br>"
-                    "Ranking ILGA: %{z:.2f}%<extra></extra>"
+                    "%{customdata[1]}: %{customdata[2]}<extra></extra>"
                 ),
             )
         )
@@ -319,19 +334,37 @@ def build_fra_filter_heatmap(document: dict[str, Any] | None) -> go.Figure:
 def build_fra_choropleth(
     document: dict[str, Any] | None,
     answer: str | None = None,
+    *,
+    language: str = "es",
 ) -> go.Figure:
     selected_answer = answer or _default_fra_answer(document)
-    answers = _aggregate_fra_answers(document, answer=selected_answer)
+    answers = _fra_map_answers(document, answer=selected_answer)
     answers = [item for item in answers if _iso3_location(item)]
+    display_values, _normalized = prepare_percentage_display_values(
+        [item.get("percentage") for item in answers],
+        normalize_when_total_is_not_100=False,
+        logger=logger,
+        context={"chart": "home_fra_choropleth"},
+    )
+    for item, display_value in zip(answers, display_values):
+        item["display_value"] = display_value
+        item["display_value_text"] = format_percentage(display_value)
+        item["value_label"] = ui_text("chart_value", language)
+        item["missing_message"] = ui_text("chart_not_enough_information", language)
+    drawable = [item for item in answers if item.get("display_value") is not None]
+    unavailable = [item for item in answers if item.get("display_value") is None]
     figure = go.Figure()
-    if answers:
+    if drawable:
         figure.add_trace(
             go.Choropleth(
-                locations=[_iso3_location(item) for item in answers],
+                locations=[_iso3_location(item) for item in drawable],
                 locationmode="ISO-3",
-                text=[item["country"] for item in answers],
-                z=[item["percentage"] for item in answers],
-                customdata=[[item["country_code"], item["observations"]] for item in answers],
+                text=[item["country"] for item in drawable],
+                z=[item["display_value"] for item in drawable],
+                customdata=[
+                    [item["country_code"], item["value_label"], item["display_value_text"]]
+                    for item in drawable
+                ],
                 zmin=0,
                 zmax=100,
                 colorscale=[
@@ -343,19 +376,36 @@ def build_fra_choropleth(
                 ],
                 marker={"line": {"color": "#ffffff", "width": 0.7}},
                 colorbar={
-                    "title": "Media",
+                    "title": ui_text("chart_percentage", language),
                     "ticksuffix": "%",
                     "thickness": 13,
                 },
                 hovertemplate=(
                     "<b>%{text}</b><br>"
-                    "Código: %{customdata[0]}<br>"
-                    "Media FRA: %{z:.2f}%<br>"
-                    "Observaciones: %{customdata[1]}<extra></extra>"
+                    "%{customdata[1]}: %{customdata[2]}<extra></extra>"
                 ),
             )
         )
-    else:
+    if unavailable:
+        figure.add_trace(
+            go.Choropleth(
+                locations=[_iso3_location(item) for item in unavailable],
+                locationmode="ISO-3",
+                text=[item["country"] for item in unavailable],
+                z=[0] * len(unavailable),
+                customdata=[
+                    [item["country_code"], item["missing_message"]]
+                    for item in unavailable
+                ],
+                zmin=0,
+                zmax=1,
+                colorscale=[[0.0, MISSING_PERCENTAGE_COLOR], [1.0, MISSING_PERCENTAGE_COLOR]],
+                marker={"line": {"color": "#ffffff", "width": 0.7}},
+                showscale=False,
+                hovertemplate="<b>%{text}</b><br>%{customdata[1]}<extra></extra>",
+            )
+        )
+    if not drawable and not unavailable:
         figure.add_annotation(
             text="Selecciona un indicador FRA con valores por país.",
             x=0.5,
@@ -666,6 +716,47 @@ def _iso3_location(row: dict[str, Any]) -> str:
     return ISO2_TO_ISO3.get(code, "")
 
 
+def _fra_map_answers(
+    document: dict[str, Any] | None,
+    answer: str | None = None,
+) -> list[dict[str, Any]]:
+    if not isinstance(document, dict):
+        return []
+    selected_answer = str(answer or "").strip()
+    rows = [
+        row
+        for row in _fra_answer_rows(document, include_missing=True)
+        if not selected_answer or row["answer"] == selected_answer
+    ]
+    all_filter_rows = [row for row in rows if _filters_are_all(row.get("filters"))]
+    if all_filter_rows:
+        rows = all_filter_rows
+
+    rows_by_country: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        country = row["country"]
+        existing = rows_by_country.get(country)
+        if existing is None:
+            rows_by_country[country] = row
+            continue
+        if existing.get("percentage") is None and row.get("percentage") is not None:
+            rows_by_country[country] = row
+            continue
+        if existing.get("percentage") is not None and row.get("percentage") is not None:
+            logger.debug(
+                "fra_map_duplicate_country_percentage_ignored",
+                extra={"country": country, "answer": row.get("answer")},
+            )
+    return [
+        {
+            "country": row["country"],
+            "country_code": row["country_code"],
+            "percentage": row.get("percentage"),
+        }
+        for row in rows_by_country.values()
+    ]
+
+
 def _aggregate_fra_answers(
     document: dict[str, Any] | None,
     answer: str | None = None,
@@ -692,7 +783,11 @@ def _aggregate_fra_answers(
     ]
 
 
-def _fra_answer_rows(document: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _fra_answer_rows(
+    document: dict[str, Any] | None,
+    *,
+    include_missing: bool = False,
+) -> list[dict[str, Any]]:
     if not isinstance(document, dict):
         return []
 
@@ -702,15 +797,24 @@ def _fra_answer_rows(document: dict[str, Any] | None) -> list[dict[str, Any]]:
             continue
         country = str(answer.get("country") or "").strip()
         answer_value = str(answer.get("answer") or "").strip()
-        percentage = answer.get("percentage")
-        if not country or not answer_value or not isinstance(percentage, (int, float)):
+        percentage = coerce_percentage(
+            answer.get("percentage", answer.get("value")),
+            logger=logger,
+            context={
+                "chart": "figures_fra_answer_rows",
+                "country": country,
+                "country_code": answer.get("country_code"),
+                "answer": answer_value,
+            },
+        )
+        if not country or not answer_value or (percentage is None and not include_missing):
             continue
         rows.append(
             {
                 "country": country,
                 "country_code": str(answer.get("country_code") or "").strip(),
                 "answer": answer_value,
-                "percentage": float(percentage),
+                "percentage": percentage,
                 "filters": _clean_fra_filters(answer.get("filters")),
             }
         )
@@ -730,6 +834,17 @@ def _clean_fra_filters(filters: Any) -> list[dict[str, str]]:
         if filter_type and filter_value:
             cleaned.append({"type": filter_type, "value": filter_value})
     return cleaned or [{"type": "All", "value": "All"}]
+
+
+def _filters_are_all(filters: Any) -> bool:
+    if not isinstance(filters, list):
+        return True
+    return any(
+        isinstance(item, dict)
+        and str(item.get("type") or "").strip() == "All"
+        and str(item.get("value") or "").strip() == "All"
+        for item in filters
+    )
 
 
 def _default_fra_answer(document: dict[str, Any] | None) -> str | None:

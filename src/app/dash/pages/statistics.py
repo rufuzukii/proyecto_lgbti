@@ -31,6 +31,7 @@ from app.analytics.statistics_normalizers import normalize_country_code, normali
 from app.analytics.statistics_service import (
     build_fra_answer_options,
     build_fra_country_options,
+    build_fra_default_filter_types,
     build_fra_filter_type_options,
     build_fra_filter_value_options,
     build_ilga_country_options,
@@ -89,6 +90,7 @@ GROUP_BY_OPTIONS = [
 EXCLUDED_CATEGORY_KEYS = {
     normalize_text_key("Political Participation"),
     normalize_text_key("Spanish LGBTI+ indicators"),
+    normalize_text_key("Spanish LGBTIQ+ indicators"),
 }
 
 LABELS_EN = {
@@ -288,13 +290,14 @@ def register_statistics_callbacks(app: Dash) -> None:
         answers = build_fra_answer_options(document)
         filter_a = build_fra_filter_type_options(document, "a")
         filter_b = build_fra_filter_type_options(document, "b")
+        default_filter_a, default_filter_b = build_fra_default_filter_types(document)
         return (
             answers,
             answers[0]["value"] if answers else None,
             filter_a,
-            "All",
+            default_filter_a,
             filter_b,
-            "All",
+            default_filter_b,
         )
 
     @app.callback(
@@ -409,6 +412,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("stats-country-select", "value"),
         Input("stats-visualization-select", "value"),
         Input("ilga-criterion-select", "value"),
+        Input("app-language-store", "data"),
     )
     def update_results(
         source: str | None,
@@ -425,6 +429,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         countries: list[str] | None,
         visualization: str | None,
         ilga_criterion: str | None,
+        language: str | None,
     ):
         selected_countries = _normalize_selected_countries(countries)
         effective_mode = _effective_query_mode(mode, selected_countries)
@@ -445,7 +450,7 @@ def register_statistics_callbacks(app: Dash) -> None:
                 visualization=visualization or "ranking",
             )
             result = get_fra_statistics(query)
-            return _render_result(result, query.mode, query.visualization, selected_countries)
+            return _render_result(result, query.mode, query.visualization, selected_countries, language=language or "es")
 
         query = IlgaStatisticsQuery(
             year=_safe_int(year),
@@ -456,7 +461,7 @@ def register_statistics_callbacks(app: Dash) -> None:
             visualization=visualization or "ranking",
         )
         result = get_ilga_statistics(query)
-        return _render_result(result, query.mode, query.visualization, selected_countries)
+        return _render_result(result, query.mode, query.visualization, selected_countries, language=language or "es")
 
 
 def _header() -> html.Header:
@@ -651,6 +656,8 @@ def _render_result(
     mode: str,
     visualization: str,
     selected_countries: list[str],
+    *,
+    language: str = "es",
 ):
     status = result.get("status")
     if status != "ok":
@@ -675,11 +682,11 @@ def _render_result(
     detail_data = result.get("detail_data") or data
     scope = _selection_scope(ranking, selected_countries)
     selected_iso = normalize_country_code(selected_countries[0]) if len(selected_countries) == 1 else None
-    map_figure = build_europe_choropleth(ranking, source=source, selected_iso=selected_iso)
+    map_figure = build_europe_choropleth(ranking, source=source, selected_iso=selected_iso, language=language)
     _set_figure_title(map_figure, f"Mapa europeo - {scope['title']}")
 
     if mode == "compare":
-        primary = build_comparison_chart(ranking, source=source)
+        primary = build_comparison_chart(ranking, source=source, language=language)
     elif visualization == "distribution" and source == "FRA":
         primary = build_fra_distribution_chart(data)
     elif visualization == "fra_ilga" and source == "FRA":
@@ -688,11 +695,15 @@ def _render_result(
     elif visualization == "criteria" and source == "ILGA-Europe":
         primary = build_ilga_criteria_heatmap(data)
     else:
-        primary = build_ranking_chart(ranking, source=source)
+        primary = build_ranking_chart(ranking, source=source, language=language)
     _set_figure_title(primary, _primary_figure_title(source, visualization, scope))
 
     if source == "FRA":
-        secondary = build_fra_response_comparison_chart(detail_data, selected_countries=selected_countries)
+        secondary = build_fra_response_comparison_chart(
+            detail_data,
+            selected_countries=selected_countries,
+            language=language,
+        )
     else:
         secondary = build_ilga_criteria_heatmap(data)
     _set_figure_title(secondary, _secondary_figure_title(source, visualization, scope))
