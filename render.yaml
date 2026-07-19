@@ -3,7 +3,7 @@ services:
     name: proyecto-lgbti
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT
+    startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-120} --access-logfile - --error-logfile -
     envVars:
       - key: APP_ENV
         value: production
@@ -20,10 +20,22 @@ services:
       - key: MONGO_DB
         sync: false
       - key: CACHE_TYPE
-        value: SimpleCache
+        value: RedisCache
+      - key: CACHE_VERSION
+        value: v1
+      - key: CACHE_DEFAULT_TIMEOUT
+        value: "300"
       - key: DB_CONNECT_TIMEOUT_SECONDS
         value: "3"
       - key: MONGO_SERVER_SELECTION_TIMEOUT_MS
         value: "2500"
       - key: ANALYTICS_CACHE_TIMEOUT_SECONDS
         value: "3600"
+      - key: ANALYTICS_HEALTH_CHECK_TTL_SECONDS
+        value: "15"
+      - key: WEB_CONCURRENCY
+        value: "1"
+      - key: GUNICORN_THREADS
+        value: "4"
+      - key: GUNICORN_TIMEOUT
+        value: "120"

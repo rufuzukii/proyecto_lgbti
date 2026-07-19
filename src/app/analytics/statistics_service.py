@@ -22,6 +22,7 @@ from app.analytics.statistics_normalizers import (
     normalize_country_code,
     normalize_filter_type,
     normalize_filter_value,
+    repair_text_encoding,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,18 +43,18 @@ def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
         percentage = _safe_float(answer.get("percentage"))
         if percentage is None:
             continue
-        country = str(answer.get("country") or "").strip()
-        answer_value = str(answer.get("answer") or "").strip()
+        country = repair_text_encoding(answer.get("country")).strip()
+        answer_value = repair_text_encoding(answer.get("answer")).strip()
         if not country or not answer_value:
             continue
         filters = _filters_to_dict(answer.get("filters"))
         rows.append(
             {
                 "source": "FRA",
-                "category": str(document.get("category") or "").strip(),
-                "specific_category": str(document.get("specific_category") or "").strip(),
-                "question": str(document.get("question") or "").strip(),
-                "question_code": str(document.get("code") or "").strip(),
+                "category": repair_text_encoding(document.get("category")).strip(),
+                "specific_category": repair_text_encoding(document.get("specific_category")).strip(),
+                "question": repair_text_encoding(document.get("question")).strip(),
+                "question_code": repair_text_encoding(document.get("code")).strip(),
                 "country": country,
                 "iso": normalize_country_code(answer.get("country_code"), country),
                 "answer": answer_value,
@@ -80,7 +81,7 @@ def ilga_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
         ranking = _safe_float(country.get("ranking"))
         if ranking is None:
             continue
-        country_name = str(country.get("country") or "").strip()
+        country_name = repair_text_encoding(country.get("country")).strip()
         iso = normalize_country_code(country.get("country_code"), country_name)
         rows.append(
             {
@@ -110,8 +111,8 @@ def ilga_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
                     "country": country_name,
                     "iso": iso,
                     "ranking": float(ranking),
-                    "category": str(criterion.get("category") or "").strip(),
-                    "criterion": str(criterion.get("indicator") or "").strip(),
+                    "category": repair_text_encoding(criterion.get("category")).strip(),
+                    "criterion": repair_text_encoding(criterion.get("indicator")).strip(),
                     "criterion_value": criterion_value,
                     "criterion_weight": criterion.get("weight"),
                 }
@@ -202,6 +203,7 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     dataframe = fra_document_to_dataframe(document)
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
+    detail_dataframe = filter_fra_detail_dataframe(dataframe, query)
     dataframe = filter_fra_dataframe(dataframe, query)
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
@@ -213,6 +215,7 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         "message": "",
         "source": "FRA",
         "data": dataframe.to_dict("records"),
+        "detail_data": detail_dataframe.to_dict("records"),
         "ranking": ranking.to_dict("records"),
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "methodology": (
@@ -247,7 +250,7 @@ def get_ilga_statistics(query: IlgaStatisticsQuery) -> dict[str, Any]:
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "methodology": (
             "ILGA-Europe Rainbow Map mide leyes, políticas y protecciones jurídicas. "
-            "Los criterios parciales se mantienen como valores numéricos y no se fuerzan a booleanos."
+            ""
         ),
     }
 
@@ -261,6 +264,15 @@ def filter_fra_dataframe(dataframe: pd.DataFrame, query: FraStatisticsQuery) -> 
         filtered = filtered[filtered["iso"].isin(selected) | filtered["country"].isin(selected)]
     if query.answer:
         filtered = filtered[filtered["answer"] == query.answer]
+    filtered = _apply_filter_pair(filtered, query.filter_a_name, query.filter_a_value)
+    filtered = _apply_filter_pair(filtered, query.filter_b_name, query.filter_b_value)
+    return filtered
+
+
+def filter_fra_detail_dataframe(dataframe: pd.DataFrame, query: FraStatisticsQuery) -> pd.DataFrame:
+    filtered = dataframe.copy()
+    if query.year is not None and "year" in filtered:
+        filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
     filtered = _apply_filter_pair(filtered, query.filter_a_name, query.filter_a_value)
     filtered = _apply_filter_pair(filtered, query.filter_b_name, query.filter_b_value)
     return filtered
@@ -330,7 +342,7 @@ def _apply_filter_pair(
     filter_value: str | None,
 ) -> pd.DataFrame:
     clean_name = normalize_filter_type(filter_name)
-    clean_value = str(filter_value or "").strip()
+    clean_value = repair_text_encoding(filter_value).strip()
     if not clean_name or clean_name == "All" or not clean_value or clean_value == "All":
         return dataframe
     return dataframe[
@@ -347,7 +359,7 @@ def _filter_matches(filters: Any, filter_name: str, filter_value: str) -> bool:
     for raw_type, raw_value in filters.items():
         if normalize_filter_type(raw_type) != filter_name:
             continue
-        if str(raw_value) == filter_value or normalize_filter_value(raw_value) == expected_label:
+        if repair_text_encoding(raw_value).strip() == filter_value or normalize_filter_value(raw_value) == expected_label:
             return True
     return False
 
@@ -360,7 +372,7 @@ def _filters_to_dict(filters: Any) -> dict[str, str]:
         if not isinstance(item, dict):
             continue
         filter_type = normalize_filter_type(item.get("type"))
-        filter_value = str(item.get("value") or "").strip()
+        filter_value = repair_text_encoding(item.get("value")).strip()
         if filter_type and filter_value:
             output[filter_type] = filter_value
     return output or {"All": "All"}

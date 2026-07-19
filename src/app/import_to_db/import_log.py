@@ -21,8 +21,9 @@ class PendingImportLog:
     user_id: str | None
     user_label: str
     file_name: str
-    file_json: JsonPayload
+    file_json: JsonPayload | None
     created_at: str | None = None
+    record_count: int = 0
 
 # Load local .env values without replacing variables already provided by the process.
 load_dotenv()
@@ -118,6 +119,16 @@ def list_pending_import_logs() -> list[PendingImportLog]:
             COALESCE(NULLIF(u.username, ''), NULLIF(u.email, ''), 'Unknown user') AS user_label,
             l.file_name,
             l.file_json,
+            CASE
+                WHEN jsonb_typeof(l.file_json::jsonb) = 'array'
+                    THEN jsonb_array_length(l.file_json::jsonb)
+                WHEN jsonb_typeof(l.file_json::jsonb) = 'object'
+                    AND jsonb_typeof((l.file_json::jsonb)->'questions') = 'array'
+                    THEN jsonb_array_length((l.file_json::jsonb)->'questions')
+                WHEN jsonb_typeof(l.file_json::jsonb) = 'object'
+                    THEN 1
+                ELSE 0
+            END AS record_count,
             l.created_at::text AS created_at
         FROM import_logs l
         LEFT JOIN public.users u ON u.id = l.user_id
@@ -167,13 +178,15 @@ def delete_import_log(import_id: str) -> None:
 
 
 def _row_to_pending_import_log(row: dict[str, Any]) -> PendingImportLog:
+    file_json = row.get("file_json")
     return PendingImportLog(
         id=row["id"],
         user_id=row.get("user_id"),
         user_label=row.get("user_label") or "Unknown user",
         file_name=row["file_name"],
-        file_json=_normalize_json_payload(row["file_json"]),
+        file_json=_normalize_json_payload(file_json) if file_json is not None else None,
         created_at=row.get("created_at"),
+        record_count=int(row.get("record_count") or 0),
     )
 
 

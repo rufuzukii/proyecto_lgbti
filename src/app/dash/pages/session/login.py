@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from app.auth.csrf import get_csrf_token
 from app.dash.compat import dcc, html
+from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
 
 ERROR_MESSAGES = {
-    "invalid_credentials": "Invalid email or password.",
-    "invalid_payload": "Enter a valid email and password.",
-    "rate_limited": "Too many attempts. Try again in a few minutes.",
-    "csrf": "The session expired. Refresh the page and try again.",
-    "storage": "Login is not configured yet. Contact the administrator.",
+    "invalid_credentials": ("El correo electrónico o la contraseña no son correctos.", "The email address or password is incorrect."),
+    "invalid_payload": ("Introduce un correo electrónico y una contraseña válidos.", "Enter a valid email address and password."),
+    "rate_limited": ("Se han realizado demasiados intentos. Inténtalo de nuevo en unos minutos.", "Too many attempts. Try again in a few minutes."),
+    "csrf": ("La sesión ha caducado. Actualiza la página e inténtalo de nuevo.", "The session expired. Refresh the page and try again."),
+    "storage": ("No ha sido posible iniciar sesión en este momento. Inténtalo de nuevo más tarde.", "Sign-in is not available right now. Please try again later."),
 }
 
 
@@ -26,10 +27,13 @@ def build_login_layout(next_path: str = "/user", error_code: str | None = None) 
                         [
                             html.Div(
                                 [
-                                    html.P("Secure access", className="auth-eyebrow"),
-                                    html.H1("Sign in"),
+                                    html.P("Acceso seguro", className="auth-eyebrow", **text_attrs("Acceso seguro", "Secure access")),
+                                    html.H1(text("Iniciar sesión", "Sign in")),
                                     html.P(
-                                        "Use your account email and password to access your profile.",
+                                        text(
+                                            "Usa tu correo electrónico y contraseña para acceder a tu perfil.",
+                                            "Use your email address and password to access your profile.",
+                                        ),
                                         className="auth-copy",
                                     ),
                                     _message(message, is_error=True),
@@ -45,7 +49,7 @@ def build_login_layout(next_path: str = "/user", error_code: str | None = None) 
                                                 name="next",
                                                 value=next_path,
                                             ),
-                                            html.Label("Email", htmlFor="login-email"),
+                                            html.Label("Correo electrónico", htmlFor="login-email", **text_attrs("Correo electrónico", "Email address")),
                                             dcc.Input(
                                                 id="login-email",
                                                 name="email",
@@ -53,7 +57,7 @@ def build_login_layout(next_path: str = "/user", error_code: str | None = None) 
                                                 required=True,
                                                 className="auth-input",
                                             ),
-                                            html.Label("Password", htmlFor="login-password"),
+                                            html.Label("Contraseña", htmlFor="login-password", **text_attrs("Contraseña", "Password")),
                                             dcc.Input(
                                                 id="login-password",
                                                 name="password",
@@ -61,7 +65,7 @@ def build_login_layout(next_path: str = "/user", error_code: str | None = None) 
                                                 required=True,
                                                 className="auth-input",
                                             ),
-                                            html.Button("Sign in", type="submit", className="auth-button"),
+                                            html.Button("Iniciar sesión", type="submit", className="auth-button", **text_attrs("Iniciar sesión", "Sign in")),
                                         ],
                                         action="/auth/login",
                                         method="post",
@@ -69,8 +73,8 @@ def build_login_layout(next_path: str = "/user", error_code: str | None = None) 
                                     ),
                                     html.P(
                                         [
-                                            "Don't have an account? ",
-                                            html.A("Register", href="/register"),
+                                            html.Span("¿No tienes cuenta? ", **text_attrs("¿No tienes cuenta? ", "Don't have an account? ")),
+                                            html.A("Crear cuenta", href="/register", **text_attrs("Crear cuenta", "Register")),
                                         ],
                                         className="auth-switch",
                                     ),
@@ -87,8 +91,9 @@ def build_login_layout(next_path: str = "/user", error_code: str | None = None) 
     )
 
 
-def _message(message: str | None, *, is_error: bool) -> html.Div | str:
+def _message(message: tuple[str, str] | None, *, is_error: bool) -> html.Div | str:
     if not message:
         return ""
+    es, en = message
     class_name = "auth-message auth-message-error" if is_error else "auth-message auth-message-success"
-    return html.Div(message, className=class_name, role="alert")
+    return html.Div(es, className=class_name, role="alert", **text_attrs(es, en))

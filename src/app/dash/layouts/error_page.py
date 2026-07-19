@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.dash.compat import html
+from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.errors import DatabaseUnavailableError
 
@@ -8,20 +9,21 @@ from app.errors import DatabaseUnavailableError
 def build_database_unavailable_layout(
     error: DatabaseUnavailableError | None = None,
 ) -> html.Div:
-    service = _service_name(error)
     return html.Div(
         [
             build_navbar(active=None),
             html.Main(
                 [
-                    html.P("Error 503", className="error-page-code"),
-                    html.H1("Base de datos no disponible"),
+                    html.P("Servicio no disponible", className="error-page-code", **text_attrs("Servicio no disponible", "Service unavailable")),
+                    html.H1(text("No ha sido posible cargar la información", "The information could not be loaded")),
                     html.P(
-                        f"No se puede conectar con {service}. "
-                        "Intentalo más tarde",
+                        text(
+                            "No ha sido posible obtener la información en este momento. Inténtalo de nuevo más tarde.",
+                            "The information could not be retrieved right now. Please try again later.",
+                        ),
                         className="error-page-message",
                     ),
-                    html.A("Volver al inicio", href="/", className="error-page-action"),
+                    html.A(text("Volver al inicio", "Back to home"), href="/", className="error-page-action"),
                 ],
                 className="error-page-panel",
             ),
@@ -33,33 +35,24 @@ def build_database_unavailable_layout(
 def render_database_unavailable_response(
     error: DatabaseUnavailableError | None = None,
 ) -> tuple[str, int, dict[str, str]]:
-    service = _service_name(error)
     body = f"""<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>503 - Base de datos no disponible</title>
+  <title>Servicio no disponible</title>
   <link rel="stylesheet" href="/assets/styles.css">
   <link rel="icon" href="/assets/img/rainbow_lens_icono.ico">
 </head>
 <body>
   <main class="error-page-shell error-page-static">
     <section class="error-page-panel">
-      <p class="error-page-code">Error 503</p>
-      <h1>Base de datos no disponible</h1>
-      <p class="error-page-message">No se puede conectar con {service}. Intentalo más tarde</p>
+      <p class="error-page-code">Servicio no disponible</p>
+      <h1>No ha sido posible cargar la información</h1>
+      <p class="error-page-message">No ha sido posible obtener la información en este momento. Inténtalo de nuevo más tarde.</p>
       <a class="error-page-action" href="/">Volver al inicio</a>
     </section>
   </main>
 </body>
 </html>"""
     return body, 503, {"Retry-After": "30"}
-
-
-def _service_name(error: DatabaseUnavailableError | None) -> str:
-    if error is None:
-        return "la base de datos"
-    if error.service == "PostgreSQL":
-        return "PostgreSQL/Supabase"
-    return error.service

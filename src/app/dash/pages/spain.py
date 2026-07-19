@@ -10,23 +10,62 @@ from urllib.request import Request, urlopen
 import plotly.graph_objects as go
 
 from app.analytics.repository import (
-    assert_analytics_databases_available,
-    get_felgtbi_categories,
+    get_felgtbi_document_options,
+    get_felgtbi_document_years,
     get_felgtbi_indicator_answers,
-    get_felgtbi_indicators_by_category,
-    get_felgtbi_years,
+    get_felgtbi_indicators_by_document,
+    get_spain_collection_options,
 )
-from app.dash.compat import Dash, Input, Output, dcc, html
+from app.dash.compat import Dash, Input, Output, State, ctx, dcc, html
+from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
 PERCENT_TEXT_PATTERN = re.compile(r"(\d{1,3}(?:[,.]\d{1,2})?\s*%)")
 
+TEXT_EN = {
+    "Contenido": "Content",
+    "Detalle": "Detail",
+    "No hay información disponible": "No information available",
+    "Todavía no hay información estatal para mostrar.": "There is no national information to show yet.",
+    "Sin categoría": "No category selected",
+    "Selecciona una categoría para empezar.": "Select a category to begin.",
+    "Sin año": "No year selected",
+    "Selecciona un año para continuar.": "Select a year to continue.",
+    "Datos no disponibles": "Data unavailable",
+    "Todavía no hay información disponible para esta categoría y año.": "There is no information available for this category and year yet.",
+    "Sin resumen": "No summary",
+    "Selecciona una sección para ver sus resultados.": "Select a section to view its results.",
+    "Sin contenido": "No content",
+    "No hay contenido disponible para este indicador.": "No content is available for this indicator.",
+    "Sin indicador": "No indicator selected",
+    "Selecciona un indicador para ver sus datos.": "Select an indicator to view its data.",
+    "Documento": "Document",
+    "Selecciona un documento": "Select a document",
+    "Selecciona un documento para cargar sus indicadores.": "Select a document to load its indicators.",
+    "No hay documentos disponibles": "No documents available",
+    "El documento seleccionado ya no está disponible": "The selected document is no longer available",
+    "No hay fuentes de datos": "No data sources",
+    "No se han encontrado colecciones españolas disponibles.": "No Spanish collections were found.",
+    "No hay secciones disponibles": "No sections available",
+    "La sección seleccionada ya no está disponible": "The selected section is no longer available",
+    "Anterior": "Previous",
+    "Siguiente": "Next",
+}
+
+SPAIN_SLOT_CLASS = "spain-content-slot"
+SPAIN_SLOT_HIDDEN_CLASS = "spain-content-slot is-hidden"
+SPAIN_IMAGE_CLASS = "spain-pdf-figure spain-content-slot"
+SPAIN_IMAGE_HIDDEN_CLASS = "spain-pdf-figure spain-content-slot is-hidden"
+SPAIN_GRAPH_CLASS = "spain-section-graph spain-content-slot"
+SPAIN_GRAPH_HIDDEN_CLASS = "spain-section-graph spain-content-slot is-hidden"
+
 
 def build_spain_layout() -> html.Div:
-    assert_analytics_databases_available()
-    categories = _category_options()
-    initial_category = categories[0]["value"] if categories else None
-    years = _year_options(initial_category)
+    sources = _source_options()
+    initial_source = sources[0]["value"] if sources else None
+    documents = _document_options(initial_source)
+    initial_document = documents[0]["value"] if documents else None
+    years = _year_options(initial_source, initial_document)
     initial_year = years[0]["value"] if years else None
 
     return html.Div(
@@ -36,10 +75,13 @@ def build_spain_layout() -> html.Div:
                 [
                     html.Header(
                         [
-                            html.P("España", className="stats-eyebrow"),
-                            html.H1("Indicadores estatales LGBTI+"),
+                            html.P("España", className="stats-eyebrow", **text_attrs("España", "Spain")),
+                            html.H1(text("Indicadores estatales LGBTI+", "National LGBTI+ indicators")),
                             html.P(
-                                "Explora los datos extraídos de informes FELGTBI+ revisados por administración.",
+                                text(
+                                    "Explora información estatal sobre derechos, percepción social y experiencias de las personas LGTBI+.",
+                                    "Explore national information on rights, social perception, and experiences of LGTBI+ people.",
+                                ),
                                 className="stats-lead",
                             ),
                         ],
@@ -49,60 +91,110 @@ def build_spain_layout() -> html.Div:
                         [
                             html.Div(
                                 [
-                                    html.Label("Categoría", htmlFor="spain-category-select"),
+                                    html.Label(
+                                        "Fuente de datos",
+                                        htmlFor="spain-source-select",
+                                        **text_attrs("Fuente de datos", "Data source"),
+                                    ),
                                     dcc.Dropdown(
-                                        id="spain-category-select",
-                                        options=categories,
-                                        value=initial_category,
+                                        id="spain-source-select",
+                                        options=sources,
+                                        value=initial_source,
                                         clearable=False,
-                                        placeholder="Selecciona una categoría",
+                                        className="spain-dropdown",
+                                        disabled=not bool(sources),
+                                        placeholder="Selecciona una fuente",
                                     ),
                                 ],
-                                className="stats-control-field",
+                                className="stats-control-field spain-control-field spain-control-field-wide",
                             ),
                             html.Div(
                                 [
-                                    html.Label("Año", htmlFor="spain-year-select"),
+                                    html.Label("Documento", htmlFor="spain-category-select", **text_attrs("Documento", "Document")),
+                                    dcc.Dropdown(
+                                        id="spain-category-select",
+                                        options=documents,
+                                        value=initial_document,
+                                        clearable=False,
+                                        className="spain-dropdown",
+                                        disabled=not bool(documents),
+                                        placeholder="Selecciona un documento",
+                                    ),
+                                ],
+                                className="stats-control-field spain-control-field",
+                            ),
+                            html.Div(
+                                [
+                                    html.Label("Año", htmlFor="spain-year-select", **text_attrs("Año", "Year")),
                                     dcc.Dropdown(
                                         id="spain-year-select",
                                         options=years,
                                         value=initial_year,
                                         clearable=False,
+                                        className="spain-dropdown",
+                                        disabled=not bool(years),
                                         placeholder="Selecciona un año",
                                     ),
                                 ],
-                                className="stats-control-field",
+                                className="stats-control-field spain-control-field spain-year-field",
                             ),
                             html.Div(
                                 [
-                                    html.Label("Tópico", htmlFor="spain-topic-select"),
-                                    dcc.Dropdown(
-                                        id="spain-topic-select",
-                                        options=[],
-                                        value=None,
-                                        clearable=False,
-                                        placeholder="Selecciona un tópico",
+                                    html.Label("Indicador", htmlFor="spain-topic-select", **text_attrs("Indicador", "Indicator")),
+                                    html.Div(
+                                        [
+                                            dcc.Dropdown(
+                                                id="spain-topic-select",
+                                                options=[],
+                                                value=None,
+                                                clearable=False,
+                                                className="spain-dropdown spain-topic-dropdown",
+                                                disabled=not bool(initial_source and initial_document and initial_year),
+                                                placeholder="Selecciona un indicador",
+                                            ),
+                                            html.Div(
+                                                [
+                                                    html.Button(
+                                                        text("Anterior", "Previous"),
+                                                        id="spain-topic-prev",
+                                                        n_clicks=0,
+                                                        disabled=True,
+                                                        className="spain-nav-button",
+                                                        type="button",
+                                                    ),
+                                                    html.Button(
+                                                        text("Siguiente", "Next"),
+                                                        id="spain-topic-next",
+                                                        n_clicks=0,
+                                                        disabled=True,
+                                                        className="spain-nav-button",
+                                                        type="button",
+                                                    ),
+                                                ],
+                                                className="spain-section-navigation",
+                                            ),
+                                        ],
+                                        className="spain-topic-selector-row",
                                     ),
                                 ],
-                                className="stats-control-field",
+                                className="stats-control-field spain-control-field spain-topic-field",
                             ),
                             html.P(
-                                "Selecciona una categoría para cargar sus tópicos.",
+                                "Selecciona un documento para cargar sus indicadores.",
                                 id="spain-indicator-summary",
                                 className="stats-control-summary",
+                                **text_attrs(
+                                    "Selecciona un documento para cargar sus indicadores.",
+                                    "Select a document to load its indicators.",
+                                ),
                             ),
                         ],
-                        className="stats-controls",
+                        className="stats-controls spain-controls",
                     ),
                     html.Section(
                         id="spain-visualization-grid",
                         className="stats-grid",
-                        children=[
-                            _empty_state(
-                                "Sin datos FELGTBI+",
-                                "Sube y aprueba un PDF FELGTBI+ para mostrar indicadores estatales.",
-                            )
-                        ],
+                        children=_spain_visualization_shell(),
                     ),
                 ],
                 className="stats-shell",
@@ -113,92 +205,354 @@ def build_spain_layout() -> html.Div:
 
 def register_spain_callbacks(app: Dash) -> None:
     @app.callback(
+        Output("spain-category-select", "options"),
+        Output("spain-category-select", "value"),
+        Output("spain-category-select", "disabled"),
+        Input("spain-source-select", "value"),
+        State("spain-category-select", "value"),
+    )
+    def update_category_selector(collection_name: str | None, current_document: str | None):
+        documents = _document_options(collection_name)
+        if not documents:
+            return [], None, True
+        values = {option["value"] for option in documents}
+        value = current_document if current_document in values else documents[0]["value"]
+        return documents, value, False
+
+    @app.callback(
         Output("spain-year-select", "options"),
         Output("spain-year-select", "value"),
         Output("spain-year-select", "disabled"),
+        Input("spain-source-select", "value"),
         Input("spain-category-select", "value"),
+        State("spain-year-select", "value"),
     )
-    def update_year_selector(category: str | None):
-        years = _year_options(category)
+    def update_year_selector(collection_name: str | None, document_id: str | None, current_year: int | str | None):
+        years = _year_options(collection_name, document_id)
         if not years:
             return [], None, True
-        return years, years[0]["value"], False
+        values = {option["value"] for option in years}
+        clean_current_year = _int_or_original(current_year)
+        value = clean_current_year if clean_current_year in values else years[0]["value"]
+        return years, value, False
 
     @app.callback(
         Output("spain-topic-select", "options"),
         Output("spain-topic-select", "value"),
         Output("spain-topic-select", "disabled"),
         Output("spain-indicator-summary", "children"),
+        Output("spain-topic-prev", "disabled"),
+        Output("spain-topic-next", "disabled"),
+        Input("spain-source-select", "value"),
         Input("spain-category-select", "value"),
         Input("spain-year-select", "value"),
+        Input("spain-topic-prev", "n_clicks"),
+        Input("spain-topic-next", "n_clicks"),
+        State("spain-topic-select", "value"),
     )
-    def update_topic_selector(category: str | None, year: int | str | None):
-        if not category:
-            return [], None, True, "Selecciona una categoría para cargar sus tópicos."
+    def update_topic_selector(
+        collection_name: str | None,
+        document_id: str | None,
+        year: int | str | None,
+        _previous_clicks: int | None,
+        _next_clicks: int | None,
+        current_code: str | None,
+    ):
+        if not collection_name:
+            return [], None, True, text("No hay fuentes de datos disponibles.", "No data sources are available."), True, True
+        document_options = _document_options(collection_name)
+        if not document_options:
+            return [], None, True, text("No hay documentos disponibles", "No documents available"), True, True
+        if not document_id:
+            return [], None, True, text("Selecciona un documento para cargar sus indicadores.", "Select a document to load its indicators."), True, True
+        if document_id not in {option["value"] for option in document_options}:
+            return [], None, True, text("El documento seleccionado ya no está disponible", "The selected document is no longer available"), True, True
         if not year:
-            return [], None, True, "Selecciona un año para cargar sus tópicos."
+            return [], None, True, text("Selecciona un año para cargar sus indicadores.", "Select a year to load its indicators."), True, True
 
-        indicators = get_felgtbi_indicators_by_category(category, year)
-        if not indicators:
-            return [], None, True, f"{category} ({year}): sin tópicos importados."
-
-        options = [
-            {
-                "label": _indicator_option_label(
-                    indicator.question,
-                    indicator.specific_category,
-                    indicator.value,
-                ),
-                "value": indicator.code,
-            }
-            for indicator in indicators
-        ]
-        return (
+        indicators = get_felgtbi_indicators_by_document(document_id, year, collection_name)
+        options = _indicator_options(indicators)
+        selected_code, selection_status = _resolve_topic_selection(
             options,
-            indicators[0].code,
-            False,
-            f"{category} ({year}): {len(indicators)} tópicos disponibles.",
+            current_code,
+            trigger_id=ctx.triggered_id,
         )
+        if not options:
+            return (
+                [],
+                None,
+                True,
+                text("No hay secciones disponibles", "No sections available"),
+                True,
+                True,
+            )
+        selected_index = _selected_option_index(options, selected_code)
+        previous_disabled = selected_index <= 0
+        next_disabled = selected_index >= len(options) - 1
+        summary = _topic_summary(document_id, year, len(options), selection_status)
+        return options, selected_code, False, summary, previous_disabled, next_disabled
 
     @app.callback(
-        Output("spain-visualization-grid", "children"),
+        Output("spain-content-empty", "children"),
+        Output("spain-content-empty", "className"),
+        Output("spain-report-content", "children"),
+        Output("spain-report-content", "className"),
+        Output("spain-section-image", "src"),
+        Output("spain-section-image", "alt"),
+        Output("spain-section-image", "className"),
+        Output("spain-section-graph", "figure"),
+        Output("spain-section-graph", "className"),
+        Output("spain-detail-content", "children"),
+        Input("spain-source-select", "value"),
         Input("spain-category-select", "value"),
         Input("spain-year-select", "value"),
         Input("spain-topic-select", "value"),
     )
-    def update_spain_grid(category: str | None, year: int | str | None, code: str | None):
-        if not category:
-            return [_empty_state("Sin categoría", "Selecciona una categoría para empezar.")]
+    def update_spain_grid(
+        collection_name: str | None,
+        document_id: str | None,
+        year: int | str | None,
+        code: str | None,
+    ):
+        if not collection_name:
+            return _spain_view_state(
+                empty=_empty_state("No hay fuentes de datos", "No se han encontrado colecciones españolas disponibles."),
+                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            )
+        document_options = _document_options(collection_name)
+        if not document_options:
+            return _spain_view_state(
+                empty=_empty_state("No hay documentos disponibles", "No hay documentos disponibles"),
+                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            )
+        if not document_id:
+            return _spain_view_state(
+                empty=_empty_state("No hay documentos disponibles", "Selecciona un documento para cargar sus indicadores."),
+                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            )
+        if document_id not in {option["value"] for option in document_options}:
+            return _spain_view_state(
+                empty=_empty_state(
+                    "El documento seleccionado ya no está disponible",
+                    "El documento seleccionado ya no está disponible",
+                ),
+                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            )
         if not year:
-            return [_empty_state("Sin año", "Selecciona un año para continuar.")]
+            return _spain_view_state(
+                empty=_empty_state("Sin año", "Selecciona un año para continuar."),
+                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            )
 
-        indicators = get_felgtbi_indicators_by_category(category, year)
+        indicators = get_felgtbi_indicators_by_document(document_id, year, collection_name)
         if not indicators:
-            return [
-                _empty_state(
-                    "Datos no disponibles",
-                    "Esta categoría todavía no tiene PDFs FELGTBI+ aprobados para el año seleccionado.",
-                )
-            ]
+            return _spain_view_state(
+                empty=_empty_state("No hay secciones disponibles", "No hay secciones disponibles"),
+                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            )
 
-        resolved_code = code or indicators[0].code
-        document = get_felgtbi_indicator_answers(resolved_code)
-        return _felgtbi_panels(document)
+        indicator_codes = {indicator.code for indicator in indicators}
+        if code not in indicator_codes:
+            return _spain_view_state(
+                empty=_empty_state(
+                    "La sección seleccionada ya no está disponible",
+                    "La sección seleccionada ya no está disponible",
+                ),
+                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            )
+
+        document = get_felgtbi_indicator_answers(code or "", collection_name, document_id=document_id)
+        return _spain_document_view_state(document)
 
 
-def _category_options() -> list[dict[str, str]]:
-    return [{"label": category, "value": category} for category in get_felgtbi_categories()]
+def _spain_visualization_shell() -> list[Any]:
+    return [
+        _panel(
+            "Contenido",
+            html.Div(
+                [
+                    html.Div(
+                        _empty_state(
+                            "No hay información disponible",
+                            "Todavía no hay información estatal para mostrar.",
+                        ),
+                        id="spain-content-empty",
+                        className=SPAIN_SLOT_CLASS,
+                    ),
+                    html.Div(
+                        id="spain-report-content",
+                        className=SPAIN_SLOT_HIDDEN_CLASS,
+                    ),
+                    html.Img(
+                        id="spain-section-image",
+                        src=None,
+                        alt="",
+                        className=SPAIN_IMAGE_HIDDEN_CLASS,
+                    ),
+                    dcc.Graph(
+                        id="spain-section-graph",
+                        figure=_value_figure(None),
+                        config={"displaylogo": False},
+                        className=SPAIN_GRAPH_HIDDEN_CLASS,
+                    ),
+                ],
+                className="spain-content-frame",
+            ),
+            "stats-panel stats-panel-wide",
+        ),
+        _panel(
+            "Detalle",
+            html.Div(
+                _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+                id="spain-detail-content",
+                className="spain-detail-content",
+            ),
+        ),
+    ]
 
 
-def _year_options(category: str | None = None) -> list[dict[str, int]]:
-    return [{"label": str(year), "value": year} for year in get_felgtbi_years(category)]
+def _spain_view_state(
+    *,
+    empty: Any | None = None,
+    report: Any | None = None,
+    image_src: str | None = None,
+    image_alt: str = "",
+    figure: go.Figure | None = None,
+    detail: Any | None = None,
+) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str, Any]:
+    has_empty = empty is not None
+    has_report = report is not None
+    has_image = bool(image_src)
+    has_graph = figure is not None
+
+    return (
+        empty or [],
+        SPAIN_SLOT_CLASS if has_empty else SPAIN_SLOT_HIDDEN_CLASS,
+        report or [],
+        SPAIN_SLOT_CLASS if has_report else SPAIN_SLOT_HIDDEN_CLASS,
+        image_src if has_image else None,
+        image_alt if has_image else "",
+        SPAIN_IMAGE_CLASS if has_image else SPAIN_IMAGE_HIDDEN_CLASS,
+        figure or _value_figure(None),
+        SPAIN_GRAPH_CLASS if has_graph else SPAIN_GRAPH_HIDDEN_CLASS,
+        detail or _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+    )
 
 
-def _indicator_option_label(title: str, section: str, value: float | None) -> str:
+def _spain_document_view_state(document: dict[str, Any] | None) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str, Any]:
+    if not document:
+        return _spain_view_state(
+            empty=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+            detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
+        )
+
+    detail = _detail_panel_content(document)
+    if _content_html(document) or _has_structured_report_content(document):
+        return _spain_view_state(report=_html_content_panel(document), detail=detail)
+
+    image_src = _figure_url(document)
+    if image_src:
+        return _spain_view_state(
+            image_src=image_src,
+            image_alt=_figure_alt_text(document),
+            detail=detail,
+        )
+
+    return _spain_view_state(figure=_value_figure(document), detail=detail)
+
+
+def _source_options() -> list[dict[str, str]]:
+    return get_spain_collection_options()
+
+
+def _document_options(collection_name: str | None = None) -> list[dict[str, str]]:
+    return get_felgtbi_document_options(collection_name)
+
+
+def _year_options(collection_name: str | None = None, document_id: str | None = None) -> list[dict[str, int]]:
+    return [{"label": str(year), "value": year} for year in get_felgtbi_document_years(document_id, collection_name)]
+
+
+def _int_or_original(value: Any) -> Any:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _indicator_options(indicators: list[Any]) -> list[dict[str, str]]:
+    options = []
+    for indicator in indicators:
+        label = _indicator_option_label(
+            indicator.question,
+            indicator.specific_category,
+            indicator.value,
+            report_title=indicator.report_title,
+        )
+        options.append({"label": label, "value": indicator.code, "title": label})
+    return options
+
+
+def _resolve_topic_selection(
+    options: list[dict[str, str]],
+    current_code: str | None,
+    *,
+    trigger_id: str | dict[str, Any] | None,
+) -> tuple[str | None, str]:
+    if not options:
+        return None, "empty"
+
+    values = [str(option["value"]) for option in options if option.get("value")]
+    if not values:
+        return None, "empty"
+
+    current = str(current_code or "").strip()
+    selection_removed = bool(current and current not in values)
+    if current not in values:
+        current = values[0]
+
+    index = values.index(current)
+    if trigger_id == "spain-topic-prev":
+        index = max(0, index - 1)
+    elif trigger_id == "spain-topic-next":
+        index = min(len(values) - 1, index + 1)
+
+    return values[index], "removed" if selection_removed else "ok"
+
+
+def _selected_option_index(options: list[dict[str, str]], selected_code: str | None) -> int:
+    values = [str(option["value"]) for option in options if option.get("value")]
+    try:
+        return values.index(str(selected_code or ""))
+    except ValueError:
+        return -1
+
+
+def _topic_summary(_document_id: str, year: int | str, total: int, selection_status: str) -> Any:
+    if selection_status == "removed":
+        return text(
+            "La sección seleccionada ya no está disponible",
+            "The selected section is no longer available",
+        )
+    return text(
+        f"{year}: {total} indicadores disponibles.",
+        f"{year}: {total} indicators available.",
+    )
+
+
+def _indicator_option_label(
+    title: str,
+    section: str,
+    value: float | None,
+    *,
+    report_title: str = "",
+) -> str:
     clean_section = title or section or "Indicador FELGTBI+"
+    report = str(report_title or "").strip()
     value_label = f" - {_format_percent(value)}" if value is not None else ""
-    label = f"{clean_section}{value_label}"
-    return label if len(label) <= 95 else f"{label[:92]}..."
+    if report and report not in clean_section:
+        return f"{report} · {clean_section}{value_label}"
+    return f"{clean_section}{value_label}"
 
 
 def _felgtbi_panels(document: dict[str, Any] | None) -> list[Any]:
@@ -208,8 +562,20 @@ def _felgtbi_panels(document: dict[str, Any] | None) -> list[Any]:
         ]
     return [
         _panel("Contenido", _value_panel_content(document), "stats-panel stats-panel-wide"),
-        _panel("Detalle", _detail_table(document)),
+        _panel("Detalle", _detail_panel_content(document)),
     ]
+
+
+def _detail_panel_content(document: dict[str, Any] | None) -> Any:
+    if not document:
+        return _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos.")
+    return html.Div(
+        [
+            _summary_content(document),
+            _detail_table(document),
+        ],
+        className="spain-detail-content",
+    )
 
 
 def _summary_content(document: dict[str, Any] | None) -> html.Div:
@@ -250,7 +616,7 @@ def _value_panel_content(document: dict[str, Any] | None) -> Any:
     if asset_url:
         return html.Img(
             src=asset_url,
-            alt="Gráfica del PDF asociada al indicador",
+            alt="Gráfica asociada al indicador",
             className="spain-pdf-figure",
         )
     return dcc.Graph(
@@ -266,7 +632,7 @@ def _html_content_panel(document: dict[str, Any] | None) -> Any:
 
     content_html = _content_html(document)
     if not content_html:
-        return _empty_state("Sin contenido", "No hay resumen HTML para este indicador.")
+        return _empty_state("Sin contenido", "No hay contenido disponible para este indicador.")
     return dcc.Markdown(
         _sanitize_report_html(content_html),
         dangerously_allow_html=True,
@@ -351,6 +717,31 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
     if caption:
         children.append(html.Figcaption(caption))
     return html.Figure(children, className="report-figure")
+
+
+def _figure_caption_text(document: dict[str, Any] | None) -> str:
+    if not isinstance(document, dict):
+        return ""
+    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    return str(
+        figure.get("caption")
+        or document.get("figure_caption")
+        or figure.get("title")
+        or ""
+    ).strip()
+
+
+def _figure_alt_text(document: dict[str, Any] | None) -> str:
+    if not isinstance(document, dict):
+        return "Figura del informe FELGTBI+"
+    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    return str(
+        figure.get("alt_text")
+        or figure.get("title")
+        or _figure_caption_text(document)
+        or document.get("subsection_title")
+        or "Figura del informe FELGTBI+"
+    ).strip()
 
 
 def _figure_url(document: dict[str, Any] | None) -> str:
@@ -539,7 +930,7 @@ def _value_figure(document: dict[str, Any] | None) -> go.Figure:
 
 def _detail_table(document: dict[str, Any] | None) -> html.Div:
     if not document:
-        return _empty_state("Sin tópico", "Selecciona un tópico para ver sus datos.")
+        return _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos.")
     rows = [
         ("Categoría", document.get("category")),
         ("Sección", document.get("specific_category")),
@@ -592,8 +983,14 @@ def _content_html(document: dict[str, Any] | None) -> str:
 
 
 def _panel(title: str, child: Any, class_name: str = "stats-panel") -> html.Section:
-    return html.Section([html.H2(title), child], className=class_name)
+    return html.Section([html.H2(title, **text_attrs(title, TEXT_EN.get(title, title))), child], className=class_name)
 
 
 def _empty_state(title: str, detail: str) -> html.Div:
-    return html.Div([html.H2(title), html.P(detail)], className="stats-empty-state")
+    return html.Div(
+        [
+            html.H2(title, **text_attrs(title, TEXT_EN.get(title, title))),
+            html.P(detail, **text_attrs(detail, TEXT_EN.get(detail, detail))),
+        ],
+        className="stats-empty-state",
+    )

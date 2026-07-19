@@ -3,7 +3,7 @@ from __future__ import annotations
 from flask_login import current_user
 
 from app.dash.compat import html
-from app.dash.i18n import text
+from app.dash.i18n import text, text_attrs
 from app.users.schemas import UserRole
 
 
@@ -70,7 +70,12 @@ def build_navbar(active: str | None = None) -> html.Nav:
 def _account_link() -> html.A:
     if current_user.is_authenticated:
         display_name = getattr(current_user, "username", None) or getattr(current_user, "email", None)
-        return html.A(display_name or "Account", href="/user", className="nav-link nav-account")
+        return html.A(
+            display_name or "Cuenta",
+            href="/user",
+            className="nav-link nav-account",
+            **text_attrs(display_name or "Cuenta", display_name or "Account"),
+        )
     return html.A(
         text("Entrar", "Sign in"),
         href="/login",
@@ -88,7 +93,7 @@ def _admin_link(active: str | None) -> html.A | str:
     class_name = "nav-link nav-admin-cta"
     if active == "admin":
         class_name += " is-active"
-    return html.A(text("Admin", "Admin"), href="/admin", className=class_name)
+    return html.A(text("Administración", "Administration"), href="/admin", className=class_name)
 
 
 def _language_toggle() -> html.Div:
@@ -100,7 +105,7 @@ def _language_toggle() -> html.Div:
                 className="language-toggle",
                 **{"data-language-toggle": "true"},
             ),
-            html.Span("Idioma", className="nav-control-caption"),
+            html.Span("Idioma", className="nav-control-caption", **text_attrs("Idioma", "Language")),
         ],
         className="nav-control-stack",
     )
@@ -121,7 +126,7 @@ def _theme_toggle() -> html.Div:
             html.Span(
                 "Modo claro",
                 className="nav-control-caption theme-mode-caption",
-                **{"data-theme-label": "true"},
+                **{"data-theme-label": "true", **text_attrs("Modo claro", "Light mode")},
             ),
         ],
         className="nav-control-stack",

@@ -1,26 +1,76 @@
 from __future__ import annotations
 
-from io import BytesIO
-import base64
 from typing import Any
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
-from app.analytics.repository import get_latest_ilga_document
-from app.cache import cache
+from app.analytics.statistics_normalizers import normalize_country_code
+
+PLOTLY_TRANSPARENT = "rgba(0,0,0,0)"
+ISO2_TO_ISO3 = {
+    "AL": "ALB",
+    "AD": "AND",
+    "AM": "ARM",
+    "AT": "AUT",
+    "AZ": "AZE",
+    "BA": "BIH",
+    "BE": "BEL",
+    "BG": "BGR",
+    "BY": "BLR",
+    "CH": "CHE",
+    "CY": "CYP",
+    "CZ": "CZE",
+    "DE": "DEU",
+    "DK": "DNK",
+    "EE": "EST",
+    "ES": "ESP",
+    "FI": "FIN",
+    "FR": "FRA",
+    "GB": "GBR",
+    "GE": "GEO",
+    "GR": "GRC",
+    "HR": "HRV",
+    "HU": "HUN",
+    "IE": "IRL",
+    "IS": "ISL",
+    "IT": "ITA",
+    "LI": "LIE",
+    "LT": "LTU",
+    "LU": "LUX",
+    "LV": "LVA",
+    "MC": "MCO",
+    "MD": "MDA",
+    "ME": "MNE",
+    "MK": "MKD",
+    "MT": "MLT",
+    "NL": "NLD",
+    "NO": "NOR",
+    "PL": "POL",
+    "PT": "PRT",
+    "RO": "ROU",
+    "RS": "SRB",
+    "RU": "RUS",
+    "SE": "SWE",
+    "SI": "SVN",
+    "SK": "SVK",
+    "SM": "SMR",
+    "TR": "TUR",
+    "UA": "UKR",
+    "VA": "VAT",
+    "XK": "XKX",
+}
 
 
 def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
     countries = _countries(document)
+    countries = [country for country in countries if _iso3_location(country)]
     figure = go.Figure()
     if countries:
         figure.add_trace(
             go.Choropleth(
-                locations=[country["country"] for country in countries],
-                locationmode="country names",
+                locations=[_iso3_location(country) for country in countries],
+                locationmode="ISO-3",
+                text=[country["country"] for country in countries],
                 z=[country["ranking"] for country in countries],
                 customdata=[[country["country_code"]] for country in countries],
                 zmin=0,
@@ -39,7 +89,7 @@ def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
                     "thickness": 13,
                 },
                 hovertemplate=(
-                    "<b>%{location}</b><br>"
+                    "<b>%{text}</b><br>"
                     "Código: %{customdata[0]}<br>"
                     "Ranking ILGA: %{z:.2f}%<extra></extra>"
                 ),
@@ -47,7 +97,7 @@ def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
         )
     else:
         figure.add_annotation(
-            text="No hay datos ILGA disponibles en MongoDB.",
+            text="No hay información legal disponible.",
             x=0.5,
             y=0.5,
             xref="paper",
@@ -68,10 +118,10 @@ def build_ilga_choropleth(document: dict[str, Any] | None) -> go.Figure:
             "landcolor": "#edf1f4",
             "showocean": True,
             "oceancolor": "#dcebf2",
-            "bgcolor": "#ffffff",
+            "bgcolor": PLOTLY_TRANSPARENT,
         },
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         font={"family": "Segoe UI, Arial, sans-serif", "color": "#252a31"},
         uirevision="ilga-europe",
     )
@@ -97,8 +147,8 @@ def build_ilga_ranking_bar(document: dict[str, Any] | None, limit: int = 12) -> 
         margin={"l": 10, "r": 20, "t": 20, "b": 35},
         xaxis={"title": "Ranking ILGA (%)", "range": [0, 100]},
         yaxis={"title": ""},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         showlegend=False,
     )
     return figure
@@ -123,8 +173,8 @@ def build_fra_country_bar(document: dict[str, Any] | None) -> go.Figure:
         margin={"l": 45, "r": 20, "t": 20, "b": 100},
         xaxis={"tickangle": -45, "title": ""},
         yaxis={"title": "Porcentaje medio", "range": [0, 100]},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         showlegend=False,
     )
     return figure
@@ -163,8 +213,8 @@ def build_fra_answer_distribution(document: dict[str, Any] | None) -> go.Figure:
         margin={"l": 45, "r": 20, "t": 20, "b": 65},
         xaxis={"title": "Respuesta"},
         yaxis={"title": "Porcentaje medio", "range": [0, 100]},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         showlegend=False,
     )
     return figure
@@ -197,13 +247,13 @@ def build_fra_country_answer_bar(
         )
     )
     if not answers:
-        _add_empty_annotation(figure, "No hay datos por pais para esta respuesta.")
+        _add_empty_annotation(figure, "No hay datos por país para esta respuesta.")
     figure.update_layout(
         margin={"l": 10, "r": 20, "t": 20, "b": 35},
         xaxis={"title": f"% {selected_answer or 'respuesta'}", "range": [0, 100]},
         yaxis={"title": ""},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         showlegend=False,
     )
     return figure
@@ -214,7 +264,7 @@ def build_fra_filter_heatmap(document: dict[str, Any] | None) -> go.Figure:
     filter_type = _representative_filter_type(rows)
     figure = go.Figure()
     if not rows or not filter_type:
-        _add_empty_annotation(figure, "No hay filtros demograficos suficientes.")
+        _add_empty_annotation(figure, "No hay filtros demográficos suficientes.")
     else:
         answers = sorted({row["answer"] for row in rows})
         filter_values = sorted(
@@ -260,8 +310,8 @@ def build_fra_filter_heatmap(document: dict[str, Any] | None) -> go.Figure:
         margin={"l": 120, "r": 20, "t": 20, "b": 75},
         xaxis={"title": "Respuesta"},
         yaxis={"title": filter_type or ""},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
     )
     return figure
 
@@ -272,12 +322,14 @@ def build_fra_choropleth(
 ) -> go.Figure:
     selected_answer = answer or _default_fra_answer(document)
     answers = _aggregate_fra_answers(document, answer=selected_answer)
+    answers = [item for item in answers if _iso3_location(item)]
     figure = go.Figure()
     if answers:
         figure.add_trace(
             go.Choropleth(
-                locations=[item["country"] for item in answers],
-                locationmode="country names",
+                locations=[_iso3_location(item) for item in answers],
+                locationmode="ISO-3",
+                text=[item["country"] for item in answers],
                 z=[item["percentage"] for item in answers],
                 customdata=[[item["country_code"], item["observations"]] for item in answers],
                 zmin=0,
@@ -296,7 +348,7 @@ def build_fra_choropleth(
                     "thickness": 13,
                 },
                 hovertemplate=(
-                    "<b>%{location}</b><br>"
+                    "<b>%{text}</b><br>"
                     "Código: %{customdata[0]}<br>"
                     "Media FRA: %{z:.2f}%<br>"
                     "Observaciones: %{customdata[1]}<extra></extra>"
@@ -305,7 +357,7 @@ def build_fra_choropleth(
         )
     else:
         figure.add_annotation(
-            text="Selecciona un indicador FRA con valores por pais.",
+            text="Selecciona un indicador FRA con valores por país.",
             x=0.5,
             y=0.5,
             xref="paper",
@@ -326,10 +378,10 @@ def build_fra_choropleth(
             "landcolor": "#edf1f4",
             "showocean": True,
             "oceancolor": "#dcebf2",
-            "bgcolor": "#ffffff",
+            "bgcolor": PLOTLY_TRANSPARENT,
         },
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         font={"family": "Segoe UI, Arial, sans-serif", "color": "#252a31"},
         uirevision="fra-europe",
     )
@@ -351,19 +403,19 @@ def build_ilga_category_score_bar(
             customdata=[item["matched_weight"] for item in reversed(scores)],
             marker={"color": "#167d68"},
             hovertemplate=(
-                "<b>%{y}</b><br>Puntuacion: %{x:.2f}%"
+                "<b>%{y}</b><br>Puntuación: %{x:.2f}%"
                 "<br>Peso analizado: %{customdata:.2f}<extra></extra>"
             ),
         )
     )
     if not scores:
-        _add_empty_annotation(figure, "No hay criterios ILGA para esta categoria.")
+        _add_empty_annotation(figure, "No hay criterios ILGA para esta categoría.")
     figure.update_layout(
         margin={"l": 10, "r": 20, "t": 20, "b": 35},
         xaxis={"title": "Cumplimiento ponderado (%)", "range": [0, 100]},
         yaxis={"title": ""},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         showlegend=False,
     )
     return figure
@@ -374,12 +426,14 @@ def build_ilga_category_map(
     category: str | None,
 ) -> go.Figure:
     scores = _ilga_category_scores(document, category)
+    scores = [item for item in scores if _iso3_location(item)]
     figure = go.Figure()
     if scores:
         figure.add_trace(
             go.Choropleth(
-                locations=[item["country"] for item in scores],
-                locationmode="country names",
+                locations=[_iso3_location(item) for item in scores],
+                locationmode="ISO-3",
+                text=[item["country"] for item in scores],
                 z=[item["score"] for item in scores],
                 customdata=[item["country_code"] for item in scores],
                 zmin=0,
@@ -394,7 +448,7 @@ def build_ilga_category_map(
                 marker={"line": {"color": "#ffffff", "width": 0.7}},
                 colorbar={"title": "%", "thickness": 13},
                 hovertemplate=(
-                    "<b>%{location}</b><br>Codigo: %{customdata}<br>"
+                    "<b>%{text}</b><br>Codigo: %{customdata}<br>"
                     "Cumplimiento: %{z:.2f}%<extra></extra>"
                 ),
             )
@@ -414,10 +468,10 @@ def build_ilga_category_map(
             "landcolor": "#edf1f4",
             "showocean": True,
             "oceancolor": "#dcebf2",
-            "bgcolor": "#ffffff",
+            "bgcolor": PLOTLY_TRANSPARENT,
         },
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         font={"family": "Segoe UI, Arial, sans-serif", "color": "#252a31"},
         uirevision=f"ilga-category-{category or 'all'}",
     )
@@ -461,13 +515,13 @@ def build_ilga_indicator_coverage_bar(
         )
     )
     if not coverage:
-        _add_empty_annotation(figure, "No hay indicadores ILGA para esta categoria.")
+        _add_empty_annotation(figure, "No hay indicadores ILGA para esta categoría.")
     figure.update_layout(
         margin={"l": 180, "r": 20, "t": 20, "b": 35},
         xaxis={"title": "Paises que cumplen (%)", "range": [0, 100]},
         yaxis={"title": ""},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
         showlegend=False,
     )
     return figure
@@ -534,46 +588,15 @@ def build_ilga_category_heatmap(
             )
         )
     else:
-        _add_empty_annotation(figure, "No hay matriz ILGA para esta categoria.")
+        _add_empty_annotation(figure, "No hay matriz ILGA para esta categoría.")
     figure.update_layout(
         margin={"l": 120, "r": 20, "t": 20, "b": 150},
         xaxis={"title": "Indicador"},
         yaxis={"title": ""},
-        paper_bgcolor="#ffffff",
-        plot_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
+        plot_bgcolor=PLOTLY_TRANSPARENT,
     )
     return figure
-
-
-def build_matplotlib_ranking_image(document: dict[str, Any] | None) -> str:
-    countries = sorted(
-        _countries(document),
-        key=lambda country: country["ranking"],
-        reverse=True,
-    )[:8]
-    figure, axis = plt.subplots(figsize=(7.2, 3.8))
-    names = [country["country"] for country in reversed(countries)]
-    values = [country["ranking"] for country in reversed(countries)]
-    axis.barh(names, values, color="#287a6a")
-    axis.set_xlim(0, 100)
-    axis.set_xlabel("Ranking ILGA (%)")
-    axis.spines[["top", "right", "left"]].set_visible(False)
-    axis.grid(axis="x", alpha=0.2)
-    figure.tight_layout()
-
-    buffer = BytesIO()
-    figure.savefig(buffer, format="png", dpi=130, transparent=False)
-    plt.close(figure)
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
-
-
-@cache.memoize()
-def build_cached_matplotlib_ranking_image(year: int | None) -> str:
-    document = get_latest_ilga_document()
-    if not isinstance(document, dict) or document.get("year") != year:
-        document = None
-    return build_matplotlib_ranking_image(document)
 
 
 def build_ilga_mapbox_figure(document: dict[str, Any] | None) -> go.Figure:
@@ -611,7 +634,7 @@ def build_ilga_mapbox_figure(document: dict[str, Any] | None) -> go.Figure:
             "zoom": 2.25,
         },
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
-        paper_bgcolor="#ffffff",
+        paper_bgcolor=PLOTLY_TRANSPARENT,
     )
     return figure
 
@@ -634,6 +657,13 @@ def _countries(document: dict[str, Any] | None) -> list[dict[str, Any]]:
             }
         )
     return [country for country in output if country["country"]]
+
+
+def _iso3_location(row: dict[str, Any]) -> str:
+    code = normalize_country_code(row.get("country_code"), row.get("country"))
+    if len(code) == 3:
+        return code
+    return ISO2_TO_ISO3.get(code, "")
 
 
 def _aggregate_fra_answers(

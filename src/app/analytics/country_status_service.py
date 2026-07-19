@@ -5,11 +5,13 @@ from typing import Any
 import bleach
 
 from app.analytics.repository import get_country_lgbti_status_records
-from app.analytics.statistics_normalizers import normalize_country_code
+from app.analytics.statistics_normalizers import normalize_country_code, repair_text_encoding
 
 ILGA_ANNUAL_REVIEW_2026_URL = (
     "https://www.ilga-europe.org/files/uploads/2026/02/2026-ILGA-EUROPE-ANNUAL-REVIEW.pdf"
 )
+MISSING_STATUS_SUMMARY_ES = "Todavía no hay información disponible para este país."
+MISSING_STATUS_SUMMARY_EN = "No information is available for this country yet."
 
 
 def get_country_lgbti_status(
@@ -36,7 +38,7 @@ def _normalize_country_codes(country_codes: list[str]) -> list[str]:
     output: list[str] = []
     seen: set[str] = set()
     for country_code in country_codes:
-        clean_code = normalize_country_code(country_code) or str(country_code or "").strip().upper()
+        clean_code = normalize_country_code(country_code) or repair_text_encoding(country_code).strip().upper()
         if not clean_code or clean_code in seen:
             continue
         seen.add(clean_code)
@@ -71,7 +73,11 @@ def _missing_status(country_code: str, requested_year: int | None) -> dict[str, 
         "country": country_code,
         "year": requested_year,
         "title": "",
-        "summary": "Todavía no hay un resumen cualitativo disponible para este país.",
+        "summary": MISSING_STATUS_SUMMARY_ES,
+        "summary_i18n": {
+            "es": MISSING_STATUS_SUMMARY_ES,
+            "en": MISSING_STATUS_SUMMARY_EN,
+        },
         "legal_context": "",
         "social_context": "",
         "observations": "",
@@ -85,7 +91,7 @@ def _missing_status(country_code: str, requested_year: int | None) -> dict[str, 
 
 
 def _plain_text(value: Any) -> str:
-    return bleach.clean(str(value or "").strip(), tags=[], attributes={}, strip=True)
+    return bleach.clean(repair_text_encoding(value).strip(), tags=[], attributes={}, strip=True)
 
 
 def _plain_text_list(value: Any) -> list[str]:

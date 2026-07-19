@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 from typing import Any
 
 from bson import ObjectId
@@ -12,9 +13,16 @@ from app.import_to_db.felgtbi.importer import FELGTBI_SOURCE_CODE
 INDICATOR_FELGTBI_COLLECTION = "Indicator_felgtbi"
 
 
-def insert_indicator_felgtbi_json(file_json: dict[str, Any] | list[Any]) -> int:
+def insert_indicator_felgtbi_json(
+    file_json: dict[str, Any] | list[Any],
+    *,
+    original_filename: str | None = None,
+) -> int:
     documents = _normalize_documents(file_json)
-    prepared_documents = [_prepare_indicator_document(document) for document in documents]
+    prepared_documents = [
+        _prepare_indicator_document(document, original_filename=original_filename)
+        for document in documents
+    ]
     config = get_mongo_config()
 
     with MongoClient(
@@ -29,9 +37,23 @@ def insert_indicator_felgtbi_json(file_json: dict[str, Any] | list[Any]) -> int:
             [("year", -1), ("category", 1), ("specific_category", 1)],
             background=True,
         )
+        collection.create_index("source_document_id", background=True)
+        collection.create_index("original_filename", background=True)
         collection.create_index([("source", 1), ("report_type", 1)], background=True)
         collection.create_index(
             [("source", 1), ("year", -1), ("report_title", 1), ("report_type", 1)],
+            background=True,
+        )
+        collection.create_index(
+            [("source", 1), ("source_document_id", 1), ("year", -1)],
+            background=True,
+        )
+        collection.create_index(
+            [("source", 1), ("source_document_id", 1), ("year", -1), ("code", 1)],
+            background=True,
+        )
+        collection.create_index(
+            [("source", 1), ("original_filename", 1), ("year", -1)],
             background=True,
         )
         for scope in _report_replacement_scopes(prepared_documents):
@@ -54,30 +76,44 @@ def insert_indicator_felgtbi_json(file_json: dict[str, Any] | list[Any]) -> int:
 
 def _report_replacement_scopes(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     scopes: list[dict[str, Any]] = []
-    seen: set[tuple[str, int, str, str]] = set()
+    seen: set[tuple[Any, ...]] = set()
     for document in documents:
+        source_document_id = str(document.get("source_document_id") or "").strip()
         report_title = str(document.get("report_title") or "").strip()
         report_type = str(document.get("report_type") or "").strip()
+        original_filename = str(document.get("original_filename") or "").strip()
         source = str(document.get("source") or "").strip()
         year = document.get("year")
-        if not source or not report_title or year is None:
+        if not source:
             continue
-        key = (source, int(year), report_title, report_type)
-        if key in seen:
-            continue
-        seen.add(key)
-        scopes.append(
-            {
+        if source_document_id:
+            key = ("source_document_id", source, source_document_id)
+            scope = {"source": source, "source_document_id": source_document_id}
+        elif original_filename and year is not None:
+            key = ("original_filename", source, int(year), original_filename)
+            scope = {"source": source, "year": int(year), "original_filename": original_filename}
+        elif report_title and year is not None:
+            key = ("report_title", source, int(year), report_title, report_type)
+            scope = {
                 "source": source,
                 "year": int(year),
                 "report_title": report_title,
                 "report_type": report_type,
             }
-        )
+        else:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        scopes.append(scope)
     return scopes
 
 
-def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
+def _prepare_indicator_document(
+    document: dict[str, Any],
+    *,
+    original_filename: str | None = None,
+) -> dict[str, Any]:
     prepared = deepcopy(document)
     if prepared.get("source") != FELGTBI_SOURCE_CODE:
         raise ValueError("invalid_felgtbi_payload")
@@ -93,6 +129,18 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
         prepared["description"] = description
     else:
         prepared["description"] = question
+    resolved_filename = _safe_original_filename(
+        prepared.get("original_filename")
+        or prepared.get("filename")
+        or prepared.get("file_name")
+        or prepared.get("source_file")
+        or original_filename
+    )
+    if resolved_filename:
+        prepared["original_filename"] = resolved_filename
+    prepared["import_status"] = str(prepared.get("import_status") or "processed")
+    if not prepared.get("source_document_id"):
+        prepared["source_document_id"] = _fallback_source_document_id(prepared, resolved_filename)
     prepared["year"] = _int_or_none(prepared.get("year"))
     if prepared["year"] is None:
         raise ValueError("invalid_felgtbi_payload")
@@ -156,6 +204,27 @@ def _resolve_object_id(value: Any) -> ObjectId:
     return ObjectId()
 
 
+def _safe_original_filename(value: Any) -> str:
+    clean = str(value or "").replace("\\", "/").rstrip("/")
+    clean = clean.rsplit("/", 1)[-1].strip()
+    return clean
+
+
+def _fallback_source_document_id(document: dict[str, Any], original_filename: str) -> str:
+    seed = "|".join(
+        str(part or "").strip()
+        for part in (
+            FELGTBI_SOURCE_CODE,
+            original_filename,
+            document.get("year"),
+            document.get("report_title"),
+            document.get("report_type"),
+        )
+    )
+    digest = hashlib.sha1(seed.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    return f"felgtbi_pdf_{digest}"
+
+
 def _int_or_none(value: Any) -> int | None:
     try:
         return int(value)
@@ -164,8 +233,17 @@ def _int_or_none(value: Any) -> int | None:
 
 
 def _indicator_filter(document: dict[str, Any]) -> dict[str, Any]:
-    return {
+    query = {
         "code": document["code"],
         "source": document.get("source") or "",
         "year": document.get("year"),
     }
+    source_document_id = str(document.get("source_document_id") or "").strip()
+    if source_document_id:
+        query["source_document_id"] = source_document_id
+        return query
+
+    original_filename = str(document.get("original_filename") or "").strip()
+    if original_filename:
+        query["original_filename"] = original_filename
+    return query

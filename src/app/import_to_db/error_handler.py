@@ -23,46 +23,46 @@ class ImportErrorHandler:
 
         if "connection refused" in normalized:
             return ImportErrorInfo(
-                title="The import service is not accepting connections.",
+                title="No ha sido posible guardar el archivo para revisión.",
                 details=[
-                    "Your file was read, but the page could not save it for review.",
-                    "Please try again later. If the problem continues, contact the site administrator.",
+                    "El archivo se ha leído correctamente, pero no se ha podido completar la operación.",
+                    "Inténtalo de nuevo más tarde.",
                 ],
             )
 
         if "timeout" in normalized or "timed out" in normalized:
             return ImportErrorInfo(
-                title="The import service took too long to respond.",
+                title="La operación ha tardado demasiado.",
                 details=[
-                    "Your file was read, but saving it for review timed out.",
-                    "Please try again in a few minutes.",
+                    "El archivo se ha leído correctamente, pero no se ha podido guardar para revisión.",
+                    "Inténtalo de nuevo en unos minutos.",
                 ],
             )
 
         if "password authentication failed" in normalized:
             return ImportErrorInfo(
-                title="The import service could not verify the connection.",
+                title="No ha sido posible guardar el archivo para revisión.",
                 details=[
-                    "Your file was not saved for review.",
-                    "Please contact the site administrator if this keeps happening.",
+                    "El archivo no se ha guardado.",
+                    "Inténtalo de nuevo más tarde.",
                 ],
             )
 
         if "database" in normalized and "does not exist" in normalized:
             return ImportErrorInfo(
-                title="The import service is not ready.",
+                title="La revisión de archivos no está disponible en este momento.",
                 details=[
-                    "Your file was read, but the page could not find the storage area used for imports.",
-                    "Please contact the site administrator.",
+                    "El archivo se ha leído correctamente, pero no se ha podido guardar para revisión.",
+                    "Inténtalo de nuevo más tarde.",
                 ],
             )
 
         if "database_url must be set" in normalized:
             return ImportErrorInfo(
-                title="The import service is not configured.",
+                title="La revisión de archivos no está disponible en este momento.",
                 details=[
-                    "Your file could not be saved for review because the page is missing its import storage connection.",
-                    "Please contact the site administrator.",
+                    "El archivo no se ha podido guardar para revisión.",
+                    "Inténtalo de nuevo más tarde.",
                 ],
             )
 
@@ -70,36 +70,36 @@ class ImportErrorHandler:
             "does not exist" in normalized or "undefinedcolumn" in normalized
         ):
             return ImportErrorInfo(
-                title="The review queue is not ready.",
+                title="La revisión de archivos no está disponible en este momento.",
                 details=[
-                    "Your file was read, but the page could not save the generated JSON for review.",
-                    "Please contact the site administrator.",
+                    "El archivo se ha leído correctamente, pero no se ha podido guardar para revisión.",
+                    "Inténtalo de nuevo más tarde.",
                 ],
             )
 
         if 'relation "import_logs" does not exist' in normalized:
             return ImportErrorInfo(
-                title="The review queue is not available.",
+                title="La revisión de archivos no está disponible en este momento.",
                 details=[
-                    "Your file was read, but the page could not add it to the review queue.",
-                    "Please contact the site administrator.",
+                    "El archivo se ha leído correctamente, pero no se ha podido guardar para revisión.",
+                    "Inténtalo de nuevo más tarde.",
                 ],
             )
 
         if "violates check constraint" in normalized and "status" in normalized:
             return ImportErrorInfo(
-                title="The review queue rejected the import status.",
+                title="No ha sido posible guardar el archivo para revisión.",
                 details=[
-                    "Your file was read, but the page could not mark it as waiting for review.",
-                    "Please contact the site administrator.",
+                    "El archivo se ha leído correctamente, pero no se ha podido completar la operación.",
+                    "Inténtalo de nuevo más tarde.",
                 ],
             )
 
         return ImportErrorInfo(
-            title="The import could not be saved for review.",
+            title="No ha sido posible guardar el archivo para revisión.",
             details=[
-                "Your file may have been read, but the page could not finish saving the import.",
-                "Please try again. If the problem continues, contact the site administrator.",
+                "El archivo puede haberse leído correctamente, pero no se ha podido completar la operación.",
+                "Inténtalo de nuevo más tarde.",
             ],
         )
 
@@ -107,13 +107,13 @@ class ImportErrorHandler:
     def _dns_error(cls, error_text: str) -> ImportErrorInfo:
         host = cls.extract_failed_host(error_text)
         details = [
-            "Your file was read, but the page could not reach the import storage service.",
-            "Please check your internet connection and try again.",
+            "El archivo se ha leído correctamente, pero no se ha podido guardar para revisión.",
+            "Comprueba tu conexión e inténtalo de nuevo.",
         ]
         if host:
-            details.append(f"The unavailable service was: {host}.")
+            details.append("El servicio no está disponible temporalmente.")
         return ImportErrorInfo(
-            title="The import service could not be reached.",
+            title="No ha sido posible guardar el archivo para revisión.",
             details=details,
         )
 

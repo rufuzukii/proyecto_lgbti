@@ -438,7 +438,12 @@ def _register_auth_routes(app: Dash) -> None:
                 pending_import = get_pending_import_log(import_id)
                 if pending_import is None:
                     return _redirect("/admin/imports", error="import_not_found")
-                _insert_approved_import(pending_import.file_json)
+                if pending_import.file_json is None:
+                    return _redirect("/admin/imports", error="invalid_json_payload")
+                _insert_approved_import(
+                    pending_import.file_json,
+                    original_filename=pending_import.file_name,
+                )
                 invalidate_analytics_cache()
                 delete_import_log(import_id)
             except ValueError as exc:
@@ -461,7 +466,11 @@ def _session_user_from_record(record: UserRecord) -> SessionUser:
     )
 
 
-def _insert_approved_import(file_json: dict | list) -> None:
+def _insert_approved_import(
+    file_json: dict | list,
+    *,
+    original_filename: str | None = None,
+) -> None:
     documents = file_json if isinstance(file_json, list) else [file_json]
     if not documents or not all(isinstance(document, dict) for document in documents):
         raise ValueError("invalid_json_payload")
@@ -487,7 +496,7 @@ def _insert_approved_import(file_json: dict | list) -> None:
         from app.import_to_db.fra import upsert_indicators_from_json
 
         upsert_indicators_from_json(file_json)
-        insert_indicator_felgtbi_json(file_json)
+        insert_indicator_felgtbi_json(file_json, original_filename=original_filename)
         return
     raise ValueError("unsupported_import_dataset")
 

@@ -6,7 +6,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from app.dash.compat import Dash, Input, Output, State, dcc, html
+from app.dash.compat import Dash, Input, Output, PreventUpdate, State, dcc, html
+from app.dash.i18n import text, text_attrs
+from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
 from flask_login import current_user
 
@@ -18,9 +20,9 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_UPLOAD_FILES = 3
 
 DATA_SOURCE_OPTIONS = [
-    {"label": "FRA - EU LGBTIQ Survey", "value": "FRA"},
-    {"label": "ILGA - Rainbow Map", "value": "ILGA"},
-    {"label": "FELGTBI+ - Estado LGTBI+", "value": "FELGTB"},
+    {"label": "Encuesta europea LGBTIQ+", "value": "FRA"},
+    {"label": "Mapa legal europeo", "value": "ILGA"},
+    {"label": "Estado LGTBI+ en España", "value": "FELGTB"},
 ]
 
 
@@ -41,10 +43,13 @@ def build_upload_layout() -> html.Div:
                 [
                     html.Header(
                         [
-                            html.P("Reviewable import", className="upload-eyebrow"),
-                            html.H1("Upload data for review"),
+                            html.P("Revisión de datos", className="upload-eyebrow", **text_attrs("Revisión de datos", "Data review")),
+                            html.H1(text("Subir archivo para revisión", "Upload file for review")),
                             html.P(
-                                "Convert CSV, ILGA JSON or FELGTBI+ PDF files into temporary JSON and leave the import pending for administrative validation."
+                                text(
+                                    "Sube archivos de fuentes oficiales para que una persona administradora revise el contenido antes de incorporarlo a la aplicación.",
+                                    "Upload files from official sources so an administrator can review the content before adding it to the application.",
+                                )
                             ),
                         ],
                         className="page-header upload-header",
@@ -54,9 +59,10 @@ def build_upload_layout() -> html.Div:
                             html.Div(
                                 [
                                     html.Label(
-                                        "Data source",
+                                        "Fuente de datos",
                                         htmlFor="data-source",
                                         className="upload-label",
+                                        **text_attrs("Fuente de datos", "Data source"),
                                     ),
                                     dcc.Dropdown(
                                         id="data-source",
@@ -66,7 +72,10 @@ def build_upload_layout() -> html.Div:
                                         className="upload-dropdown",
                                     ),
                                     html.P(
-                                        "Select the source to apply the correct parser before saving JSON in import_logs.",
+                                        text(
+                                            "Selecciona la fuente correspondiente al archivo que vas a subir.",
+                                            "Select the source that matches the file you are uploading.",
+                                        ),
                                         className="upload-help",
                                     ),
                                 ],
@@ -76,28 +85,38 @@ def build_upload_layout() -> html.Div:
                                 id="upload-csv",
                                 children=html.Div(
                                     [
-                                        html.Strong("Drag files here"),
-                                        html.Span(" or click to select files"),
+                                        html.Strong("Arrastra archivos aquí", **text_attrs("Arrastra archivos aquí", "Drag files here")),
+                                        html.Span(" o haz clic para seleccionarlos", **text_attrs(" o haz clic para seleccionarlos", " or click to select files")),
                                         html.Small(
-                                            f"Maximum {MAX_UPLOAD_FILES} files, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB per file."
+                                            f"Máximo {MAX_UPLOAD_FILES} archivos, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB por archivo.",
+                                            **text_attrs(
+                                                f"Máximo {MAX_UPLOAD_FILES} archivos, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB por archivo.",
+                                                f"Maximum {MAX_UPLOAD_FILES} files, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB per file.",
+                                            ),
                                         ),
                                     ],
                                     className="upload-area-content",
                                 ),
                                 multiple=True,
                                 className="upload-area",
+                                className_disabled="upload-area upload-area-disabled",
                             ),
                             html.Div(
                                 [
-                                    html.H2("Review flow"),
+                                    html.H2(text("Proceso de revisión", "Review process")),
                                     html.Ol(
                                         [
-                                            html.Li("The file is validated and transformed into JSON."),
+                                            html.Li("El archivo se valida y prepara para su revisión.", **text_attrs("El archivo se valida y prepara para su revisión.", "The file is validated and prepared for review.")),
                                             html.Li(
-                                                "The JSON is recorded in PostgreSQL with pending status."
+                                                "El contenido queda pendiente de aprobación.",
+                                                **text_attrs("El contenido queda pendiente de aprobación.", "The content remains pending approval."),
                                             ),
                                             html.Li(
-                                                "An administrator reviews and approves it before inserting into MongoDB."
+                                                "Una persona administradora lo revisa antes de incorporarlo a la aplicación.",
+                                                **text_attrs(
+                                                    "Una persona administradora lo revisa antes de incorporarlo a la aplicación.",
+                                                    "An administrator reviews it before adding it to the application.",
+                                                ),
                                             ),
                                         ]
                                     ),
@@ -109,6 +128,14 @@ def build_upload_layout() -> html.Div:
                                 className="upload-output",
                                 role="status",
                             ),
+                            build_loading_modal(
+                                element_id="upload-loading-modal",
+                                title=("Subiendo archivos...", "Uploading files..."),
+                                description=(
+                                    "Estamos procesando los archivos. Este proceso puede tardar unos segundos.",
+                                    "We are processing your files. This may take a few seconds.",
+                                ),
+                            ),
                         ],
                         className="page-container upload-container",
                     ),
@@ -117,25 +144,64 @@ def build_upload_layout() -> html.Div:
         ]
     )
 
-
 def register_upload_callbacks(app: Dash) -> None:
     @app.callback(
         Output("upload-output", "children"),
+        Output("upload-csv", "contents"),
+        Output("upload-csv", "filename"),
+        Output("upload-csv", "last_modified"),
         Input("upload-csv", "contents"),
         State("upload-csv", "filename"),
         State("data-source", "value"),
+        prevent_initial_call=True,
+        running=[
+            (
+                Output("upload-loading-modal", "className"),
+                "upload-loading-overlay",
+                "upload-loading-overlay is-hidden",
+            ),
+            (Output("upload-csv", "disabled"), True, False),
+        ],
     )
     def handle_upload(contents, filenames, data_source):
         if not contents:
-            return ""
+            raise PreventUpdate
+        try:
+            result = _process_upload(contents, filenames, data_source)
+        except Exception:
+            logger.exception("upload_unexpected_failed", extra={"data_source": data_source})
+            result = build_error_message(
+                (
+                    "No ha sido posible completar la subida. Inténtalo de nuevo más tarde.",
+                    "The upload could not be completed. Please try again later.",
+                )
+            )
+        return result, None, None, None
+
+    @app.callback(
+        Output("upload-output", "children", allow_duplicate=True),
+        Output("upload-csv", "contents", allow_duplicate=True),
+        Output("upload-csv", "filename", allow_duplicate=True),
+        Output("upload-csv", "last_modified", allow_duplicate=True),
+        Input("upload-error-close", "n_clicks"),
+        Input("upload-error-retry", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def dismiss_upload_error(close_clicks: int | None, retry_clicks: int | None):
+        if not close_clicks and not retry_clicks:
+            raise PreventUpdate
+        return "", None, None, None
+
+
+def _process_upload(contents, filenames, data_source):
         if not filenames:
-            return build_error_message("No file was received.")
+            return build_error_message(("No se ha recibido ningún archivo.", "No file was received."))
         if not data_source:
-            return build_error_message("Select the data source before uploading.")
+            return build_error_message(("Selecciona una fuente antes de subir el archivo.", "Select the data source before uploading."))
 
         contents_list, filenames_list = normalize_upload_values(contents, filenames)
         if len(contents_list) > MAX_UPLOAD_FILES:
-            return build_error_message(f"Maximum {MAX_UPLOAD_FILES} files per upload.")
+            return build_error_message((f"Puedes subir un máximo de {MAX_UPLOAD_FILES} archivos cada vez.", f"Maximum {MAX_UPLOAD_FILES} files per upload."))
 
         imported_files = []
         total_documents = 0
@@ -144,12 +210,15 @@ def register_upload_callbacks(app: Dash) -> None:
             safe_name = Path(name).name if name else "upload.csv"
             if not is_supported_upload_file(data_source, safe_name):
                 return build_error_message(
-                    f"Unsupported file: {safe_name}. FRA accepts CSV; ILGA accepts CSV or JSON; FELGTBI+ accepts PDF."
+                    (
+                        "El archivo seleccionado no corresponde con la fuente de datos elegida. Comprueba el archivo o selecciona otra fuente e inténtalo de nuevo.",
+                        "The selected file does not match the chosen data source. Check the file or select another source and try again.",
+                    )
                 )
 
             payload_bytes, payload_size = _decode_upload_payload(data)
             if payload_size > MAX_UPLOAD_BYTES:
-                return build_error_message(f"{safe_name} exceeds the allowed size.")
+                return build_error_message((f"El archivo {safe_name} supera el tamaño permitido.", f"{safe_name} exceeds the allowed size."))
 
             try:
                 payload = parse_file_by_source(
@@ -157,12 +226,20 @@ def register_upload_callbacks(app: Dash) -> None:
                     file_bytes=payload_bytes,
                     file_name=safe_name,
                 )
-            except NotImplementedError as exc:
-                return build_error_message(str(exc))
+            except NotImplementedError:
+                return build_error_message(
+                    (
+                        "El formato seleccionado no está disponible en este momento.",
+                        "The selected format is not available right now.",
+                    )
+                )
             except RuntimeError as exc:
                 if str(exc) == "missing_pdf_dependency":
                     return build_error_message(
-                        "PDF parsing is not available because PyMuPDF is not installed."
+                        (
+                            "No ha sido posible procesar este archivo en este momento. Inténtalo de nuevo más tarde.",
+                            "This file could not be processed right now. Please try again later.",
+                        )
                     )
                 raise
             except Exception:
@@ -170,11 +247,14 @@ def register_upload_callbacks(app: Dash) -> None:
                     "file_parse_failed",
                     extra={"file": safe_name, "data_source": data_source},
                 )
-                return build_error_message(f"No se pudo procesar el archivo ({safe_name}).")
+                return build_error_message((f"No se ha podido procesar el archivo {safe_name}.", f"The file {safe_name} could not be processed."))
 
             if not payload:
                 return build_error_message(
-                    f"No data was generated for {safe_name}. Check that the selected source matches the file format."
+                    (
+                        f"No se ha encontrado información válida en {safe_name}. Comprueba que la fuente seleccionada corresponde al archivo.",
+                        f"No valid information was found in {safe_name}. Check that the selected source matches the file.",
+                    )
                 )
 
             if data_source == "FRA":
@@ -189,7 +269,10 @@ def register_upload_callbacks(app: Dash) -> None:
                         extra={"file": safe_name, "data_source": data_source},
                     )
                     return build_error_message(
-                        "No se pudieron guardar los indicadores en PostgreSQL."
+                        (
+                            "No ha sido posible guardar la información en este momento. Inténtalo de nuevo más tarde.",
+                            "The information could not be saved right now. Please try again later.",
+                        )
                     )
 
             try:
@@ -203,7 +286,12 @@ def register_upload_callbacks(app: Dash) -> None:
                     extra={"file": safe_name, "data_source": data_source},
                 )
                 error_info = ImportErrorHandler.describe_import_log_error(exc)
-                return build_error_message(error_info.title, error_info.details)
+                return build_error_message(
+                    (
+                        error_info.title,
+                        "The file could not be saved for review. Please try again later.",
+                    )
+                )
 
             document_count = count_payload_documents(payload)
             total_documents += document_count
@@ -266,10 +354,29 @@ def count_payload_documents(payload: Any) -> int:
     return len(payload) if isinstance(payload, list) else 1
 
 
-def build_error_message(message: str, details: list[str] | None = None) -> html.Div:
+def build_error_message(message: tuple[str, str], details: list[str] | None = None) -> html.Div:
+    es, en = message
     children: list[Any] = [
-        html.Strong("The import was not completed"),
-        html.P(message),
+        html.Div(
+            [
+                html.Strong(
+                    "La subida no se ha completado",
+                    **text_attrs("La subida no se ha completado", "The upload was not completed"),
+                ),
+                html.Button(
+                    "Cerrar",
+                    id="upload-error-close",
+                    type="button",
+                    className="upload-message-close",
+                    **{
+                        **text_attrs("Cerrar", "Close"),
+                        "data-upload-dismiss": "true",
+                    },
+                ),
+            ],
+            className="upload-message-header",
+        ),
+        html.P(es, **text_attrs(es, en)),
     ]
     if details:
         children.append(
@@ -278,6 +385,21 @@ def build_error_message(message: str, details: list[str] | None = None) -> html.
                 className="upload-message-details",
             )
         )
+    children.append(
+        html.Div(
+            html.Button(
+                "Volver a intentar",
+                id="upload-error-retry",
+                type="button",
+                className="upload-message-retry",
+                **{
+                    **text_attrs("Volver a intentar", "Try again"),
+                    "data-upload-dismiss": "true",
+                },
+            ),
+            className="upload-message-actions",
+        )
+    )
 
     return html.Div(
         children,
@@ -288,18 +410,27 @@ def build_error_message(message: str, details: list[str] | None = None) -> html.
 def build_success_message(
     *, source: str, imported_files: list[dict], total_documents: int
 ) -> html.Div:
+    records_es = f"{total_documents} registro{'s' if total_documents != 1 else ''} preparado{'s' if total_documents != 1 else ''}"
+    records_en = f"{total_documents} prepared record{'s' if total_documents != 1 else ''}"
     return html.Div(
         [
-            html.Strong("Import registered as pending"),
+            html.Strong("Archivo enviado a revisión", **text_attrs("Archivo enviado a revisión", "File sent for review")),
             html.P(
-                f"Source: {source}. Generated JSON documents: {total_documents}. An administrator must review the content before inserting it into MongoDB."
+                records_es,
+                **text_attrs(records_es, records_en),
             ),
             html.Ul(
                 [
                     html.Li(
                         [
                             html.Span(file_info["name"]),
-                            html.Em(f"{file_info['documents']} documents"),
+                            html.Em(
+                                f"{file_info['documents']} registro{'s' if file_info['documents'] != 1 else ''}",
+                                **text_attrs(
+                                    f"{file_info['documents']} registro{'s' if file_info['documents'] != 1 else ''}",
+                                    f"{file_info['documents']} record{'s' if file_info['documents'] != 1 else ''}",
+                                ),
+                            ),
                         ]
                     )
                     for file_info in imported_files

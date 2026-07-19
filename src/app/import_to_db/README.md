@@ -8,7 +8,7 @@ Este paquete transforma CSV de fuentes externas en JSON normalizado, registra un
 2. `fra/` o `ilga/` construye el JSON.
 3. Para FRA, el catálogo `categories`/`indicators` se sincroniza inmediatamente en PostgreSQL.
 4. `register_pending_import()` guarda el JSON en `import_logs.file_json` con estado `pending`.
-5. `/admin/imports` muestra el JSON.
+5. `/admin/imports` muestra el JSON pendiente para revisión.
 6. El administrador rechaza el log o aprueba la inserción en MongoDB.
 7. Tras aprobar, se invalida la caché analítica y se elimina el log.
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+MOJIBAKE_MARKERS = ("\u00c3", "\u00c2", "\u00e2\u20ac", "\ufeff", "\ufffd")
+
 VALUE_ALIASES: dict[str, str] = {
     "Rairly open": "Fairly open",
     "Rarely opened": "Rarely open",
@@ -70,37 +72,62 @@ COUNTRY_NAME_ALIASES: dict[str, str] = {
 }
 
 
+def repair_text_encoding(value: Any) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    text = text.replace("\ufeff", "")
+    for _ in range(2):
+        if not any(marker in text for marker in MOJIBAKE_MARKERS):
+            break
+        repaired = _decode_mojibake_once(text)
+        if repaired == text:
+            break
+        text = repaired
+    return text
+
+
 def normalize_text_key(value: Any) -> str:
-    return " ".join(str(value or "").strip().lower().replace("_", " ").split())
+    return " ".join(repair_text_encoding(value).strip().lower().replace("_", " ").split())
 
 
 def normalize_filter_type(value: Any) -> str:
-    text = str(value or "").strip()
+    text = repair_text_encoding(value).strip()
     if not text:
         return ""
     return FILTER_TYPE_ALIASES.get(normalize_text_key(text), text)
 
 
 def normalize_filter_value(value: Any) -> str:
-    text = str(value or "").strip()
+    text = repair_text_encoding(value).strip()
     if not text:
         return ""
     return VALUE_ALIASES.get(text, text)
 
 
 def normalize_country_code(code: Any, country_name: Any | None = None) -> str:
-    clean_code = str(code or "").strip().upper()
+    clean_code = repair_text_encoding(code).strip().upper()
     if clean_code:
         return COUNTRY_CODE_ALIASES.get(clean_code, clean_code)
     return COUNTRY_NAME_ALIASES.get(normalize_text_key(country_name), "")
 
 
 def display_option(label: Any, value: Any | None = None, disabled: bool = False) -> dict[str, Any]:
-    clean_value = str(label if value is None else value)
+    clean_label = repair_text_encoding(label)
+    clean_value = repair_text_encoding(label if value is None else value)
     option: dict[str, Any] = {
-        "label": str(label),
+        "label": clean_label,
         "value": clean_value,
     }
     if disabled:
         option["disabled"] = True
     return option
+
+
+def _decode_mojibake_once(text: str) -> str:
+    for source_encoding in ("latin1", "cp1252"):
+        try:
+            return text.encode(source_encoding).decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return text

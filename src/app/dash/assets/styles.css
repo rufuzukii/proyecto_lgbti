@@ -578,6 +578,22 @@ body[data-theme="dark"] .home-map-metric {
   border-left-color: var(--link-green);
 }
 
+:root[data-theme="dark"] .js-plotly-plot,
+:root[data-theme="dark"] .js-plotly-plot .plot-container,
+:root[data-theme="dark"] .js-plotly-plot .svg-container,
+:root[data-theme="dark"] .js-plotly-plot .main-svg,
+body[data-theme="dark"] .js-plotly-plot,
+body[data-theme="dark"] .js-plotly-plot .plot-container,
+body[data-theme="dark"] .js-plotly-plot .svg-container,
+body[data-theme="dark"] .js-plotly-plot .main-svg {
+  background: transparent !important;
+}
+
+:root[data-theme="dark"] .js-plotly-plot .main-svg > .bglayer > .bg,
+body[data-theme="dark"] .js-plotly-plot .main-svg > .bglayer > .bg {
+  fill: transparent !important;
+}
+
 :root[data-theme="dark"] .dash-dropdown,
 :root[data-theme="dark"] .dash-dropdown-wrapper,
 :root[data-theme="dark"] .Select,

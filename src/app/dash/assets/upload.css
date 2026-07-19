@@ -83,6 +83,25 @@
   transform: translateY(-2px);
 }
 
+.upload-area-disabled {
+  cursor: wait;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+body[data-theme="dark"] .upload-area {
+  background:
+    radial-gradient(circle at top left, rgba(246, 186, 208, 0.16), transparent 34%),
+    linear-gradient(135deg, #141b2a 0%, #10271f 58%, #2a1a18 100%);
+  border-color: #6f5878;
+  color: var(--color-primary-dark);
+}
+
+body[data-theme="dark"] .upload-area:hover {
+  border-color: var(--color-primary-dark);
+  box-shadow: 0 22px 42px rgba(0, 0, 0, 0.34);
+}
+
 .upload-area-content {
   display: grid;
   gap: 0.35rem;
@@ -103,11 +122,25 @@
   color: var(--color-text-muted);
 }
 
+body[data-theme="dark"] .upload-area-content span {
+  color: var(--color-text);
+}
+
+body[data-theme="dark"] .upload-area-content small {
+  color: var(--color-text-muted);
+}
+
 .upload-info-card {
   padding: 1.25rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: linear-gradient(135deg, #fffefe 0%, #f0fbf8 100%);
+}
+
+body[data-theme="dark"] .upload-info-card {
+  background: linear-gradient(135deg, #121927 0%, #122820 100%);
+  border-color: var(--panel-border);
+  color: var(--color-text);
 }
 
 .upload-info-card h2 {
@@ -122,8 +155,82 @@
   line-height: 1.7;
 }
 
+body[data-theme="dark"] .upload-info-card ol {
+  color: var(--color-text-muted);
+}
+
 .upload-output {
   min-height: 0;
+}
+
+.upload-loading-overlay {
+  align-items: center;
+  background: rgba(20, 24, 33, 0.42);
+  backdrop-filter: blur(4px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1.25rem;
+  pointer-events: all;
+  position: fixed;
+  z-index: 2000;
+}
+
+.upload-loading-overlay.is-hidden {
+  display: none;
+  pointer-events: none;
+}
+
+.upload-loading-dialog {
+  align-items: center;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  color: var(--color-text);
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  max-width: 420px;
+  padding: 2rem;
+  text-align: center;
+  width: min(100%, 420px);
+}
+
+.upload-loading-dialog h2 {
+  font-size: 1.35rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.upload-loading-dialog p {
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.upload-loading-spinner {
+  animation: upload-spinner-rotate 0.85s linear infinite;
+  border: 4px solid color-mix(in srgb, var(--color-primary-dark) 18%, transparent);
+  border-radius: 999px;
+  border-top-color: var(--color-primary-dark);
+  height: 54px;
+  width: 54px;
+}
+
+body[data-theme="dark"] .upload-loading-overlay {
+  background: rgba(3, 7, 18, 0.62);
+}
+
+body[data-theme="dark"] .upload-loading-dialog {
+  background: var(--panel-bg);
+  border-color: var(--panel-border);
+}
+
+@keyframes upload-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .upload-message {
@@ -132,9 +239,38 @@
   border: 1px solid transparent;
 }
 
+.upload-message-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
 .upload-message strong {
   display: block;
   margin-bottom: 0.35rem;
+}
+
+.upload-message-close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: currentColor;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0.25rem 0.55rem;
+}
+
+.upload-message-close:hover,
+.upload-message-close:focus-visible {
+  background: rgba(255, 255, 255, 0.55);
+  outline: none;
 }
 
 .upload-message p {
@@ -177,6 +313,27 @@
   background: transparent;
 }
 
+.upload-message-actions {
+  margin-top: 0.9rem;
+}
+
+.upload-message-retry {
+  background: currentColor;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0.65rem 0.95rem;
+}
+
+.upload-message-retry:hover,
+.upload-message-retry:focus-visible {
+  filter: brightness(0.94);
+  outline: none;
+}
+
 .upload-message-success {
   border-color: #a8e6d1;
   background: #effbf7;
@@ -189,9 +346,18 @@
   color: #80363e;
 }
 
+body[data-theme="dark"] .upload-message-close:hover,
+body[data-theme="dark"] .upload-message-close:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 @media (max-width: 560px) {
   .upload-header {
     padding: 0 1.2rem;
+  }
+
+  .upload-loading-dialog {
+    padding: 1.5rem;
   }
 
   .upload-message li {

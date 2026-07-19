@@ -25,15 +25,36 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics_normalizers import normalize_country_code
 from app.auth.permissions import is_admin_user
-from app.dash.compat import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
+from app.dash.compat import ALL, Dash, Input, Output, PreventUpdate, State, ctx, dcc, html, no_update
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
 
 MAP_MODE_OPTIONS = [
-    {"label": "Situacion legal LGBTIQ+ en Europa", "value": "ilga"},
-    {"label": "Discriminacion y datos sociales", "value": "fra"},
+    {"label": "Situación legal LGBTIQ+ en Europa", "value": "ilga"},
+    {"label": "Discriminación y datos sociales", "value": "fra"},
 ]
+
+EDITOR_LABELS_EN = {
+    "Identificación": "Identification",
+    "País": "Country",
+    "Código de país": "Country code",
+    "Año": "Year",
+    "Estado": "Status",
+    "Estado general": "Overall status",
+    "Descripción": "Description",
+    "Contexto": "Context",
+    "Contexto legal": "Legal context",
+    "Contexto social": "Social context",
+    "Avances destacados": "Key progress",
+    "Retos principales": "Main challenges",
+    "Fuente": "Source",
+    "Organización o informe": "Organization or report",
+    "Enlace de la fuente": "Source link",
+    "Fecha de actualización": "Review date",
+    "Información adicional": "Additional information",
+    "Observaciones": "Notes",
+}
 
 
 def build_home_layout() -> html.Div:
@@ -71,6 +92,24 @@ def build_home_layout() -> html.Div:
                                                 id="home-map-copy",
                                                 className="home-map-copy",
                                             ),
+                                            html.P(
+                                                (
+                                                    "Selecciona un país para consultar la situación legal actual "
+                                                    "de las personas LGBTIQ+."
+                                                ),
+                                                id="home-map-helper-text",
+                                                className="home-map-helper-text",
+                                                **text_attrs(
+                                                    (
+                                                        "Selecciona un país para consultar la situación legal actual "
+                                                        "de las personas LGBTIQ+."
+                                                    ),
+                                                    (
+                                                        "Select a country to view the current legal situation of "
+                                                        "LGBTIQ+ people."
+                                                    ),
+                                                ),
+                                            ),
                                         ],
                                         className="home-map-intro",
                                     ),
@@ -95,7 +134,7 @@ def build_home_layout() -> html.Div:
                                         ),
                                     ),
                                     _control_field(
-                                        ("Año ILGA", "ILGA year"),
+                                        ("Año del mapa legal", "Legal map year"),
                                         dcc.Dropdown(
                                             id="home-ilga-year",
                                             options=[
@@ -111,7 +150,7 @@ def build_home_layout() -> html.Div:
                                         "home-ilga-control",
                                     ),
                                     _control_field(
-                                        ("Categoria FRA", "FRA category"),
+                                        ("Categoría social", "Social category"),
                                         dcc.Dropdown(
                                             id="home-fra-category",
                                             options=[
@@ -120,7 +159,7 @@ def build_home_layout() -> html.Div:
                                             ],
                                             value=None,
                                             clearable=True,
-                                            placeholder="Selecciona una categoria",
+                                            placeholder="Selecciona una categoría",
                                             disabled=True,
                                             className="home-dropdown",
                                         ),
@@ -128,28 +167,28 @@ def build_home_layout() -> html.Div:
                                         "home-fra-category-control",
                                     ),
                                     _control_field(
-                                        ("Topico FRA", "FRA topic"),
+                                        ("Indicador social", "Social indicator"),
                                         dcc.Dropdown(
                                             id="home-fra-indicator",
                                             options=[],
                                             value=None,
                                             clearable=False,
                                             disabled=True,
-                                            placeholder="Selecciona primero una categoria",
+                                            placeholder="Selecciona primero una categoría",
                                             className="home-dropdown",
                                         ),
                                         "home-fra-control",
                                         "home-fra-indicator-control",
                                     ),
                                     _control_field(
-                                        ("Pais o paises", "Country or countries"),
+                                        ("País o países", "Country or countries"),
                                         dcc.Dropdown(
                                             id="home-country-select",
                                             options=_ilga_country_options(ilga_document),
                                             value=[],
                                             clearable=True,
                                             multi=True,
-                                            placeholder="Selecciona en el mapa o aqui",
+                                            placeholder="Selecciona en el mapa o aquí",
                                             className="home-dropdown home-country-dropdown",
                                         ),
                                         "home-country-control",
@@ -187,7 +226,7 @@ def build_home_layout() -> html.Div:
                                         className="home-map-source",
                                     ),
                                     html.A(
-                                        text("Abrir estadisticas", "Open statistics"),
+                                        text("Abrir estadísticas", "Open statistics"),
                                         href="/statistics",
                                         className="home-map-link",
                                     ),
@@ -202,10 +241,10 @@ def build_home_layout() -> html.Div:
                             _source_summary(
                                 "ILGA Europe",
                                 (
-                                    "ILGA Europe analiza el marco legal y politico que afecta a "
-                                    "las personas LGBTIQ+ en Europa. Su Rainbow Map resume areas "
+                                    "ILGA Europe analiza el marco legal y político que afecta a "
+                                    "las personas LGBTIQ+ en Europa. Su Rainbow Map resume áreas "
                                     "como igualdad, familia, delitos de odio, reconocimiento legal "
-                                    "de genero, integridad corporal, asilo y espacio de sociedad civil."
+                                    "de género, integridad corporal, asilo y espacio de sociedad civil."
                                 ),
                                 (
                                     "ILGA Europe analyses the legal and policy framework affecting "
@@ -218,10 +257,10 @@ def build_home_layout() -> html.Div:
                             _source_summary(
                                 "FRA",
                                 (
-                                    "La Agencia de los Derechos Fundamentales de la Union Europea "
-                                    "recoge datos de encuesta sobre experiencias de discriminacion, "
+                                    "La Agencia de los Derechos Fundamentales de la Unión Europea "
+                                    "recoge datos de encuesta sobre experiencias de discriminación, "
                                     "seguridad, visibilidad, vida cotidiana y condiciones sociales. "
-                                    "Estos indicadores ayudan a complementar el analisis legal con "
+                                    "Estos indicadores ayudan a complementar el análisis legal con "
                                     "evidencia social."
                                 ),
                                 (
@@ -230,7 +269,7 @@ def build_home_layout() -> html.Div:
                                     "conditions. These indicators complement legal analysis with social "
                                     "evidence."
                                 ),
-                                ("Ampliar metodologia FRA", "Expand FRA methodology"),
+                                ("Sobre la metodología", "About the methodology"),
                             ),
                         ],
                         className="home-source-grid",
@@ -268,24 +307,25 @@ def register_home_callbacks(app: Dash) -> None:
     )
     def update_home_fra_indicators(mode: str | None, category: str | None):
         if mode != "fra":
-            return [], None, True, "Activa la vista FRA"
+            return [], None, True, "Activa la vista de datos sociales"
         if not category:
-            return [], None, True, "Selecciona primero una categoria"
+            return [], None, True, "Selecciona primero una categoría"
 
         indicators = get_fra_mongo_indicators_by_category(category)
         if not indicators:
-            return [], None, True, "No hay documentos para esta categoria"
+            return [], None, True, "No hay información disponible para esta categoría"
 
         options = [
             {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
             for indicator in indicators
         ]
-        return options, None, False, "Selecciona un topico"
+        return options, None, False, "Selecciona un indicador"
 
     @app.callback(
         Output("home-main-map", "figure"),
         Output("home-map-title", "children"),
         Output("home-map-copy", "children"),
+        Output("home-map-helper-text", "className"),
         Output("home-map-source", "children"),
         Output("home-map-metrics", "children"),
         Input("home-map-mode", "value"),
@@ -297,8 +337,9 @@ def register_home_callbacks(app: Dash) -> None:
             document = get_fra_indicator_answers(fra_code or "")
             return (
                 _home_map_figure(build_fra_choropleth(document)),
-                text("Mapa europeo de indicadores FRA", "European FRA indicators map"),
+                text("Mapa europeo de indicadores sociales", "European social indicators map"),
                 _fra_copy(document),
+                "home-map-helper-text is-hidden",
                 _fra_source(document),
                 _fra_metrics(document),
             )
@@ -306,8 +347,9 @@ def register_home_callbacks(app: Dash) -> None:
         document = get_ilga_document_by_year(ilga_year)
         return (
             _home_map_figure(build_ilga_choropleth(document)),
-            text("Situacion legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"),
+            text("Situación legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"),
             _ilga_copy(document),
+            "home-map-helper-text",
             _ilga_source(document),
             _ilga_metrics(document),
         )
@@ -380,24 +422,28 @@ def register_home_callbacks(app: Dash) -> None:
 
     @app.callback(
         Output("country-status-editor", "children"),
-        Output("country-status-editor-state", "data"),
+        Output("home-country-status-editor-state", "data"),
         Output("country-status-admin-feedback", "children"),
-        Input({"type": "country-status-edit", "country_code": ALL, "year": ALL}, "n_clicks"),
-        Input({"type": "country-status-add", "country_code": ALL, "year": ALL}, "n_clicks"),
-        Input({"type": "country-status-editor-cancel", "slot": ALL}, "n_clicks"),
+        Input(
+            {
+                "type": "country-status-open-editor",
+                "action": ALL,
+                "country_code": ALL,
+                "year": ALL,
+            },
+            "n_clicks",
+        ),
         State("home-country-select", "options"),
         prevent_initial_call=True,
     )
-    def open_or_cancel_country_status_editor(
-        _edit_clicks: list[int] | None,
-        _add_clicks: list[int] | None,
-        _cancel_clicks: int | None,
+    def open_country_status_editor(
+        open_clicks: list[int] | None,
         country_options: list[dict[str, Any]] | None,
     ):
+        if not _any_clicks(open_clicks):
+            raise PreventUpdate
         trigger = ctx.triggered_id
         trigger_type = trigger.get("type") if isinstance(trigger, dict) else trigger
-        if trigger_type == "country-status-editor-cancel":
-            return [], {}, ""
         if not isinstance(trigger, dict):
             return no_update, no_update, no_update
         if not is_admin_user(current_user):
@@ -405,7 +451,7 @@ def register_home_callbacks(app: Dash) -> None:
 
         country_code = normalize_country_code(trigger.get("country_code"))
         year = _safe_year(trigger.get("year"))
-        mode = "edit" if trigger.get("type") == "country-status-edit" else "create"
+        mode = "edit" if trigger.get("action") == "edit" else "create"
         record = load_country_lgbti_status_for_edit(country_code, year) if mode == "edit" else None
         label_by_code = _country_label_map(country_options or [])
         initial = _editor_initial_record(country_code, year, record, label_by_code)
@@ -419,12 +465,24 @@ def register_home_callbacks(app: Dash) -> None:
 
     @app.callback(
         Output("country-status-editor", "children", allow_duplicate=True),
-        Output("country-status-editor-state", "data", allow_duplicate=True),
+        Output("home-country-status-editor-state", "data", allow_duplicate=True),
+        Output("country-status-admin-feedback", "children", allow_duplicate=True),
+        Input({"type": "country-status-editor-cancel", "slot": ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def cancel_country_status_editor(cancel_clicks: list[int] | None):
+        if not _any_clicks(cancel_clicks):
+            raise PreventUpdate
+        return [], {}, ""
+
+    @app.callback(
+        Output("country-status-editor", "children", allow_duplicate=True),
+        Output("home-country-status-editor-state", "data", allow_duplicate=True),
         Output("country-status-admin-feedback", "children", allow_duplicate=True),
         Output("home-country-status-refresh", "data"),
         Input({"type": "country-status-editor-save", "slot": ALL}, "n_clicks"),
         Input({"type": "country-status-editor-delete", "slot": ALL}, "n_clicks"),
-        State("country-status-editor-state", "data"),
+        State("home-country-status-editor-state", "data"),
         State("home-country-select", "options"),
         State("home-country-status-refresh", "data"),
         State({"type": "country-status-form-country", "slot": ALL}, "value"),
@@ -466,6 +524,8 @@ def register_home_callbacks(app: Dash) -> None:
         active_value_lists: list[list[str]] | None,
         delete_confirm_value_lists: list[list[str]] | None,
     ):
+        if not _any_clicks(_save_clicks, _delete_clicks):
+            raise PreventUpdate
         trigger = ctx.triggered_id
         trigger_type = trigger.get("type") if isinstance(trigger, dict) else trigger
         if trigger_type not in {"country-status-editor-save", "country-status-editor-delete"}:
@@ -489,7 +549,6 @@ def register_home_callbacks(app: Dash) -> None:
         reviewed_at = _first_value(reviewed_at_values)
         observations = _first_value(observations_values)
         active_values = _first_value(active_value_lists, [])
-        delete_confirm_values = _first_value(delete_confirm_value_lists, [])
         selected_country_code = normalize_country_code(country or country_code)
         selected_country_name = label_by_code.get(selected_country_code) or str(country or "").strip()
         payload = {
@@ -515,18 +574,29 @@ def register_home_callbacks(app: Dash) -> None:
                     selected_country_code,
                     int(year or 0),
                     user=current_user,
-                    confirmed="confirm" in (delete_confirm_values or []),
+                    confirmed=True,
                 )
             except CountryStatusValidationError as exc:
                 return (
                     _country_status_editor(payload, state, country_options or [], exc.field_errors),
                     state,
-                    "No se pudieron eliminar los datos. Revisa la confirmacion.",
+                    "No se pudieron eliminar los datos. Revisa el país y el año.",
                     refresh or 0,
                 )
             except (CountryStatusAuthorizationError, RuntimeError):
                 return [], {}, "No se pudieron eliminar los datos.", refresh or 0
-            return [], {}, "Los datos se han eliminado correctamente.", (refresh or 0) + 1
+            empty_state = {"mode": "create", "country_code": "", "year": None, "exists": False}
+            return (
+                _country_status_editor(
+                    _empty_country_status_editor_record(),
+                    empty_state,
+                    country_options or [],
+                    {},
+                ),
+                empty_state,
+                "Los datos se han eliminado correctamente.",
+                (refresh or 0) + 1,
+            )
 
         try:
             saved = save_country_lgbti_status(
@@ -643,15 +713,15 @@ def _country_status_section(
     can_manage: bool = False,
 ) -> html.Section:
     title = (
-        f"Situacion actual en {_status_country_name(statuses[0], label_by_code)}"
+        f"Información LGBTIQ+ de {_status_country_name(statuses[0], label_by_code)}"
         if len(statuses) == 1
-        else "Situacion actual de los paises seleccionados"
+        else "Información LGBTIQ+ de los países seleccionados"
     )
     return html.Section(
         [
             html.Header(
                 [
-                    html.P("Contexto cualitativo", className="country-status-eyebrow"),
+                    html.P("Contexto del país", className="country-status-eyebrow", **text_attrs("Contexto del país", "Country context")),
                     html.H2(title),
                 ],
                 className="country-status-section__header",
@@ -678,6 +748,7 @@ def _country_status_card(
     country_code = str(status.get("country_code") or "").strip()
     year = status.get("year")
     if not status.get("available"):
+        summary_es, summary_en = _status_translated_text(status, "summary")
         children: list[Any] = [
                 html.Header(
                     [
@@ -686,17 +757,21 @@ def _country_status_card(
                     ],
                     className="country-status-card__header",
                 ),
-                html.P(status.get("summary"), className="country-status-card__empty"),
+                html.P(
+                    summary_es,
+                    className="country-status-card__empty",
+                    **text_attrs(summary_es, summary_en),
+                ),
         ]
         if can_manage:
-            children.append(_country_status_admin_button("add", country_code, requested_year, "Anadir datos"))
+            children.append(_country_status_admin_button("add", country_code, requested_year, "Añadir información"))
         return html.Article(children, className="country-status-card country-status-card--empty")
 
     details_children = []
-    details_children.extend(_status_text_block("Contexto legal", status.get("legal_context")))
-    details_children.extend(_status_text_block("Contexto social", status.get("social_context")))
-    details_children.extend(_status_list_block("Avances destacados", status.get("positive_developments")))
-    details_children.extend(_status_list_block("Retos principales", status.get("main_challenges")))
+    details_children.extend(_status_text_block("Contexto legal", status.get("legal_context"), "Legal context"))
+    details_children.extend(_status_text_block("Contexto social", status.get("social_context"), "Social context"))
+    details_children.extend(_status_list_block("Avances destacados", status.get("positive_developments"), "Key progress"))
+    details_children.extend(_status_list_block("Retos principales", status.get("main_challenges"), "Main challenges"))
 
     children: list[Any] = [
         html.Header(
@@ -708,7 +783,7 @@ def _country_status_card(
                     ],
                     className="country-status-card__title",
                 ),
-                html.Span(f"Año {year or '-'}", className="country-status-card__year"),
+                html.Span(f"Año {year or '-'}", className="country-status-card__year", **text_attrs(f"Año {year or '-'}", f"Year {year or '-'}")),
             ],
             className="country-status-card__header",
         ),
@@ -718,7 +793,7 @@ def _country_status_card(
     if requested_year and year and int(year) != int(requested_year):
         children.append(
             html.P(
-                f"Informacion cualitativa disponible para {year}.",
+                f"Información disponible para {year}.",
                 className="country-status-card__notice",
             )
         )
@@ -727,7 +802,7 @@ def _country_status_card(
         children.append(
             html.Details(
                 [
-                    html.Summary("Ver contexto completo"),
+                    html.Summary("Ver contexto completo", **text_attrs("Ver contexto completo", "View full context")),
                     *details_children,
                 ],
                 className="country-status-card__details",
@@ -755,7 +830,8 @@ def _country_status_admin_button(
     return html.Button(
         label,
         id={
-            "type": f"country-status-{action}",
+            "type": "country-status-open-editor",
+            "action": action,
             "country_code": country_code,
             "year": str(year or ""),
         },
@@ -772,7 +848,7 @@ def _country_status_editor(
 ) -> html.Div:
     mode = str(state.get("mode") or "edit")
     exists = bool(state.get("exists")) or mode == "edit"
-    title = "Editar datos cualitativos" if exists else "Anadir datos cualitativos"
+    title = "Editar información del país" if exists else "Añadir información del país"
     country_code = normalize_country_code(record.get("country_code"))
     country_options = _ensure_country_option(country_options, record)
     return html.Div(
@@ -784,11 +860,15 @@ def _country_status_editor(
                         [
                             html.Div(
                                 [
-                                    html.P("Administracion", className="country-status-eyebrow"),
-                                    html.H2(title),
+                                    html.P("Administración", className="country-status-eyebrow", **text_attrs("Administración", "Administration")),
+                                    html.H2(title, **text_attrs(title, "Edit country information" if exists else "Add country information")),
                                     html.P(
-                                        "Los cambios se guardaran directamente en la base de datos.",
+                                        "Los cambios se aplicarán a la información visible en la aplicación.",
                                         className="country-status-editor-copy",
+                                        **text_attrs(
+                                            "Los cambios se aplicarán a la información visible en la aplicación.",
+                                            "Changes will be applied to the information shown in the application.",
+                                        ),
                                     ),
                                 ],
                                 className="country-status-editor-title",
@@ -805,10 +885,10 @@ def _country_status_editor(
                     html.Div(
                         [
                             _editor_group(
-                                "Identificacion",
+                                "Identificación",
                                 [
                                     _editor_field(
-                                        "Pais",
+                                        "País",
                                         dcc.Dropdown(
                                             id=_editor_id("country-status-form-country"),
                                             options=country_options,
@@ -819,7 +899,7 @@ def _country_status_editor(
                                         errors.get("country"),
                                     ),
                                     _editor_field(
-                                        "Codigo ISO",
+                                        "Código de país",
                                         dcc.Input(
                                             id=_editor_id("country-status-form-country-code"),
                                             type="text",
@@ -829,20 +909,20 @@ def _country_status_editor(
                                         errors.get("country_code"),
                                     ),
                                     _editor_field(
-                                        "Ano",
+                                        "Año",
                                         dcc.Input(
                                             id=_editor_id("country-status-form-year"),
                                             type="number",
                                             min=2000,
                                             max=2100,
                                             step=1,
-                                            value=record.get("year") or date.today().year,
+                                            value=_record_value(record, "year", date.today().year),
                                         ),
                                         errors.get("year"),
                                     ),
                                     dcc.Checklist(
                                         id=_editor_id("country-status-form-active"),
-                                        options=[{"label": "Registro activo", "value": "active"}],
+                                        options=[{"label": "Información visible", "value": "active"}],
                                         value=["active"] if record.get("active", True) else [],
                                         className="country-status-editor-checklist",
                                     ),
@@ -862,7 +942,7 @@ def _country_status_editor(
                                         errors.get("title"),
                                     ),
                                     _editor_field(
-                                        "Descripcion",
+                                        "Descripción",
                                         dcc.Textarea(
                                             id=_editor_id("country-status-form-summary"),
                                             value=record.get("summary") or "",
@@ -917,7 +997,7 @@ def _country_status_editor(
                                 "Fuente",
                                 [
                                     _editor_field(
-                                        "Organizacion o informe",
+                                        "Organización o informe",
                                         dcc.Input(
                                             id=_editor_id("country-status-form-source-name"),
                                             type="text",
@@ -936,19 +1016,19 @@ def _country_status_editor(
                                         errors.get("source_url"),
                                     ),
                                     _editor_field(
-                                        "Fecha de actualizacion",
+                                        "Fecha de actualización",
                                         dcc.Input(
                                             id=_editor_id("country-status-form-reviewed-at"),
                                             type="text",
                                             placeholder="AAAA-MM-DD",
-                                            value=record.get("reviewed_at") or date.today().isoformat(),
+                                            value=_record_value(record, "reviewed_at", date.today().isoformat()),
                                         ),
                                         errors.get("reviewed_at"),
                                     ),
                                 ],
                             ),
                             _editor_group(
-                                "Informacion adicional",
+                                "Información adicional",
                                 [
                                     _editor_field(
                                         "Observaciones",
@@ -961,31 +1041,11 @@ def _country_status_editor(
                                     )
                                 ],
                             ),
-                            (
-                                html.Div(
-                                    [
-                                        dcc.Checklist(
-                                            id=_editor_id("country-status-delete-confirm"),
-                                            options=[
-                                                {
-                                                    "label": "Confirmo que quiero eliminar este registro",
-                                                    "value": "confirm",
-                                                }
-                                            ],
-                                            value=[],
-                                            className="country-status-editor-checklist",
-                                        ),
-                                        _editor_error(errors.get("delete_confirm")),
-                                    ],
-                                    className="country-status-editor-delete-confirm",
-                                )
-                                if exists
-                                else dcc.Checklist(
-                                    id=_editor_id("country-status-delete-confirm"),
-                                    options=[],
-                                    value=[],
-                                    className="country-status-editor-checklist is-hidden",
-                                )
+                            dcc.Checklist(
+                                id=_editor_id("country-status-delete-confirm"),
+                                options=[],
+                                value=[],
+                                className="country-status-editor-checklist is-hidden",
                             ),
                         ],
                         className="country-status-editor-body",
@@ -1028,7 +1088,7 @@ def _country_status_editor(
 
 def _editor_group(title: str, children: list[Any]) -> html.Fieldset:
     return html.Fieldset(
-        [html.Legend(title), *children],
+        [html.Legend(title, **text_attrs(title, EDITOR_LABELS_EN.get(title, title))), *children],
         className="country-status-editor-group",
     )
 
@@ -1043,10 +1103,21 @@ def _first_value(values: list[Any] | None, default: Any = None) -> Any:
     return values[0]
 
 
+def _any_clicks(*groups: list[int] | None) -> bool:
+    for group in groups:
+        for value in group or []:
+            try:
+                if int(value or 0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+    return False
+
+
 def _editor_field(label: str, control: Any, error: str | None = None) -> html.Label:
     return html.Label(
         [
-            html.Span(label),
+            html.Span(label, **text_attrs(label, EDITOR_LABELS_EN.get(label, label))),
             control,
             _editor_error(error),
         ],
@@ -1086,6 +1157,29 @@ def _editor_initial_record(
     }
 
 
+def _empty_country_status_editor_record() -> dict[str, Any]:
+    return {
+        "country_code": "",
+        "country": "",
+        "year": "",
+        "title": "",
+        "summary": "",
+        "legal_context": "",
+        "social_context": "",
+        "observations": "",
+        "positive_developments": [],
+        "main_challenges": [],
+        "source_name": "",
+        "source_url": "",
+        "reviewed_at": "",
+        "active": False,
+    }
+
+
+def _record_value(record: dict[str, Any], key: str, default: Any) -> Any:
+    return record[key] if key in record else default
+
+
 def _ensure_country_option(
     options: list[dict[str, Any]],
     record: dict[str, Any],
@@ -1121,17 +1215,27 @@ def _status_country_name(status: dict[str, Any], label_by_code: dict[str, str]) 
     return str(status.get("country") or label_by_code.get(country_code) or country_code).strip()
 
 
-def _status_text_block(title: str, value: Any) -> list[Any]:
+def _status_translated_text(status: dict[str, Any], key: str) -> tuple[str, str]:
+    translations = status.get(f"{key}_i18n")
+    fallback = str(status.get(key) or "")
+    if not isinstance(translations, dict):
+        return fallback, fallback
+    es = str(translations.get("es") or fallback)
+    en = str(translations.get("en") or es)
+    return es, en
+
+
+def _status_text_block(title: str, value: Any, title_en: str) -> list[Any]:
     text_value = str(value or "").strip()
     if not text_value:
         return []
-    return [html.H4(title), html.P(text_value)]
+    return [html.H4(title, **text_attrs(title, title_en)), html.P(text_value)]
 
 
-def _status_list_block(title: str, values: Any) -> list[Any]:
+def _status_list_block(title: str, values: Any, title_en: str) -> list[Any]:
     if not isinstance(values, list) or not values:
         return []
-    return [html.H4(title), html.Ul([html.Li(str(value)) for value in values if str(value).strip()])]
+    return [html.H4(title, **text_attrs(title, title_en)), html.Ul([html.Li(str(value)) for value in values if str(value).strip()])]
 
 
 def _status_source(status: dict[str, Any]) -> html.Footer:
@@ -1152,7 +1256,12 @@ def _status_source(status: dict[str, Any]) -> html.Footer:
     elif source_name:
         children.append(html.Span(source_name))
     if reviewed_at:
-        children.append(html.Span(f"Ultima revision manual: {reviewed_at}"))
+        children.append(
+            html.Span(
+                f"Última revisión: {reviewed_at}",
+                **text_attrs(f"Última revisión: {reviewed_at}", f"Last review: {reviewed_at}"),
+            )
+        )
     return html.Footer(children, className="country-status-card__source")
 
 
@@ -1216,12 +1325,12 @@ def _ilga_copy(document: dict[str, Any] | None):
     year = document.get("year")
     if year:
         return text(
-            f"Ranking oficial de {year}, leido desde Indicator_ilga en MongoDB.",
-            f"Official {year} ranking, read from Indicator_ilga in MongoDB.",
+            f"Información legal de {year}",
+            f"Legal information for {year}",
         )
     return text(
-        "Ranking legal LGBTIQ+ leido desde Indicator_ilga en MongoDB.",
-        "LGBTIQ+ legal ranking read from Indicator_ilga in MongoDB.",
+        "Información legal LGBTIQ+",
+        "LGBTIQ+ legal ranking",
     )
 
 
@@ -1247,16 +1356,16 @@ def _ilga_metrics(document: dict[str, Any] | None) -> list[html.Div]:
     year = document.get("year") if isinstance(document, dict) else None
     return [
         _metric(str(year or "-"), "Año", "Year"),
-        _metric(str(len(countries)), "Paises", "Countries"),
-        _metric(average, "Media ILGA", "ILGA average"),
+        _metric(str(len(countries)), "Países", "Countries"),
+        _metric(average, "Media legal", "Legal average"),
     ]
 
 
 def _fra_copy(document: dict[str, Any] | None):
     if not isinstance(document, dict):
         return text(
-            "Selecciona una categoria y un topico FRA para representar sus valores por pais.",
-            "Select a FRA category and topic to map values by country.",
+            "Selecciona una categoría y un indicador social para representar sus valores por país.",
+            "Select a category and social indicator to map values by country.",
         )
     label = (
         f"{document.get('category', '')} - "
@@ -1286,9 +1395,9 @@ def _fra_metrics(document: dict[str, Any] | None) -> list[html.Div]:
     ]
     average = f"{sum(percentages) / len(percentages):.1f}%" if percentages else "-"
     return [
-        _metric(str(len(countries)), "Paises", "Countries"),
+        _metric(str(len(countries)), "Países", "Countries"),
         _metric(str(len(percentages)), "Observaciones", "Observations"),
-        _metric(average, "Media FRA", "FRA average"),
+        _metric(average, "Media social", "Social average"),
     ]
 
 

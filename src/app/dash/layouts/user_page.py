@@ -299,12 +299,6 @@ def _build_edit_panel(username: str, email: str, organization: str) -> html.Div:
                                 "Editar perfil",
                                 **text_attrs("Editar perfil", "Edit profile"),
                             ),
-                            html.A(
-                                "Cancelar",
-                                href="/user",
-                                className="user-link-button",
-                                **text_attrs("Cancelar", "Cancel"),
-                            ),
                         ],
                         className="user-card-header",
                     ),
@@ -409,7 +403,7 @@ def _build_edit_form(username: str, email: str, organization: str) -> html.Form:
                     html.A(
                         "Cancelar",
                         href="/user",
-                        className="auth-button auth-button-secondary",
+                        className="auth-button auth-button-secondary profile-cancel-link",
                         **text_attrs("Cancelar", "Cancel"),
                     ),
                 ],

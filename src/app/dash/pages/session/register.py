@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from app.auth.csrf import get_csrf_token
 from app.dash.compat import dcc, html
+from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
 
 ERROR_MESSAGES = {
-    "invalid_payload": "Enter a valid name, email, password, and organization.",
-    "email_exists": "That email is already registered.",
-    "rate_limited": "Too many attempts. Try again in a few minutes.",
-    "csrf": "The session expired. Refresh the page and try again.",
-    "storage": "Registration is not configured yet. Contact the administrator.",
+    "invalid_payload": ("Introduce un nombre, correo electrónico y contraseña válidos.", "Enter a valid name, email address, and password."),
+    "email_exists": ("Ese correo electrónico ya está registrado.", "That email address is already registered."),
+    "rate_limited": ("Se han realizado demasiados intentos. Inténtalo de nuevo en unos minutos.", "Too many attempts. Try again in a few minutes."),
+    "csrf": ("La sesión ha caducado. Actualiza la página e inténtalo de nuevo.", "The session expired. Refresh the page and try again."),
+    "storage": ("No ha sido posible crear la cuenta en este momento. Inténtalo de nuevo más tarde.", "Registration is not available right now. Please try again later."),
 }
 
 
@@ -29,10 +30,13 @@ def build_register_layout(
                         [
                             html.Div(
                                 [
-                                    html.P("Create access", className="auth-eyebrow"),
-                                    html.H1("Register"),
+                                    html.P("Crear acceso", className="auth-eyebrow", **text_attrs("Crear acceso", "Create access")),
+                                    html.H1(text("Crear cuenta", "Register")),
                                     html.P(
-                                        "Create your account with your display name, email, password, and organization.",
+                                        text(
+                                            "Crea tu cuenta con tu nombre, correo electrónico y contraseña.",
+                                            "Create your account with your name, email address, and password.",
+                                        ),
                                         className="auth-copy",
                                     ),
                                     _message(message),
@@ -48,7 +52,7 @@ def build_register_layout(
                                                 name="next",
                                                 value=next_path,
                                             ),
-                                            html.Label("Display name", htmlFor="register-name"),
+                                            html.Label("Nombre visible", htmlFor="register-name", **text_attrs("Nombre visible", "Display name")),
                                             dcc.Input(
                                                 id="register-name",
                                                 name="name",
@@ -57,10 +61,13 @@ def build_register_layout(
                                                 className="auth-input",
                                             ),
                                             html.P(
-                                                "Display name between 2 - 80 characters.",
+                                                text(
+                                                    "El nombre visible debe tener entre 2 y 80 caracteres.",
+                                                    "Display name must be between 2 and 80 characters.",
+                                                ),
                                                 className="auth-help",
                                             ),
-                                            html.Label("Email", htmlFor="register-email"),
+                                            html.Label("Correo electrónico", htmlFor="register-email", **text_attrs("Correo electrónico", "Email address")),
                                             dcc.Input(
                                                 id="register-email",
                                                 name="email",
@@ -68,19 +75,22 @@ def build_register_layout(
                                                 required=True,
                                                 className="auth-input",
                                             ),
-                                            html.Label("Organization", htmlFor="register-organization"),
+                                            html.Label("Organización", htmlFor="register-organization", **text_attrs("Organización", "Organization")),
                                             dcc.Input(
                                                 id="register-organization",
                                                 name="organization",
                                                 type="text",
-                                                placeholder="No organization",
+                                                placeholder="Sin organización",
                                                 className="auth-input",
                                             ),
                                             html.P(
-                                                "Organization up to 120 characters.",
+                                                text(
+                                                    "La organización puede tener hasta 120 caracteres.",
+                                                    "Organization can be up to 120 characters.",
+                                                ),
                                                 className="auth-help",
                                             ),
-                                            html.Label("Password", htmlFor="register-password"),
+                                            html.Label("Contraseña", htmlFor="register-password", **text_attrs("Contraseña", "Password")),
                                             dcc.Input(
                                                 id="register-password",
                                                 name="password",
@@ -89,14 +99,20 @@ def build_register_layout(
                                                 className="auth-input",
                                             ),
                                             html.P(
-                                                "Password between 8 - 32 characters.",
+                                                text(
+                                                    "La contraseña debe tener entre 8 y 32 caracteres.",
+                                                    "Password must be between 8 and 32 characters.",
+                                                ),
                                                 className="auth-help",
                                             ),
                                             html.P(
-                                                "The account role will be common. Only an administrator can change it.",
+                                                text(
+                                                    "La cuenta tendrá acceso estándar.",
+                                                    "The account will have standard access.",
+                                                ),
                                                 className="auth-help",
                                             ),
-                                            html.Button("Create account", type="submit", className="auth-button"),
+                                            html.Button("Crear cuenta", type="submit", className="auth-button", **text_attrs("Crear cuenta", "Create account")),
                                         ],
                                         action="/auth/register",
                                         method="post",
@@ -104,8 +120,8 @@ def build_register_layout(
                                     ),
                                     html.P(
                                         [
-                                            "Already have an account? ",
-                                            html.A("Sign in", href="/login"),
+                                            html.Span("¿Ya tienes cuenta? ", **text_attrs("¿Ya tienes cuenta? ", "Already have an account? ")),
+                                            html.A("Iniciar sesión", href="/login", **text_attrs("Iniciar sesión", "Sign in")),
                                         ],
                                         className="auth-switch",
                                     ),
@@ -122,7 +138,8 @@ def build_register_layout(
     )
 
 
-def _message(message: str | None) -> html.Div | str:
+def _message(message: tuple[str, str] | None) -> html.Div | str:
     if not message:
         return ""
-    return html.Div(message, className="auth-message auth-message-error", role="alert")
+    es, en = message
+    return html.Div(es, className="auth-message auth-message-error", role="alert", **text_attrs(es, en))

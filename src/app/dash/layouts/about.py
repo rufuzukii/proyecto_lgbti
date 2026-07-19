@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.analytics.legal_criteria import (
+    get_criterion_metadata,
+    get_criterion_score_label,
+    get_criterion_status,
+)
 from app.analytics.repository import get_latest_ilga_document
 from app.dash.compat import Dash, Input, Output, dcc, html
 from app.dash.i18n import text, text_attrs
@@ -14,18 +19,18 @@ PRIMARY_SOURCES = [
         "title": "Estado LGTBI+ - FELGTBI+",
         "url": "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/",
         "description": (
-            "Informes y estudios sobre la situacion social, la discriminacion y las "
-            "experiencias de las personas LGTBI+ en Espana."
+            "Informes y estudios sobre la situación social, la discriminación y las "
+            "experiencias de las personas LGTBI+ en España."
         ),
         "type": "Fuente principal",
     },
     {
-        "entity": "Agencia de los Derechos Fundamentales de la Union Europea",
+        "entity": "Agencia de los Derechos Fundamentales de la Unión Europea",
         "title": "EU LGBTIQ Survey III - FRA",
         "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii",
         "description": (
             "Resultados de la tercera encuesta europea sobre las experiencias, "
-            "condiciones de vida y discriminacion de las personas LGBTIQ."
+            "condiciones de vida y discriminación de las personas LGBTIQ."
         ),
         "type": "Fuente principal",
     },
@@ -34,8 +39,8 @@ PRIMARY_SOURCES = [
         "title": "Rainbow Map - ILGA-Europe",
         "url": "https://rainbowmap.ilga-europe.org",
         "description": (
-            "Comparacion anual de la situacion legal y politica de las personas "
-            "LGBTI+ en 49 paises europeos."
+            "Comparación anual de la situación legal y política de las personas "
+            "LGBTI+ en 49 países europeos."
         ),
         "type": "Fuente principal",
     },
@@ -43,7 +48,7 @@ PRIMARY_SOURCES = [
 
 RECOMMENDED_SOURCE_GROUPS = [
     {
-        "category": "Situacion social y resultados de la encuesta",
+        "category": "Situación social y resultados de la encuesta",
         "sources": [
             {
                 "entity": "FRA",
@@ -52,15 +57,15 @@ RECOMMENDED_SOURCE_GROUPS = [
                 "description": (
                     "Informe detallado de la FRA sobre los principales resultados de la "
                     "encuesta europea LGBTIQ y las desigualdades que persisten en "
-                    "distintos ambitos de la vida."
+                    "distintos ámbitos de la vida."
                 ),
                 "type": "Lectura recomendada",
-                "note": "Especialmente recomendada para interpretar los datos sociodemograficos.",
+                "note": "Especialmente recomendada para interpretar los datos sociodemográficos.",
             }
         ],
     },
     {
-        "category": "Politicas y acciones de la Union Europea",
+        "category": "Políticas y acciones de la Unión Europea",
         "sources": [
             {
                 "entity": "Comision Europea",
@@ -79,12 +84,12 @@ RECOMMENDED_SOURCE_GROUPS = [
         "category": "Contexto normativo y objetivos estrategicos",
         "sources": [
             {
-                "entity": "Union Europea",
-                "title": "LGBTI Equality - Fichas informativas de la Union Europea",
+                "entity": "Unión Europea",
+                "title": "LGBTI Equality - Fichas informativas de la Unión Europea",
                 "url": "https://op.europa.eu/webpub/com/factsheets/lgbti/en/",
                 "description": (
-                    "Resumen accesible de las politicas, marcos de actuacion y "
-                    "principales objetivos de la Union Europea en materia de igualdad LGBTI."
+                    "Resumen accesible de las políticas, marcos de actuación y "
+                    "principales objetivos de la Unión Europea en materia de igualdad LGBTI."
                 ),
                 "type": "Lectura recomendada",
             }
@@ -103,9 +108,9 @@ def build_about_layout() -> html.Div:
                     html.Section(
                         [
                             html.P(
-                                "Fuentes y metodologia",
+                                "Fuentes y metodología",
                                 className="about-eyebrow",
-                                **text_attrs("Fuentes y metodologia", "Sources and methodology"),
+                                **text_attrs("Fuentes y metodología", "Sources and methodology"),
                             ),
                             html.H1(
                                 "Acerca de RainbowLens",
@@ -114,13 +119,13 @@ def build_about_layout() -> html.Div:
                             html.P(
                                 (
                                     "RainbowLens integra fuentes oficiales para analizar la "
-                                    "situacion legal y social de las personas LGBTIQ+ en Europa."
+                                    "situación legal y social de las personas LGBTIQ+ en Europa."
                                 ),
                                 className="about-lead",
                                 **text_attrs(
                                     (
                                         "RainbowLens integra fuentes oficiales para analizar la "
-                                        "situacion legal y social de las personas LGBTIQ+ en Europa."
+                                        "situación legal y social de las personas LGBTIQ+ en Europa."
                                     ),
                                     (
                                         "RainbowLens integrates official sources to analyse the "
@@ -132,7 +137,7 @@ def build_about_layout() -> html.Div:
                         className="about-header",
                     ),
                     _source_cards_section(
-                        "Fuentes principales de datos y situacion social",
+                        "Fuentes principales de datos y situación social",
                         PRIMARY_SOURCES,
                         class_name="about-source-section",
                     ),
@@ -145,7 +150,7 @@ def build_about_layout() -> html.Div:
                                     html.P(
                                         (
                                             "Para comprender mejor los datos y su contexto, "
-                                            "recomendamos consultar tambien las siguientes "
+                                            "recomendamos consultar también las siguientes "
                                             "publicaciones y estrategias oficiales."
                                         ),
                                         className="about-lead",
@@ -162,8 +167,8 @@ def build_about_layout() -> html.Div:
                     ),
                     html.P(
                         (
-                            "Rainbow Lens recopila, organiza y visualiza informacion procedente "
-                            "de fuentes externas. La autoria, metodologia y responsabilidad de "
+                            "Rainbow Lens recopila, organiza y visualiza información procedente "
+                            "de fuentes externas. La autoría, metodología y responsabilidad de "
                             "los datos corresponden a las organizaciones que publican cada recurso."
                         ),
                         className="about-attribution",
@@ -174,7 +179,7 @@ def build_about_layout() -> html.Div:
                                 "ILGA Europe Rainbow Map",
                                 [
                                     (
-                                        "ILGA Europe evalua leyes y politicas publicas que afectan "
+                                        "ILGA Europe evalúa leyes y políticas públicas que afectan "
                                         "a las personas LGBTIQ+ en Europa y Asia Central.",
                                         (
                                             "ILGA Europe evaluates laws and public policies affecting "
@@ -182,9 +187,9 @@ def build_about_layout() -> html.Div:
                                         ),
                                     ),
                                     (
-                                        "El Rainbow Map organiza esa informacion en indicadores "
-                                        "relacionados con igualdad y no discriminacion, familia, "
-                                        "delitos y discursos de odio, reconocimiento legal de genero, "
+                                        "El Rainbow Map organiza esa información en indicadores "
+                                        "relacionados con igualdad y no discriminación, familia, "
+                                        "delitos y discursos de odio, reconocimiento legal de género, "
                                         "integridad corporal, asilo y espacio de sociedad civil.",
                                         (
                                             "The Rainbow Map organises this information into indicators "
@@ -194,8 +199,8 @@ def build_about_layout() -> html.Div:
                                         ),
                                     ),
                                     (
-                                        "En la aplicacion, estos datos permiten comparar paises y "
-                                        "visualizar la evolucion del marco legal por año.",
+                                        "En la aplicación, estos datos permiten comparar países y "
+                                        "visualizar la evolución del marco legal por año.",
                                         (
                                             "In the application, these data make it possible to compare "
                                             "countries and visualise the legal framework over time."
@@ -207,18 +212,18 @@ def build_about_layout() -> html.Div:
                                 "FRA",
                                 [
                                     (
-                                        "La Agencia de los Derechos Fundamentales de la Union Europea "
+                                        "La Agencia de los Derechos Fundamentales de la Unión Europea "
                                         "recoge datos de encuesta sobre experiencias reales de la "
-                                        "poblacion LGBTIQ+.",
+                                        "población LGBTIQ+.",
                                         (
                                             "The European Union Agency for Fundamental Rights collects "
                                             "survey data on real experiences of the LGBTIQ+ population."
                                         ),
                                     ),
                                     (
-                                        "Sus indicadores cubren dimensiones como discriminacion, "
-                                        "visibilidad, seguridad, acoso, condiciones socioeconomicas "
-                                        "y relacion con instituciones.",
+                                        "Sus indicadores cubren dimensiones como discriminación, "
+                                        "visibilidad, seguridad, acoso, condiciones socioeconómicas "
+                                        "y relación con instituciones.",
                                         (
                                             "Its indicators cover dimensions such as discrimination, "
                                             "visibility, safety, harassment, socioeconomic conditions "
@@ -227,7 +232,7 @@ def build_about_layout() -> html.Div:
                                     ),
                                     (
                                         "En RainbowLens, FRA complementa el mapa legal de ILGA con "
-                                        "evidencia social comparable entre paises.",
+                                        "evidencia social comparable entre países.",
                                         (
                                             "In RainbowLens, FRA complements ILGA's legal map with "
                                             "social evidence that can be compared across countries."
@@ -241,7 +246,7 @@ def build_about_layout() -> html.Div:
                                     (
                                         "La FELGTBI+ defiende y promueve los derechos humanos y la "
                                         "igualdad de las personas LGTBI+ y sus familias en el Estado "
-                                        "espanol, con atencion especial a quienes afrontan mayor "
+                                        "español, con atención especial a quienes afrontan mayor "
                                         "vulnerabilidad.",
                                         (
                                             "FELGTBI+ defends and promotes human rights and equality "
@@ -250,8 +255,8 @@ def build_about_layout() -> html.Div:
                                         ),
                                     ),
                                     (
-                                        "Su trabajo combina incidencia social y politica, apoyo al "
-                                        "movimiento asociativo, cooperacion en red, transparencia, "
+                                        "Su trabajo combina incidencia social y política, apoyo al "
+                                        "movimiento asociativo, cooperación en red, transparencia, "
                                         "interseccionalidad y compromiso con la justicia social.",
                                         (
                                             "Its work combines social and policy advocacy, support for "
@@ -262,7 +267,7 @@ def build_about_layout() -> html.Div:
                                     ),
                                     (
                                         "En RainbowLens, FELGTBI+ aporta contexto estatal sobre activismo, "
-                                        "derechos y organizacion social LGTBI+.",
+                                        "derechos y organización social LGTBI+.",
                                         (
                                             "In RainbowLens, FELGTBI+ adds national context on LGTBI+ "
                                             "activism, rights and social organisation."
@@ -336,7 +341,7 @@ def _source_card(source: dict[str, str]) -> html.Article:
         children.append(html.P(note, className="about-resource-card__note"))
     children.append(
         html.A(
-            f"Abrir {source.get('title') or 'recurso oficial'} en una pestana nueva",
+            f"Abrir {source.get('title') or 'recurso oficial'} en una pestaña nueva",
             href=str(source.get("url") or "#"),
             target="_blank",
             rel="noopener noreferrer",
@@ -352,17 +357,12 @@ def register_about_callbacks(app: Dash) -> None:
         Input("about-ilga-country", "value"),
     )
     def update_ilga_country_criteria(country_key: str | None):
+        if not country_key:
+            return _about_ilga_empty_state()
         document = get_latest_ilga_document()
         country = _find_country(document, country_key)
         if not country:
-            return html.P(
-                "Selecciona un pais con criterios desglosados.",
-                className="about-empty",
-                **text_attrs(
-                    "Selecciona un pais con criterios desglosados.",
-                    "Select a country with detailed criteria.",
-                ),
-            )
+            return _about_ilga_empty_state()
         return _country_criteria_panel(country)
 
 
@@ -393,6 +393,17 @@ def _about_block(
     )
 
 
+def _about_ilga_empty_state() -> html.P:
+    return html.P(
+        "Selecciona un criterio para consultar su detalle jurídico.",
+        className="about-empty about-empty--compact",
+        **text_attrs(
+            "Selecciona un criterio para consultar su detalle jurídico.",
+            "Select a criterion to view its legal details.",
+        ),
+    )
+
+
 def _ilga_detail_section(document: dict[str, Any] | None) -> html.Section:
     year = document.get("year") if isinstance(document, dict) else None
     countries = _countries_with_criteria(document)
@@ -405,6 +416,16 @@ def _ilga_detail_section(document: dict[str, Any] | None) -> html.Section:
     ]
     title_es = f"Indicadores registrados en {year}" if year else "Indicadores ILGA"
     title_en = f"Indicators registered in {year}" if year else "ILGA indicators"
+    lead_es = (
+        "La puntuación global sintetiza criterios legales y políticos. "
+        "Cada criterio incluye su categoría, indicador, valor máximo "
+        "y valor registrado para el país."
+    )
+    lead_en = (
+        "The global ranking summarises legal and policy criteria. "
+        "Each criterion includes its category, indicator, maximum value "
+        "and value registered for the country."
+    )
     return html.Section(
         [
             html.Div(
@@ -415,31 +436,7 @@ def _ilga_detail_section(document: dict[str, Any] | None) -> html.Section:
                         **text_attrs("Desglose ILGA actual", "Current ILGA breakdown"),
                     ),
                     html.H2(title_es, **text_attrs(title_es, title_en)),
-                    html.P(
-                        (
-                            "El ranking global sintetiza criterios legales y politicos. "
-                            "Cada criterio incluye su categoria, indicador, valor maximo "
-                            "y valor registrado para el pais. En años historicos puede "
-                            "existir solo el ranking global; en ese caso criteria se "
-                            "guarda como null."
-                        ),
-                        className="about-lead",
-                        **text_attrs(
-                            (
-                                "El ranking global sintetiza criterios legales y politicos. "
-                                "Cada criterio incluye su categoria, indicador, valor maximo "
-                                "y valor registrado para el pais. En años historicos puede "
-                                "existir solo el ranking global; en ese caso criteria se "
-                                "guarda como null."
-                            ),
-                            (
-                                "The global ranking summarises legal and policy criteria. "
-                                "Each criterion includes its category, indicator, maximum value "
-                                "and value registered for the country. Historical years may only "
-                                "contain the global ranking; in that case criteria is stored as null."
-                            ),
-                        ),
-                    ),
+                    html.P(lead_es, className="about-lead", **text_attrs(lead_es, lead_en)),
                 ],
                 className="about-section-header",
             ),
@@ -447,18 +444,19 @@ def _ilga_detail_section(document: dict[str, Any] | None) -> html.Section:
                 html.Div(
                     [
                         html.Label(
-                            text("Pais", "Country"),
+                            text("País", "Country"),
                             htmlFor="about-ilga-country",
                         ),
                         dcc.Dropdown(
                             id="about-ilga-country",
                             options=options,
-                            value=options[0]["value"] if options else None,
-                            clearable=False,
+                            value=None,
+                            clearable=True,
+                            placeholder="Selecciona un criterio",
                             className="about-country-dropdown",
                         ),
                         html.Div(
-                            _country_criteria_panel(countries[0]) if countries else "",
+                            _about_ilga_empty_state(),
                             id="about-ilga-criteria",
                             className="about-country-panel",
                         ),
@@ -467,10 +465,10 @@ def _ilga_detail_section(document: dict[str, Any] | None) -> html.Section:
                 )
                 if countries
                 else html.P(
-                    "No hay criterios desglosados para el ultimo año disponible.",
+                    "No hay criterios desglosados para el último año disponible.",
                     className="about-empty",
                     **text_attrs(
-                        "No hay criterios desglosados para el ultimo año disponible.",
+                        "No hay criterios desglosados para el último año disponible.",
                         "There are no detailed criteria for the latest available year.",
                     ),
                 )
@@ -519,29 +517,14 @@ def _country_criteria_panel(country: dict[str, Any]) -> html.Div:
         [
             html.Div(
                 [
-                    html.H3(str(country.get("country") or "Pais")),
+                    html.H3(str(country.get("country") or "País")),
                     html.Span(str(country.get("country_code") or "")),
                     html.Strong(ranking_text),
                 ],
                 className="about-country-summary",
             ),
             html.Div(
-                [
-                    html.Div(
-                        [
-                            html.Span("Indicador", **text_attrs("Indicador", "Indicator")),
-                            html.Div(
-                                [
-                                    html.Span("Maximo", **text_attrs("Maximo", "Maximum")),
-                                    html.Span("Pais", **text_attrs("Pais", "Country")),
-                                ],
-                                className="about-criterion-values",
-                            ),
-                        ],
-                        className="about-criterion-row about-criterion-head",
-                    ),
-                    *[_criterion_row(criterion) for criterion in criteria],
-                ],
+                [_criterion_row(criterion) for criterion in criteria],
                 className="about-criteria-list",
             ),
         ],
@@ -551,26 +534,58 @@ def _country_criteria_panel(country: dict[str, Any]) -> html.Div:
 def _criterion_row(criterion: dict[str, Any]) -> html.Div:
     weight = criterion.get("weight")
     value = criterion.get("value")
-    indicator = str(criterion.get("indicator") or "Indicador")
-    category = str(criterion.get("category") or "Sin categoria")
+    metadata_es = get_criterion_metadata(criterion, "es")
+    metadata_en = get_criterion_metadata(criterion, "en")
+    status_es = get_criterion_status(value, weight, "es")
+    status_en = get_criterion_status(value, weight, "en")
+    score_es = get_criterion_score_label(value, weight, "es") or "Puntuación: información no disponible"
+    score_en = get_criterion_score_label(value, weight, "en") or "Score: information unavailable"
     return html.Div(
         [
             html.Div(
                 [
-                    html.Strong(indicator, **text_attrs(indicator, indicator)),
-                    html.Span(category, **text_attrs(category, category)),
+                    html.Span(
+                        metadata_es["category_label"],
+                        className="ilga-indicator-card__category",
+                        **text_attrs(metadata_es["category_label"], metadata_en["category_label"]),
+                    ),
+                    html.Strong(
+                        metadata_es["display_title"],
+                        className="ilga-indicator-card__title",
+                        **text_attrs(metadata_es["display_title"], metadata_en["display_title"]),
+                    ),
+                    html.P(
+                        metadata_es["summary"],
+                        className="ilga-indicator-card__description",
+                        **text_attrs(metadata_es["summary"], metadata_en["summary"]),
+                    ),
                 ],
-                className="about-criterion-main",
+                className="ilga-indicator-card__content",
             ),
             html.Div(
                 [
-                    html.Span(_format_number(weight), title="Maximum criterion value"),
-                    html.Span(_format_number(value), title="Country value"),
+                    html.Div(
+                        [
+                            html.Span("Estado", **text_attrs("Estado", "Status")),
+                            html.Strong(
+                                status_es["label"],
+                                **text_attrs(status_es["label"], status_en["label"]),
+                            ),
+                        ],
+                        className="ilga-indicator-card__meta-item",
+                    ),
+                    html.Div(
+                        [
+                            html.Span("Valor", **text_attrs("Valor", "Value")),
+                            html.Strong(score_es, **text_attrs(score_es, score_en)),
+                        ],
+                        className="ilga-indicator-card__meta-item",
+                    ),
                 ],
-                className="about-criterion-values",
+                className="ilga-indicator-card__metadata",
             ),
         ],
-        className="about-criterion-row",
+        className="ilga-indicator-card",
     )
 
 

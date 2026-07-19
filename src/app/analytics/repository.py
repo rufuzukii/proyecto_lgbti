@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import hashlib
 import logging
 import os
+import re
+from threading import Lock
+import time
 from typing import Any
 
 import psycopg
@@ -17,8 +21,82 @@ from app.errors import DatabaseUnavailableError
 
 logger = logging.getLogger(__name__)
 ANALYTICS_CACHE_TIMEOUT_SECONDS = int(os.getenv("ANALYTICS_CACHE_TIMEOUT_SECONDS", "3600"))
+ANALYTICS_HEALTH_CHECK_TTL_SECONDS = int(os.getenv("ANALYTICS_HEALTH_CHECK_TTL_SECONDS", "15"))
+SPAIN_COLLECTIONS_CACHE_TIMEOUT_SECONDS = int(os.getenv("SPAIN_COLLECTIONS_CACHE_TIMEOUT_SECONDS", "300"))
 MONGO_UNAVAILABLE_ERRORS = (AutoReconnect, ConfigurationError, NetworkTimeout)
 COUNTRY_LGBTI_STATUS_COLLECTION = "country_lgbti_status"
+DEFAULT_FELGTBI_COLLECTION = "Indicator_felgtbi"
+FELGTBI_SOURCE_CODE = "felgtbi_estado_lgtbi"
+SPAIN_COLLECTION_LABELS = {
+    DEFAULT_FELGTBI_COLLECTION: ("Estado LGTBI+ en España", "LGTBI+ status in Spain"),
+}
+SPAIN_COLLECTION_INCLUDE_TOKENS = ("felgtbi", "lgtbi", "spain", "espana", "españa", "estado_lgtbi")
+SPAIN_COLLECTION_EXCLUDED_PREFIXES = (
+    "system.",
+    "_",
+    "tmp",
+    "temp",
+    "audit",
+    "migration",
+    "migrations",
+)
+SPAIN_COLLECTION_EXCLUDED_NAMES = {
+    "fs.files",
+    "fs.chunks",
+    "indicator_fra",
+    "indicator_ilga",
+    "schema_migrations",
+    "migration_history",
+    COUNTRY_LGBTI_STATUS_COLLECTION,
+}
+SPAIN_FILENAME_FIELD_PATHS = (
+    "original_filename",
+    "filename",
+    "file_name",
+    "source_file",
+    "metadata.original_filename",
+    "metadata.filename",
+    "metadata.file_name",
+    "metadata.source_file",
+    "file_metadata.original_filename",
+    "file_metadata.filename",
+    "file_metadata.file_name",
+    "file_metadata.source_file",
+    "upload.original_filename",
+    "upload.filename",
+    "upload.file_name",
+    "upload.source_file",
+)
+SPAIN_DOCUMENT_PROCESSED_STATUSES = {
+    "processed",
+    "procesado",
+    "approved",
+    "aprobado",
+    "imported",
+    "importado",
+    "completed",
+    "complete",
+    "ready",
+    "ok",
+    "success",
+    "active",
+    "available",
+}
+SPAIN_DOCUMENT_BLOCKED_STATUSES = {
+    "pending",
+    "pendiente",
+    "queued",
+    "processing",
+    "procesando",
+    "running",
+    "failed",
+    "error",
+    "invalid",
+    "rejected",
+    "rechazado",
+}
+_health_check_lock = Lock()
+_health_check_ok_until = 0.0
 
 
 @dataclass(frozen=True) # frozen=true significa que el objeto no puede ser modificado
@@ -51,7 +129,42 @@ class FelgtbiIndicator:
         return f"{self.year} - {self.report_title} - {self.description or self.question}"
 
 
+@dataclass(frozen=True)
+class FelgtbiDocument:
+    id: str
+    label: str
+    original_filename: str
+    year: int | None
+    report_title: str
+    report_type: str
+    section_count: int
+    filter_fields: tuple[tuple[str, Any], ...]
+
+
+@dataclass(frozen=True)
+class SpainCollection:
+    name: str
+    label_es: str
+    label_en: str
+
+
 def assert_analytics_databases_available() -> None:
+    global _health_check_ok_until
+
+    now = time.monotonic()
+    if now < _health_check_ok_until:
+        return
+
+    with _health_check_lock:
+        now = time.monotonic()
+        if now < _health_check_ok_until:
+            return
+
+        _assert_analytics_databases_available_uncached()
+        _health_check_ok_until = now + max(0, ANALYTICS_HEALTH_CHECK_TTL_SECONDS)
+
+
+def _assert_analytics_databases_available_uncached() -> None:
     try:
         with psycopg.connect(
             get_postgres_dsn(),
@@ -286,39 +399,200 @@ def get_ilga_criteria_by_year(
     return list(criteria_by_key.values())
 
 
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_felgtbi_categories() -> list[str]:
+@cache.memoize(timeout=SPAIN_COLLECTIONS_CACHE_TIMEOUT_SECONDS)
+def get_spain_available_collections() -> list[SpainCollection]:
     try:
-        _ensure_analytics_indexes()
+        client, database_name = _mongo_client_and_database()
+        collection_names = [
+            str(name or "").strip()
+            for name in client[database_name].list_collection_names()
+            if str(name or "").strip()
+        ]
+    except Exception:
+        logger.exception("spain_collections_read_failed")
+        return []
+
+    valid_names = [
+        name
+        for name in collection_names
+        if not _is_technical_collection_name(name)
+        and _collection_has_spain_interface_documents(name)
+    ]
+    valid_names = sorted(set(valid_names), key=_spain_collection_sort_key)
+    collections = [
+        SpainCollection(
+            name=name,
+            label_es=_spain_collection_label(name, language="es"),
+            label_en=_spain_collection_label(name, language="en"),
+        )
+        for name in valid_names
+    ]
+    logger.debug(
+        "spain_collections_discovered",
+        extra={
+            "mongo_collection_count": len(collection_names),
+            "valid_spain_collection_count": len(valid_names),
+            "option_count": len(collections),
+        },
+    )
+    return collections
+
+
+def get_spain_collection_options(language: str = "es") -> list[dict[str, str]]:
+    clean_language = language if language in {"es", "en"} else "es"
+    options = []
+    for collection in get_spain_available_collections():
+        label = collection.label_en if clean_language == "en" else collection.label_es
+        options.append({"label": label, "value": collection.name})
+    return options
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_felgtbi_documents(collection_name: str | None = None) -> list[FelgtbiDocument]:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    if not resolved_collection:
+        return []
+    try:
+        _ensure_spain_collection_indexes(resolved_collection)
+        rows = _mongo_collection(resolved_collection).find(
+            _spain_collection_query(resolved_collection),
+            _spain_document_projection(),
+            sort=[
+                ("year", -1),
+                ("original_filename", 1),
+                ("filename", 1),
+                ("file_name", 1),
+                ("source_file", 1),
+                ("report_title", 1),
+                ("page", 1),
+                ("code", 1),
+            ],
+        )
+        documents = _group_spain_documents(rows, resolved_collection)
+    except Exception:
+        logger.exception(
+            "felgtbi_documents_read_failed",
+            extra={"collection": resolved_collection},
+        )
+        return []
+    return _deduplicate_spain_document_labels(documents)
+
+
+def get_felgtbi_document_options(collection_name: str | None = None) -> list[dict[str, str]]:
+    return [
+        {"label": document.label, "value": document.id, "title": document.label}
+        for document in get_felgtbi_documents(collection_name)
+    ]
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_felgtbi_document_years(
+    document_id: str | None = None,
+    collection_name: str | None = None,
+) -> list[int]:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    document = _resolve_felgtbi_document(document_id, resolved_collection)
+    if not resolved_collection or document is None:
+        return []
+
+    query = _spain_document_query(resolved_collection, document)
+    try:
+        _ensure_spain_collection_indexes(resolved_collection)
+        years = _mongo_collection(resolved_collection).distinct("year", query)
+    except Exception:
+        logger.exception(
+            "felgtbi_document_years_read_failed",
+            extra={"document": str(document_id or ""), "collection": resolved_collection},
+        )
+        return []
+
+    clean_years: list[int] = []
+    for year in years:
+        try:
+            clean_years.append(int(year))
+        except (TypeError, ValueError):
+            continue
+    return sorted(set(clean_years), reverse=True)
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_felgtbi_indicators_by_document(
+    document_id: str,
+    year: int | str | None = None,
+    collection_name: str | None = None,
+) -> list[FelgtbiIndicator]:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    document = _resolve_felgtbi_document(document_id, resolved_collection)
+    if not resolved_collection or document is None:
+        return []
+
+    query = _spain_document_query(resolved_collection, document)
+    if year is not None and str(year).strip():
+        try:
+            query["year"] = int(year)
+        except (TypeError, ValueError):
+            return []
+    try:
+        _ensure_spain_collection_indexes(resolved_collection)
+        rows = _mongo_collection(resolved_collection).find(
+            query,
+            _spain_indicator_projection(),
+            sort=[("year", -1), ("page", 1), ("section_title", 1), ("topic", 1), ("description", 1), ("code", 1)],
+        )
+        return [_row_to_felgtbi_indicator(row) for row in rows if row.get("code") and _has_valid_spain_section(row)]
+    except Exception:
+        logger.exception(
+            "felgtbi_document_read_failed",
+            extra={"document": str(document_id or ""), "collection": resolved_collection},
+        )
+        return []
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_felgtbi_categories(collection_name: str | None = None) -> list[str]:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    if not resolved_collection:
+        return []
+    try:
+        _ensure_spain_collection_indexes(resolved_collection)
         mongo_categories = {
             str(category).strip()
-            for category in _mongo_collection("Indicator_felgtbi").distinct(
+            for category in _mongo_collection(resolved_collection).distinct(
                 "category",
-                {"source": "felgtbi_estado_lgtbi"},
+                _spain_collection_query(resolved_collection),
             )
             if str(category).strip()
         }
     except Exception:
-        logger.exception("felgtbi_categories_read_failed")
+        logger.exception(
+            "felgtbi_categories_read_failed",
+            extra={"collection": resolved_collection},
+        )
         return []
 
-    postgres_categories = get_categories()
-    ordered = [category for category in postgres_categories if category in mongo_categories]
-    remaining = sorted(mongo_categories.difference(ordered))
-    return [*ordered, *remaining]
+    return sorted(mongo_categories)
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_felgtbi_years(category: str | None = None) -> list[int]:
-    query: dict[str, Any] = {"source": "felgtbi_estado_lgtbi"}
+def get_felgtbi_years(
+    category: str | None = None,
+    collection_name: str | None = None,
+) -> list[int]:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    if not resolved_collection:
+        return []
+    query = _spain_collection_query(resolved_collection)
     clean_category = str(category or "").strip()
     if clean_category:
         query["category"] = clean_category
     try:
-        _ensure_analytics_indexes()
-        years = _mongo_collection("Indicator_felgtbi").distinct("year", query)
+        _ensure_spain_collection_indexes(resolved_collection)
+        years = _mongo_collection(resolved_collection).distinct("year", query)
     except Exception:
-        logger.exception("felgtbi_years_read_failed", extra={"category": clean_category})
+        logger.exception(
+            "felgtbi_years_read_failed",
+            extra={"category": clean_category, "collection": resolved_collection},
+        )
         return []
 
     clean_years: list[int] = []
@@ -334,70 +608,68 @@ def get_felgtbi_years(category: str | None = None) -> list[int]:
 def get_felgtbi_indicators_by_category(
     category: str,
     year: int | str | None = None,
+    collection_name: str | None = None,
 ) -> list[FelgtbiIndicator]:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    if not resolved_collection:
+        return []
     clean_category = str(category or "").strip()
     if not clean_category:
         return []
-    query: dict[str, Any] = {"source": "felgtbi_estado_lgtbi", "category": clean_category}
+    query = _spain_collection_query(resolved_collection)
+    query["category"] = clean_category
     if year is not None and str(year).strip():
         try:
             query["year"] = int(year)
         except (TypeError, ValueError):
             return []
     try:
-        _ensure_analytics_indexes()
-        rows = _mongo_collection("Indicator_felgtbi").find(
+        _ensure_spain_collection_indexes(resolved_collection)
+        rows = _mongo_collection(resolved_collection).find(
             query,
-            {
-                "_id": 0,
-                "code": 1,
-                "year": 1,
-                "category": 1,
-                "specific_category": 1,
-                "topic": 1,
-                "topics": 1,
-                "question": 1,
-                "description": 1,
-                "subsection_title": 1,
-                "report_title": 1,
-                "report_type": 1,
-                "answers": 1,
-            },
+            _spain_indicator_projection(),
             sort=[("year", -1), ("report_title", 1), ("topic", 1), ("description", 1)],
         )
-        return [
-            FelgtbiIndicator(
-                code=str(row.get("code") or ""),
-                year=int(row.get("year") or 0),
-                category=str(row.get("category") or ""),
-                specific_category=str(row.get("specific_category") or ""),
-                topic=str(row.get("topic") or ""),
-                question=str(row.get("subsection_title") or row.get("question") or ""),
-                description=str(row.get("description") or row.get("question") or ""),
-                report_title=str(row.get("report_title") or ""),
-                report_type=str(row.get("report_type") or ""),
-                value=_first_percentage(row.get("answers")),
-            )
-            for row in rows
-            if row.get("code")
-        ]
+        return [_row_to_felgtbi_indicator(row) for row in rows if row.get("code") and _has_valid_spain_section(row)]
     except Exception:
-        logger.exception("felgtbi_category_read_failed", extra={"category": clean_category})
+        logger.exception(
+            "felgtbi_category_read_failed",
+            extra={"category": clean_category, "collection": resolved_collection},
+        )
         return []
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_felgtbi_indicator_answers(code: str) -> dict[str, Any] | None:
+def get_felgtbi_indicator_answers(
+    code: str,
+    collection_name: str | None = None,
+    *,
+    document_id: str | None = None,
+) -> dict[str, Any] | None:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    if not resolved_collection:
+        return None
     clean_code = str(code or "").strip()
     if not clean_code:
         return None
+    document = _resolve_felgtbi_document(document_id, resolved_collection) if document_id else None
+    if document_id and document is None:
+        return None
     try:
-        _ensure_analytics_indexes()
-        return _mongo_collection("Indicator_felgtbi").find_one(
-            {"source": "felgtbi_estado_lgtbi", "code": clean_code},
+        _ensure_spain_collection_indexes(resolved_collection)
+        query = (
+            _spain_document_query(resolved_collection, document)
+            if document is not None
+            else _spain_collection_query(resolved_collection)
+        )
+        query["code"] = clean_code
+        return _mongo_collection(resolved_collection).find_one(
+            query,
             {
                 "_id": 0,
                 "source": 1,
+                "source_document_id": 1,
+                "original_filename": 1,
                 "code": 1,
                 "year": 1,
                 "report_title": 1,
@@ -422,7 +694,14 @@ def get_felgtbi_indicator_answers(code: str) -> dict[str, Any] | None:
             },
         )
     except Exception:
-        logger.exception("felgtbi_indicator_values_read_failed", extra={"code": clean_code})
+        logger.exception(
+            "felgtbi_indicator_values_read_failed",
+            extra={
+                "code": clean_code,
+                "collection": resolved_collection,
+                "document": str(document_id or ""),
+            },
+        )
         return None
 
 
@@ -637,6 +916,585 @@ def _mongo_collection(name: str):
     return client[database][name]
 
 
+def _resolve_spain_collection_name(collection_name: str | None) -> str:
+    clean_collection = str(collection_name or "").strip()
+    available = {collection.name for collection in get_spain_available_collections()}
+    if clean_collection and clean_collection in available:
+        return clean_collection
+    if DEFAULT_FELGTBI_COLLECTION in available:
+        return DEFAULT_FELGTBI_COLLECTION
+    return next(iter(sorted(available, key=_spain_collection_sort_key)), "")
+
+
+def _spain_collection_query(collection_name: str) -> dict[str, Any]:
+    if collection_name == DEFAULT_FELGTBI_COLLECTION:
+        return {"source": FELGTBI_SOURCE_CODE}
+    return {}
+
+
+def _spain_document_query(collection_name: str, document: FelgtbiDocument) -> dict[str, Any]:
+    query = _spain_collection_query(collection_name)
+    for field, value in document.filter_fields:
+        query[field] = value
+    return query
+
+
+def _resolve_felgtbi_document(document_id: str | None, collection_name: str | None) -> FelgtbiDocument | None:
+    clean_id = str(document_id or "").strip()
+    if not clean_id:
+        return None
+    for document in get_felgtbi_documents(collection_name):
+        if document.id == clean_id:
+            return document
+    return None
+
+
+def _group_spain_documents(rows: Any, collection_name: str) -> list[FelgtbiDocument]:
+    groups: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not _is_processed_spain_document(row):
+            continue
+        if not _is_pdf_backed_spain_document(row):
+            continue
+        if not _has_valid_spain_section(row):
+            continue
+
+        document_id, filter_fields = _spain_document_identity(row, collection_name)
+        label = _spain_document_display_name(row)
+        if not label:
+            label = _fallback_spain_document_label(row, document_id)
+        group = groups.setdefault(
+            document_id,
+            {
+                "label": label,
+                "original_filename": _spain_source_filename(row),
+                "year": _int_or_none(row.get("year")),
+                "report_title": _clean_text(row.get("report_title")),
+                "report_type": _clean_text(row.get("report_type")),
+                "filter_fields": filter_fields,
+                "section_count": 0,
+            },
+        )
+        group["section_count"] += 1
+        if not group["original_filename"]:
+            group["original_filename"] = _spain_source_filename(row)
+        if group["year"] is None:
+            group["year"] = _int_or_none(row.get("year"))
+        if not group["report_title"]:
+            group["report_title"] = _clean_text(row.get("report_title"))
+        if not group["report_type"]:
+            group["report_type"] = _clean_text(row.get("report_type"))
+
+    documents = [
+        FelgtbiDocument(
+            id=document_id,
+            label=str(group["label"]),
+            original_filename=str(group["original_filename"]),
+            year=group["year"],
+            report_title=str(group["report_title"]),
+            report_type=str(group["report_type"]),
+            section_count=int(group["section_count"]),
+            filter_fields=tuple(group["filter_fields"]),
+        )
+        for document_id, group in groups.items()
+    ]
+    return sorted(
+        documents,
+        key=lambda document: (
+            -(document.year or 0),
+            document.label.casefold(),
+            document.id,
+        ),
+    )
+
+
+def _spain_document_identity(row: dict[str, Any], collection_name: str) -> tuple[str, tuple[tuple[str, Any], ...]]:
+    source_document_id = _clean_text(
+        row.get("source_document_id")
+        or _nested_value(row, "metadata.source_document_id")
+        or _nested_value(row, "file_metadata.source_document_id")
+    )
+    if source_document_id:
+        return f"document:{source_document_id}", (("source_document_id", source_document_id),)
+
+    filename_field, filename_value = _spain_filename_field(row)
+    filter_fields: list[tuple[str, Any]] = []
+    if filename_field and filename_value:
+        filter_fields.append((filename_field, filename_value))
+
+    year = _int_or_none(row.get("year"))
+    if year is not None:
+        filter_fields.append(("year", year))
+
+    report_title = _clean_text(row.get("report_title"))
+    if report_title:
+        filter_fields.append(("report_title", report_title))
+
+    report_type = _clean_text(row.get("report_type"))
+    if report_type:
+        filter_fields.append(("report_type", report_type))
+
+    if not filter_fields and row.get("_id") is not None:
+        object_id = str(row["_id"])
+        return f"legacy-object:{object_id}", (("_id", row["_id"]),)
+
+    seed = _json_dumps_stable(
+        {
+            "collection": collection_name,
+            "filter_fields": filter_fields,
+        }
+    )
+    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:16]
+    return f"legacy:{digest}", tuple(filter_fields)
+
+
+def _deduplicate_spain_document_labels(documents: list[FelgtbiDocument]) -> list[FelgtbiDocument]:
+    by_label: dict[str, list[FelgtbiDocument]] = {}
+    for document in documents:
+        by_label.setdefault(document.label, []).append(document)
+
+    result: list[FelgtbiDocument] = []
+    for label, matches in by_label.items():
+        if len(matches) == 1:
+            result.extend(matches)
+            continue
+        years = [document.year for document in matches if document.year is not None]
+        years_are_unique = len(years) == len(matches) and len(set(years)) == len(matches)
+        for index, document in enumerate(matches, start=1):
+            if years_are_unique and document.year is not None and str(document.year) not in label:
+                suffix = str(document.year)
+            else:
+                suffix = str(index)
+            result.append(
+                FelgtbiDocument(
+                    id=document.id,
+                    label=f"{document.label} - {suffix}",
+                    original_filename=document.original_filename,
+                    year=document.year,
+                    report_title=document.report_title,
+                    report_type=document.report_type,
+                    section_count=document.section_count,
+                    filter_fields=document.filter_fields,
+                )
+            )
+    return sorted(
+        result,
+        key=lambda document: (
+            -(document.year or 0),
+            document.label.casefold(),
+            document.id,
+        ),
+    )
+
+
+def _spain_document_display_name(row: dict[str, Any]) -> str:
+    filename = _spain_source_filename(row)
+    if filename:
+        return _display_name_from_pdf_filename(filename)
+    for field in (
+        "metadata.display_name",
+        "metadata.title",
+        "file_metadata.display_name",
+        "file_metadata.title",
+        "report_title",
+    ):
+        candidate = _clean_text(_nested_value(row, field))
+        if candidate:
+            return candidate
+    return ""
+
+
+def _fallback_spain_document_label(row: dict[str, Any], document_id: str) -> str:
+    year = _int_or_none(row.get("year"))
+    if year is not None:
+        return f"Documento {year}"
+    suffix = str(document_id or "").split(":", 1)[-1][:8]
+    return f"Documento {suffix or 'FELGTBI+'}"
+
+
+def _spain_source_filename(row: dict[str, Any]) -> str:
+    _field, value = _spain_filename_field(row)
+    return value
+
+
+def _spain_filename_field(row: dict[str, Any]) -> tuple[str, str]:
+    for field in SPAIN_FILENAME_FIELD_PATHS:
+        value = _clean_text(_nested_value(row, field))
+        if value:
+            return field, value
+    return "", ""
+
+
+def _display_name_from_pdf_filename(value: str) -> str:
+    filename = _basename(value)
+    if filename.lower().endswith(".pdf"):
+        filename = filename[:-4]
+    return filename.strip()
+
+
+def _basename(value: str) -> str:
+    clean = _clean_text(value).replace("\\", "/").rstrip("/")
+    if not clean:
+        return ""
+    return clean.rsplit("/", 1)[-1].strip()
+
+
+def _is_pdf_backed_spain_document(row: dict[str, Any]) -> bool:
+    filename = _spain_source_filename(row)
+    if not filename:
+        return True
+    basename = _basename(filename)
+    suffix = basename.rsplit(".", 1)[-1].casefold() if "." in basename else ""
+    return not suffix or suffix == "pdf"
+
+
+def _is_processed_spain_document(row: dict[str, Any]) -> bool:
+    statuses = [
+        _clean_text(row.get(field)).casefold()
+        for field in ("import_status", "status", "processing_status", "state")
+        if _clean_text(row.get(field))
+    ]
+    if not statuses:
+        return True
+    if any(status in SPAIN_DOCUMENT_BLOCKED_STATUSES for status in statuses):
+        return False
+    return any(status in SPAIN_DOCUMENT_PROCESSED_STATUSES for status in statuses)
+
+
+def _nested_value(row: dict[str, Any], field_path: str) -> Any:
+    current: Any = row
+    for part in field_path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def _spain_document_projection() -> dict[str, int]:
+    projection = _spain_indicator_projection()
+    projection.update(
+        {
+            "_id": 1,
+            "source_document_id": 1,
+            "original_filename": 1,
+            "filename": 1,
+            "file_name": 1,
+            "source_file": 1,
+            "metadata": 1,
+            "file_metadata": 1,
+            "upload": 1,
+            "import_status": 1,
+            "status": 1,
+            "processing_status": 1,
+            "state": 1,
+            "page": 1,
+        }
+    )
+    return projection
+
+
+def _spain_indicator_projection() -> dict[str, int]:
+    return {
+        "_id": 0,
+        "source": 1,
+        "code": 1,
+        "year": 1,
+        "category": 1,
+        "specific_category": 1,
+        "topic": 1,
+        "topics": 1,
+        "question": 1,
+        "description": 1,
+        "subsection_title": 1,
+        "report_title": 1,
+        "report_type": 1,
+        "section_title": 1,
+        "figure_caption": 1,
+        "figure": 1,
+        "paragraphs": 1,
+        "paragraphs_before_figure": 1,
+        "paragraphs_after_figure": 1,
+        "content_html": 1,
+        "data_points": 1,
+        "visual_context": 1,
+        "sample_size": 1,
+        "fieldwork": 1,
+        "answers": 1,
+        "page": 1,
+    }
+
+
+def _row_to_felgtbi_indicator(row: dict[str, Any]) -> FelgtbiIndicator:
+    return FelgtbiIndicator(
+        code=str(row.get("code") or ""),
+        year=int(row.get("year") or 0),
+        category=str(row.get("category") or ""),
+        specific_category=str(row.get("specific_category") or ""),
+        topic=str(row.get("topic") or ""),
+        question=str(row.get("subsection_title") or row.get("question") or ""),
+        description=str(row.get("description") or row.get("question") or ""),
+        report_title=str(row.get("report_title") or ""),
+        report_type=str(row.get("report_type") or ""),
+        value=_first_percentage(row.get("answers")),
+    )
+
+
+def _json_dumps_stable(value: Any) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _is_spain_collection_name(name: str) -> bool:
+    normalized = _normalize_collection_name(name)
+    return any(token in normalized for token in SPAIN_COLLECTION_INCLUDE_TOKENS)
+
+
+def _collection_has_spain_interface_documents(name: str) -> bool:
+    name_matches = _is_spain_collection_name(name)
+    country_clauses: list[dict[str, Any]] = [
+        {"source": FELGTBI_SOURCE_CODE},
+        {"country": "Spain"},
+        {"country_code": "ES"},
+    ]
+    if name_matches:
+        country_clauses.extend(
+            [
+                {"answers.country": "Spain"},
+                {"answers.country_code": "ES"},
+            ]
+        )
+    try:
+        document = _mongo_collection(name).find_one(
+            {
+                "code": {"$exists": True, "$nin": ["", None]},
+                "category": {"$exists": True, "$nin": ["", None]},
+                "year": {"$exists": True, "$nin": ["", None]},
+                "$or": [
+                    *country_clauses,
+                ]
+            },
+            {
+                "_id": 0,
+                "code": 1,
+                "category": 1,
+                "year": 1,
+                "source": 1,
+                "country": 1,
+                "country_code": 1,
+                "answers.country": 1,
+                "answers.country_code": 1,
+            },
+            max_time_ms=1000,
+        )
+    except Exception:
+        logger.debug("spain_collection_probe_failed", extra={"collection": name}, exc_info=True)
+        return False
+    return bool(document)
+
+
+def _has_valid_spain_section(document: dict[str, Any]) -> bool:
+    return _has_valid_spain_chart(document) and (
+        _has_valid_spain_image(document) or _has_valid_spain_information(document)
+    )
+
+
+def _has_valid_spain_chart(document: dict[str, Any]) -> bool:
+    return (
+        _answers_have_numeric_value(document.get("answers"))
+        or _data_points_have_numeric_value(document.get("data_points"))
+        or _has_valid_spain_image(document)
+    )
+
+
+def _has_valid_spain_image(document: dict[str, Any]) -> bool:
+    return _looks_like_valid_asset(_raw_spain_figure_url(document))
+
+
+def _has_valid_spain_information(document: dict[str, Any]) -> bool:
+    question = _clean_text(document.get("question") or document.get("subsection_title"))
+    section = _clean_text(document.get("specific_category") or document.get("section_title"))
+    description = _clean_text(document.get("description"))
+    if description and description not in {question, section} and len(description) >= 16:
+        return True
+
+    if _clean_text(document.get("content_html")):
+        return True
+    if _text_list_has_value(document.get("paragraphs")):
+        return True
+    if _text_list_has_value(document.get("paragraphs_before_figure")):
+        return True
+    if _text_list_has_value(document.get("paragraphs_after_figure")):
+        return True
+    if _clean_text(document.get("figure_caption")):
+        return True
+    if _clean_text(document.get("sample_size")) or _clean_text(document.get("fieldwork")):
+        return True
+
+    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    for key in ("caption", "title", "alt_text", "source", "note", "methodology"):
+        if _clean_text(figure.get(key)):
+            return True
+
+    context = document.get("visual_context") if isinstance(document.get("visual_context"), dict) else {}
+    for key in ("title", "description", "caption", "source", "note", "methodology"):
+        if _clean_text(context.get(key)):
+            return True
+    return False
+
+
+def _answers_have_numeric_value(answers: Any) -> bool:
+    if not isinstance(answers, list):
+        return False
+    return any(
+        isinstance(answer, dict)
+        and isinstance(answer.get("percentage", answer.get("value")), (int, float))
+        for answer in answers
+    )
+
+
+def _data_points_have_numeric_value(data_points: Any) -> bool:
+    if not isinstance(data_points, list):
+        return False
+    for point in data_points:
+        if not isinstance(point, dict):
+            continue
+        if isinstance(point.get("value", point.get("percentage")), (int, float)):
+            return True
+    return False
+
+
+def _raw_spain_figure_url(document: dict[str, Any]) -> str:
+    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    context = document.get("visual_context") if isinstance(document.get("visual_context"), dict) else {}
+    upload = figure.get("upload") if isinstance(figure.get("upload"), dict) else {}
+    context_upload = context.get("image_upload") if isinstance(context.get("image_upload"), dict) else {}
+    candidates = [
+        figure.get("image_url"),
+        figure.get("signed_url"),
+        upload.get("signed_url"),
+        context_upload.get("signed_url"),
+        figure.get("public_url"),
+        upload.get("public_url"),
+        context_upload.get("public_url"),
+        figure.get("asset_url"),
+        figure.get("image_path"),
+        context.get("asset_url"),
+    ]
+    for candidate in candidates:
+        clean = _clean_text(candidate)
+        if clean:
+            return clean
+    return ""
+
+
+def _looks_like_valid_asset(value: str) -> bool:
+    clean = _clean_text(value)
+    if not clean:
+        return False
+    lowered = clean.lower()
+    return (
+        lowered.startswith(("http://", "https://", "/assets/", "assets/"))
+        or lowered.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"))
+    )
+
+
+def _text_list_has_value(value: Any) -> bool:
+    return isinstance(value, list) and any(_clean_text(item) for item in value)
+
+
+def _clean_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _is_technical_collection_name(name: str) -> bool:
+    clean_name = str(name or "").strip()
+    normalized = _normalize_collection_name(clean_name)
+    if not clean_name or clean_name.lower() in SPAIN_COLLECTION_EXCLUDED_NAMES:
+        return True
+    if any(clean_name.lower().startswith(prefix) for prefix in SPAIN_COLLECTION_EXCLUDED_PREFIXES):
+        return True
+    tokens = set(normalized.split("_"))
+    return bool(tokens.intersection({"cache", "backup", "bak", "scratch", "temporary", "test", "log", "logs"}))
+
+
+def _spain_collection_sort_key(name: str) -> tuple[int, str]:
+    clean_name = str(name or "").strip()
+    return (0 if clean_name == DEFAULT_FELGTBI_COLLECTION else 1, _spain_collection_label(clean_name))
+
+
+def _spain_collection_label(name: str, *, language: str = "es") -> str:
+    clean_name = str(name or "").strip()
+    labels = SPAIN_COLLECTION_LABELS.get(clean_name)
+    if labels:
+        return labels[1] if language == "en" else labels[0]
+    return _readable_collection_label(clean_name, language=language)
+
+
+def _readable_collection_label(name: str, *, language: str = "es") -> str:
+    tokens = [
+        token
+        for token in re.split(r"[^0-9A-Za-zÀ-ÿ]+", str(name or ""))
+        if token
+    ]
+    if not tokens:
+        return "Fuente de datos" if language == "es" else "Data source"
+    normalized_tokens = {token.lower() for token in tokens}
+    if {"felgtbi", "discrimination", "reports"}.issubset(normalized_tokens):
+        return "FELGTBI - Discrimination reports" if language == "en" else "FELGTBI - Informes de discriminación"
+
+    translations_es = {
+        "felgtbi": "FELGTBI",
+        "lgtbi": "LGTBI+",
+        "lgbti": "LGBTI+",
+        "lgbtiq": "LGBTIQ+",
+        "spain": "España",
+        "espana": "España",
+        "españa": "España",
+        "estado": "Estado",
+        "discrimination": "Discriminación",
+        "reports": "Informes",
+        "report": "Informe",
+        "indicator": "Indicadores",
+        "indicators": "Indicadores",
+        "survey": "Encuesta",
+        "data": "Datos",
+    }
+    translations_en = {
+        "felgtbi": "FELGTBI",
+        "lgtbi": "LGTBI+",
+        "lgbti": "LGBTI+",
+        "lgbtiq": "LGBTIQ+",
+        "spain": "Spain",
+        "espana": "Spain",
+        "españa": "Spain",
+        "estado": "Status",
+        "discrimination": "Discrimination",
+        "reports": "Reports",
+        "report": "Report",
+        "indicator": "Indicators",
+        "indicators": "Indicators",
+        "survey": "Survey",
+        "data": "Data",
+    }
+    translations = translations_en if language == "en" else translations_es
+    label_parts = [translations.get(token.lower(), _title_token(token)) for token in tokens]
+    label = " ".join(label_parts)
+    return label.replace("FELGTBI LGTBI+", "FELGTBI")
+
+
+def _title_token(token: str) -> str:
+    if token.isupper() or token.isdigit():
+        return token
+    return token[:1].upper() + token[1:].lower()
+
+
+def _normalize_collection_name(name: str) -> str:
+    return re.sub(r"[^0-9a-záéíóúüñ_]+", "_", str(name or "").strip().lower())
+
+
 def _first_percentage(answers: Any) -> float | None:
     if not isinstance(answers, list):
         return None
@@ -647,6 +1505,13 @@ def _first_percentage(answers: Any) -> float | None:
         if isinstance(value, (int, float)):
             return float(value)
     return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 @lru_cache(maxsize=1)
@@ -660,12 +1525,32 @@ def _ensure_analytics_indexes() -> None:
         [("dataset", 1), ("year", -1)],
         background=True,
     )
-    _mongo_collection("Indicator_felgtbi").create_index("code", background=True)
-    _mongo_collection("Indicator_felgtbi").create_index(
+    _ensure_spain_collection_indexes(DEFAULT_FELGTBI_COLLECTION)
+
+
+@lru_cache(maxsize=64)
+def _ensure_spain_collection_indexes(collection_name: str) -> None:
+    collection = _mongo_collection(collection_name)
+    collection.create_index("code", background=True)
+    collection.create_index("source_document_id", background=True)
+    collection.create_index("original_filename", background=True)
+    collection.create_index(
         [("year", -1), ("category", 1), ("specific_category", 1)],
         background=True,
     )
-    _mongo_collection("Indicator_felgtbi").create_index(
+    collection.create_index(
+        [("source", 1), ("source_document_id", 1), ("year", -1)],
+        background=True,
+    )
+    collection.create_index(
+        [("source", 1), ("source_document_id", 1), ("year", -1), ("code", 1)],
+        background=True,
+    )
+    collection.create_index(
+        [("source", 1), ("original_filename", 1), ("year", -1)],
+        background=True,
+    )
+    collection.create_index(
         [("source", 1), ("report_type", 1)],
         background=True,
     )

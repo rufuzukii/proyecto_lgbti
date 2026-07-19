@@ -206,6 +206,22 @@
   text-decoration: none;
 }
 
+.profile-cancel-link {
+  border: 0 !important;
+  box-shadow: none;
+  outline: none;
+  text-decoration: none !important;
+}
+
+.profile-cancel-link:hover,
+.profile-cancel-link:focus,
+.profile-cancel-link:focus-visible {
+  border: 0 !important;
+  box-shadow: none;
+  outline: none;
+  text-decoration: none !important;
+}
+
 .auth-switch {
   margin: 1.2rem 0 0;
   color: var(--color-text-muted);
@@ -213,13 +229,18 @@
 }
 
 .auth-switch a {
-  color: var(--color-primary);
+  color: #000000;
   font-weight: 800;
   text-decoration: none;
 }
 
 .auth-switch a:hover {
   text-decoration: underline;
+}
+
+:root[data-theme="dark"] .auth-switch a,
+body[data-theme="dark"] .auth-switch a {
+  color: #ffffff;
 }
 
 .user-page-grid {

@@ -21,7 +21,7 @@ def init_cache(app: Flask) -> None:
     config: dict[str, object] = {
         "CACHE_TYPE": cache_type,
         "CACHE_DEFAULT_TIMEOUT": _env_int("CACHE_DEFAULT_TIMEOUT", 300),
-        "CACHE_KEY_PREFIX": "rainbowlens:",
+        "CACHE_KEY_PREFIX": _cache_key_prefix(),
     }
     if cache_type.lower() in {"redis", "rediscache"} and redis_url:
         config["CACHE_REDIS_URL"] = redis_url
@@ -46,3 +46,12 @@ def _env_int(name: str, default: int) -> int:
         return int(value)
     except ValueError:
         return default
+
+
+def _cache_key_prefix() -> str:
+    explicit = os.getenv("CACHE_KEY_PREFIX", "").strip()
+    if explicit:
+        return explicit
+    app_env = os.getenv("APP_ENV", "local").strip().lower() or "local"
+    version = os.getenv("CACHE_VERSION", "v1").strip() or "v1"
+    return f"rainbowlens:{app_env}:{version}:cache:"

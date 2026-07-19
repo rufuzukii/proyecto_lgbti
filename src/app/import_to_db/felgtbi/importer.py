@@ -97,7 +97,7 @@ FIELDWORK_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
-        r"(?:trabajo de campo|fieldwork)[^:]*:\s*(.+?20\d{2})(?=\s+(?:muestra|tama[Ã±n]o|dimensi[oÃ³]n|el|la|un|una)\b|$)",
+        r"(?:trabajo de campo|fieldwork)[^:]*:\s*(.+?20\d{2})(?=\s+(?:muestra|tama(?:ño|no|\u00c3\u00b1o)|dimensi(?:ón|on|\u00c3\u00b3n)|el|la|un|una)\b|$)",
         re.IGNORECASE,
     ),
 )
@@ -320,6 +320,12 @@ def parse_felgtbi_pdf_bytes(
 ) -> list[dict]:
     pages = extract_pdf_pages(pdf_bytes)
     documents = parse_felgtbi_text_pages(pages, file_name=file_name, year=year)
+    _attach_source_document_metadata(
+        documents,
+        file_name=file_name,
+        source_document_id=_build_pdf_source_document_id(pdf_bytes, file_name),
+        overwrite_document_id=True,
+    )
     _attach_page_assets(pdf_bytes, file_name, documents)
     _refresh_content_html(documents)
     return documents
@@ -732,6 +738,42 @@ def _asset_key(pdf_bytes: bytes, file_name: str) -> str:
     return digest.hexdigest()[:16]
 
 
+def _build_pdf_source_document_id(pdf_bytes: bytes, file_name: str) -> str:
+    digest = hashlib.sha1()
+    digest.update(_safe_original_filename(file_name).encode("utf-8", errors="ignore"))
+    digest.update(pdf_bytes)
+    return f"felgtbi_pdf_{digest.hexdigest()[:16]}"
+
+
+def _build_metadata_source_document_id(file_name: str, year: int, report_title: str) -> str:
+    seed = f"{_safe_original_filename(file_name)}|{year}|{report_title}"
+    digest = hashlib.sha1(seed.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    return f"felgtbi_pdf_{digest}"
+
+
+def _safe_original_filename(file_name: str) -> str:
+    clean_name = str(file_name or "felgtbi.pdf").replace("\\", "/").rstrip("/")
+    clean_name = clean_name.rsplit("/", 1)[-1].strip()
+    return clean_name or "felgtbi.pdf"
+
+
+def _attach_source_document_metadata(
+    documents: list[dict],
+    *,
+    file_name: str,
+    source_document_id: str,
+    overwrite_document_id: bool = False,
+) -> None:
+    original_filename = _safe_original_filename(file_name)
+    for document in documents:
+        if not isinstance(document, dict):
+            continue
+        document["original_filename"] = str(document.get("original_filename") or original_filename)
+        if overwrite_document_id or not document.get("source_document_id"):
+            document["source_document_id"] = source_document_id
+        document["import_status"] = str(document.get("import_status") or "processed")
+
+
 def parse_felgtbi_text_pages(
     pages: list[dict[str, Any]],
     *,
@@ -763,6 +805,11 @@ def parse_felgtbi_text_pages(
             fieldwork=fieldwork,
         )
         if documents:
+            _attach_source_document_metadata(
+                documents,
+                file_name=file_name,
+                source_document_id=_build_metadata_source_document_id(file_name, resolved_year, report_title),
+            )
             _refresh_content_html(documents)
             return documents
 
@@ -837,6 +884,11 @@ def parse_felgtbi_text_pages(
 
     if not documents:
         raise ValueError("invalid_felgtbi_pdf")
+    _attach_source_document_metadata(
+        documents,
+        file_name=file_name,
+        source_document_id=_build_metadata_source_document_id(file_name, resolved_year, report_title),
+    )
     return documents
 
 
@@ -1272,7 +1324,7 @@ def _is_excluded_data_sentence(text: str) -> bool:
     normalized = normalize_header(text)
     if normalized.isdigit():
         return True
-    if "Â±" in text or "\u00b1" in text:
+    if "\u00c2\u00b1" in text or "\u00b1" in text:
         return True
     for keyword in EXCLUDED_SENTENCE_KEYWORDS:
         marker = normalize_header(keyword)

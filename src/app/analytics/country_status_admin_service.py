@@ -13,7 +13,7 @@ from app.analytics.repository import (
     invalidate_analytics_cache,
     upsert_country_lgbti_status_record,
 )
-from app.analytics.statistics_normalizers import normalize_country_code
+from app.analytics.statistics_normalizers import normalize_country_code, repair_text_encoding
 from app.auth.permissions import is_admin_user
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def save_country_lgbti_status(
     )
     if mode == "create" and existing:
         raise CountryStatusValidationError(
-            {"year": "Ya existe un registro para este pais y ano. Edita el registro existente."}
+            {"year": "Ya existe información para este país y año. Edita el registro existente."}
         )
 
     try:
@@ -83,16 +83,16 @@ def delete_country_lgbti_status(
         raise CountryStatusAuthorizationError("country_lgbti_status_admin_required")
     if not confirmed:
         raise CountryStatusValidationError(
-            {"delete_confirm": "Confirma la eliminacion antes de continuar."}
+            {"delete_confirm": "Confirma la eliminación antes de continuar."}
         )
 
     clean_code = normalize_country_code(country_code)
     if not clean_code:
-        raise CountryStatusValidationError({"country_code": "Codigo ISO invalido."})
+        raise CountryStatusValidationError({"country_code": "Código de país inválido."})
     try:
         clean_year = int(year)
     except (TypeError, ValueError) as exc:
-        raise CountryStatusValidationError({"year": "Ano invalido."}) from exc
+        raise CountryStatusValidationError({"year": "Año inválido."}) from exc
 
     try:
         deactivate_country_lgbti_status_record(clean_code, clean_year)
@@ -114,17 +114,17 @@ def validate_country_lgbti_status_payload(payload: dict[str, Any]) -> dict[str, 
     country = _plain_text(payload.get("country"))
     country_code = normalize_country_code(payload.get("country_code"), country)
     if not country:
-        errors["country"] = "El pais es obligatorio."
+        errors["country"] = "El país es obligatorio."
     if not country_code or len(country_code) not in {2, 3}:
-        errors["country_code"] = "Codigo ISO invalido."
+        errors["country_code"] = "Código de país inválido."
 
     year = _int_value(payload.get("year"))
     if year is None or year < 2000 or year > 2100:
-        errors["year"] = "El ano debe estar entre 2000 y 2100."
+        errors["year"] = "El año debe estar entre 2000 y 2100."
 
     summary = _plain_text(payload.get("summary"))
     if len(summary) < MIN_SUMMARY_LENGTH:
-        errors["summary"] = "La descripcion debe tener al menos 40 caracteres."
+        errors["summary"] = "La descripción debe tener al menos 40 caracteres."
 
     source_name = _plain_text(payload.get("source_name"))
     if not source_name:
@@ -132,7 +132,7 @@ def validate_country_lgbti_status_payload(payload: dict[str, Any]) -> dict[str, 
 
     source_url = _plain_text(payload.get("source_url"))
     if source_url and not _is_valid_url(source_url):
-        errors["source_url"] = "El enlace de la fuente debe ser una URL valida."
+        errors["source_url"] = "El enlace de la fuente debe ser una URL válida."
     elif not source_url:
         errors["source_url"] = "El enlace de la fuente es obligatorio."
 
@@ -200,14 +200,14 @@ def _clean_record(record: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _plain_text(value: Any) -> str:
-    return bleach.clean(str(value or "").strip(), tags=[], attributes={}, strip=True)
+    return bleach.clean(repair_text_encoding(value).strip(), tags=[], attributes={}, strip=True)
 
 
 def _textarea_lines(value: Any) -> list[str]:
     if isinstance(value, list):
         raw_lines = value
     else:
-        raw_lines = str(value or "").splitlines()
+        raw_lines = repair_text_encoding(value).splitlines()
     return [line for line in (_plain_text(raw) for raw in raw_lines) if line]
 
 
