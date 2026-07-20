@@ -4,9 +4,11 @@ from collections import defaultdict
 import json
 from typing import Any
 
+from dash import dcc, html
+from dash.development.base_component import Component
+
 from app.auth.csrf import get_csrf_token
-from app.dash.compat import dcc, html
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
 from app.import_to_db.import_log import PendingImportLog
@@ -35,9 +37,9 @@ def build_admin_imports_layout(
     *,
     status_code: str | None = None,
     error_code: str | None = None,
-) -> html.Div:
-    status = STATUS_MESSAGES.get(status_code)
-    error = ERROR_MESSAGES.get(error_code)
+) -> Component:
+    status = STATUS_MESSAGES.get(status_code) if status_code is not None else None
+    error = ERROR_MESSAGES.get(error_code) if error_code is not None else None
 
     return html.Div(
         [
@@ -87,7 +89,7 @@ def build_admin_imports_layout(
     )
 
 
-def _build_grouped_imports(logs: list[PendingImportLog]) -> html.Div:
+def _build_grouped_imports(logs: list[PendingImportLog]) -> Component:
     if not logs:
         return html.Div(
             [
@@ -107,7 +109,7 @@ def _build_grouped_imports(logs: list[PendingImportLog]) -> html.Div:
     )
 
 
-def _build_user_group(user_label: str, logs: list[PendingImportLog]) -> html.Section:
+def _build_user_group(user_label: str, logs: list[PendingImportLog]) -> Component:
     return html.Section(
         [
             html.Div(
@@ -129,7 +131,7 @@ def _build_user_group(user_label: str, logs: list[PendingImportLog]) -> html.Sec
     )
 
 
-def _build_file_link(log: PendingImportLog) -> html.A:
+def _build_file_link(log: PendingImportLog) -> Component:
     return html.A(
         [
             html.Strong(log.file_name),
@@ -140,11 +142,11 @@ def _build_file_link(log: PendingImportLog) -> html.A:
     )
 
 
-def _build_import_modals(logs: list[PendingImportLog]) -> list[html.Div]:
+def _build_import_modals(logs: list[PendingImportLog]) -> list[Component]:
     return [_build_import_modal(log) for log in logs]
 
 
-def _build_import_modal(log: PendingImportLog) -> html.Div:
+def _build_import_modal(log: PendingImportLog) -> Component:
     return html.Div(
         [
             html.A("", href="/admin/imports", className="admin-import-modal-backdrop"),
@@ -188,10 +190,10 @@ def _build_import_modal(log: PendingImportLog) -> html.Div:
                         action="/admin/imports",
                         method="post",
                         className="admin-import-modal-actions",
-                        **{
+                        **dash_attrs({
                             "data-admin-import-form": "true",
                             "data-loading-modal": "admin-import-loading-modal",
-                        },
+                        }),
                     ),
                 ],
                 className="admin-import-modal-panel",
@@ -206,14 +208,14 @@ def _modal_id(import_id: str) -> str:
     return f"import-{import_id}"
 
 
-def _content_preview(content: Any) -> html.Pre:
+def _content_preview(content: Any) -> Component:
     return html.Pre(
         json.dumps(content, ensure_ascii=False, indent=2),
         className="admin-json-preview",
     )
 
 
-def _message(message: tuple[str, str] | None, *, is_error: bool) -> html.Div | str:
+def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | str:
     if not message:
         return ""
     es, en = message

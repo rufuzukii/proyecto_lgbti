@@ -30,7 +30,9 @@ def init_cache(app: Flask) -> None:
 
     @app.after_request
     def add_browser_cache_headers(response):
-        if request.path.startswith(("/assets/", "/_dash-component-suites/")):
+        if request.path.startswith("/_dash-component-suites/"):
+            response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+        elif request.path.startswith("/assets/"):
             response.headers["Cache-Control"] = (
                 "public, max-age="
                 f"{_env_int('STATIC_CACHE_MAX_AGE', 86400)}"

@@ -60,4 +60,13 @@ def __dir__() -> list[str]:
     return sorted([*globals(), *_LAZY_EXPORTS])
 
 
-__all__ = list(_LAZY_EXPORTS)
+__all__ = [
+    "FELGTBI_SOURCE_CODE",
+    "parse_felgtbi_pdf",
+    "parse_felgtbi_pdf_bytes",
+    "parse_felgtbi_text_pages",
+    "INDICATOR_FELGTBI_COLLECTION",
+    "insert_indicator_felgtbi_json",
+    "discover_felgtbi_pdfs",
+    "parse_felgtbi_pdf_links",
+]

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
+
+from dash import Dash, Input, Output, dcc, html
+from dash.development.base_component import Component
 
 from app.analytics.legal_criteria import (
     get_criterion_metadata,
@@ -8,7 +11,6 @@ from app.analytics.legal_criteria import (
     get_criterion_status,
 )
 from app.analytics.repository import get_latest_ilga_document
-from app.dash.compat import Dash, Input, Output, dcc, html
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
@@ -178,7 +180,7 @@ RECOMMENDED_SOURCE_GROUPS = [
 ]
 
 
-def build_about_layout() -> html.Div:
+def build_about_layout() -> Component:
     ilga_document = get_latest_ilga_document()
     return html.Div(
         [
@@ -266,7 +268,7 @@ def _source_cards_section(
     sources: list[dict[str, Any]],
     *,
     class_name: str,
-) -> html.Section:
+) -> Component:
     return html.Section(
         [
             html.Div(
@@ -285,7 +287,7 @@ def _source_cards_section(
     )
 
 
-def _recommended_source_group(group: dict[str, Any]) -> html.Section:
+def _recommended_source_group(group: dict[str, Any]) -> Component:
     return html.Section(
         [
             html.H3(str(group.get("category") or "Fuente recomendada")),
@@ -298,7 +300,7 @@ def _recommended_source_group(group: dict[str, Any]) -> html.Section:
     )
 
 
-def _source_card(source: dict[str, Any]) -> html.Article:
+def _source_card(source: dict[str, Any]) -> Component:
     note = str(source.get("note") or "").strip()
     children: list[Any] = [
         html.Div(
@@ -344,7 +346,7 @@ def register_about_callbacks(app: Dash) -> None:
         return _country_criteria_panel(country)
 
 
-def _about_ilga_empty_state() -> html.P:
+def _about_ilga_empty_state() -> Component:
     return html.P(
         "Selecciona un criterio para consultar su detalle jurídico.",
         className="about-empty about-empty--compact",
@@ -355,7 +357,7 @@ def _about_ilga_empty_state() -> html.P:
     )
 
 
-def _ilga_detail_section(document: dict[str, Any] | None) -> html.Section:
+def _ilga_detail_section(document: dict[str, Any] | None) -> Component:
     year = document.get("year") if isinstance(document, dict) else None
     countries = _countries_with_criteria(document)
     options = [
@@ -460,10 +462,14 @@ def _country_key(country: dict[str, Any]) -> str:
     return country_code or country_name
 
 
-def _country_criteria_panel(country: dict[str, Any]) -> html.Div:
+def _country_criteria_panel(country: dict[str, Any]) -> Component:
     ranking = country.get("ranking")
     ranking_text = f"{float(ranking):.2f}%" if isinstance(ranking, (int, float)) else "-"
-    criteria = country.get("criteria") if isinstance(country.get("criteria"), list) else []
+    criteria = (
+        cast(list[dict[str, Any]], country.get("criteria"))
+        if isinstance(country.get("criteria"), list)
+        else []
+    )
     return html.Div(
         [
             html.Div(
@@ -482,7 +488,7 @@ def _country_criteria_panel(country: dict[str, Any]) -> html.Div:
     )
 
 
-def _criterion_row(criterion: dict[str, Any]) -> html.Div:
+def _criterion_row(criterion: dict[str, Any]) -> Component:
     weight = criterion.get("weight")
     value = criterion.get("value")
     metadata_es = get_criterion_metadata(criterion, "es")

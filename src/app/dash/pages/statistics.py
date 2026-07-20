@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
-from dash import dash_table
+from dash import Dash, Input, Output, State, dash_table, dcc, html
+from dash.development.base_component import Component
 
 from app.analytics.repository import (
     assert_analytics_databases_available,
@@ -39,7 +40,6 @@ from app.analytics.statistics_service import (
     get_ilga_statistics,
     ilga_document_to_dataframe,
 )
-from app.dash.compat import Dash, Input, Output, State, dcc, html
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
@@ -113,7 +113,7 @@ LABELS_EN = {
 }
 
 
-def build_statistics_layout() -> html.Div:
+def build_statistics_layout() -> Component:
     assert_analytics_databases_available()
     initial_source = "fra"
     years = _year_options(initial_source)
@@ -222,7 +222,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         years = _year_options(source)
         year = years[0]["value"] if years else None
         categories = _category_options(source, year)
-        category = categories[0]["value"] if categories else None
+        category = None
         if source == "fra":
             return (
                 years,
@@ -254,27 +254,30 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-category-select", "value", allow_duplicate=True),
         Input("stats-source-select", "value"),
         Input("stats-year-select", "value"),
+        State("stats-category-select", "value"),
         prevent_initial_call=True,
     )
-    def update_categories_for_year(source: str | None, year: int | None):
+    def update_categories_for_year(source: str | None, year: int | None, current_category: str | None):
         categories = _category_options(source, year)
-        return categories, categories[0]["value"] if categories else None
+        values = {option["value"] for option in categories}
+        return categories, current_category if current_category in values else None
 
     @app.callback(
         Output("fra-indicator-select", "options"),
         Output("fra-indicator-select", "value"),
+        Output("fra-indicator-select", "disabled"),
         Input("stats-source-select", "value"),
         Input("stats-category-select", "value"),
     )
     def update_fra_indicators(source: str | None, category: str | None):
         if source != "fra" or not category:
-            return [], None
+            return [], None, True
         indicators = get_fra_mongo_indicators_by_category(category)
         options = [
             {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
             for indicator in indicators
         ]
-        return options, options[0]["value"] if options else None
+        return options, None, not bool(options)
 
     @app.callback(
         Output("fra-answer-select", "options"),
@@ -286,6 +289,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("fra-indicator-select", "value"),
     )
     def update_fra_answer_and_filter_types(code: str | None):
+        if not code:
+            return [], None, [], None, [], None
         document = get_fra_indicator_answers(code or "")
         answers = build_fra_answer_options(document)
         filter_a = build_fra_filter_type_options(document, "a")
@@ -307,6 +312,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("fra-filter-a-type", "value"),
     )
     def update_fra_filter_a_values(code: str | None, filter_type: str | None):
+        if not code:
+            return [], None
         options = build_fra_filter_value_options(get_fra_indicator_answers(code or ""), filter_type)
         return options, options[0]["value"] if options else None
 
@@ -317,6 +324,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("fra-filter-b-type", "value"),
     )
     def update_fra_filter_b_values(code: str | None, filter_type: str | None):
+        if not code:
+            return [], None
         options = build_fra_filter_value_options(get_fra_indicator_answers(code or ""), filter_type)
         return options, options[0]["value"] if options else None
 
@@ -343,18 +352,24 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-country-select", "value"),
         Input("stats-source-select", "value"),
         Input("stats-year-select", "value"),
+        Input("stats-category-select", "value"),
         Input("fra-indicator-select", "value"),
         State("stats-country-select", "value"),
     )
     def update_country_options(
         source: str | None,
         year: int | None,
+        category: str | None,
         fra_code: str | None,
         current_countries: list[str] | None,
     ):
         if source == "fra":
+            if not fra_code:
+                return [], []
             options = build_fra_country_options(get_fra_indicator_answers(fra_code or ""))
         else:
+            if not category:
+                return [], []
             options = build_ilga_country_options(get_ilga_document_by_year(year))
         available = {str(option.get("value")) for option in options}
         preserved = [
@@ -435,6 +450,10 @@ def register_statistics_callbacks(app: Dash) -> None:
         effective_mode = _effective_query_mode(mode, selected_countries)
 
         if source == "fra":
+            if not _has_valid_fra_selection(category, fra_code):
+                return _empty_selection_result(
+                    "Selecciona una categor\u00eda y una pregunta para cargar las estad\u00edsticas."
+                )
             query = FraStatisticsQuery(
                 year=_safe_int(year),
                 countries=selected_countries,
@@ -452,6 +471,10 @@ def register_statistics_callbacks(app: Dash) -> None:
             result = get_fra_statistics(query)
             return _render_result(result, query.mode, query.visualization, selected_countries, language=language or "es")
 
+        if not category:
+            return _empty_selection_result(
+                "Selecciona una categor\u00eda jur\u00eddica para cargar las estad\u00edsticas."
+            )
         query = IlgaStatisticsQuery(
             year=_safe_int(year),
             countries=selected_countries,
@@ -464,7 +487,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         return _render_result(result, query.mode, query.visualization, selected_countries, language=language or "es")
 
 
-def _header() -> html.Header:
+def _header() -> Component:
     return html.Header(
         [
             html.P("Panel de Estadísticas", className="stats-eyebrow", **text_attrs("Panel de Estadísticas", "Statistics panel")),
@@ -485,7 +508,7 @@ def _controls(
     years: list[dict[str, Any]],
     initial_year: int | None,
     categories: list[dict[str, Any]],
-) -> html.Section:
+) -> Component:
     return html.Section(
         [
             _control_group(
@@ -527,10 +550,29 @@ def _controls(
             _control_group(
                 "Indicador",
                 [
-                    _field(("Categoría", "Category"), dcc.Dropdown(id="stats-category-select", options=categories, value=categories[0]["value"] if categories else None, clearable=False)),
+                    _field(
+                        ("Categoría", "Category"),
+                        dcc.Dropdown(
+                            id="stats-category-select",
+                            options=categories,
+                            value=None,
+                            clearable=False,
+                            placeholder="Selecciona una categor\u00eda",
+                        ),
+                    ),
                     html.Div(
                         [
-                            _field("Pregunta o indicador", dcc.Dropdown(id="fra-indicator-select", options=[], value=None, clearable=False)),
+                            _field(
+                                "Pregunta o indicador",
+                                dcc.Dropdown(
+                                    id="fra-indicator-select",
+                                    options=[],
+                                    value=None,
+                                    clearable=False,
+                                    disabled=True,
+                                    placeholder="Selecciona primero una categor\u00eda",
+                                ),
+                            ),
                             _field("Respuesta", dcc.Dropdown(id="fra-answer-select", options=[], value=None, clearable=False)),
                         ],
                         id="stats-fra-controls",
@@ -597,7 +639,7 @@ def _controls(
     )
 
 
-def _field(label: str | tuple[str, str], component: Any) -> html.Div:
+def _field(label: str | tuple[str, str], component: Any) -> Component:
     if isinstance(label, tuple):
         label_node = html.Label(label[0], **text_attrs(label[0], label[1]))
     else:
@@ -610,7 +652,7 @@ def _control_group(
     children: list[Any],
     class_name: str = "stats-filter-card",
     element_id: str | None = None,
-) -> html.Section:
+) -> Component:
     props: dict[str, Any] = {"className": class_name}
     if element_id is not None:
         props["id"] = element_id
@@ -649,6 +691,31 @@ def _visible_categories(categories: list[str]) -> list[str]:
         for category in categories
         if normalize_text_key(category) not in EXCLUDED_CATEGORY_KEYS
     ]
+
+
+def _has_valid_fra_selection(category: str | None, question_code: str | None) -> bool:
+    return bool(str(category or "").strip() and str(question_code or "").strip())
+
+
+def _empty_selection_result(message: str):
+    empty = empty_figure(message)
+    return (
+        html.Div(
+            [
+                html.Strong("Sin selecci\u00f3n", **text_attrs("Sin selecci\u00f3n", "No selection")),
+                html.P(message),
+            ]
+        ),
+        "stats-status stats-status-warning",
+        [],
+        empty,
+        empty,
+        "",
+        empty,
+        [],
+        [],
+        "",
+    )
 
 
 def _render_result(
@@ -690,7 +757,10 @@ def _render_result(
     elif visualization == "distribution" and source == "FRA":
         primary = build_fra_distribution_chart(data)
     elif visualization == "fra_ilga" and source == "FRA":
-        ilga_rows = ilga_document_to_dataframe(get_ilga_document_by_year(_first_year(data))).to_dict("records")
+        ilga_rows = cast(
+            list[dict[str, Any]],
+            ilga_document_to_dataframe(get_ilga_document_by_year(_first_year(data))).to_dict("records"),
+        )
         primary = build_fra_ilga_scatter(data, ilga_rows)
     elif visualization == "criteria" and source == "ILGA-Europe":
         primary = build_ilga_criteria_heatmap(data)
@@ -724,7 +794,7 @@ def _render_result(
     )
 
 
-def _status_message(result: dict[str, Any], scope: dict[str, Any]) -> html.Div:
+def _status_message(result: dict[str, Any], scope: dict[str, Any]) -> Component:
     rows = result.get("ranking") or []
     subtitle = f"Ámbito: {scope['subtitle']}" if scope.get("subtitle") else f"Ámbito: {scope['title']}"
     return html.Div(

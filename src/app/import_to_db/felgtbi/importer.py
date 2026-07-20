@@ -20,10 +20,6 @@ FELGTBI_SOURCE_CODE = "felgtbi_estado_lgtbi"
 FELGTBI_SOURCE_NAME = "FELGTBI+ Estado LGBTIQ+"
 SPAIN_COUNTRY = "Spain"
 SPAIN_COUNTRY_CODE = "ES"
-FELGTBI_ASSET_ROOT = (
-    Path(__file__).resolve().parents[2] / "dash" / "assets" / "generated" / "felgtbi"
-)
-FELGTBI_ASSET_URL_PREFIX = "/assets/generated/felgtbi"
 DEFAULT_SUPABASE_STORAGE_BUCKET = "felgtbi-reports"
 FIGURE_IMAGE_MIME_TYPE = "image/webp"
 FIGURE_IMAGE_EXTENSION = "webp"
@@ -339,12 +335,14 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
 
     pages: list[dict[str, Any]] = []
     with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
-        for index, page in enumerate(document, start=1):
+        for page_index in range(document.page_count):
+            page = document.load_page(page_index)
             text_blocks = page.get_text("blocks")
-            dict_blocks = page.get_text("dict").get("blocks", [])
+            page_dict = page.get_text("dict")
+            dict_blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
             pages.append(
                 {
-                    "page": index,
+                    "page": page_index + 1,
                     "text": page.get_text("text"),
                     "blocks": [
                         {
@@ -378,7 +376,6 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
     except ImportError:
         return
 
-    FELGTBI_ASSET_ROOT.mkdir(parents=True, exist_ok=True)
     rendered_assets: dict[str, dict[str, Any]] = {}
 
     with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf_document:
@@ -404,7 +401,7 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
                 clip=rect,
                 alpha=False,
             )
-            image_bytes, width, height, mime_type, extension = _pixmap_image_bytes(pixmap)
+            image_bytes, width, height, mime_type = _pixmap_image_bytes(pixmap)
             checksum = hashlib.sha256(image_bytes).hexdigest()
             upload = _upload_figure_to_supabase(
                 image_bytes=image_bytes,
@@ -424,23 +421,19 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
                 }
                 continue
 
-            asset_name = _local_asset_name(storage_path, checksum, extension)
-            asset_path = FELGTBI_ASSET_ROOT / asset_name
-            if not asset_path.exists():
-                asset_path.write_bytes(image_bytes)
             rendered_assets[asset_id] = {
                 **upload,
                 "status": "failed",
                 "bucket": upload.get("bucket") or _supabase_storage_bucket(),
                 "storage_path": storage_path,
                 "public_url": "",
-                "asset_url": f"{FELGTBI_ASSET_URL_PREFIX}/{asset_name}",
+                "signed_url": "",
+                "asset_url": "",
                 "mime_type": mime_type,
                 "width": width,
                 "height": height,
                 "size": len(image_bytes),
                 "checksum": checksum,
-                "fallback_storage": "dash_asset",
             }
 
     for document in documents:
@@ -456,7 +449,7 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
             continue
         asset_url = str(asset.get("public_url") or asset.get("asset_url") or "")
         context["asset_url"] = asset_url
-        context["image_storage"] = "supabase" if asset.get("public_url") or asset.get("signed_url") else "dash_asset"
+        context["image_storage"] = "supabase"
         context["image_upload"] = {
             "status": asset.get("status") or "failed",
             "error": asset.get("error"),
@@ -509,11 +502,11 @@ def _safe_bbox(value: Any) -> list[float] | None:
     return [round(item, 2) for item in bbox]
 
 
-def _pixmap_image_bytes(pixmap: Any) -> tuple[bytes, int, int, str, str]:
+def _pixmap_image_bytes(pixmap: Any) -> tuple[bytes, int, int, str]:
     try:
         from PIL import Image
     except ImportError:
-        return pixmap.tobytes("png"), int(pixmap.width), int(pixmap.height), "image/png", "png"
+        return pixmap.tobytes("png"), int(pixmap.width), int(pixmap.height), "image/png"
 
     mode = "RGBA" if getattr(pixmap, "alpha", 0) else "RGB"
     image = Image.frombytes(mode, (int(pixmap.width), int(pixmap.height)), pixmap.samples)
@@ -521,7 +514,7 @@ def _pixmap_image_bytes(pixmap: Any) -> tuple[bytes, int, int, str, str]:
         image = image.convert("RGB")
     output = io.BytesIO()
     image.save(output, format="WEBP", quality=90, method=6)
-    return output.getvalue(), image.width, image.height, FIGURE_IMAGE_MIME_TYPE, FIGURE_IMAGE_EXTENSION
+    return output.getvalue(), image.width, image.height, FIGURE_IMAGE_MIME_TYPE
 
 
 def _upload_figure_to_supabase(
@@ -716,12 +709,6 @@ def _figure_storage_path(document: dict[str, Any], file_name: str) -> str:
 def _figure_file_stem(figure_number: str) -> str:
     number = re.sub(r"[^0-9]+", "-", figure_number).strip("-")
     return f"figura-{number}" if number else "figura"
-
-
-def _local_asset_name(storage_path: str, checksum: str, extension: str) -> str:
-    base = storage_path.replace("/", "_").replace("\\", "_")
-    base = re.sub(rf"\.{re.escape(extension)}$", "", base, flags=re.IGNORECASE)
-    return f"{base}_{checksum[:10]}.{extension}"
 
 
 def _slugify(value: str) -> str:
@@ -1070,21 +1057,15 @@ def _refresh_content_html(documents: list[dict]) -> None:
             if asset_url:
                 figure["image_path"] = asset_url
                 figure["asset_url"] = asset_url
+        paragraphs_before = document.get("paragraphs_before_figure")
+        paragraphs_after = document.get("paragraphs_after_figure")
         document["content_html"] = _build_content_html(
             section=str(document.get("section_title") or document.get("specific_category") or ""),
             subsection=str(document.get("subsection_title") or document.get("question") or ""),
             visual_context=document.get("visual_context"),
             figure=document.get("figure"),
-            paragraphs_before=(
-                document.get("paragraphs_before_figure")
-                if isinstance(document.get("paragraphs_before_figure"), list)
-                else []
-            ),
-            paragraphs_after=(
-                document.get("paragraphs_after_figure")
-                if isinstance(document.get("paragraphs_after_figure"), list)
-                else []
-            ),
+            paragraphs_before=paragraphs_before if isinstance(paragraphs_before, list) else [],
+            paragraphs_after=paragraphs_after if isinstance(paragraphs_after, list) else [],
             data_points=data_points,
         )
 

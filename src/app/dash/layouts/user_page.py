@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dash import dcc, html
+from dash.development.base_component import Component
 from flask_login import current_user
 
 from app.auth.csrf import get_csrf_token
-from app.dash.compat import dcc, html
 from app.dash.i18n import text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.users.schemas import UserRole
@@ -54,9 +55,9 @@ def build_user_page_layout(
     status_code: str | None = None,
     error_code: str | None = None,
     mode: str | None = None,
-) -> html.Div:
-    status = STATUS_MESSAGES.get(status_code)
-    error = ERROR_MESSAGES.get(error_code)
+) -> Component:
+    status = STATUS_MESSAGES.get(status_code) if status_code is not None else None
+    error = ERROR_MESSAGES.get(error_code) if error_code is not None else None
     is_editing = mode == "edit"
     username = getattr(current_user, "username", None) or ""
     email = getattr(current_user, "email", None) or ""
@@ -89,7 +90,7 @@ def build_user_page_layout(
     )
 
 
-def _dashboard_header(display_name: str, role: UserRole | str) -> html.Header:
+def _dashboard_header(display_name: str, role: UserRole | str) -> Component:
     role_value = _role_label(role)
     return html.Header(
         [
@@ -136,7 +137,7 @@ def _build_dashboard(
     email: str,
     organization: str,
     role: UserRole | str,
-) -> html.Div:
+) -> Component:
     return html.Div(
         [
             html.Section(
@@ -162,7 +163,7 @@ def _profile_card(
     email: str,
     organization: str,
     role: UserRole | str,
-) -> html.Section:
+) -> Component:
     organization_es = organization if organization else "Sin organización"
     organization_en = organization if organization else "No organization"
     return html.Section(
@@ -197,7 +198,7 @@ def _profile_card(
     )
 
 
-def _quick_actions(role: UserRole | str) -> html.Section:
+def _quick_actions(role: UserRole | str) -> Component:
     actions = [
         (
             "Ver estadísticas",
@@ -247,7 +248,7 @@ def _quick_actions(role: UserRole | str) -> html.Section:
     )
 
 
-def _permission_panel(role: UserRole | str) -> html.Section:
+def _permission_panel(role: UserRole | str) -> Component:
     can_admin = _is_admin_role(role)
     permissions = [
         (
@@ -288,7 +289,7 @@ def _permission_panel(role: UserRole | str) -> html.Section:
     )
 
 
-def _build_edit_panel(username: str, email: str, organization: str) -> html.Div:
+def _build_edit_panel(username: str, email: str, organization: str) -> Component:
     return html.Div(
         [
             html.Section(
@@ -311,7 +312,7 @@ def _build_edit_panel(username: str, email: str, organization: str) -> html.Div:
     )
 
 
-def _build_edit_form(username: str, email: str, organization: str) -> html.Form:
+def _build_edit_form(username: str, email: str, organization: str) -> Component:
     return html.Form(
         [
             dcc.Input(
@@ -416,7 +417,7 @@ def _build_edit_form(username: str, email: str, organization: str) -> html.Form:
     )
 
 
-def _build_logout_form() -> html.Form:
+def _build_logout_form() -> Component:
     return html.Form(
         [
             dcc.Input(
@@ -437,7 +438,7 @@ def _build_logout_form() -> html.Form:
     )
 
 
-def _detail_row(label_es: str, label_en: str, value_es: str, value_en: str) -> html.Div:
+def _detail_row(label_es: str, label_en: str, value_es: str, value_en: str) -> Component:
     return html.Div(
         [
             html.Span(
@@ -460,7 +461,7 @@ def _permission_item(
     title_en: str,
     value_es: str,
     value_en: str,
-) -> html.Div:
+) -> Component:
     return html.Div(
         [
             html.Span(
@@ -492,7 +493,7 @@ def _is_admin_role(role: UserRole | str) -> bool:
     return value == UserRole.ADMIN.value
 
 
-def _message(message: tuple[str, str] | None, *, is_error: bool) -> html.Div | str:
+def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | str:
     if not message:
         return ""
     es, en = message

@@ -4,7 +4,7 @@ import hashlib
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable, Mapping, cast
 
 import pandas as pd
 from pandas.errors import EmptyDataError
@@ -214,7 +214,7 @@ class IndicatorQuestionParts:
 
 
 def _parse_answer_survey_rows(
-    raw_rows: Iterable[dict[str, str | None]],
+    raw_rows: Iterable[Mapping[str, str | None]],
     *,
     path_context: FraPathContext | None = None,
 ) -> list[dict]:
@@ -224,7 +224,7 @@ def _parse_answer_survey_rows(
         normalized = normalize_row(raw_row)
         rows.append((normalized, remap_row(normalized)))
     file_metadata = extract_file_metadata(row for _, row in rows)
-    documents: dict[tuple[str, str, str, str, str], dict] = {}
+    documents: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
 
     for normalized, row in rows:
         if is_metadata_or_note_row(row):
@@ -321,7 +321,7 @@ def read_csv_rows(csv_text: str) -> list[dict[str, str]]:
         )
     except EmptyDataError:
         return []
-    return dataframe.to_dict(orient="records")
+    return cast(list[dict[str, str]], dataframe.to_dict(orient="records"))
 
 
 def read_text_with_fallback(file_path: Path) -> str:
@@ -336,7 +336,7 @@ def read_text_with_fallback(file_path: Path) -> str:
     return file_path.read_text()
 
 
-def normalize_row(raw_row: dict[str, str | None]) -> dict[str, str]:
+def normalize_row(raw_row: Mapping[str, str | None]) -> dict[str, str]:
     normalized: dict[str, str] = {}
     for key, value in raw_row.items():
         if key is None:
@@ -411,7 +411,7 @@ def parse_filter_field(value: str, fallback: str) -> tuple[str, str]:
 
 
 def extract_file_metadata(rows: Iterable[dict[str, str]]) -> dict[str, str]:
-    metadata: dict[str, str] = {}
+    metadata: dict[str, Any] = {}
     footnotes: dict[str, str] = {}
     label_map = {
         "source": "source",

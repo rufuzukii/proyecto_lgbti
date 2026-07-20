@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from app.dash.compat import html
+from typing import Any
+
+from dash import html
+from dash.development.base_component import Component
 
 SUPPORTED_LANGUAGES = {"es", "en"}
 UI_TEXT = {
@@ -23,14 +26,18 @@ UI_TEXT = {
 }
 
 
-def text_attrs(es: str, en: str) -> dict[str, str]:
+def text_attrs(es: str, en: str) -> dict[str, Any]:
     return {
         "data-i18n-es": es,
         "data-i18n-en": en,
     }
 
 
-def text(es: str, en: str, *, class_name: str | None = None) -> html.Span:
+def dash_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
+    return attrs
+
+
+def text(es: str, en: str, *, class_name: str | None = None) -> Component:
     props = text_attrs(es, en)
     if class_name:
         props["className"] = class_name

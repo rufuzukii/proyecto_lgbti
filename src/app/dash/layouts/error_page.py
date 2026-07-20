@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.dash.compat import html
+from dash import html
+from dash.development.base_component import Component
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.errors import DatabaseUnavailableError
@@ -8,7 +9,7 @@ from app.errors import DatabaseUnavailableError
 
 def build_database_unavailable_layout(
     error: DatabaseUnavailableError | None = None,
-) -> html.Div:
+) -> Component:
     return html.Div(
         [
             build_navbar(active=None),

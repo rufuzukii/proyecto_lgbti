@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import json
 from dotenv import load_dotenv
@@ -137,7 +137,7 @@ def list_pending_import_logs() -> list[PendingImportLog]:
     """
     with psycopg.connect(
         _resolve_postgres_dsn(),
-        row_factory=dict_row,
+        row_factory=cast(Any, dict_row),
         connect_timeout=get_postgres_connect_timeout(),
     ) as conn:
         rows = conn.execute(query, (PENDING_STATUS,)).fetchall()
@@ -159,7 +159,7 @@ def get_pending_import_log(import_id: str) -> PendingImportLog | None:
     """
     with psycopg.connect(
         _resolve_postgres_dsn(),
-        row_factory=dict_row,
+        row_factory=cast(Any, dict_row),
         connect_timeout=get_postgres_connect_timeout(),
     ) as conn:
         row = conn.execute(query, (import_id, PENDING_STATUS)).fetchone()
@@ -177,7 +177,8 @@ def delete_import_log(import_id: str) -> None:
         raise ValueError("import_not_found")
 
 
-def _row_to_pending_import_log(row: dict[str, Any]) -> PendingImportLog:
+def _row_to_pending_import_log(row: Any) -> PendingImportLog:
+    row = cast(dict[str, Any], row)
     file_json = row.get("file_json")
     return PendingImportLog(
         id=row["id"],

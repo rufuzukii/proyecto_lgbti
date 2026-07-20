@@ -8,7 +8,7 @@ import os
 import re
 from threading import Lock
 import time
-from typing import Any
+from typing import Any, cast
 
 import psycopg
 from psycopg.rows import dict_row
@@ -191,7 +191,7 @@ def get_categories() -> list[str]:
     try:
         with psycopg.connect(
             get_postgres_dsn(),
-            row_factory=dict_row,
+            row_factory=cast(Any, dict_row),
             connect_timeout=get_postgres_connect_timeout(),
         ) as conn:
             rows = conn.execute(query).fetchall()
@@ -199,6 +199,7 @@ def get_categories() -> list[str]:
         logger.exception("categories_read_failed")
         return []
 
+    rows = cast(list[dict[str, Any]], rows)
     return [str(row["name"]) for row in rows if row.get("name")]
 
 
@@ -214,7 +215,7 @@ def get_fra_categories() -> list[str]:
     try:
         with psycopg.connect(
             get_postgres_dsn(),
-            row_factory=dict_row,
+            row_factory=cast(Any, dict_row),
             connect_timeout=get_postgres_connect_timeout(),
         ) as conn:
             rows = conn.execute(query).fetchall()
@@ -222,6 +223,7 @@ def get_fra_categories() -> list[str]:
         logger.exception("fra_categories_read_failed")
         return []
 
+    rows = cast(list[dict[str, Any]], rows)
     return [str(row["category"]) for row in rows if row.get("category")]
 
 
@@ -241,7 +243,7 @@ def get_fra_indicators() -> list[FraIndicator]:
     try:
         with psycopg.connect(
             get_postgres_dsn(),
-            row_factory=dict_row,
+            row_factory=cast(Any, dict_row),
             connect_timeout=get_postgres_connect_timeout(),
         ) as conn:
             rows = conn.execute(query).fetchall()
@@ -249,6 +251,7 @@ def get_fra_indicators() -> list[FraIndicator]:
         logger.exception("fra_indicator_catalog_read_failed")
         return []
 
+    rows = cast(list[dict[str, Any]], rows)
     return [
         FraIndicator(
             code=row["code"],
@@ -860,7 +863,10 @@ def get_country_lgbti_status_record(
 
 def upsert_country_lgbti_status_record(record: dict[str, Any]) -> None:
     clean_code = str(record.get("country_code") or "").strip().upper()
-    clean_year = int(record.get("year"))
+    year = record.get("year")
+    if year is None:
+        raise ValueError("invalid_country_lgbti_status_year")
+    clean_year = int(year)
     try:
         _ensure_country_lgbti_status_indexes()
         _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).update_one(
@@ -1339,12 +1345,20 @@ def _has_valid_spain_information(document: dict[str, Any]) -> bool:
     if _clean_text(document.get("sample_size")) or _clean_text(document.get("fieldwork")):
         return True
 
-    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    figure = (
+        cast(dict[str, Any], document.get("figure"))
+        if isinstance(document.get("figure"), dict)
+        else {}
+    )
     for key in ("caption", "title", "alt_text", "source", "note", "methodology"):
         if _clean_text(figure.get(key)):
             return True
 
-    context = document.get("visual_context") if isinstance(document.get("visual_context"), dict) else {}
+    context = (
+        cast(dict[str, Any], document.get("visual_context"))
+        if isinstance(document.get("visual_context"), dict)
+        else {}
+    )
     for key in ("title", "description", "caption", "source", "note", "methodology"):
         if _clean_text(context.get(key)):
             return True
@@ -1373,10 +1387,26 @@ def _data_points_have_numeric_value(data_points: Any) -> bool:
 
 
 def _raw_spain_figure_url(document: dict[str, Any]) -> str:
-    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
-    context = document.get("visual_context") if isinstance(document.get("visual_context"), dict) else {}
-    upload = figure.get("upload") if isinstance(figure.get("upload"), dict) else {}
-    context_upload = context.get("image_upload") if isinstance(context.get("image_upload"), dict) else {}
+    figure = (
+        cast(dict[str, Any], document.get("figure"))
+        if isinstance(document.get("figure"), dict)
+        else {}
+    )
+    context = (
+        cast(dict[str, Any], document.get("visual_context"))
+        if isinstance(document.get("visual_context"), dict)
+        else {}
+    )
+    upload = (
+        cast(dict[str, Any], figure.get("upload"))
+        if isinstance(figure.get("upload"), dict)
+        else {}
+    )
+    context_upload = (
+        cast(dict[str, Any], context.get("image_upload"))
+        if isinstance(context.get("image_upload"), dict)
+        else {}
+    )
     candidates = [
         figure.get("image_url"),
         figure.get("signed_url"),

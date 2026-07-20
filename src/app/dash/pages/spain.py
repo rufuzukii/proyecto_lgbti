@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 import re
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
-from urllib.request import Request, urlopen
 
+from dash import Dash, Input, Output, State, ctx, dcc, html
+from dash.development.base_component import Component
 import plotly.graph_objects as go
 
 from app.analytics.repository import (
@@ -16,7 +16,6 @@ from app.analytics.repository import (
     get_felgtbi_indicators_by_document,
     get_spain_collection_options,
 )
-from app.dash.compat import Dash, Input, Output, State, ctx, dcc, html
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
@@ -60,7 +59,7 @@ SPAIN_GRAPH_CLASS = "spain-section-graph spain-content-slot"
 SPAIN_GRAPH_HIDDEN_CLASS = "spain-section-graph spain-content-slot is-hidden"
 
 
-def build_spain_layout() -> html.Div:
+def build_spain_layout() -> Component:
     sources = _source_options()
     initial_source = sources[0]["value"] if sources else None
     documents = _document_options(initial_source)
@@ -469,7 +468,7 @@ def _document_options(collection_name: str | None = None) -> list[dict[str, str]
     return get_felgtbi_document_options(collection_name)
 
 
-def _year_options(collection_name: str | None = None, document_id: str | None = None) -> list[dict[str, int]]:
+def _year_options(collection_name: str | None = None, document_id: str | None = None) -> list[dict[str, Any]]:
     return [{"label": str(year), "value": year} for year in get_felgtbi_document_years(document_id, collection_name)]
 
 
@@ -578,7 +577,7 @@ def _detail_panel_content(document: dict[str, Any] | None) -> Any:
     )
 
 
-def _summary_content(document: dict[str, Any] | None) -> html.Div:
+def _summary_content(document: dict[str, Any] | None) -> Component:
     if not document:
         return _empty_state("Sin resumen", "Selecciona una sección para ver sus resultados.")
     paragraphs = _summary_paragraphs(document)
@@ -619,6 +618,9 @@ def _value_panel_content(document: dict[str, Any] | None) -> Any:
             alt="Gráfica asociada al indicador",
             className="spain-pdf-figure",
         )
+    figure_placeholder = _figure_placeholder_component(document)
+    if figure_placeholder is not None:
+        return figure_placeholder
     return dcc.Graph(
         figure=_value_figure(document),
         config={"displaylogo": False},
@@ -690,10 +692,7 @@ def _structured_report_content(document: dict[str, Any] | None) -> Any | None:
 
 def _figure_component(document: dict[str, Any]) -> Any | None:
     url = _figure_url(document)
-    if not url:
-        return None
-
-    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    figure = _dict_or_empty(document.get("figure"))
     caption = str(
         figure.get("caption")
         or document.get("figure_caption")
@@ -707,6 +706,9 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
         or document.get("subsection_title")
         or "Figura del informe FELGTBI+"
     ).strip()
+    if not url:
+        return _figure_placeholder_component(document, caption=caption)
+
     children: list[Any] = [
         html.Img(
             src=url,
@@ -719,10 +721,43 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
     return html.Figure(children, className="report-figure")
 
 
+def _figure_placeholder_component(document: dict[str, Any] | None, *, caption: str = "") -> Any | None:
+    if not _has_figure_metadata(document):
+        return None
+    title = "Imagen no disponible"
+    children: list[Any] = [
+        html.Div(
+            [
+                html.Strong(title),
+                html.Span("La imagen no está disponible temporalmente."),
+            ],
+            className="report-figure-placeholder",
+        )
+    ]
+    caption_text = caption or _figure_caption_text(document)
+    if caption_text:
+        children.append(html.Figcaption(caption_text))
+    return html.Figure(children, className="report-figure report-figure-missing")
+
+
+def _has_figure_metadata(document: dict[str, Any] | None) -> bool:
+    if not isinstance(document, dict):
+        return False
+    figure = _dict_or_empty(document.get("figure"))
+    context = _dict_or_empty(document.get("visual_context"))
+    context_upload = _dict_or_empty(context.get("image_upload"))
+    return bool(
+        figure
+        or document.get("figure_caption")
+        or context.get("caption")
+        or _storage_path(figure, context_upload)
+    )
+
+
 def _figure_caption_text(document: dict[str, Any] | None) -> str:
     if not isinstance(document, dict):
         return ""
-    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    figure = _dict_or_empty(document.get("figure"))
     return str(
         figure.get("caption")
         or document.get("figure_caption")
@@ -734,7 +769,7 @@ def _figure_caption_text(document: dict[str, Any] | None) -> str:
 def _figure_alt_text(document: dict[str, Any] | None) -> str:
     if not isinstance(document, dict):
         return "Figura del informe FELGTBI+"
-    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
+    figure = _dict_or_empty(document.get("figure"))
     return str(
         figure.get("alt_text")
         or figure.get("title")
@@ -747,19 +782,14 @@ def _figure_alt_text(document: dict[str, Any] | None) -> str:
 def _figure_url(document: dict[str, Any] | None) -> str:
     if not isinstance(document, dict):
         return ""
-    figure = document.get("figure") if isinstance(document.get("figure"), dict) else {}
-    context = document.get("visual_context") if isinstance(document.get("visual_context"), dict) else {}
-    upload = figure.get("upload") if isinstance(figure.get("upload"), dict) else {}
-    context_upload = (
-        context.get("image_upload") if isinstance(context.get("image_upload"), dict) else {}
-    )
-    signed_storage_url = _signed_storage_url(figure, context_upload)
+    figure = _dict_or_empty(document.get("figure"))
+    context = _dict_or_empty(document.get("visual_context"))
+    upload = _dict_or_empty(figure.get("upload"))
+    context_upload = _dict_or_empty(context.get("image_upload"))
+    public_storage_url = _public_storage_url(figure, context_upload)
     candidates = [
-        signed_storage_url,
+        public_storage_url,
         figure.get("image_url"),
-        figure.get("signed_url"),
-        upload.get("signed_url"),
-        context_upload.get("signed_url"),
         figure.get("public_url"),
         upload.get("public_url"),
         context_upload.get("public_url"),
@@ -768,66 +798,144 @@ def _figure_url(document: dict[str, Any] | None) -> str:
         context.get("asset_url"),
     ]
     for candidate in candidates:
-        url = str(candidate or "").strip()
+        url = _figure_url_candidate(candidate)
         if url:
             return url
     return ""
 
 
-def _signed_storage_url(figure: dict[str, Any], context_upload: dict[str, Any]) -> str:
-    if _supabase_storage_is_public():
+def _figure_url_candidate(value: Any) -> str:
+    url = str(value or "").strip()
+    if not url:
         return ""
-    storage_path = str(
-        figure.get("storage_path")
-        or context_upload.get("storage_path")
-        or ""
-    ).strip()
+    lowered = url.lower()
+    if lowered.startswith(("http://", "https://")):
+        return url
+    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    if not supabase_url:
+        return url
+    clean_url = url.lstrip("/")
+    if clean_url.startswith("storage/v1/"):
+        return f"{supabase_url}/{clean_url}"
+    if clean_url.startswith("object/"):
+        return f"{supabase_url}/storage/v1/{clean_url}"
+    return url
+
+
+def _public_storage_url(figure: dict[str, Any], context_upload: dict[str, Any]) -> str:
+    bucket = _storage_bucket(figure, context_upload)
+    storage_path = _storage_path(figure, context_upload, bucket=bucket)
     if not storage_path:
         return ""
-    bucket = str(
+    configured_base = os.getenv("SUPABASE_STORAGE_PUBLIC_BASE_URL", "").strip()
+    if configured_base:
+        return f"{configured_base.rstrip('/')}/{quote(storage_path, safe='/')}"
+    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    if not supabase_url or not bucket:
+        return ""
+    return f"{supabase_url}/storage/v1/object/public/{quote(bucket, safe='')}/{quote(storage_path, safe='/')}"
+
+
+def _storage_path(figure: dict[str, Any], context_upload: dict[str, Any], *, bucket: str = "") -> str:
+    for candidate in (
+        figure.get("storage_path"),
+        context_upload.get("storage_path"),
+        figure.get("asset_url"),
+        figure.get("image_path"),
+        context_upload.get("asset_url"),
+    ):
+        storage_path = _storage_path_candidate(candidate, bucket=bucket)
+        if storage_path:
+            return storage_path
+    return ""
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return cast(dict[str, Any], value)
+    return {}
+
+
+def _storage_path_candidate(value: Any, *, bucket: str = "") -> str:
+    raw_path = str(value or "").strip()
+    if not raw_path:
+        return ""
+    normalized_path = _normalize_storage_path(raw_path, bucket=bucket)
+    if normalized_path and not _looks_like_dash_asset_path(normalized_path):
+        return normalized_path
+    return _generated_asset_storage_path(raw_path)
+
+
+def _normalize_storage_path(value: str, *, bucket: str = "") -> str:
+    path = str(value or "").strip()
+    if not path:
+        return ""
+    path = path.split("?", 1)[0].replace("\\", "/")
+    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+    prefixes = []
+    if supabase_url:
+        prefixes.extend(
+            [
+                f"{supabase_url}/storage/v1/object/sign/",
+                f"{supabase_url}/storage/v1/object/public/",
+                f"{supabase_url}/storage/v1/object/",
+            ]
+        )
+    prefixes.extend(
+        [
+            "/storage/v1/object/sign/",
+            "/storage/v1/object/public/",
+            "/storage/v1/object/",
+            "storage/v1/object/sign/",
+            "storage/v1/object/public/",
+            "storage/v1/object/",
+            "/object/sign/",
+            "/object/public/",
+            "/object/",
+            "object/sign/",
+            "object/public/",
+            "object/",
+        ]
+    )
+    for prefix in prefixes:
+        if path.startswith(prefix):
+            path = path[len(prefix) :]
+            break
+    path = path.lstrip("/")
+    if bucket:
+        bucket_prefix = f"{bucket.strip('/')}/"
+        if path.startswith(bucket_prefix):
+            path = path[len(bucket_prefix) :]
+    return path
+
+
+def _looks_like_dash_asset_path(value: str) -> bool:
+    return "/assets/" in f"/{value.lstrip('/')}".lower()
+
+
+def _generated_asset_storage_path(value: str) -> str:
+    clean_value = str(value or "").split("?", 1)[0].replace("\\", "/").rstrip("/")
+    file_name = clean_value.rsplit("/", 1)[-1]
+    match = re.fullmatch(
+        r"(?P<year>20\d{2})_(?P<report>[^_]+)_(?P<section>.+)_(?P<figure>figura-\d+(?:-\d+)*)_[0-9a-fA-F]{8,64}\.(?P<extension>webp|png|jpg|jpeg)",
+        file_name,
+    )
+    if not match:
+        return ""
+    return (
+        f"{match.group('year')}/"
+        f"{match.group('report')}/"
+        f"{match.group('section')}/"
+        f"{match.group('figure')}.{match.group('extension').lower()}"
+    )
+
+
+def _storage_bucket(figure: dict[str, Any], context_upload: dict[str, Any]) -> str:
+    return str(
         figure.get("bucket")
         or context_upload.get("bucket")
         or os.getenv("SUPABASE_STORAGE_BUCKET", "felgtbi-reports")
     ).strip()
-    expires_in = int(os.getenv("SUPABASE_SIGNED_URL_EXPIRES_IN", "604800") or 604800)
-    return _create_supabase_signed_url(bucket, storage_path, expires_in=expires_in)
-
-
-def _supabase_storage_is_public() -> bool:
-    return os.getenv("SUPABASE_STORAGE_PUBLIC", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "public",
-    }
-
-
-def _create_supabase_signed_url(bucket: str, storage_path: str, *, expires_in: int) -> str:
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not supabase_url or not service_key or not bucket or not storage_path:
-        return ""
-    request = Request(
-        f"{supabase_url}/storage/v1/object/sign/{quote(bucket, safe='')}/{quote(storage_path, safe='/')}",
-        data=json.dumps({"expiresIn": int(expires_in)}).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {service_key}",
-            "apikey": service_key,
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urlopen(request, timeout=8) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except Exception:
-        return ""
-    signed_url = str(payload.get("signedURL") or payload.get("signedUrl") or "").strip()
-    if not signed_url:
-        return ""
-    if signed_url.startswith("http://") or signed_url.startswith("https://"):
-        return signed_url
-    return f"{supabase_url}/storage/v1{signed_url if signed_url.startswith('/') else '/' + signed_url}"
 
 
 def _text_list(value: Any) -> list[str]:
@@ -928,7 +1036,7 @@ def _value_figure(document: dict[str, Any] | None) -> go.Figure:
     return figure
 
 
-def _detail_table(document: dict[str, Any] | None) -> html.Div:
+def _detail_table(document: dict[str, Any] | None) -> Component:
     if not document:
         return _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos.")
     rows = [
@@ -982,11 +1090,11 @@ def _content_html(document: dict[str, Any] | None) -> str:
     return str(document.get("content_html") or "").strip()
 
 
-def _panel(title: str, child: Any, class_name: str = "stats-panel") -> html.Section:
+def _panel(title: str, child: Any, class_name: str = "stats-panel") -> Component:
     return html.Section([html.H2(title, **text_attrs(title, TEXT_EN.get(title, title))), child], className=class_name)
 
 
-def _empty_state(title: str, detail: str) -> html.Div:
+def _empty_state(title: str, detail: str) -> Component:
     return html.Div(
         [
             html.H2(title, **text_attrs(title, TEXT_EN.get(title, title))),

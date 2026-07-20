@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional, cast
 
 import psycopg
 from psycopg.rows import dict_row
@@ -231,7 +231,7 @@ def delete_user_as_admin(*, user_id: str) -> None:
 def _connect() -> psycopg.Connection:
     return psycopg.connect(
         _postgres_dsn(),
-        row_factory=dict_row,
+        row_factory=cast(Any, dict_row),
         connect_timeout=get_postgres_connect_timeout(),
     )
 
@@ -251,7 +251,8 @@ def _normalize_optional_text(value: str | None) -> str | None:
     return clean_value or None
 
 
-def _row_to_user_record(row: dict) -> UserRecord:
+def _row_to_user_record(row: Any) -> UserRecord:
+    row = cast(dict[str, Any], row)
     return UserRecord(
         id=row["id"],
         username=row.get("username"),
@@ -262,7 +263,8 @@ def _row_to_user_record(row: dict) -> UserRecord:
     )
 
 
-def _row_to_user_read(row: dict) -> UserRead:
+def _row_to_user_read(row: Any) -> UserRead:
+    row = cast(dict[str, Any], row)
     username = row.get("username")
     return UserRead(
         id=row["id"],

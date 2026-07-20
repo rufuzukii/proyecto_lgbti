@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "proyecto-lgbti"
+version = "0.1.0"
+description = "RainbowLens LGBTIQ+ data analysis and visualization platform"
+requires-python = ">=3.12"
+dependencies = [
+    "dash==4.4.0",
+    "plotly==6.9.0",
+    "geopandas>=1.1.3",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "Flask==3.1.3",
+    "Flask-Login==0.6.3",
+    "Flask-Caching==2.4.1",
+    "redis>=5.0.0",
+    "python-dotenv>=1.0.1",
+    "gunicorn>=22.0.0",
+    "psycopg[binary]>=3.1.18",
+    "pymongo>=4.6.0",
+    "pydantic>=2.0.0",
+    "pandas>=2.2.0",
+    "PyMuPDF>=1.24.0",
+    "Pillow>=10.0.0",
+    "boto3>=1.34.0",
+    "bleach>=6.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pyright>=1.1.411",
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+rainbowlens-dash = "app.main:run"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"app.dash" = ["assets/**/*.css", "assets/**/*.js", "assets/img/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

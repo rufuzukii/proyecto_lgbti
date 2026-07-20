@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
-from app.dash.compat import Dash, Input, Output, State, dcc, html
+from dash import Dash, Input, Output, State, dcc, html
 from flask import redirect, request
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
 from pydantic import ValidationError
@@ -18,6 +18,7 @@ from app.auth.permissions import is_admin_user
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
+from app.dash.i18n import dash_attrs
 from app.dash.layouts.about import build_about_layout, register_about_callbacks
 from app.dash.layouts.error_page import (
     build_database_unavailable_layout,
@@ -73,6 +74,7 @@ def create_dash_app() -> Dash:
         __name__,
         assets_folder=str(assets_path),
         suppress_callback_exceptions=True,
+        serve_locally=True,
         title="RainbowLens",
     )
     app.index_string = """
@@ -120,7 +122,7 @@ def create_dash_app() -> Dash:
                 id="app-language-toggle",
                 type="button",
                 style={"display": "none"},
-                **{"aria-hidden": "true"},
+                **dash_attrs({"aria-hidden": "true"}),
             ),
             html.Div(id="page-content"),
             html.Footer(

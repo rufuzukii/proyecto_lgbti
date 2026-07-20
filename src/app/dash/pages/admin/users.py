@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dash import dcc, html
+from dash.development.base_component import Component
+
 from app.auth.csrf import get_csrf_token
-from app.dash.compat import dcc, html
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.users.schemas import UserRead, UserRole
@@ -31,9 +33,9 @@ def build_admin_users_layout(
     *,
     status_code: str | None = None,
     error_code: str | None = None,
-) -> html.Div:
-    status = STATUS_MESSAGES.get(status_code)
-    error = ERROR_MESSAGES.get(error_code)
+) -> Component:
+    status = STATUS_MESSAGES.get(status_code) if status_code is not None else None
+    error = ERROR_MESSAGES.get(error_code) if error_code is not None else None
 
     return html.Div(
         [
@@ -88,7 +90,7 @@ def build_admin_users_layout(
     )
 
 
-def build_access_denied_layout() -> html.Div:
+def build_access_denied_layout() -> Component:
     return html.Div(
         [
             build_navbar(active="admin"),
@@ -119,7 +121,7 @@ def build_access_denied_layout() -> html.Div:
     )
 
 
-def _build_users_table(users: list[UserRead]) -> html.Div:
+def _build_users_table(users: list[UserRead]) -> Component:
     return html.Div(
         [
             html.Div(
@@ -140,7 +142,7 @@ def _build_users_table(users: list[UserRead]) -> html.Div:
     )
 
 
-def _build_user_row(user: UserRead) -> html.Form:
+def _build_user_row(user: UserRead) -> Component:
     form_id = f"admin-user-{user.id}"
     return html.Form(
         [
@@ -238,7 +240,7 @@ def _role_value(role: UserRole | str) -> str:
     return UserRole.COMMON.value
 
 
-def _message(message: tuple[str, str] | None, *, is_error: bool) -> html.Div | str:
+def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | str:
     if not message:
         return ""
     es, en = message

@@ -85,8 +85,11 @@ def _normalize_ilga_document(document: dict[str, Any]) -> dict:
     if document.get("dataset") != ILGA_DATASET_CODE:
         raise ValueError("invalid_ilga_payload")
 
+    raw_year = document.get("year")
+    if raw_year is None:
+        raise ValueError("invalid_ilga_payload")
     try:
-        year = int(document.get("year"))
+        year = int(raw_year)
     except (TypeError, ValueError) as exc:
         raise ValueError("invalid_ilga_payload") from exc
 

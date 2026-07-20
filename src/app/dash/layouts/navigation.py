@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from dash import html
+from dash.development.base_component import Component
 from flask_login import current_user
 
-from app.dash.compat import html
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.users.schemas import UserRole
 
 
-def build_navbar(active: str | None = None) -> html.Nav:
+def build_navbar(active: str | None = None) -> Component:
     links = [
         ("Inicio", "Home", "/", "home"),
         ("España", "Spain", "/spain", "spain"),
@@ -67,7 +68,7 @@ def build_navbar(active: str | None = None) -> html.Nav:
     )
 
 
-def _account_link() -> html.A:
+def _account_link() -> Component:
     if current_user.is_authenticated:
         display_name = getattr(current_user, "username", None) or getattr(current_user, "email", None)
         return html.A(
@@ -83,7 +84,7 @@ def _account_link() -> html.A:
     )
 
 
-def _admin_link(active: str | None) -> html.A | str:
+def _admin_link(active: str | None) -> Component | str:
     if not current_user.is_authenticated:
         return ""
     role = getattr(current_user, "role", None)
@@ -96,14 +97,14 @@ def _admin_link(active: str | None) -> html.A | str:
     return html.A(text("Administración", "Administration"), href="/admin", className=class_name)
 
 
-def _language_toggle() -> html.Div:
+def _language_toggle() -> Component:
     return html.Div(
         [
             html.Button(
                 "ES",
                 type="button",
                 className="language-toggle",
-                **{"data-language-toggle": "true"},
+                **dash_attrs({"data-language-toggle": "true"}),
             ),
             html.Span("Idioma", className="nav-control-caption", **text_attrs("Idioma", "Language")),
         ],
@@ -111,22 +112,22 @@ def _language_toggle() -> html.Div:
     )
 
 
-def _theme_toggle() -> html.Div:
+def _theme_toggle() -> Component:
     return html.Div(
         [
             html.Button(
                 html.Span(className="theme-toggle-dot"),
                 type="button",
                 className="theme-toggle",
-                **{
+                **dash_attrs({
                     "data-theme-toggle": "true",
                     "data-theme-state": "light",
-                },
+                }),
             ),
             html.Span(
                 "Modo claro",
                 className="nav-control-caption theme-mode-caption",
-                **{"data-theme-label": "true", **text_attrs("Modo claro", "Light mode")},
+                **dash_attrs({"data-theme-label": "true", **text_attrs("Modo claro", "Light mode")}),
             ),
         ],
         className="nav-control-stack",

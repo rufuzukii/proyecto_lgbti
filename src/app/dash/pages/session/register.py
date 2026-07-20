@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dash import dcc, html
+from dash.development.base_component import Component
+
 from app.auth.csrf import get_csrf_token
-from app.dash.compat import dcc, html
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
@@ -18,8 +20,8 @@ ERROR_MESSAGES = {
 def build_register_layout(
     next_path: str = "/user",
     error_code: str | None = None,
-) -> html.Div:
-    message = ERROR_MESSAGES.get(error_code)
+) -> Component:
+    message = ERROR_MESSAGES.get(error_code) if error_code is not None else None
 
     return html.Div(
         [
@@ -138,7 +140,7 @@ def build_register_layout(
     )
 
 
-def _message(message: tuple[str, str] | None) -> html.Div | str:
+def _message(message: tuple[str, str] | None) -> Component | str:
     if not message:
         return ""
     es, en = message

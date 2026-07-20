@@ -65,4 +65,17 @@ def __dir__() -> list[str]:
     return sorted([*globals(), *_LAZY_EXPORTS])
 
 
-__all__ = list(_LAZY_EXPORTS)
+__all__ = [
+    "convert_fra_csv_files",
+    "generate_fra_json",
+    "parse_answer_survey_csv",
+    "parse_answer_survey_csv_text",
+    "build_fra_questions_payload",
+    "count_fra_questions",
+    "generate_fra_questions_json",
+    "parse_fra_csv",
+    "parse_fra_csv_text",
+    "INDICATOR_FRA_COLLECTION",
+    "insert_indicator_fra_json",
+    "upsert_indicators_from_json",
+]

@@ -83,7 +83,25 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
-    *_LAZY_EXPORTS,
+    "parse_felgtbi_pdf",
+    "parse_felgtbi_pdf_bytes",
+    "parse_felgtbi_text_pages",
+    "discover_felgtbi_pdfs",
+    "parse_felgtbi_pdf_links",
+    "build_fra_questions_payload",
+    "count_fra_questions",
+    "convert_fra_csv_files",
+    "generate_fra_json",
+    "generate_fra_questions_json",
+    "parse_answer_survey_csv",
+    "parse_answer_survey_csv_text",
+    "parse_fra_csv",
+    "parse_fra_csv_text",
+    "extract_ilga_year",
+    "generate_ilga_json",
+    "parse_ilga_csv",
+    "parse_ilga_csv_text",
+    "parse_ilga_json_text",
     "register_failed_import",
     "register_pending_import",
 ]

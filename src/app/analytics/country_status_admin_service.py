@@ -160,6 +160,7 @@ def validate_country_lgbti_status_payload(payload: dict[str, Any]) -> dict[str, 
     if errors:
         raise CountryStatusValidationError(errors)
 
+    assert year is not None
     return {
         "dataset": COUNTRY_LGBTI_STATUS_DATASET,
         "country_code": country_code,
@@ -182,7 +183,9 @@ def validate_country_lgbti_status_payload(payload: dict[str, Any]) -> dict[str, 
 def _clean_record(record: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(record, dict):
         return None
-    clean = {key: _plain_text(value) for key, value in record.items() if isinstance(value, str)}
+    clean: dict[str, Any] = {
+        key: _plain_text(value) for key, value in record.items() if isinstance(value, str)
+    }
     clean.update(
         {
             "country_code": normalize_country_code(record.get("country_code")),

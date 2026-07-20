@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
+from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
+from dash.development.base_component import Component
+from dash.exceptions import PreventUpdate
 from flask_login import current_user
 
 from app.analytics.country_status_admin_service import (
@@ -25,8 +29,7 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics_normalizers import normalize_country_code
 from app.auth.permissions import is_admin_user
-from app.dash.compat import ALL, Dash, Input, Output, PreventUpdate, State, ctx, dcc, html, no_update
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
 
@@ -57,7 +60,7 @@ EDITOR_LABELS_EN = {
 }
 
 
-def build_home_layout() -> html.Div:
+def build_home_layout() -> Component:
     ilga_document = get_latest_ilga_document()
     ilga_years = get_ilga_years()
     current_year = ilga_document.get("year") if isinstance(ilga_document, dict) else None
@@ -530,7 +533,7 @@ def register_home_callbacks(app: Dash) -> None:
         active_value_lists: list[list[str]] | None,
         delete_confirm_value_lists: list[list[str]] | None,
     ):
-        if not _any_clicks(_save_clicks, _delete_clicks):
+        if not _any_clicks([_save_clicks], [_delete_clicks]):
             raise PreventUpdate
         trigger = ctx.triggered_id
         trigger_type = trigger.get("type") if isinstance(trigger, dict) else trigger
@@ -717,7 +720,7 @@ def _country_status_section(
     requested_year: int | None = None,
     *,
     can_manage: bool = False,
-) -> html.Section:
+) -> Component:
     title = (
         f"Información LGBTIQ+ de {_status_country_name(statuses[0], label_by_code)}"
         if len(statuses) == 1
@@ -749,7 +752,7 @@ def _country_status_card(
     label_by_code: dict[str, str],
     requested_year: int | None,
     can_manage: bool = False,
-) -> html.Article:
+) -> Component:
     country_name = _status_country_name(status, label_by_code)
     country_code = str(status.get("country_code") or "").strip()
     year = status.get("year")
@@ -832,7 +835,7 @@ def _country_status_admin_button(
     country_code: str,
     year: int | str | None,
     label: str,
-) -> html.Button:
+) -> Component:
     return html.Button(
         label,
         id={
@@ -851,7 +854,7 @@ def _country_status_editor(
     state: dict[str, Any],
     country_options: list[dict[str, Any]],
     errors: dict[str, str],
-) -> html.Div:
+) -> Component:
     mode = str(state.get("mode") or "edit")
     exists = bool(state.get("exists")) or mode == "edit"
     title = "Editar información del país" if exists else "Añadir información del país"
@@ -1085,14 +1088,14 @@ def _country_status_editor(
                 ],
                 className="country-status-editor-panel",
                 role="dialog",
-                **{"aria-modal": "true"},
+                **dash_attrs({"aria-modal": "true"}),
             ),
         ],
         className="country-status-editor-modal",
     )
 
 
-def _editor_group(title: str, children: list[Any]) -> html.Fieldset:
+def _editor_group(title: str, children: list[Any]) -> Component:
     return html.Fieldset(
         [html.Legend(title, **text_attrs(title, EDITOR_LABELS_EN.get(title, title))), *children],
         className="country-status-editor-group",
@@ -1109,7 +1112,7 @@ def _first_value(values: list[Any] | None, default: Any = None) -> Any:
     return values[0]
 
 
-def _any_clicks(*groups: list[int] | None) -> bool:
+def _any_clicks(*groups: Sequence[int | None] | None) -> bool:
     for group in groups:
         for value in group or []:
             try:
@@ -1120,7 +1123,7 @@ def _any_clicks(*groups: list[int] | None) -> bool:
     return False
 
 
-def _editor_field(label: str, control: Any, error: str | None = None) -> html.Label:
+def _editor_field(label: str, control: Any, error: str | None = None) -> Component:
     return html.Label(
         [
             html.Span(label, **text_attrs(label, EDITOR_LABELS_EN.get(label, label))),
@@ -1131,7 +1134,7 @@ def _editor_field(label: str, control: Any, error: str | None = None) -> html.La
     )
 
 
-def _editor_error(error: str | None) -> html.P | str:
+def _editor_error(error: str | None) -> Component | str:
     if not error:
         return ""
     return html.P(error, className="country-status-editor-error")
@@ -1244,7 +1247,7 @@ def _status_list_block(title: str, values: Any, title_en: str) -> list[Any]:
     return [html.H4(title, **text_attrs(title, title_en)), html.Ul([html.Li(str(value)) for value in values if str(value).strip()])]
 
 
-def _status_source(status: dict[str, Any]) -> html.Footer:
+def _status_source(status: dict[str, Any]) -> Component:
     source_name = str(status.get("source_name") or "").strip()
     source_url = str(status.get("source_url") or "").strip()
     reviewed_at = str(status.get("reviewed_at") or "").strip()
@@ -1276,11 +1279,11 @@ def _control_field(
     control: Any,
     class_name: str = "",
     field_id: str | None = None,
-) -> html.Div:
+) -> Component:
     classes = ["home-control-field"]
     if class_name:
         classes.append(class_name)
-    props = {"className": " ".join(classes)}
+    props: dict[str, Any] = {"className": " ".join(classes)}
     if field_id:
         props["id"] = field_id
     return html.Div(
@@ -1299,7 +1302,7 @@ def _control_class(base_class: str, *, inactive: bool) -> str:
     return " ".join(classes)
 
 
-def _metric(value: str, label_es: str, label_en: str) -> html.Div:
+def _metric(value: str, label_es: str, label_en: str) -> Component:
     return html.Div(
         [
             html.Strong(value),
@@ -1314,7 +1317,7 @@ def _source_summary(
     body_es: str,
     body_en: str,
     link_label: tuple[str, str],
-) -> html.Article:
+) -> Component:
     return html.Article(
         [
             html.H2(title),
@@ -1347,7 +1350,7 @@ def _ilga_source(document: dict[str, Any] | None):
     return text("Fuente: ILGA Europe", "Source: ILGA Europe")
 
 
-def _ilga_metrics(document: dict[str, Any] | None) -> list[html.Div]:
+def _ilga_metrics(document: dict[str, Any] | None) -> list[Component]:
     countries = (
         document.get("countries", [])
         if isinstance(document, dict) and isinstance(document.get("countries"), list)
@@ -1387,7 +1390,7 @@ def _fra_source(document: dict[str, Any] | None):
     return text(f"Fuente: FRA - {code}", f"Source: FRA - {code}")
 
 
-def _fra_metrics(document: dict[str, Any] | None) -> list[html.Div]:
+def _fra_metrics(document: dict[str, Any] | None) -> list[Component]:
     answers = document.get("answers", []) if isinstance(document, dict) else []
     countries = {
         str(answer.get("country") or "").strip()

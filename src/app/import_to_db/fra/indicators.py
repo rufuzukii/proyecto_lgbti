@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 import psycopg
 from psycopg.rows import dict_row
@@ -11,7 +11,7 @@ from app.import_to_db.import_log import _resolve_postgres_dsn
 
 def upsert_indicators_from_json(file_json: dict[str, Any] | list[Any]) -> int:
     documents = _normalize_documents(file_json)
-    with psycopg.connect(_resolve_postgres_dsn(), row_factory=dict_row) as conn:
+    with psycopg.connect(_resolve_postgres_dsn(), row_factory=cast(Any, dict_row)) as conn:
         for document in documents:
             _upsert_indicator(conn, document)
         conn.commit()
@@ -55,6 +55,7 @@ def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> Non
         )
         return
 
+    row = cast(dict[str, Any], row)
     merged_answer_types = _merge_answer_types(row.get("answer_type"), next_answer_types)
     conn.execute(
         """
@@ -87,6 +88,9 @@ def _get_or_create_category(conn: psycopg.Connection, name: str) -> str:
         """,
         (name,),
     ).fetchone()
+    if row is None:
+        raise RuntimeError("category_upsert_failed")
+    row = cast(dict[str, Any], row)
     return row["id"]
 
 

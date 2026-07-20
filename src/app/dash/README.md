@@ -4,7 +4,7 @@ Esta carpeta contiene la presentación de RainbowLens. La composición y el enru
 
 ## Archivo Python
 
-- `compat.py`: importa dinámicamente Dash y reexporta `Dash`, `Input`, `Output`, `State`, `dcc` y `html`. Centraliza los imports usados por el frontend.
+- Los módulos de UI importan directamente los componentes modernos de Dash (`Dash`, `dcc`, `html`, `dash_table`, `Input`, `Output`, `State`) desde `dash`.
 - `__init__.py`: marcador de paquete.
 
 ## Carpetas

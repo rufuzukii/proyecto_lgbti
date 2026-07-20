@@ -6,14 +6,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from app.dash.compat import Dash, Input, Output, PreventUpdate, State, dcc, html
-from app.dash.i18n import text, text_attrs
+from dash import Dash, Input, Output, State, dcc, html
+from dash.development.base_component import Component
+from dash.exceptions import PreventUpdate
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
 from flask_login import current_user
 
 from app.analytics import invalidate_analytics_cache
-from ...import_to_db.error_handler import ImportErrorHandler
+from app.import_to_db.error_handler import ImportErrorHandler
 
 logger = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
@@ -35,7 +37,7 @@ def _decode_upload_payload(contents: str) -> tuple[bytes, int]:
     return payload, len(payload)
 
 
-def build_upload_layout() -> html.Div:
+def build_upload_layout() -> Component:
     return html.Div(
         [
             build_navbar(active="upload"),
@@ -259,7 +261,7 @@ def _process_upload(contents, filenames, data_source):
 
             if data_source == "FRA":
                 try:
-                    from ...import_to_db.fra import upsert_indicators_from_json
+                    from app.import_to_db.fra import upsert_indicators_from_json
 
                     upsert_indicators_from_json(payload)
                     invalidate_analytics_cache()
@@ -276,7 +278,7 @@ def _process_upload(contents, filenames, data_source):
                     )
 
             try:
-                from ...import_to_db import register_pending_import
+                from app.import_to_db import register_pending_import
 
                 user_id = current_user.get_id() if current_user.is_authenticated else None
                 register_pending_import(file_name=safe_name, file_json=payload, user_id=user_id)
@@ -326,21 +328,21 @@ def is_supported_upload_file(source: str, file_name: str) -> bool:
 
 def parse_file_by_source(source: str, file_bytes: bytes, file_name: str) -> dict | list[dict]:
     if source == "FRA":
-        from ...import_to_db import parse_fra_csv_text
+        from app.import_to_db import parse_fra_csv_text
 
         file_text = file_bytes.decode("utf-8", errors="replace")
         return parse_fra_csv_text(file_text, file_name=file_name)
     if source == "ILGA":
         file_text = file_bytes.decode("utf-8", errors="replace")
         if Path(file_name).suffix.lower() == ".json":
-            from ...import_to_db import parse_ilga_json_text
+            from app.import_to_db import parse_ilga_json_text
 
             return parse_ilga_json_text(file_text)
-        from ...import_to_db import parse_ilga_csv_text
+        from app.import_to_db import parse_ilga_csv_text
 
         return parse_ilga_csv_text(file_text, file_name=file_name)
     if source == "FELGTB":
-        from ...import_to_db import parse_felgtbi_pdf_bytes
+        from app.import_to_db import parse_felgtbi_pdf_bytes
 
         return parse_felgtbi_pdf_bytes(file_bytes, file_name=file_name)
     raise ValueError(f"Unsupported source: {source}")
@@ -348,13 +350,13 @@ def parse_file_by_source(source: str, file_bytes: bytes, file_name: str) -> dict
 
 def count_payload_documents(payload: Any) -> int:
     if isinstance(payload, dict) and isinstance(payload.get("questions"), list):
-        from ...import_to_db import count_fra_questions
+        from app.import_to_db import count_fra_questions
 
         return count_fra_questions(payload)
     return len(payload) if isinstance(payload, list) else 1
 
 
-def build_error_message(message: tuple[str, str], details: list[str] | None = None) -> html.Div:
+def build_error_message(message: tuple[str, str], details: list[str] | None = None) -> Component:
     es, en = message
     children: list[Any] = [
         html.Div(
@@ -368,10 +370,10 @@ def build_error_message(message: tuple[str, str], details: list[str] | None = No
                     id="upload-error-close",
                     type="button",
                     className="upload-message-close",
-                    **{
+                    **dash_attrs({
                         **text_attrs("Cerrar", "Close"),
                         "data-upload-dismiss": "true",
-                    },
+                    }),
                 ),
             ],
             className="upload-message-header",
@@ -392,10 +394,10 @@ def build_error_message(message: tuple[str, str], details: list[str] | None = No
                 id="upload-error-retry",
                 type="button",
                 className="upload-message-retry",
-                **{
+                **dash_attrs({
                     **text_attrs("Volver a intentar", "Try again"),
                     "data-upload-dismiss": "true",
-                },
+                }),
             ),
             className="upload-message-actions",
         )
@@ -409,7 +411,7 @@ def build_error_message(message: tuple[str, str], details: list[str] | None = No
 
 def build_success_message(
     *, source: str, imported_files: list[dict], total_documents: int
-) -> html.Div:
+) -> Component:
     records_es = f"{total_documents} registro{'s' if total_documents != 1 else ''} preparado{'s' if total_documents != 1 else ''}"
     records_en = f"{total_documents} prepared record{'s' if total_documents != 1 else ''}"
     return html.Div(

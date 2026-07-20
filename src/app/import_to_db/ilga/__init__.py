@@ -49,4 +49,13 @@ def __dir__() -> list[str]:
     return sorted([*globals(), *_LAZY_EXPORTS])
 
 
-__all__ = list(_LAZY_EXPORTS)
+__all__ = [
+    "ILGA_DATASET_CODE",
+    "extract_ilga_year",
+    "generate_ilga_json",
+    "parse_ilga_csv",
+    "parse_ilga_csv_text",
+    "parse_ilga_json_text",
+    "INDICATOR_ILGA_COLLECTION",
+    "insert_indicator_ilga_json",
+]

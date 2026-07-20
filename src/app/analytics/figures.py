@@ -868,7 +868,7 @@ def _default_fra_answer(document: dict[str, Any] | None) -> str | None:
     counts: dict[str, int] = {}
     for answer in answers:
         counts[answer] = counts.get(answer, 0) + 1
-    return max(counts, key=counts.get)
+    return max(counts.items(), key=lambda item: item[1])[0]
 
 
 def _representative_filter_type(rows: list[dict[str, Any]]) -> str | None:
