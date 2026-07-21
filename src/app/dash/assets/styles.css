@@ -138,11 +138,11 @@ body {
   display: inline-flex;
   flex: 0 0 auto;
   font-weight: 700;
-  height: 82px;
+  height: 112px;
   letter-spacing: 0.4px;
   overflow: hidden;
   text-decoration: none;
-  width: 230px;
+  width: 320px;
 }
 
 .nav-brand-logo {
@@ -150,6 +150,11 @@ body {
   height: 100%;
   object-fit: contain;
   width: 100%;
+}
+
+.nav-brand-logo-desktop {
+  object-fit: cover;
+  object-position: 50% 42%;
 }
 
 .nav-brand-logo-mobile {
