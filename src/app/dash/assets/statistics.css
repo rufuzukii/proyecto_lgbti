@@ -138,6 +138,10 @@
   box-shadow: 0 14px 30px rgba(87, 55, 69, 0.09);
 }
 
+.stats-filter-card.is-hidden {
+  display: none;
+}
+
 .stats-filter-card-compact {
   grid-column: 1 / -1;
 }
@@ -158,7 +162,7 @@
 .stats-filter-card-body {
   display: grid;
   gap: 0.9rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(1, minmax(0, 1fr));
   min-width: 0;
 }
 
@@ -1173,30 +1177,6 @@ body[data-theme="dark"] .spain-nav-button:hover:not(:disabled),
 body[data-theme="dark"] .spain-nav-button:focus-visible {
   border-color: var(--stats-primary);
   box-shadow: 0 0 0 3px rgba(244, 168, 192, 0.18);
-}
-
-body[data-theme="dark"] .Select-control,
-body[data-theme="dark"] .Select-menu-outer,
-body[data-theme="dark"] .Select-value,
-body[data-theme="dark"] .Select-placeholder {
-  background: #0f1522;
-  border-color: var(--color-border);
-  color: var(--color-text);
-}
-
-body[data-theme="dark"] .Select-option,
-body[data-theme="dark"] .VirtualizedSelectOption {
-  background: #0f1522;
-  color: var(--color-text);
-}
-
-body[data-theme="dark"] .Select-option.is-focused,
-body[data-theme="dark"] .VirtualizedSelectFocusedOption {
-  background: #1a2232;
-}
-
-body[data-theme="dark"] .Select-value-label {
-  color: var(--color-text) !important;
 }
 
 body[data-theme="dark"] .stats-panel .dash-table-container,

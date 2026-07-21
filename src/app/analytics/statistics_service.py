@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from copy import deepcopy
+import hashlib
+import json
 import logging
 import re
+import time
 from typing import Any
 
 import pandas as pd
 
+from app.cache import cache
 from app.analytics.percentage_display import coerce_percentage
 from app.analytics.repository import (
+    ANALYTICS_CACHE_TIMEOUT_SECONDS,
     get_fra_indicator_answers,
     get_ilga_document_by_year,
     get_ilga_history_documents,
@@ -254,7 +260,21 @@ def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]
 
 
 def get_fra_control_payload(code: str) -> dict[str, Any]:
-    return build_fra_control_payload(get_fra_indicator_answers(code))
+    clean_code = str(code or "").strip()
+    if not clean_code:
+        return {"code": "", "category": "", "answers": [], "segmentations": [], "values": {}}
+    cache_key = f"fra-controls-v2:{clean_code}"
+    cached = _server_cache_get(cache_key)
+    if isinstance(cached, dict):
+        return deepcopy(cached)
+
+    document = get_fra_indicator_answers(clean_code)
+    payload = build_fra_control_payload(document)
+    payload["code"] = clean_code
+    payload["category"] = str((document or {}).get("category") or "").strip()
+    if isinstance(document, dict):
+        _server_cache_set(cache_key, deepcopy(payload))
+    return payload
 
 
 def _fra_control_payload_from_dataframe(dataframe: pd.DataFrame) -> dict[str, Any]:
@@ -327,8 +347,34 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     if not validation.ok:
         return _status("invalid", validation.message)
 
-    document = get_fra_indicator_answers(query.question_code or "")
-    dataframe = fra_document_to_dataframe(document)
+    cache_key = _fra_statistics_cache_key(query)
+    cached = _server_cache_get(cache_key)
+    if isinstance(cached, dict):
+        logger.debug(
+            "fra_statistics_cache_hit",
+            extra={"question_code": query.question_code, "cache_key": cache_key},
+        )
+        return deepcopy(cached)
+
+    started_at = time.perf_counter()
+    result = _build_fra_statistics(query)
+    if result.get("status") == "ok":
+        _server_cache_set(cache_key, deepcopy(result))
+    logger.debug(
+        "fra_statistics_computed",
+        extra={
+            "question_code": query.question_code,
+            "processing_ms": round((time.perf_counter() - started_at) * 1000, 2),
+            "cached": False,
+        },
+    )
+    return result
+
+
+def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
+    clean_code = str(query.question_code or "").strip()
+    dataframe = _fra_dataframe_for_code(clean_code)
+
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
     source_dataframe = dataframe
@@ -347,36 +393,20 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
     detail_dataframe = filter_fra_comparison_dataframe(source_dataframe, query)
-    segmentation_dataframe = filter_fra_segmentation_dataframe(
-        source_dataframe,
-        query,
-        effective_answer=effective_answer,
-    )
 
     ranking = aggregate_fra_data(dataframe, ["country", "iso"], "percentage", "mean")
     ranking = ranking.rename(columns={"percentage": "value"}).sort_values("value", ascending=False)
     ranking["value"] = ranking["value"].astype(object).where(pd.notna(ranking["value"]), None)
-    response_ranking = aggregate_fra_data(
-        detail_dataframe,
-        ["country", "iso", "answer"],
-        "percentage",
-        "mean",
-    ).rename(columns={"percentage": "value"})
-    response_ranking["value"] = response_ranking["value"].astype(object).where(
-        pd.notna(response_ranking["value"]), None
-    )
     return {
         "status": "ok",
         "message": "",
         "source": "FRA",
         "data": dataframe.to_dict("records"),
         "detail_data": detail_dataframe.to_dict("records"),
-        "segmentation_data": segmentation_dataframe.to_dict("records"),
         "available_countries": sorted(
             value for value in source_dataframe["iso"].dropna().astype(str).unique().tolist() if value
         ),
         "ranking": ranking.to_dict("records"),
-        "response_ranking": response_ranking.to_dict("records"),
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "methodology": (
             "FRA: porcentajes medios de respuestas de personas encuestadas. "
@@ -385,10 +415,77 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     }
 
 
+def _fra_dataframe_for_code(code: str) -> pd.DataFrame:
+    if not code:
+        return _empty_fra_dataframe()
+    cache_key = f"fra-normalized-frame-v2:{code}"
+    cached = _server_cache_get(cache_key)
+    if isinstance(cached, pd.DataFrame):
+        return cached.copy(deep=True)
+
+    dataframe = fra_document_to_dataframe(get_fra_indicator_answers(code))
+    if not dataframe.empty:
+        _server_cache_set(cache_key, dataframe.copy(deep=True))
+    return dataframe
+
+
+def _fra_statistics_cache_key(query: FraStatisticsQuery) -> str:
+    identity = {
+        "year": query.year,
+        "countries": sorted(str(country) for country in query.countries),
+        "category": query.category,
+        "question_code": query.question_code,
+        "answer": query.answer,
+        "filter_a_name": query.filter_a_name,
+        "filter_a_value": query.filter_a_value,
+        "filter_b_name": query.filter_b_name,
+        "filter_b_value": query.filter_b_value,
+        "group_by": list(query.group_by),
+        "mode": query.mode,
+    }
+    serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return f"fra-statistics-v3:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+
+
+def _server_cache_get(key: str) -> Any:
+    if not getattr(cache, "app", None):
+        return None
+    try:
+        return cache.get(key)
+    except Exception:
+        logger.debug("statistics_cache_read_failed", extra={"cache_key": key}, exc_info=True)
+        return None
+
+
+def _server_cache_set(key: str, value: Any) -> None:
+    if not getattr(cache, "app", None):
+        return
+    try:
+        cache.set(key, value, timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+    except Exception:
+        logger.debug("statistics_cache_write_failed", extra={"cache_key": key}, exc_info=True)
+
+
 def get_ilga_statistics(
     query: IlgaStatisticsQuery,
     *,
     include_history: bool = True,
+) -> dict[str, Any]:
+    cache_key = _ilga_statistics_cache_key(query, include_history=include_history)
+    cached = _server_cache_get(cache_key)
+    if isinstance(cached, dict):
+        return deepcopy(cached)
+
+    result = _build_ilga_statistics(query, include_history=include_history)
+    if result.get("status") == "ok":
+        _server_cache_set(cache_key, deepcopy(result))
+    return result
+
+
+def _build_ilga_statistics(
+    query: IlgaStatisticsQuery,
+    *,
+    include_history: bool,
 ) -> dict[str, Any]:
     document = get_ilga_document_by_year(query.year)
     dataframe = ilga_document_to_dataframe(document)
@@ -421,6 +518,23 @@ def get_ilga_statistics(
             ""
         ),
     }
+
+
+def _ilga_statistics_cache_key(
+    query: IlgaStatisticsQuery,
+    *,
+    include_history: bool,
+) -> str:
+    identity = {
+        "year": query.year,
+        "countries": sorted(str(country) for country in query.countries),
+        "category": query.category,
+        "criterion": query.criterion,
+        "mode": query.mode,
+        "include_history": include_history,
+    }
+    serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return f"ilga-statistics-v2:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
 def filter_fra_dataframe(
@@ -484,46 +598,6 @@ def filter_fra_comparison_dataframe(
             answer_rows = _apply_exact_filter_scope(answer_rows, query, filter_scope=scope)
         groups.append(answer_rows)
     return pd.concat(groups, ignore_index=True) if groups else filtered.iloc[0:0]
-
-
-def filter_fra_segmentation_dataframe(
-    dataframe: pd.DataFrame,
-    query: FraStatisticsQuery,
-    *,
-    effective_answer: str | None,
-) -> pd.DataFrame:
-    """Return every value for the selected segmentation from the loaded frame."""
-    segmentation_type = normalize_filter_type(query.filter_a_name)
-    opposite_column = "filter_b"
-    if not segmentation_type or segmentation_type == "All":
-        segmentation_type = normalize_filter_type(query.filter_b_name)
-        opposite_column = "filter_a"
-    if not segmentation_type or segmentation_type == "All":
-        return pd.DataFrame(columns=["country", "iso", "answer", "percentage", "segment"])
-
-    filtered = dataframe.copy()
-    if query.year is not None and "year" in filtered:
-        filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
-    if effective_answer:
-        filtered = filtered[filtered["answer"] == effective_answer]
-    if query.countries:
-        selected = {normalize_country_code(country) or str(country) for country in query.countries}
-        filtered = filtered[filtered["iso"].isin(selected) | filtered["country"].isin(selected)]
-    if opposite_column in filtered:
-        filtered = filtered[filtered[opposite_column].apply(lambda value: _same_filter_label(value, "All"))]
-
-    def segment_value(filters: Any) -> str | None:
-        if not isinstance(filters, dict):
-            return None
-        for raw_type, raw_value in filters.items():
-            if normalize_filter_type(raw_type) == segmentation_type:
-                return normalize_filter_value(raw_value)
-        return None
-
-    filtered = filtered.copy()
-    filtered["segment"] = filtered["filters"].apply(segment_value)
-    filtered = filtered[filtered["segment"].notna()]
-    return filtered[["country", "iso", "answer", "percentage", "segment"]]
 
 
 def get_ilga_history_rows(

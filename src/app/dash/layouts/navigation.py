@@ -21,21 +21,42 @@ def build_navbar(active: str | None = None) -> Component:
 
     return html.Nav(
         [
-            html.Div(
+            dcc.Link(
                 [
-                    dcc.Link(
-                        html.Img(
-                            src="/assets/img/rainbow_lens_logo.png",
-                            alt="RainbowLens",
-                            className="nav-brand-logo",
-                        ),
-                        href="/",
-                        className="nav-brand",
-                        title="RainbowLens",
+                    html.Img(
+                        src="/assets/img/rainbow_lens_logo.png",
+                        alt="RainbowLens",
+                        className="nav-brand-logo nav-brand-logo-desktop",
                     ),
-                    _admin_link(active),
+                    html.Img(
+                        src="/assets/img/rainbow_lens_icono.ico",
+                        alt="",
+                        className="nav-brand-logo nav-brand-logo-mobile",
+                    ),
                 ],
-                className="nav-left",
+                href="/",
+                className="nav-brand",
+                title="RainbowLens",
+            ),
+            html.Button(
+                [
+                    html.Span(className="nav-menu-icon", **dash_attrs({"aria-hidden": "true"})),
+                    html.Span(
+                        "Abrir menú",
+                        className="sr-only",
+                        **text_attrs("Abrir menú", "Open menu"),
+                    ),
+                ],
+                type="button",
+                className="nav-menu-toggle",
+                title="Menú",
+                **dash_attrs(
+                    {
+                        "data-nav-menu-toggle": "true",
+                        "aria-controls": "primary-navigation",
+                        "aria-expanded": "false",
+                    }
+                ),
             ),
             html.Div(
                 [
@@ -59,12 +80,15 @@ def build_navbar(active: str | None = None) -> Component:
                         ],
                         className="nav-preference-actions",
                     ),
+                    _admin_link(active),
                     _account_link(),
                 ],
-                className="nav-actions",
+                id="primary-navigation",
+                className="nav-menu",
             ),
         ],
         className="navbar",
+        **dash_attrs({"aria-label": "Navegación principal"}),
     )
 
 
@@ -118,10 +142,7 @@ def _theme_toggle() -> Component:
                 html.Span(className="theme-toggle-dot"),
                 type="button",
                 className="theme-toggle",
-                **dash_attrs({
-                    "data-theme-toggle": "true",
-                    "data-theme-state": "light",
-                }),
+                **dash_attrs({"data-theme-toggle": "true"}),
             ),
             html.Span(
                 "Modo claro",

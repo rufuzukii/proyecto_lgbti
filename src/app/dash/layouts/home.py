@@ -16,13 +16,9 @@ from app.analytics.country_status_admin_service import (
     load_country_lgbti_status_for_edit,
     save_country_lgbti_status,
 )
-from app.analytics.figures import build_fra_choropleth, build_ilga_choropleth
+from app.analytics.figures import build_ilga_choropleth
 from app.analytics.country_status_service import get_country_lgbti_status
 from app.analytics.repository import (
-    FraIndicator,
-    get_fra_categories,
-    get_fra_indicator_answers,
-    get_fra_mongo_indicators_by_category,
     get_ilga_document_by_year,
     get_ilga_years,
     get_latest_ilga_document,
@@ -32,11 +28,6 @@ from app.auth.permissions import is_admin_user
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
-
-MAP_MODE_OPTIONS = [
-    {"label": text("Situación legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"), "value": "ilga"},
-    {"label": text("Discriminación y datos sociales", "Discrimination and social data"), "value": "fra"},
-]
 
 EDITOR_LABELS_EN = {
     "Identificación": "Identification",
@@ -66,8 +57,6 @@ def build_home_layout() -> Component:
     current_year = ilga_document.get("year") if isinstance(ilga_document, dict) else None
     if current_year and current_year not in ilga_years:
         ilga_years = [int(current_year), *ilga_years]
-
-    categories = get_fra_categories()
 
     return html.Div(
         [
@@ -127,16 +116,6 @@ def build_home_layout() -> Component:
                             html.Div(
                                 [
                                     _control_field(
-                                        ("Vista del mapa", "Map view"),
-                                        dcc.Dropdown(
-                                            id="home-map-mode",
-                                            options=MAP_MODE_OPTIONS,
-                                            value="ilga",
-                                            clearable=False,
-                                            className="home-dropdown",
-                                        ),
-                                    ),
-                                    _control_field(
                                         ("Año del mapa legal", "Legal map year"),
                                         dcc.Dropdown(
                                             id="home-ilga-year",
@@ -151,37 +130,6 @@ def build_home_layout() -> Component:
                                         ),
                                         "home-ilga-control",
                                         "home-ilga-control",
-                                    ),
-                                    _control_field(
-                                        ("Categoría social", "Social category"),
-                                        dcc.Dropdown(
-                                            id="home-fra-category",
-                                            options=[
-                                                {"label": category, "value": category}
-                                                for category in categories
-                                            ],
-                                            value=None,
-                                            clearable=True,
-                                            placeholder="Selecciona una categoría",
-                                            disabled=True,
-                                            className="home-dropdown",
-                                        ),
-                                        "home-fra-control",
-                                        "home-fra-category-control",
-                                    ),
-                                    _control_field(
-                                        ("Indicador social", "Social indicator"),
-                                        dcc.Dropdown(
-                                            id="home-fra-indicator",
-                                            options=[],
-                                            value=None,
-                                            clearable=False,
-                                            disabled=True,
-                                            placeholder="Selecciona primero una categoría",
-                                            className="home-dropdown",
-                                        ),
-                                        "home-fra-control",
-                                        "home-fra-indicator-control",
                                     ),
                                     _control_field(
                                         ("País o países", "Country or countries"),
@@ -257,25 +205,8 @@ def build_home_layout() -> Component:
                                 ),
                                 ("Explorar el contexto legal", "Explore the legal context"),
                             ),
-                            _source_summary(
-                                "FRA",
-                                (
-                                    "La Agencia de los Derechos Fundamentales de la Unión Europea "
-                                    "recoge datos de encuesta sobre experiencias de discriminación, "
-                                    "seguridad, visibilidad, vida cotidiana y condiciones sociales. "
-                                    "Estos indicadores ayudan a complementar el análisis legal con "
-                                    "evidencia social."
-                                ),
-                                (
-                                    "The European Union Agency for Fundamental Rights collects survey "
-                                    "data on discrimination, safety, visibility, daily life and social "
-                                    "conditions. These indicators complement legal analysis with social "
-                                    "evidence."
-                                ),
-                                ("Sobre la metodología", "About the methodology"),
-                            ),
                         ],
-                        className="home-source-grid",
+                        className="home-source-grid home-source-grid--single",
                     ),
                 ],
                 className="home-data-shell",
@@ -286,82 +217,19 @@ def build_home_layout() -> Component:
 
 def register_home_callbacks(app: Dash) -> None:
     @app.callback(
-        Output("home-ilga-year", "disabled"),
-        Output("home-fra-category", "disabled"),
-        Output("home-ilga-control", "className"),
-        Output("home-fra-category-control", "className"),
-        Output("home-fra-indicator-control", "className"),
-        Input("home-map-mode", "value"),
-    )
-    def update_home_control_state(mode: str | None):
-        is_fra = mode == "fra"
-        ilga_class = _control_class("home-ilga-control", inactive=is_fra)
-        fra_category_class = _control_class("home-fra-control", inactive=not is_fra)
-        fra_indicator_class = _control_class("home-fra-control", inactive=not is_fra)
-        return is_fra, not is_fra, ilga_class, fra_category_class, fra_indicator_class
-
-    @app.callback(
-        Output("home-fra-indicator", "options"),
-        Output("home-fra-indicator", "value"),
-        Output("home-fra-indicator", "disabled"),
-        Output("home-fra-indicator", "placeholder"),
-        Input("home-map-mode", "value"),
-        Input("home-fra-category", "value"),
-        Input("app-language-store", "data"),
-    )
-    def update_home_fra_indicators(
-        mode: str | None,
-        category: str | None,
-        language: str | None,
-    ):
-        if mode != "fra":
-            return [], None, True, _localized("Activa la vista de datos sociales", "Enable the social data view", language)
-        if not category:
-            return [], None, True, _localized("Selecciona primero una categoría", "Select a category first", language)
-
-        indicators = get_fra_mongo_indicators_by_category(category)
-        if not indicators:
-            return [], None, True, _localized(
-                "No hay información disponible para esta categoría",
-                "No information is available for this category",
-                language,
-            )
-
-        options = [
-            {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
-            for indicator in indicators
-        ]
-        return options, None, False, _localized("Selecciona un indicador", "Select an indicator", language)
-
-    @app.callback(
         Output("home-main-map", "figure"),
         Output("home-map-title", "children"),
         Output("home-map-copy", "children"),
         Output("home-map-helper-text", "className"),
         Output("home-map-source", "children"),
         Output("home-map-metrics", "children"),
-        Input("home-map-mode", "value"),
         Input("home-ilga-year", "value"),
-        Input("home-fra-indicator", "value"),
         Input("app-language-store", "data"),
     )
     def update_home_map(
-        mode: str | None,
         ilga_year: int | None,
-        fra_code: str | None,
         language: str | None,
     ):
-        if mode == "fra":
-            document = get_fra_indicator_answers(fra_code or "")
-            return (
-                _home_map_figure(build_fra_choropleth(document, language=language or "es")),
-                text("Mapa europeo de indicadores sociales", "European social indicators map", language=language),
-                _fra_copy(document, language),
-                "home-map-helper-text is-hidden",
-                _fra_source(document, language),
-                _fra_metrics(document, language),
-            )
-
         document = get_ilga_document_by_year(ilga_year)
         return (
             _home_map_figure(build_ilga_choropleth(document, language=language or "es")),
@@ -375,21 +243,14 @@ def register_home_callbacks(app: Dash) -> None:
     @app.callback(
         Output("home-country-select", "options"),
         Output("home-country-select", "value"),
-        Input("home-map-mode", "value"),
         Input("home-ilga-year", "value"),
-        Input("home-fra-indicator", "value"),
         State("home-country-select", "value"),
     )
     def update_home_country_options(
-        mode: str | None,
         ilga_year: int | None,
-        fra_code: str | None,
         current_countries: list[str] | None,
     ):
-        if mode == "fra":
-            options = _fra_country_options(get_fra_indicator_answers(fra_code or ""))
-        else:
-            options = _ilga_country_options(get_ilga_document_by_year(ilga_year))
+        options = _ilga_country_options(get_ilga_document_by_year(ilga_year))
         available = {str(option.get("value")) for option in options}
         selected = [
             country
@@ -672,23 +533,6 @@ def _ilga_country_options(document: dict[str, Any] | None) -> list[dict[str, str
         if country_name and country_code:
             countries.append({"label": f"{country_name} ({country_code})", "value": country_code})
     return sorted(countries, key=lambda item: item["label"])
-
-
-def _fra_country_options(document: dict[str, Any] | None) -> list[dict[str, str]]:
-    if not isinstance(document, dict):
-        return []
-    countries_by_code: dict[str, str] = {}
-    for answer in document.get("answers", []):
-        if not isinstance(answer, dict):
-            continue
-        country_name = str(answer.get("country") or "").strip()
-        country_code = normalize_country_code(answer.get("country_code"), country_name)
-        if country_name and country_code and country_code != "EU27":
-            countries_by_code.setdefault(country_code, country_name)
-    return [
-        {"label": f"{country} ({country_code})", "value": country_code}
-        for country_code, country in sorted(countries_by_code.items(), key=lambda item: item[1])
-    ]
 
 
 def _iso_from_map_click(click_data: dict[str, Any] | None) -> str:
@@ -1304,13 +1148,6 @@ def _control_field(
     )
 
 
-def _control_class(base_class: str, *, inactive: bool) -> str:
-    classes = ["home-control-field", base_class]
-    if inactive:
-        classes.append("is-inactive")
-    return " ".join(classes)
-
-
 def _metric(
     value: str,
     label_es: str,
@@ -1386,53 +1223,5 @@ def _ilga_metrics(document: dict[str, Any] | None, language: str | None = None) 
     ]
 
 
-def _fra_copy(document: dict[str, Any] | None, language: str | None = None):
-    if not isinstance(document, dict):
-        return text(
-            "Selecciona una categoría y un indicador social para representar sus valores por país.",
-            "Select a category and social indicator to map values by country.",
-            language=language,
-        )
-    label = (
-        f"{document.get('category', '')} - "
-        f"{document.get('specific_category', '')}"
-    ).strip(" -")
-    return text(label, label, language=language)
-
-
-def _fra_source(document: dict[str, Any] | None, language: str | None = None):
-    if not isinstance(document, dict):
-        return text("Fuente: FRA", "Source: FRA", language=language)
-    code = document.get("code", "indicador")
-    return text(f"Fuente: FRA - {code}", f"Source: FRA - {code}", language=language)
-
-
-def _fra_metrics(document: dict[str, Any] | None, language: str | None = None) -> list[Component]:
-    answers = document.get("answers", []) if isinstance(document, dict) else []
-    countries = {
-        str(answer.get("country") or "").strip()
-        for answer in answers
-        if isinstance(answer, dict) and answer.get("country")
-    }
-    percentages = [
-        float(answer["percentage"])
-        for answer in answers
-        if isinstance(answer, dict) and isinstance(answer.get("percentage"), (int, float))
-    ]
-    average = f"{sum(percentages) / len(percentages):.1f}%" if percentages else "-"
-    return [
-        _metric(str(len(countries)), "Países", "Countries", language),
-        _metric(str(len(percentages)), "Observaciones", "Observations", language),
-        _metric(average, "Media social", "Social average", language),
-    ]
-
-
 def _localized(es: str, en: str, language: str | None) -> str:
     return en if language == "en" else es
-
-
-def _fra_indicator_option_label(indicator: FraIndicator) -> str:
-    detail = indicator.specific_category.strip()
-    if detail:
-        return f"{detail} - {indicator.question}"
-    return indicator.question or indicator.code

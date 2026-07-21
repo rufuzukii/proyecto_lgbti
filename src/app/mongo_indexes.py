@@ -43,8 +43,9 @@ def initialize_mongo_indexes() -> None:
                     ("category", ASCENDING),
                     ("specific_category", ASCENDING),
                     ("question", ASCENDING),
+                    ("code", ASCENDING),
                 ],
-                name="fra_category_question",
+                name="fra_category_question_code",
             ),
         ]
     )

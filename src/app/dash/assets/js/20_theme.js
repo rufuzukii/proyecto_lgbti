@@ -29,14 +29,10 @@
     const selected = state.isSupportedTheme(theme) ? theme : "light";
     const lang = state.isSupportedLanguage(language) ? language : "es";
     const next = state.nextTheme(selected);
-    const label =
-      selected === "dark"
-        ? lang === "es"
-          ? "Modo oscuro"
-          : "Dark mode"
-        : lang === "es"
-          ? "Modo claro"
-          : "Light mode";
+    const labels = selected === "dark"
+      ? { es: "Modo oscuro", en: "Dark mode" }
+      : { es: "Modo claro", en: "Light mode" };
+    const label = labels[lang];
     const accessibleLabel =
       selected === "dark"
         ? lang === "es"
@@ -55,6 +51,12 @@
     });
 
     document.querySelectorAll("[data-theme-label]").forEach((labelNode) => {
+      if (labelNode.dataset.i18nEs !== labels.es) {
+        labelNode.dataset.i18nEs = labels.es;
+      }
+      if (labelNode.dataset.i18nEn !== labels.en) {
+        labelNode.dataset.i18nEn = labels.en;
+      }
       if (app.i18n && app.i18n.setTextNodeValue) {
         app.i18n.setTextNodeValue(labelNode, label);
       }

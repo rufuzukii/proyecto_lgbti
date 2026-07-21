@@ -240,105 +240,6 @@ def normalize_percentage(value: Any) -> float | None:
     return coerce_percentage(value)
 
 
-def build_ranking_chart(
-    ranking_rows: list[dict[str, Any]],
-    *,
-    source: str,
-    limit: int = 60,
-    selected_countries: list[str] | None = None,
-    language: str = "es",
-) -> go.Figure:
-    dataframe = pd.DataFrame(ranking_rows)
-    if dataframe.empty:
-        return empty_figure("No hay ranking para mostrar.")
-    if "answer" in dataframe.columns and dataframe["answer"].notna().any():
-        return _build_response_ranking_chart(
-            dataframe,
-            selected_countries=selected_countries,
-            limit=limit,
-            language=language,
-        )
-    dataframe = dataframe.sort_values("value", ascending=False).head(limit)
-    selected = _selected_country_keys(selected_countries)
-    dataframe["value_text"] = dataframe["value"].apply(format_percentage)
-    dataframe["value_label"] = ui_text("chart_value", language)
-    figure = go.Figure(
-        go.Bar(
-            x=dataframe["value"].iloc[::-1],
-            y=dataframe["country"].iloc[::-1],
-            orientation="h",
-            marker={
-                "color": [
-                    "#111827" if _country_key(row.iso, row.country) in selected
-                    else CHART_COLORS["fra" if source == "FRA" else "ilga"]
-                    for row in dataframe.iloc[::-1].itertuples()
-                ]
-            },
-            customdata=dataframe[["iso", "value_label", "value_text"]].iloc[::-1].fillna("").to_numpy(),
-            hovertemplate="<b>%{y}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>",
-        )
-    )
-    figure.update_layout(xaxis={"title": "Porcentaje", "range": [0, 100]}, yaxis={"title": ""})
-    _apply_base_layout(figure)
-    return figure
-
-
-def _build_response_ranking_chart(
-    dataframe: pd.DataFrame,
-    *,
-    selected_countries: list[str] | None,
-    limit: int,
-    language: str,
-) -> go.Figure:
-    dataframe = dataframe.copy()
-    dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
-    dataframe = dataframe.dropna(subset=["value", "country", "answer"])
-    if dataframe.empty:
-        return empty_figure("No hay ranking para mostrar.")
-    country_order = (
-        dataframe.groupby("country", as_index=False)
-        .agg(value=("value", "max"))
-        .sort_values("value", ascending=False)
-        .head(limit)["country"]
-        .tolist()
-    )
-    country_order = list(reversed(country_order))
-    dataframe = dataframe[dataframe["country"].isin(country_order)]
-    selected = _selected_country_keys(selected_countries)
-    figure = go.Figure()
-    for answer, rows in dataframe.groupby("answer", sort=True):
-        rows = rows.set_index("country").reindex(country_order).reset_index()
-        selected_rows = [
-            _country_key(row.iso, row.country) in selected
-            for row in rows.itertuples()
-        ]
-        figure.add_trace(
-            go.Bar(
-                x=rows["value"],
-                y=rows["country"],
-                orientation="h",
-                name=str(answer),
-                marker={
-                    "color": _response_color(_response_key(answer)),
-                    "line": {
-                        "color": ["#111827" if is_selected else "rgba(0,0,0,0)" for is_selected in selected_rows],
-                        "width": [2 if is_selected else 0 for is_selected in selected_rows],
-                    },
-                },
-                hovertemplate=f"<b>%{{y}}</b><br>{answer}: %{{x:.2f}}%<extra></extra>",
-            )
-        )
-    figure.update_layout(
-        barmode="group",
-        xaxis={"title": _chart_text(language, "Porcentaje", "Percentage"), "range": [0, 100]},
-        yaxis={"title": "", "categoryorder": "array", "categoryarray": country_order},
-        height=max(520, len(country_order) * 23),
-    )
-    _apply_base_layout(figure, margin={"l": 115, "r": 25, "t": 20, "b": 60})
-    figure.update_layout(showlegend=True, legend={"orientation": "h", "y": -0.08})
-    return figure
-
-
 def build_fra_distribution_chart(data_rows: list[dict[str, Any]]) -> go.Figure:
     dataframe = pd.DataFrame(data_rows)
     if dataframe.empty or "answer" not in dataframe:
@@ -372,6 +273,8 @@ def build_fra_response_comparison_chart(
     selected_keys = _selected_country_keys(selected_countries)
     if mode == "stacked_percentage":
         figure = _build_stacked_response_chart(dataframe, selected_keys, language=language)
+    elif mode == "missing_numeric":
+        figure = _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
     elif mode == "categorical":
         figure = _build_categorical_response_chart(dataframe, selected_keys)
     else:
@@ -389,7 +292,11 @@ def summarize_response_comparison(data_rows: list[dict[str, Any]]) -> dict[str, 
     labels = _response_labels(dataframe)
     distribution: list[dict[str, Any]] = []
     if mode == "stacked_percentage":
-        pivot = _response_percentage_pivot(dataframe)
+        incomplete = _incomplete_numeric_countries(dataframe)
+        incomplete_keys = set(incomplete.get("country_key", pd.Series(dtype=str)).tolist())
+        pivot = _response_percentage_pivot(
+            dataframe[~dataframe["country_key"].isin(incomplete_keys)]
+        )
         normalized = _normalize_percentage_pivot(pivot)
         means = normalized.mean(axis=0).dropna().sort_values(ascending=False)
         distribution = [
@@ -480,6 +387,7 @@ def _response_comparison_dataframe(data_rows: list[dict[str, Any]]) -> pd.DataFr
         )
     else:
         dataframe["numeric_value"] = None
+    dataframe["numeric_measure_present"] = numeric_source is not None
     dataframe["country_key"] = dataframe.apply(
         lambda row: _country_key(row.get("iso"), row.get("country")),
         axis=1,
@@ -490,6 +398,8 @@ def _response_comparison_dataframe(data_rows: list[dict[str, Any]]) -> pd.DataFr
 def _response_comparison_mode(dataframe: pd.DataFrame) -> str:
     has_numeric = dataframe["numeric_value"].notna().any()
     if not has_numeric:
+        if dataframe.get("numeric_measure_present", pd.Series(dtype=bool)).any():
+            return "missing_numeric"
         return "categorical"
     response_count = int(dataframe["response_key"].nunique())
     responses_per_country = dataframe.groupby("country_key")["response_key"].nunique()
@@ -504,7 +414,12 @@ def _build_stacked_response_chart(
     *,
     language: str = "es",
 ) -> go.Figure:
-    pivot = _response_percentage_pivot(dataframe)
+    missing = _incomplete_numeric_countries(dataframe)
+    missing_keys = set(missing.get("country_key", pd.Series(dtype=str)).tolist())
+    complete_dataframe = dataframe[~dataframe["country_key"].isin(missing_keys)]
+    pivot = _response_percentage_pivot(complete_dataframe)
+    if pivot.empty:
+        return _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
     labels = _response_labels(dataframe)
     normalized = _normalize_percentage_pivot(pivot)
 
@@ -534,15 +449,31 @@ def _build_stacked_response_chart(
                 hovertemplate="<b>%{y}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>",
             )
         )
+    _add_missing_country_bars(
+        figure,
+        missing,
+        selected_keys,
+        language=language,
+    )
     _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 95})
     figure.update_layout(
         barmode="stack",
         xaxis={"title": "Distribución de respuestas", "range": [0, 100], "ticksuffix": "%"},
-        yaxis={"title": "", "automargin": True},
+        yaxis={
+            "title": "",
+            "automargin": True,
+            "categoryorder": "array",
+            "categoryarray": [*missing["country"].tolist(), *countries],
+        },
         legend={"title": {"text": "Respuesta"}, "orientation": "h", "y": -0.18},
         showlegend=True,
     )
-    _add_selected_country_annotations(figure, countries, isos, selected_keys)
+    _add_selected_country_annotations(
+        figure,
+        [*countries, *missing.get("country", pd.Series(dtype=str)).tolist()],
+        [*isos, *missing.get("iso", pd.Series(dtype=str)).tolist()],
+        selected_keys,
+    )
     return figure
 
 
@@ -552,13 +483,20 @@ def _build_numeric_response_chart(
     *,
     language: str = "es",
 ) -> go.Figure:
+    missing = _incomplete_numeric_countries(dataframe)
+    missing_keys = set(missing.get("country_key", pd.Series(dtype=str)).tolist())
     grouped = (
-        dataframe[dataframe["numeric_value"].notna()]
+        dataframe[
+            dataframe["numeric_value"].notna()
+            & ~dataframe["country_key"].isin(missing_keys)
+        ]
         .groupby(["country", "iso", "country_key"], dropna=False)
         .agg(value=("numeric_value", "mean"), response_label=("response_label", "first"), response_key=("response_key", "first"))
         .reset_index()
         .sort_values("value", ascending=True)
     )
+    if grouped.empty and not missing.empty:
+        return _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
     if grouped.empty:
         return empty_figure("No hay valores numéricos comparables para esta consulta.")
 
@@ -582,15 +520,126 @@ def _build_numeric_response_chart(
             showlegend=True,
         )
     )
+    _add_missing_country_bars(
+        figure,
+        missing,
+        selected_keys,
+        language=language,
+    )
     _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 55})
     figure.update_layout(
         xaxis={"title": "Valor", "range": [0, 100]},
-        yaxis={"title": "", "automargin": True},
+        yaxis={
+            "title": "",
+            "automargin": True,
+            "categoryorder": "array",
+            "categoryarray": [*missing["country"].tolist(), *grouped["country"].tolist()],
+        },
         legend={"title": {"text": "Respuesta"}, "orientation": "h", "y": -0.12},
         showlegend=True,
     )
-    _add_selected_country_annotations(figure, grouped["country"].tolist(), grouped["iso"].tolist(), selected_keys)
+    _add_selected_country_annotations(
+        figure,
+        [*grouped["country"].tolist(), *missing.get("country", pd.Series(dtype=str)).tolist()],
+        [*grouped["iso"].tolist(), *missing.get("iso", pd.Series(dtype=str)).tolist()],
+        selected_keys,
+    )
     return figure
+
+
+def _build_missing_numeric_response_chart(
+    dataframe: pd.DataFrame,
+    selected_keys: set[str],
+    *,
+    language: str,
+) -> go.Figure:
+    missing = _incomplete_numeric_countries(dataframe)
+    if missing.empty:
+        return empty_figure("No hay valores numéricos comparables para esta consulta.")
+    figure = go.Figure()
+    _add_missing_country_bars(
+        figure,
+        missing,
+        selected_keys,
+        language=language,
+    )
+    _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 55})
+    figure.update_layout(
+        xaxis={"title": _chart_text(language, "Valor", "Value"), "range": [0, 100]},
+        yaxis={"title": "", "automargin": True},
+        legend={"title": {"text": _chart_text(language, "Respuesta", "Answer")}},
+        showlegend=True,
+    )
+    _add_selected_country_annotations(
+        figure,
+        missing["country"].tolist(),
+        missing["iso"].tolist(),
+        selected_keys,
+    )
+    return figure
+
+
+def _incomplete_numeric_countries(dataframe: pd.DataFrame) -> pd.DataFrame:
+    columns = ["country", "iso", "country_key"]
+    if (
+        dataframe.empty
+        or "numeric_value" not in dataframe
+        or not dataframe.get("numeric_measure_present", pd.Series(dtype=bool)).any()
+    ):
+        return pd.DataFrame(columns=columns)
+    response_keys = dataframe["response_key"].astype(str)
+    normal_response_mask = ~response_keys.apply(_is_missing_response_label)
+    expected_responses = sorted(response_keys[normal_response_mask].dropna().unique().tolist())
+    availability = (
+        dataframe[normal_response_mask]
+        .groupby(["country_key", "response_key"])["numeric_value"]
+        .apply(lambda values: values.notna().any())
+        .unstack(fill_value=False)
+        .reindex(columns=expected_responses, fill_value=False)
+    )
+    all_country_keys = pd.Index(dataframe["country_key"].dropna().unique())
+    availability = availability.reindex(all_country_keys, fill_value=False)
+    incomplete = ~availability.all(axis=1) if expected_responses else pd.Series(True, index=all_country_keys)
+    explicitly_missing = set(
+        dataframe.loc[
+            response_keys.apply(_is_missing_response_label) | dataframe["numeric_value"].isna(),
+            "country_key",
+        ].tolist()
+    )
+    missing_keys = set(incomplete[incomplete].index).union(explicitly_missing)
+    return (
+        dataframe[dataframe["country_key"].isin(missing_keys)]
+        .drop_duplicates("country_key")[columns]
+        .sort_values("country")
+        .reset_index(drop=True)
+    )
+
+
+def _add_missing_country_bars(
+    figure: go.Figure,
+    missing: pd.DataFrame,
+    selected_keys: set[str],
+    *,
+    language: str,
+) -> None:
+    if missing.empty:
+        return
+    message = ui_text("chart_not_enough_information", language)
+    selected = missing["country_key"].isin(selected_keys).tolist()
+    figure.add_trace(
+        go.Bar(
+            x=[100] * len(missing),
+            y=missing["country"],
+            name=message,
+            orientation="h",
+            marker={
+                "color": MISSING_PERCENTAGE_COLOR,
+                "line": _selected_marker_line(selected),
+            },
+            customdata=[[iso, message] for iso in missing["iso"]],
+            hovertemplate="<b>%{y}</b><br>%{customdata[1]}<extra></extra>",
+        )
+    )
 
 
 def _build_categorical_response_chart(dataframe: pd.DataFrame, selected_keys: set[str]) -> go.Figure:
@@ -609,7 +658,14 @@ def _build_categorical_response_chart(dataframe: pd.DataFrame, selected_keys: se
                 y=rows["country"],
                 name=labels.get(str(response_key), str(response_key)),
                 orientation="h",
-                marker={"color": _response_color(str(response_key)), "line": _selected_marker_line(selected)},
+                marker={
+                    "color": (
+                        MISSING_PERCENTAGE_COLOR
+                        if _is_missing_response_label(labels.get(str(response_key), str(response_key)))
+                        else _response_color(str(response_key))
+                    ),
+                    "line": _selected_marker_line(selected),
+                },
                 customdata=rows[["iso", "response_label"]].fillna("").to_numpy(),
                 hovertemplate="<b>%{y}</b><br>ISO: %{customdata[0]}<br>Respuesta: %{customdata[1]}<extra></extra>",
             )
@@ -708,9 +764,22 @@ def _selected_country_keys(selected_countries: list[str] | None) -> set[str]:
 
 
 def _response_color(response_key: str) -> str:
+    if _is_missing_response_label(response_key):
+        return MISSING_PERCENTAGE_COLOR
     digest = hashlib.sha256(response_key.encode("utf-8")).hexdigest()
     index = int(digest[:8], 16) % len(RESPONSE_COLOR_PALETTE)
     return RESPONSE_COLOR_PALETTE[index]
+
+
+def _is_missing_response_label(value: Any) -> bool:
+    key = " ".join(str(value or "").strip().casefold().split())
+    return key in {
+        "no hay suficiente información",
+        "there is not enough information",
+        "not enough information",
+        "insufficient information",
+        "datos insuficientes",
+    }
 
 
 def _selected_marker_line(selected: list[bool]) -> dict[str, Any]:
@@ -974,53 +1043,6 @@ def build_country_comparison_chart(
     )
     figure.update_layout(xaxis={"title": _chart_text(language, "Valor (%)", "Value (%)"), "range": [0, 105]}, yaxis={"title": ""})
     _apply_base_layout(figure, margin={"l": 110, "r": 45, "t": 20, "b": 55})
-    return figure
-
-
-def build_filter_analysis_chart(
-    data_rows: list[dict[str, Any]],
-    selected_countries: list[str] | None = None,
-    language: str = "es",
-) -> go.Figure:
-    dataframe = pd.DataFrame(data_rows)
-    if dataframe.empty or "percentage" not in dataframe:
-        return empty_figure("No hay segmentaciones comparables para esta consulta.")
-    selected = _selected_country_keys(selected_countries)
-    if selected:
-        dataframe = dataframe[
-            dataframe.apply(lambda row: _country_key(row.get("iso"), row.get("country")) in selected, axis=1)
-        ]
-    if "segment" not in dataframe:
-        dataframe["segment"] = dataframe.apply(
-            lambda row: next(
-                (str(value) for value in (row.get("filter_a"), row.get("filter_b")) if str(value or "") not in {"", "All"}),
-                "Todos",
-            ),
-            axis=1,
-        )
-    dataframe["percentage"] = pd.to_numeric(dataframe["percentage"], errors="coerce")
-    grouped = dataframe.dropna(subset=["percentage"]).groupby(["segment", "answer"], as_index=False)["percentage"].mean()
-    if grouped.empty:
-        return empty_figure("No hay segmentaciones comparables para esta consulta.")
-    figure = go.Figure()
-    for answer, rows in grouped.groupby("answer"):
-        figure.add_trace(
-            go.Bar(
-                x=rows["segment"],
-                y=rows["percentage"],
-                name=str(answer),
-                marker={"color": _response_color(_response_key(answer))},
-                hovertemplate="<b>%{x}</b><br>%{y:.2f}%<extra></extra>",
-            )
-        )
-    figure.update_layout(
-        barmode="group",
-        xaxis={"title": _chart_text(language, "Segmento", "Segment")},
-        yaxis={"title": _chart_text(language, "Valor (%)", "Value (%)"), "range": [0, 100]},
-        showlegend=True,
-    )
-    _apply_base_layout(figure, margin={"l": 50, "r": 20, "t": 20, "b": 90})
-    figure.update_layout(showlegend=True, legend={"orientation": "h", "y": -0.25})
     return figure
 
 

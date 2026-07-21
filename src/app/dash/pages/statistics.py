@@ -23,11 +23,9 @@ from app.analytics.statistics_charts import (
     build_eu_average_comparison_chart,
     build_europe_choropleth,
     build_europe_distribution_chart,
-    build_filter_analysis_chart,
     build_fra_response_comparison_chart,
     build_ilga_criteria_heatmap,
     build_legal_reality_gap_chart,
-    build_ranking_chart,
     build_temporal_evolution_chart,
     empty_figure,
     summarize_response_comparison,
@@ -115,7 +113,6 @@ def build_statistics_layout() -> Component:
                             html.Section(id="stats-metric-row", className="stats-metric-row stats-executive-grid"),
                             html.Section(
                                 [
-                                    _graph_panel("Ranking europeo", "European ranking", "stats-ranking-graph", placeholder),
                                     html.Div(
                                         _graph_panel("Evolución temporal", "Temporal evolution", "stats-temporal-graph", placeholder),
                                         id="stats-temporal-panel",
@@ -124,7 +121,6 @@ def build_statistics_layout() -> Component:
                                     _graph_panel("Distribución europea", "European distribution", "stats-distribution-graph", placeholder),
                                     _graph_panel("Comparación con la media de la UE", "EU average comparison", "stats-average-graph", placeholder),
                                     _graph_panel("Comparación entre países", "Country comparison", "stats-country-comparison-graph", placeholder),
-                                    _graph_panel("Análisis por filtros", "Filter analysis", "stats-filter-analysis-graph", placeholder),
                                     html.Div(
                                         [
                                             html.H2(text("Detalles de respuestas", "Response details")),
@@ -202,7 +198,7 @@ def register_statistics_callbacks(app: Dash) -> None:
             year,
             "stats-source-controls" if is_fra else "stats-source-controls is-hidden",
             "stats-source-controls is-hidden" if is_fra else "stats-source-controls",
-            "stats-filter-card stats-filter-card-wide stats-fra-only" if is_fra else "stats-filter-card stats-filter-card-wide stats-fra-only is-hidden",
+            _fra_segmentation_card_class(source),
             year_class,
         )
 
@@ -313,6 +309,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("fra-identity-type", "value"),
         Input("fra-identity-value", "value"),
         Input("ilga-criterion-select", "value"),
+        State("stats-fra-control-store", "data"),
     )
     def load_statistics_data(
         source: str | None,
@@ -325,10 +322,23 @@ def register_statistics_callbacks(app: Dash) -> None:
         identity_type: str | None,
         identity_value: str | None,
         criterion: str | None,
+        control_payload: dict[str, Any] | None,
     ) -> dict[str, Any]:
         if source == "fra":
             if not _has_valid_fra_selection(category, fra_code):
                 return _empty_data_result("Selecciona una categoría y una pregunta para cargar las estadísticas.")
+            controls_ready = _fra_controls_are_ready(
+                category,
+                fra_code,
+                control_payload,
+                answer,
+                demographic_type,
+                demographic_value,
+                identity_type,
+                identity_value,
+            )
+            if ctx.triggered_id == "stats-category-select" or not controls_ready:
+                return _empty_data_result("Preparando los controles de la pregunta seleccionada.")
             result = get_fra_statistics(
                 FraStatisticsQuery(
                     year=_safe_int(year),
@@ -390,13 +400,11 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-map-graph", "figure"),
         Output("stats-clear-countries", "disabled"),
         Output("stats-metric-row", "children"),
-        Output("stats-ranking-graph", "figure"),
         Output("stats-temporal-graph", "figure"),
         Output("stats-temporal-panel", "className"),
         Output("stats-distribution-graph", "figure"),
         Output("stats-average-graph", "figure"),
         Output("stats-country-comparison-graph", "figure"),
-        Output("stats-filter-analysis-graph", "figure"),
         Output("stats-detail-summary", "children"),
         Output("stats-response-detail-graph", "figure"),
         Output("stats-response-panel", "className"),
@@ -493,7 +501,7 @@ def _controls(
                     ),
                 ],
                 element_id="stats-fra-segmentation-card",
-                class_name="stats-filter-card stats-filter-card-wide stats-fra-only stats-segmentation-card",
+                class_name=_fra_segmentation_card_class("fra"),
             ),
         ],
         className="stats-controls",
@@ -512,6 +520,18 @@ def _field(
     if element_id:
         props["id"] = element_id
     return html.Div([label_node, component], **props)
+
+
+def _fra_segmentation_card_class(source: str | None) -> str:
+    classes = [
+        "stats-filter-card",
+        "stats-filter-card-wide",
+        "stats-fra-only",
+        "stats-segmentation-card",
+    ]
+    if source != "fra":
+        classes.append("is-hidden")
+    return " ".join(classes)
 
 
 def _control_group(
@@ -674,9 +694,7 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             not bool(selected),
             [],
             empty,
-            empty,
             "stats-panel-wrapper is-hidden",
-            empty,
             empty,
             empty,
             empty,
@@ -696,20 +714,16 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
 
     source = str(result.get("source") or "")
     ranking = list(result.get("ranking") or [])
-    response_ranking = list(result.get("response_ranking") or ranking)
     data = list(result.get("data") or [])
     detail = list(result.get("detail_data") or data)
-    segmentation_data = list(result.get("segmentation_data") or detail)
     history = list(result.get("history") or [])
     combined = list(result.get("combined") or [])
     scope = _selection_scope(ranking, selected)
     map_figure = build_europe_choropleth(ranking, source=source, selected_isos=selected, language=language)
-    ranking_figure = build_ranking_chart(response_ranking, source=source, selected_countries=selected, language=language)
     temporal = build_temporal_evolution_chart(history, selected, language)
     distribution = build_europe_distribution_chart(ranking, selected, language)
     average = build_eu_average_comparison_chart(ranking, selected, language)
     comparison = build_country_comparison_chart(ranking, selected, language)
-    filter_analysis = build_filter_analysis_chart(segmentation_data, selected, language) if source == "FRA" else build_ilga_criteria_heatmap(data, language=language)
     response = build_fra_response_comparison_chart(detail, selected_countries=selected, language=language) if source == "FRA" else build_ilga_criteria_heatmap(data, language=language)
     combined_metrics = _combined_metric_cards(combined)
     table_rows = _table_rows(result)
@@ -725,13 +739,11 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
         map_figure,
         not bool(selected),
         _executive_metric_cards(ranking, selected, history),
-        ranking_figure,
         temporal,
         "stats-panel-wrapper" if source == "ILGA-Europe" else "stats-panel-wrapper is-hidden",
         distribution,
         average,
         comparison,
-        filter_analysis,
         _detail_summary(source, detail),
         response,
         "stats-panel" if source == "FRA" else "stats-panel is-hidden",
@@ -918,6 +930,20 @@ def _effective_query_mode(_mode: str | None, selected_countries: list[str]) -> s
 
 def _has_valid_fra_selection(category: str | None, question_code: str | None) -> bool:
     return bool(str(category or "").strip() and str(question_code or "").strip())
+
+
+def _fra_controls_are_ready(
+    category: str | None,
+    question_code: str | None,
+    payload: dict[str, Any] | None,
+    *values: Any,
+) -> bool:
+    controls = payload or {}
+    return (
+        str(controls.get("code") or "") == str(question_code or "")
+        and str(controls.get("category") or "") == str(category or "")
+        and all(value is not None for value in values)
+    )
 
 
 def _empty_data_result(message: str) -> dict[str, Any]:

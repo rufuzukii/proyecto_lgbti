@@ -3,6 +3,12 @@
   const state = app.state;
 
   document.addEventListener("click", (event) => {
+    const navigationToggle = event.target.closest("[data-nav-menu-toggle]");
+    if (navigationToggle) {
+      toggleNavigation(navigationToggle);
+      return;
+    }
+
     const languageButton = event.target.closest("[data-language-toggle]");
     if (languageButton) {
       const dashLanguageToggle = document.getElementById("app-language-toggle");
@@ -30,6 +36,17 @@
     if (uploadDismiss) {
       clearUploadFileInput();
       return;
+    }
+
+    const navigationLink = event.target.closest(".nav-menu a");
+    if (navigationLink) {
+      closeNavigation(navigationLink.closest(".navbar"));
+      return;
+    }
+
+    const openNavigation = document.querySelector(".navbar.is-menu-open");
+    if (openNavigation && !openNavigation.contains(event.target)) {
+      closeNavigation(openNavigation);
     }
   });
 
@@ -60,6 +77,7 @@
     if (event.key !== "Escape") {
       return;
     }
+    closeNavigation(document.querySelector(".navbar.is-menu-open"));
     const uploadDismiss = document.querySelector("[data-upload-dismiss]");
     if (uploadDismiss) {
       uploadDismiss.click();
@@ -89,6 +107,14 @@
   let pendingRefreshTargets = emptyRefreshTargets();
   const observer = new MutationObserver((mutations) => {
     const targets = refreshTargetsFromMutations(mutations);
+    if (targets.language) {
+      app.i18n.applyLanguage(state.currentLanguage());
+      targets.language = false;
+      targets.themeControls = false;
+    } else if (targets.themeControls) {
+      app.theme.applyToggleLabels(state.currentTheme(), state.currentLanguage());
+      targets.themeControls = false;
+    }
     if (!hasRefreshTarget(targets)) {
       return;
     }
@@ -119,13 +145,27 @@
     attributeFilter: ["data-i18n-es", "data-i18n-en"],
   });
 
+  app.i18n.applyLanguage(state.currentLanguage());
   app.theme.applyTheme(state.currentTheme());
+
+  const compactNavigation = window.matchMedia("(max-width: 1120px)");
+  const handleNavigationBreakpoint = (event) => {
+    if (!event.matches) {
+      closeNavigation(document.querySelector(".navbar.is-menu-open"));
+    }
+  };
+  if (typeof compactNavigation.addEventListener === "function") {
+    compactNavigation.addEventListener("change", handleNavigationBreakpoint);
+  } else if (typeof compactNavigation.addListener === "function") {
+    compactNavigation.addListener(handleNavigationBreakpoint);
+  }
 
   function emptyRefreshTargets() {
     return {
       language: false,
       segmentedControls: false,
       plotly: false,
+      themeControls: false,
     };
   }
 
@@ -134,11 +174,12 @@
       language: first.language || second.language,
       segmentedControls: first.segmentedControls || second.segmentedControls,
       plotly: first.plotly || second.plotly,
+      themeControls: first.themeControls || second.themeControls,
     };
   }
 
   function hasRefreshTarget(targets) {
-    return targets.language || targets.segmentedControls || targets.plotly;
+    return targets.language || targets.segmentedControls || targets.plotly || targets.themeControls;
   }
 
   function refreshTargetsFromMutations(mutations) {
@@ -172,6 +213,9 @@
           targets.plotly ||
           nodeOrDescendantMatches(node, ".js-plotly-plot") ||
           Boolean(node.closest && node.closest(".js-plotly-plot"));
+        targets.themeControls =
+          targets.themeControls ||
+          nodeOrDescendantMatches(node, "[data-theme-toggle], [data-theme-option], [data-theme-label]");
       });
     });
     return targets;
@@ -232,5 +276,33 @@
     if (input) {
       input.value = "";
     }
+  }
+
+  function toggleNavigation(button) {
+    const navigation = button.closest(".navbar");
+    if (!navigation) {
+      return;
+    }
+    setNavigationState(navigation, !navigation.classList.contains("is-menu-open"));
+  }
+
+  function closeNavigation(navigation) {
+    if (navigation) {
+      setNavigationState(navigation, false);
+    }
+  }
+
+  function setNavigationState(navigation, isOpen) {
+    navigation.classList.toggle("is-menu-open", isOpen);
+    const button = navigation.querySelector("[data-nav-menu-toggle]");
+    if (!button) {
+      return;
+    }
+    button.setAttribute("aria-expanded", String(isOpen));
+    const english = state.currentLanguage() === "en";
+    button.setAttribute(
+      "aria-label",
+      isOpen ? (english ? "Close menu" : "Cerrar menú") : (english ? "Open menu" : "Abrir menú")
+    );
   }
 })(window, document);

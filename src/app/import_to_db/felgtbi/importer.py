@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import html
+import importlib
 import io
 import json
+import logging
 import os
 import re
+import time
 import unicodedata
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +30,48 @@ SPAIN_COUNTRY = "Spain"
 SPAIN_COUNTRY_CODE = "ES"
 FIGURE_IMAGE_MIME_TYPE = "image/webp"
 FIGURE_IMAGE_EXTENSION = "webp"
+logger = logging.getLogger(__name__)
+
+
+class PdfExtractionError(RuntimeError):
+    pass
+
+
+class StorageUploadError(RuntimeError):
+    pass
+
+
+def _peak_memory_mb() -> float | None:
+    try:
+        resource_module = importlib.import_module("resource")
+        peak = float(resource_module.getrusage(resource_module.RUSAGE_SELF).ru_maxrss)
+        return round(peak / 1024, 2)
+    except (AttributeError, ImportError, OSError, ValueError):
+        return None
+
+
+def _pdf_import_log(
+    level: int,
+    event: str,
+    *,
+    upload_id: str,
+    file_name: str,
+    phase: str,
+    started_at: float,
+    exc_info: bool = False,
+    **fields: Any,
+) -> None:
+    payload = {
+        "event": event,
+        "upload_id": upload_id or None,
+        "filename": Path(file_name).name,
+        "phase": phase,
+        "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 2),
+        "peak_memory_mb": _peak_memory_mb(),
+        "worker_pid": os.getpid(),
+        **fields,
+    }
+    logger.log(level, "pdf_import_event %s", json.dumps(payload, ensure_ascii=True, default=str), exc_info=exc_info)
 
 YEAR_PATTERN = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
 PERCENT_PATTERN = re.compile(r"(?<!\d)(\d{1,3}(?:[,.]\d{1,2})?)\s*%")
@@ -317,18 +363,137 @@ def parse_felgtbi_pdf_bytes(
     *,
     file_name: str = "felgtbi.pdf",
     year: int | None = None,
+    require_storage: bool = False,
+    upload_id: str = "",
 ) -> list[dict]:
-    pages = extract_pdf_pages(pdf_bytes)
-    documents = parse_felgtbi_text_pages(pages, file_name=file_name, year=year)
-    _attach_source_document_metadata(
-        documents,
+    started_at = time.perf_counter()
+    phase = "pdf_open_and_extract"
+    _pdf_import_log(
+        logging.INFO,
+        "started",
+        upload_id=upload_id,
         file_name=file_name,
-        source_document_id=_build_pdf_source_document_id(pdf_bytes, file_name),
-        overwrite_document_id=True,
+        phase=phase,
+        started_at=started_at,
+        size_bytes=len(pdf_bytes),
     )
-    _attach_page_assets(pdf_bytes, file_name, documents)
-    _refresh_content_html(documents)
-    return documents
+    try:
+        phase_started = time.perf_counter()
+        pages = extract_pdf_pages(pdf_bytes)
+        page_count = len(pages)
+        _pdf_import_log(
+            logging.INFO,
+            "phase_completed",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            phase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+            page_count=page_count,
+        )
+
+        phase = "text_and_figure_classification"
+        phase_started = time.perf_counter()
+        _pdf_import_log(
+            logging.INFO,
+            "phase_started",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+        )
+        documents = parse_felgtbi_text_pages(pages, file_name=file_name, year=year)
+        del pages
+        _attach_source_document_metadata(
+            documents,
+            file_name=file_name,
+            source_document_id=_build_pdf_source_document_id(pdf_bytes, file_name),
+            overwrite_document_id=True,
+        )
+        _pdf_import_log(
+            logging.INFO,
+            "phase_completed",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            phase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+            document_count=len(documents),
+        )
+
+        phase = "supabase_figure_upload"
+        phase_started = time.perf_counter()
+        _pdf_import_log(
+            logging.INFO,
+            "phase_started",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+        )
+        asset_summary = _attach_page_assets(
+            pdf_bytes,
+            file_name,
+            documents,
+            require_storage=require_storage,
+            upload_id=upload_id,
+        )
+        _pdf_import_log(
+            logging.INFO,
+            "phase_completed",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            phase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+            supabase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+            asset_summary=asset_summary,
+        )
+
+        phase = "semantic_cleanup"
+        phase_started = time.perf_counter()
+        _pdf_import_log(
+            logging.INFO,
+            "phase_started",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+        )
+        _refresh_content_html(documents)
+        _pdf_import_log(
+            logging.INFO,
+            "phase_completed",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            phase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+        )
+        _pdf_import_log(
+            logging.INFO,
+            "completed",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            page_count=page_count,
+            document_count=len(documents),
+        )
+        return documents
+    except Exception as exc:
+        _pdf_import_log(
+            logging.ERROR,
+            "failed",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            exc_info=True,
+            exception_type=type(exc).__name__,
+            exception_message=str(exc)[:500],
+        )
+        raise
 
 
 def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
@@ -365,7 +530,6 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
                     "figures": _extract_page_figures(dict_blocks),
                     "width": page_width,
                     "height": page_height,
-                    "drawing_count": len(page.get_drawings()),
                 }
             )
     return pages
@@ -417,7 +581,14 @@ def _bbox_overlap_area(first: list[float], second: list[float]) -> float:
     return width * height
 
 
-def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict]) -> None:
+def _attach_page_assets(
+    pdf_bytes: bytes,
+    file_name: str,
+    documents: list[dict],
+    *,
+    require_storage: bool = False,
+    upload_id: str = "",
+) -> dict[str, int]:
     asset_documents = [
         document
         for document in documents
@@ -425,16 +596,20 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
         and (document.get("visual_context") or {}).get("bbox")
     ]
     if not asset_documents:
-        return
+        return {"page_count": 0, "figure_count": 0, "uploaded": 0, "reused": 0, "failed": 0}
 
     try:
         import fitz
-    except ImportError:
-        return
+    except ImportError as exc:
+        if require_storage:
+            raise PdfExtractionError("missing_pdf_dependency") from exc
+        return {"page_count": 0, "figure_count": 0, "uploaded": 0, "reused": 0, "failed": 0}
 
     rendered_assets: dict[str, dict[str, Any]] = {}
+    counters = {"page_count": 0, "figure_count": 0, "uploaded": 0, "reused": 0, "failed": 0}
 
     with fitz.open(stream=pdf_bytes, filetype="pdf") as pdf_document:
+        counters["page_count"] = int(pdf_document.page_count)
         for source_document in asset_documents:
             context = source_document.get("visual_context")
             if not isinstance(context, dict):
@@ -452,18 +627,39 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
                 continue
             page = pdf_document[page_number - 1]
             rect = fitz.Rect(*bbox)
+            scale = _figure_render_scale(bbox[2] - bbox[0], bbox[3] - bbox[1])
             pixmap = page.get_pixmap(
-                matrix=fitz.Matrix(2.0, 2.0),
+                matrix=fitz.Matrix(scale, scale),
                 clip=rect,
                 alpha=False,
             )
             image_bytes, width, height, mime_type = _pixmap_image_bytes(pixmap)
             checksum = hashlib.sha256(image_bytes).hexdigest()
+            upload_started = time.perf_counter()
             upload = _upload_figure_to_supabase(
                 image_bytes=image_bytes,
                 storage_path=storage_path,
                 mime_type=mime_type,
                 checksum=checksum,
+            )
+            counters["figure_count"] += 1
+            status = str(upload.get("status") or "failed")
+            if status not in {"uploaded", "reused"}:
+                status = "failed"
+            counters[status] += 1
+            _pdf_import_log(
+                logging.INFO if status != "failed" else logging.ERROR,
+                "figure_upload_completed",
+                upload_id=upload_id,
+                file_name=file_name,
+                phase="supabase_figure_upload",
+                started_at=upload_started,
+                storage_path=storage_path,
+                image_size_bytes=len(image_bytes),
+                width=width,
+                height=height,
+                status=status,
+                error=upload.get("error"),
             )
             if upload.get("status") in {"uploaded", "reused"}:
                 rendered_assets[asset_id] = {
@@ -473,6 +669,7 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
                     "size": len(image_bytes),
                     "checksum": checksum,
                 }
+                del pixmap, image_bytes
                 continue
 
             rendered_assets[asset_id] = {
@@ -486,6 +683,11 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
                 "size": len(image_bytes),
                 "checksum": checksum,
             }
+            del pixmap, image_bytes
+            if require_storage:
+                raise StorageUploadError(
+                    f"figure_upload_failed:{upload.get('error') or 'unknown'}:{storage_path}"
+                )
 
     for document in documents:
         context = document.get("visual_context")
@@ -503,6 +705,17 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
             figure["storage_path"] = str(asset.get("storage_path") or storage_path)
             figure["width"] = int(asset.get("width") or 0)
             figure["height"] = int(asset.get("height") or 0)
+    return counters
+
+
+def _figure_render_scale(width: float, height: float) -> float:
+    try:
+        configured_max_pixels = int(os.getenv("PDF_FIGURE_MAX_PIXELS", "2500000"))
+    except ValueError:
+        configured_max_pixels = 2_500_000
+    max_pixels = max(250_000, configured_max_pixels)
+    source_pixels = max(1.0, float(width) * float(height))
+    return round(max(1.0, min(2.0, (max_pixels / source_pixels) ** 0.5)), 3)
 
 
 def _safe_bbox(value: Any) -> list[float] | None:
@@ -528,7 +741,7 @@ def _pixmap_image_bytes(pixmap: Any) -> tuple[bytes, int, int, str]:
     if image.mode != "RGB":
         image = image.convert("RGB")
     output = io.BytesIO()
-    image.save(output, format="WEBP", quality=90, method=6)
+    image.save(output, format="WEBP", quality=88, method=4)
     return output.getvalue(), image.width, image.height, FIGURE_IMAGE_MIME_TYPE
 
 
@@ -548,7 +761,7 @@ def _upload_figure_to_supabase(
             "storage_path": storage_path,
         }
     try:
-        import boto3
+        from botocore.exceptions import ClientError
     except ImportError:
         return {
             "status": "failed",
@@ -557,29 +770,40 @@ def _upload_figure_to_supabase(
             "storage_path": storage_path,
         }
 
-    client = boto3.client(
-        "s3",
-        endpoint_url=config["endpoint"],
-        aws_access_key_id=config["access_key"],
-        aws_secret_access_key=config["secret_key"],
-        region_name=config["region"],
+    client = _supabase_s3_client(
+        config["endpoint"],
+        config["access_key"],
+        config["secret_key"],
+        config["region"],
     )
-    status = "uploaded"
+    should_upload = True
     try:
         existing = client.head_object(Bucket=config["bucket"], Key=storage_path)
         metadata = existing.get("Metadata") or {}
         if metadata.get("checksum") == checksum:
-            status = "reused"
-        else:
-            client.put_object(
-                Bucket=config["bucket"],
-                Key=storage_path,
-                Body=image_bytes,
-                ContentType=mime_type,
-                CacheControl="public, max-age=31536000, immutable",
-                Metadata={"checksum": checksum},
-            )
-    except Exception:
+            should_upload = False
+    except ClientError as exc:
+        response = exc.response if isinstance(exc.response, dict) else {}
+        error_value = response.get("Error")
+        error: dict[str, Any] = error_value if isinstance(error_value, dict) else {}
+        status_code = int((response.get("ResponseMetadata") or {}).get("HTTPStatusCode") or 0)
+        error_code = str(error.get("Code") or status_code or exc.__class__.__name__)
+        if status_code != 404 and error_code not in {"404", "NoSuchKey", "NotFound"}:
+            return {
+                "status": "failed",
+                "error": f"head_object:{error_code}",
+                "bucket": config["bucket"],
+                "storage_path": storage_path,
+            }
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "error": f"head_object:{exc.__class__.__name__}",
+            "bucket": config["bucket"],
+            "storage_path": storage_path,
+        }
+
+    if should_upload:
         try:
             client.put_object(
                 Bucket=config["bucket"],
@@ -589,21 +813,59 @@ def _upload_figure_to_supabase(
                 CacheControl="public, max-age=31536000, immutable",
                 Metadata={"checksum": checksum},
             )
+        except ClientError as exc:
+            response = exc.response if isinstance(exc.response, dict) else {}
+            error_value = response.get("Error")
+            error = error_value if isinstance(error_value, dict) else {}
+            status_code = int((response.get("ResponseMetadata") or {}).get("HTTPStatusCode") or 0)
+            error_code = str(error.get("Code") or status_code or exc.__class__.__name__)
+            return {
+                "status": "failed",
+                "error": f"put_object:{error_code}",
+                "bucket": config["bucket"],
+                "storage_path": storage_path,
+            }
         except Exception as exc:
             return {
                 "status": "failed",
-                "error": exc.__class__.__name__,
+                "error": f"put_object:{exc.__class__.__name__}",
                 "bucket": config["bucket"],
                 "storage_path": storage_path,
             }
 
     return {
-        "status": status,
+        "status": "uploaded" if should_upload else "reused",
         "error": None,
         "bucket": config["bucket"],
         "storage_path": storage_path,
         "mime_type": mime_type,
     }
+
+
+@lru_cache(maxsize=2)
+def _supabase_s3_client(
+    endpoint: str,
+    access_key: str,
+    secret_key: str,
+    region: str,
+) -> Any:
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name=region,
+        config=Config(
+            connect_timeout=max(1, int(os.getenv("SUPABASE_CONNECT_TIMEOUT_SECONDS", "3"))),
+            read_timeout=max(1, int(os.getenv("SUPABASE_READ_TIMEOUT_SECONDS", "10"))),
+            retries={"mode": "standard", "total_max_attempts": 2},
+            max_pool_connections=4,
+            s3={"addressing_style": "path"},
+        ),
+    )
 
 
 def _supabase_storage_config() -> dict[str, str] | None:

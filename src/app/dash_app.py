@@ -35,7 +35,11 @@ from app.dash.pages.statistics import (
     register_statistics_callbacks,
 )
 from app.dash.pages.spain import build_spain_layout, register_spain_callbacks
-from app.dash.pages.upload import build_upload_layout, register_upload_callbacks
+from app.dash.pages.upload import (
+    MAX_UPLOAD_REQUEST_BYTES,
+    build_upload_layout,
+    register_upload_callbacks,
+)
 from app.errors import DatabaseUnavailableError
 from app.import_to_db.import_log import (
     delete_import_log,
@@ -81,7 +85,6 @@ DASH_INDEX_STRING = """
         </script>
         <link rel="icon" href="/assets/img/rainbow_lens_icono.ico">
         {%css%}
-        <link rel="stylesheet" href="/assets/responsive/responsive.css">
     </head>
     <body>
         <script>
@@ -108,6 +111,7 @@ class SessionUser(UserMixin):
 
 
 def create_dash_app() -> Dash:
+    _configure_application_logging()
     config = get_app_config()
     assets_path = Path(__file__).resolve().parent / "dash" / "assets"
     app = Dash(
@@ -120,6 +124,7 @@ def create_dash_app() -> Dash:
     app.index_string = DASH_INDEX_STRING
     app.server.config.update(
         SECRET_KEY=config.secret_key,
+        MAX_CONTENT_LENGTH=MAX_UPLOAD_REQUEST_BYTES,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=not config.local_mode,
@@ -140,7 +145,7 @@ def create_dash_app() -> Dash:
     app.layout = html.Div(
         [
             dcc.Location(id="url"),
-            dcc.Store(id="app-language-store", data="es"),
+            dcc.Store(id="app-language-store", storage_type="local"),
             dcc.Interval(id="app-language-init", interval=150, max_intervals=1),
             html.Button(
                 "",
@@ -253,10 +258,20 @@ def create_dash_app() -> Dash:
     return app
 
 
+def _configure_application_logging() -> None:
+    level_name = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    logging.getLogger("app").setLevel(level)
+
+
 def _register_client_preferences_callbacks(app: Dash) -> None:
     app.clientside_callback(
         """
-        function(initTick, nClicks, currentLanguage) {
+        function(initTick, nClicks) {
             const appState = window.RainbowLens || {};
             const state = appState.state || {};
             const i18n = appState.i18n || {};
@@ -264,17 +279,18 @@ def _register_client_preferences_callbacks(app: Dash) -> None:
             const config = appState.config || {};
             const ctx = window.dash_clientside.callback_context;
             const triggered = ctx.triggered && ctx.triggered.length ? ctx.triggered[0].prop_id : "";
-            const supported = typeof state.isSupportedLanguage === "function";
-            const current =
-                supported && state.isSupportedLanguage(currentLanguage)
-                    ? currentLanguage
-                    : typeof state.currentLanguage === "function"
-                        ? state.currentLanguage()
-                        : "es";
+            const isToggle =
+                triggered.indexOf("app-language-toggle") === 0 &&
+                Number.isFinite(nClicks) &&
+                nClicks > 0;
+            const persisted =
+                typeof state.currentLanguage === "function"
+                    ? state.currentLanguage()
+                    : "es";
             const selected =
-                triggered.indexOf("app-language-toggle") === 0 && typeof state.nextLanguage === "function"
-                    ? state.nextLanguage(current)
-                    : current;
+                isToggle && typeof state.nextLanguage === "function"
+                    ? state.nextLanguage(persisted)
+                    : persisted;
             if (config.LANGUAGE_KEY) {
                 window.localStorage.setItem(config.LANGUAGE_KEY, selected);
             }
@@ -290,7 +306,6 @@ def _register_client_preferences_callbacks(app: Dash) -> None:
         Output("app-language-store", "data"),
         Input("app-language-init", "n_intervals"),
         Input("app-language-toggle", "n_clicks"),
-        State("app-language-store", "data"),
     )
 
 

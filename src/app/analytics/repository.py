@@ -209,26 +209,18 @@ def get_categories() -> list[str]:
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_fra_categories() -> list[str]:
-    query = """
-        SELECT DISTINCT c.name AS category
-        FROM public.categories c
-        JOIN public.indicators i ON i.category_id = c.id
-        WHERE i.code IS NOT NULL
-        ORDER BY c.name
-    """
     try:
-        with psycopg.connect(
-            get_postgres_dsn(),
-            row_factory=cast(Any, dict_row),
-            connect_timeout=get_postgres_connect_timeout(),
-        ) as conn:
-            rows = conn.execute(query).fetchall()
+        categories = _mongo_collection("Indicator_fra").distinct(
+            "category",
+            {"code": {"$exists": True, "$ne": ""}},
+        )
     except Exception:
         logger.exception("fra_categories_read_failed")
         return []
-
-    rows = cast(list[dict[str, Any]], rows)
-    return [str(row["category"]) for row in rows if row.get("category")]
+    return sorted(
+        {str(category).strip() for category in categories if str(category or "").strip()},
+        key=str.casefold,
+    )
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
@@ -312,6 +304,7 @@ def get_fra_indicator_answers(code: str) -> dict[str, Any] | None:
                 "code": 1,
                 "category": 1,
                 "specific_category": 1,
+                "question": 1,
                 "answers": 1,
             },
         )

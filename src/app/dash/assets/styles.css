@@ -78,59 +78,104 @@ body {
   grid-template-rows: minmax(0, 1fr);
 }
 
+._dash-loading {
+  align-items: center;
+  background: var(--body-gradient);
+  color: transparent;
+  display: flex;
+  font-size: 0;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 9999;
+}
+
+._dash-loading::after {
+  animation: rainbowlens-loader-spin 700ms linear infinite;
+  border: 4px solid color-mix(in srgb, var(--color-text-muted) 28%, transparent);
+  border-radius: 50%;
+  border-top-color: var(--link-green);
+  content: "";
+  height: 44px;
+  width: 44px;
+}
+
+@keyframes rainbowlens-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ._dash-loading::after {
+    animation: none;
+  }
+}
+
 #react-entry-point,
 #_dash-app-content,
 #_dash-app-content > div {
   min-height: 100vh;
+  min-width: 0;
 }
 
 .navbar {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 1.5rem 2rem;
   background: var(--nav-bg), var(--color-surface);
   border-bottom: 1px solid var(--nav-border);
-  color: var(--color-text);
   box-shadow: 0 10px 24px rgba(105, 90, 148, 0.12);
+  color: var(--color-text);
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 1rem 2rem;
 }
 
 .nav-brand {
   align-items: center;
+  border-radius: 8px;
+  color: var(--color-text);
   display: inline-flex;
   flex: 0 0 auto;
   font-weight: 700;
-  height: 110px;
+  height: 82px;
   letter-spacing: 0.4px;
   overflow: hidden;
-  border-radius: 8px;
-  color: var(--color-text);
   text-decoration: none;
-  width: 310px;
+  width: 230px;
 }
 
 .nav-brand-logo {
   display: block;
   height: 100%;
-  object-fit: cover;
-  object-position: 50% 42%;
+  object-fit: contain;
   width: 100%;
 }
 
-.nav-left {
+.nav-brand-logo-mobile {
+  display: none;
+}
+
+.nav-menu {
   align-items: center;
   display: flex;
   gap: 1rem;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
-.nav-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 1.1rem;
-  margin-left: auto;
-  min-width: 0;
+.nav-menu-toggle {
+  display: none;
+}
+
+.sr-only {
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .nav-preference-actions {
@@ -155,12 +200,12 @@ body {
 }
 
 .nav-links {
-  list-style: none;
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
-  gap: 1.1rem;
+  gap: 0.9rem;
   justify-content: flex-end;
+  list-style: none;
   margin: 0;
   min-width: 0;
   padding: 0;
@@ -263,7 +308,7 @@ body {
   width: var(--theme-dot-size);
 }
 
-.theme-toggle[data-theme-state="dark"] .theme-toggle-dot {
+:root[data-theme="dark"] .theme-toggle .theme-toggle-dot {
   transform: translate(36px, -50%);
 }
 
@@ -474,15 +519,13 @@ body[data-theme="dark"] .placeholder-card {
 }
 
 body[data-theme="dark"] .auth-shell,
-body[data-theme="dark"] .user-page-grid,
-body[data-theme="dark"] .home-data-shell {
+body[data-theme="dark"] .user-page-grid {
   background: var(--body-gradient);
 }
 
 body[data-theme="dark"] .auth-card,
 body[data-theme="dark"] .user-card,
-body[data-theme="dark"] .user-role-badge,
-body[data-theme="dark"] .home-map-stage {
+body[data-theme="dark"] .user-role-badge {
   background: var(--panel-bg);
   border-color: var(--panel-border);
   color: var(--color-text);
@@ -676,42 +719,4 @@ body[data-theme="dark"] .Select-option:hover,
 body[data-theme="dark"] .VirtualizedSelectOption:hover {
   background: #243044 !important;
   color: var(--color-text) !important;
-}
-
-@media (max-width: 720px) {
-  .navbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
-  }
-
-  .nav-actions {
-    align-items: flex-start;
-    flex-direction: column;
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .nav-preference-actions {
-    flex-wrap: wrap;
-  }
-
-  .nav-left {
-    flex-wrap: wrap;
-  }
-
-  .nav-brand {
-    height: 74px;
-    width: 260px;
-  }
-
-  .nav-links {
-    gap: 0.75rem;
-  }
-}
-
-@media (max-width: 560px) {
-  .container {
-    padding: 0 1.2rem;
-  }
 }

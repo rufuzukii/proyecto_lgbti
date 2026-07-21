@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
+import importlib
 import logging
+import os
 from pathlib import Path
+import threading
+import time
 from typing import Any
+from uuid import uuid4
 
 from dash import Dash, Input, Output, State, dcc, html
 from dash.development.base_component import Component
@@ -15,11 +21,28 @@ from app.dash.layouts.navigation import build_navbar
 from flask_login import current_user
 
 from app.analytics import invalidate_analytics_cache
-from app.import_to_db.error_handler import ImportErrorHandler
 
 logger = logging.getLogger(__name__)
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MEBIBYTE = 1024 * 1024
+
+
+def _upload_limit_bytes(environment_name: str, default_mebibytes: int) -> int:
+    try:
+        configured = int(os.getenv(environment_name, str(default_mebibytes)))
+    except ValueError:
+        configured = default_mebibytes
+    return max(1, configured) * MEBIBYTE
+
+
+MAX_UPLOAD_BYTES = _upload_limit_bytes("UPLOAD_MAX_FILE_MB", 20)
+MAX_UPLOAD_TOTAL_BYTES = _upload_limit_bytes("UPLOAD_MAX_TOTAL_MB", 30)
+MAX_UPLOAD_REQUEST_BYTES = _upload_limit_bytes("UPLOAD_MAX_REQUEST_MB", 90)
 MAX_UPLOAD_FILES = 3
+_UPLOAD_PROCESSING_LOCK = threading.Lock()
+
+
+class UploadValidationError(ValueError):
+    pass
 
 DATA_SOURCE_OPTIONS = [
     {"label": "Encuesta europea LGBTIQ+", "value": "FRA"},
@@ -29,12 +52,94 @@ DATA_SOURCE_OPTIONS = [
 
 
 def _decode_upload_payload(contents: str) -> tuple[bytes, int]:
-    data = contents.split(",", 1)[1] if "," in contents else contents
+    _mime_type, data = _upload_data_parts(contents)
+    estimated_size = _estimated_decoded_size(data)
+    if estimated_size > MAX_UPLOAD_BYTES:
+        raise UploadValidationError("file_too_large")
     try:
         payload = base64.b64decode(data, validate=True)
-    except (binascii.Error, ValueError):
-        payload = data.encode("utf-8")
+    except (binascii.Error, ValueError) as exc:
+        raise UploadValidationError("invalid_base64") from exc
     return payload, len(payload)
+
+
+def _upload_data_parts(contents: str) -> tuple[str, str]:
+    if not isinstance(contents, str) or not contents:
+        raise UploadValidationError("empty_contents")
+    header, separator, data = contents.partition(",")
+    if not separator or not header.startswith("data:") or ";base64" not in header.casefold():
+        raise UploadValidationError("invalid_data_uri")
+    mime_type = header[5:].split(";", 1)[0].strip().casefold()
+    return mime_type, data
+
+
+def _estimated_decoded_size(encoded_data: str) -> int:
+    padding = len(encoded_data) - len(encoded_data.rstrip("="))
+    return max(0, (len(encoded_data) * 3) // 4 - padding)
+
+
+def _memory_usage_mb() -> float | None:
+    try:
+        resource_module = importlib.import_module("resource")
+        peak = float(resource_module.getrusage(resource_module.RUSAGE_SELF).ru_maxrss)
+        return round(peak / 1024, 2)
+    except (AttributeError, ImportError, OSError, ValueError):
+        return None
+
+
+def _upload_log(
+    level: int,
+    event: str,
+    trace: dict[str, Any],
+    *,
+    exc_info: bool = False,
+    **fields: Any,
+) -> None:
+    started_at = float(trace.get("started_at") or time.perf_counter())
+    payload = {
+        "event": event,
+        "upload_id": trace.get("upload_id"),
+        "phase": trace.get("phase"),
+        "filename": trace.get("filename"),
+        "data_source": trace.get("data_source"),
+        "mime_type": trace.get("mime_type"),
+        "size_bytes": trace.get("size_bytes"),
+        "decoded_size_bytes": trace.get("decoded_size_bytes"),
+        "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 2),
+        "peak_memory_mb": _memory_usage_mb(),
+        "worker_pid": os.getpid(),
+        **fields,
+    }
+    logger.log(level, "upload_event %s", json.dumps(payload, ensure_ascii=True, default=str), exc_info=exc_info)
+
+
+def _build_upload_component() -> Component:
+    return dcc.Upload(
+        id="upload-csv",
+        children=html.Div(
+            [
+                html.Strong(
+                    "Arrastra archivos aqu\u00ed",
+                    **text_attrs("Arrastra archivos aqu\u00ed", "Drag files here"),
+                ),
+                html.Span(
+                    " o haz clic para seleccionarlos",
+                    **text_attrs(" o haz clic para seleccionarlos", " or click to select files"),
+                ),
+                html.Small(
+                    f"M\u00e1ximo {MAX_UPLOAD_FILES} archivos, {MAX_UPLOAD_BYTES // MEBIBYTE} MB por archivo y {MAX_UPLOAD_TOTAL_BYTES // MEBIBYTE} MB en total.",
+                    **text_attrs(
+                        f"M\u00e1ximo {MAX_UPLOAD_FILES} archivos, {MAX_UPLOAD_BYTES // MEBIBYTE} MB por archivo y {MAX_UPLOAD_TOTAL_BYTES // MEBIBYTE} MB en total.",
+                        f"Maximum {MAX_UPLOAD_FILES} files, {MAX_UPLOAD_BYTES // MEBIBYTE} MB per file and {MAX_UPLOAD_TOTAL_BYTES // MEBIBYTE} MB total.",
+                    ),
+                ),
+            ],
+            className="upload-area-content",
+        ),
+        multiple=True,
+        className="upload-area",
+        className_disabled="upload-area upload-area-disabled",
+    )
 
 
 def build_upload_layout() -> Component:
@@ -83,26 +188,7 @@ def build_upload_layout() -> Component:
                                 ],
                                 className="upload-field",
                             ),
-                            dcc.Upload(
-                                id="upload-csv",
-                                children=html.Div(
-                                    [
-                                        html.Strong("Arrastra archivos aquí", **text_attrs("Arrastra archivos aquí", "Drag files here")),
-                                        html.Span(" o haz clic para seleccionarlos", **text_attrs(" o haz clic para seleccionarlos", " or click to select files")),
-                                        html.Small(
-                                            f"Máximo {MAX_UPLOAD_FILES} archivos, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB por archivo.",
-                                            **text_attrs(
-                                                f"Máximo {MAX_UPLOAD_FILES} archivos, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB por archivo.",
-                                                f"Maximum {MAX_UPLOAD_FILES} files, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB per file.",
-                                            ),
-                                        ),
-                                    ],
-                                    className="upload-area-content",
-                                ),
-                                multiple=True,
-                                className="upload-area",
-                                className_disabled="upload-area upload-area-disabled",
-                            ),
+                            html.Div(_build_upload_component(), id="upload-control-container"),
                             html.Div(
                                 [
                                     html.H2(text("Proceso de revisión", "Review process")),
@@ -149,9 +235,7 @@ def build_upload_layout() -> Component:
 def register_upload_callbacks(app: Dash) -> None:
     @app.callback(
         Output("upload-output", "children"),
-        Output("upload-csv", "contents"),
-        Output("upload-csv", "filename"),
-        Output("upload-csv", "last_modified"),
+        Output("upload-control-container", "children"),
         Input("upload-csv", "contents"),
         State("upload-csv", "filename"),
         State("data-source", "value"),
@@ -168,23 +252,59 @@ def register_upload_callbacks(app: Dash) -> None:
     def handle_upload(contents, filenames, data_source):
         if not contents:
             raise PreventUpdate
+        trace: dict[str, Any] = {
+            "upload_id": uuid4().hex,
+            "started_at": time.perf_counter(),
+            "phase": "callback_received",
+            "data_source": data_source,
+            "filename": _safe_upload_names(filenames),
+        }
+        _upload_log(logging.INFO, "started", trace)
+        if not _UPLOAD_PROCESSING_LOCK.acquire(blocking=False):
+            _upload_log(logging.WARNING, "rejected_busy", trace)
+            return (
+                build_error_message(
+                    (
+                        "Ya hay otro PDF proces\u00e1ndose. Espera a que termine antes de iniciar otra subida.",
+                        "Another PDF is already being processed. Wait for it to finish before uploading another file.",
+                    )
+                ),
+                _build_upload_component(),
+            )
         try:
-            result = _process_upload(contents, filenames, data_source)
-        except Exception:
-            logger.exception("upload_unexpected_failed", extra={"data_source": data_source})
+            result = _process_upload(contents, filenames, data_source, trace=trace)
+            trace["phase"] = "completed"
+            _upload_log(logging.INFO, "completed", trace)
+        except UploadValidationError as exc:
+            _upload_log(
+                logging.WARNING,
+                "validation_failed",
+                trace,
+                exception_type=type(exc).__name__,
+                exception_message=str(exc),
+            )
+            result = _upload_validation_message(str(exc), trace.get("filename"))
+        except Exception as exc:
+            _upload_log(
+                logging.ERROR,
+                "failed",
+                trace,
+                exc_info=True,
+                exception_type=type(exc).__name__,
+                exception_message=str(exc)[:500],
+            )
             result = build_error_message(
                 (
                     "No ha sido posible completar la subida. Inténtalo de nuevo más tarde.",
                     "The upload could not be completed. Please try again later.",
                 )
             )
-        return result, None, None, None
+        finally:
+            _UPLOAD_PROCESSING_LOCK.release()
+        return result, _build_upload_component()
 
     @app.callback(
         Output("upload-output", "children", allow_duplicate=True),
-        Output("upload-csv", "contents", allow_duplicate=True),
-        Output("upload-csv", "filename", allow_duplicate=True),
-        Output("upload-csv", "last_modified", allow_duplicate=True),
         Input("upload-error-close", "n_clicks"),
         Input("upload-error-retry", "n_clicks"),
         prevent_initial_call=True,
@@ -192,129 +312,222 @@ def register_upload_callbacks(app: Dash) -> None:
     def dismiss_upload_error(close_clicks: int | None, retry_clicks: int | None):
         if not close_clicks and not retry_clicks:
             raise PreventUpdate
-        return "", None, None, None
+        return ""
 
 
-def _process_upload(contents, filenames, data_source):
-        if not filenames:
-            return build_error_message(("No se ha recibido ningún archivo.", "No file was received."))
-        if not data_source:
-            return build_error_message(("Selecciona una fuente antes de subir el archivo.", "Select the data source before uploading."))
+def _process_upload(
+    contents: Any,
+    filenames: Any,
+    data_source: str | None,
+    *,
+    trace: dict[str, Any] | None = None,
+) -> Component:
+    trace = trace if trace is not None else {
+        "upload_id": uuid4().hex,
+        "started_at": time.perf_counter(),
+        "data_source": data_source,
+    }
+    trace["phase"] = "validation"
+    if not filenames:
+        raise UploadValidationError("missing_filename")
+    if not data_source:
+        raise UploadValidationError("missing_data_source")
 
-        contents_list, filenames_list = normalize_upload_values(contents, filenames)
-        if len(contents_list) > MAX_UPLOAD_FILES:
-            return build_error_message((f"Puedes subir un máximo de {MAX_UPLOAD_FILES} archivos cada vez.", f"Maximum {MAX_UPLOAD_FILES} files per upload."))
+    contents_list, filenames_list = normalize_upload_values(contents, filenames)
+    if len(contents_list) != len(filenames_list):
+        raise UploadValidationError("upload_metadata_mismatch")
+    if len(contents_list) > MAX_UPLOAD_FILES:
+        raise UploadValidationError("too_many_files")
+    if data_source == "FELGTB" and len(contents_list) != 1:
+        raise UploadValidationError("single_pdf_required")
 
-        imported_files = []
-        total_documents = 0
+    imported_files: list[dict[str, Any]] = []
+    total_documents = 0
+    total_decoded_bytes = 0
+    for index, (data, name) in enumerate(zip(contents_list, filenames_list, strict=True)):
+        phase_started = time.perf_counter()
+        trace["phase"] = "validation"
+        safe_name = Path(name).name if name else "upload.csv"
+        trace["filename"] = safe_name
+        _upload_log(logging.INFO, "phase_started", trace)
+        if not is_supported_upload_file(data_source, safe_name):
+            raise UploadValidationError("unsupported_file_type")
 
-        for data, name in zip(contents_list, filenames_list):
-            safe_name = Path(name).name if name else "upload.csv"
-            if not is_supported_upload_file(data_source, safe_name):
-                return build_error_message(
-                    (
-                        "El archivo seleccionado no corresponde con la fuente de datos elegida. Comprueba el archivo o selecciona otra fuente e inténtalo de nuevo.",
-                        "The selected file does not match the chosen data source. Check the file or select another source and try again.",
-                    )
-                )
+        mime_type, encoded_data = _upload_data_parts(data)
+        estimated_size = _estimated_decoded_size(encoded_data)
+        trace["mime_type"] = mime_type or "unknown"
+        trace["size_bytes"] = estimated_size
+        _validate_upload_metadata(data_source, safe_name, mime_type, estimated_size)
+        if total_decoded_bytes + estimated_size > MAX_UPLOAD_TOTAL_BYTES:
+            raise UploadValidationError("total_too_large")
+        _upload_log(
+            logging.INFO,
+            "phase_completed",
+            trace,
+            phase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+        )
 
-            payload_bytes, payload_size = _decode_upload_payload(data)
-            if payload_size > MAX_UPLOAD_BYTES:
-                return build_error_message((f"El archivo {safe_name} supera el tamaño permitido.", f"{safe_name} exceeds the allowed size."))
+        phase_started = time.perf_counter()
+        trace["phase"] = "base64_decode"
+        _upload_log(logging.INFO, "phase_started", trace)
+        payload_bytes, payload_size = _decode_upload_payload(data)
+        contents_list[index] = ""
+        total_decoded_bytes += payload_size
+        trace["decoded_size_bytes"] = payload_size
+        _validate_decoded_payload(data_source, safe_name, payload_bytes)
+        _upload_log(
+            logging.INFO,
+            "phase_completed",
+            trace,
+            phase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+        )
 
-            try:
-                payload = parse_file_by_source(
-                    source=data_source,
-                    file_bytes=payload_bytes,
-                    file_name=safe_name,
-                )
-            except NotImplementedError:
-                return build_error_message(
-                    (
-                        "El formato seleccionado no está disponible en este momento.",
-                        "The selected format is not available right now.",
-                    )
-                )
-            except RuntimeError as exc:
-                if str(exc) == "missing_pdf_dependency":
-                    return build_error_message(
-                        (
-                            "No ha sido posible procesar este archivo en este momento. Inténtalo de nuevo más tarde.",
-                            "This file could not be processed right now. Please try again later.",
-                        )
-                    )
-                raise
-            except Exception:
-                logger.exception(
-                    "file_parse_failed",
-                    extra={"file": safe_name, "data_source": data_source},
-                )
-                return build_error_message((f"No se ha podido procesar el archivo {safe_name}.", f"The file {safe_name} could not be processed."))
+        phase_started = time.perf_counter()
+        trace["phase"] = "pdf_processing" if data_source == "FELGTB" else "file_parsing"
+        _upload_log(logging.INFO, "phase_started", trace)
+        payload = parse_file_by_source(
+            source=data_source,
+            file_bytes=payload_bytes,
+            file_name=safe_name,
+            upload_id=str(trace.get("upload_id") or ""),
+        )
+        del payload_bytes
+        document_count = count_payload_documents(payload) if payload else 0
+        _upload_log(
+            logging.INFO,
+            "phase_completed",
+            trace,
+            phase_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
+            document_count=document_count,
+        )
+        if not payload:
+            raise UploadValidationError("empty_payload")
 
-            if not payload:
-                return build_error_message(
-                    (
-                        f"No se ha encontrado información válida en {safe_name}. Comprueba que la fuente seleccionada corresponde al archivo.",
-                        f"No valid information was found in {safe_name}. Check that the selected source matches the file.",
-                    )
-                )
+        if data_source == "FRA":
+            phase_started = time.perf_counter()
+            trace["phase"] = "mongo_persistence"
+            _upload_log(logging.INFO, "phase_started", trace)
+            from app.import_to_db.fra import upsert_indicators_from_json
 
-            if data_source == "FRA":
-                try:
-                    from app.import_to_db.fra import upsert_indicators_from_json
-
-                    upsert_indicators_from_json(payload)
-                    invalidate_analytics_cache()
-                except Exception:
-                    logger.exception(
-                        "indicator_upsert_failed",
-                        extra={"file": safe_name, "data_source": data_source},
-                    )
-                    return build_error_message(
-                        (
-                            "No ha sido posible guardar la información en este momento. Inténtalo de nuevo más tarde.",
-                            "The information could not be saved right now. Please try again later.",
-                        )
-                    )
-
-            try:
-                from app.import_to_db import register_pending_import
-
-                user_id = current_user.get_id() if current_user.is_authenticated else None
-                register_pending_import(file_name=safe_name, file_json=payload, user_id=user_id)
-            except Exception as exc:
-                logger.exception(
-                    "import_log_failed",
-                    extra={"file": safe_name, "data_source": data_source},
-                )
-                error_info = ImportErrorHandler.describe_import_log_error(exc)
-                return build_error_message(
-                    (
-                        error_info.title,
-                        "The file could not be saved for review. Please try again later.",
-                    )
-                )
-
-            document_count = count_payload_documents(payload)
-            total_documents += document_count
-            imported_files.append(
-                {
-                    "name": safe_name,
-                    "documents": document_count,
-                }
+            upsert_indicators_from_json(payload)
+            invalidate_analytics_cache()
+            _upload_log(
+                logging.INFO,
+                "phase_completed",
+                trace,
+                mongo_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
             )
 
-        return build_success_message(
-            source=data_source,
-            imported_files=imported_files,
-            total_documents=total_documents,
+        phase_started = time.perf_counter()
+        trace["phase"] = "pending_import_persistence"
+        _upload_log(logging.INFO, "phase_started", trace)
+        from app.import_to_db import register_pending_import
+
+        user_id = current_user.get_id() if current_user.is_authenticated else None
+        register_pending_import(file_name=safe_name, file_json=payload, user_id=user_id)
+        _upload_log(
+            logging.INFO,
+            "phase_completed",
+            trace,
+            postgres_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
         )
+
+        total_documents += document_count
+        imported_files.append({"name": safe_name, "documents": document_count})
+
+    return build_success_message(
+        source=data_source,
+        imported_files=imported_files,
+        total_documents=total_documents,
+    )
 
 
 def normalize_upload_values(contents: Any, filenames: Any) -> tuple[list[str], list[str]]:
-    contents_list = [contents] if isinstance(contents, str) else list(contents)
-    filenames_list = [filenames] if isinstance(filenames, str) else list(filenames)
+    contents_list = [contents] if isinstance(contents, str) else list(contents or [])
+    filenames_list = [filenames] if isinstance(filenames, str) else list(filenames or [])
     return contents_list, filenames_list
+
+
+def _safe_upload_names(filenames: Any) -> list[str]:
+    if isinstance(filenames, str):
+        values = [filenames]
+    elif isinstance(filenames, (list, tuple)):
+        values = list(filenames)
+    else:
+        values = []
+    return [Path(str(value or "upload")).name for value in values]
+
+
+def _validate_upload_metadata(
+    source: str,
+    file_name: str,
+    mime_type: str,
+    estimated_size: int,
+) -> None:
+    if estimated_size <= 0:
+        raise UploadValidationError("empty_file")
+    if estimated_size > MAX_UPLOAD_BYTES:
+        raise UploadValidationError("file_too_large")
+
+    suffix = Path(file_name).suffix.casefold()
+    allowed_mime_types = {
+        ".pdf": {"application/pdf", "application/octet-stream", ""},
+        ".csv": {"text/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream", ""},
+        ".json": {"application/json", "text/json", "text/plain", "application/octet-stream", ""},
+    }
+    if mime_type not in allowed_mime_types.get(suffix, set()):
+        raise UploadValidationError("invalid_mime_type")
+    if not is_supported_upload_file(source, file_name):
+        raise UploadValidationError("unsupported_file_type")
+
+
+def _validate_decoded_payload(source: str, file_name: str, payload: bytes) -> None:
+    if len(payload) > MAX_UPLOAD_BYTES:
+        raise UploadValidationError("file_too_large")
+    if source == "FELGTB" and not payload.lstrip().startswith(b"%PDF-"):
+        raise UploadValidationError("invalid_pdf_signature")
+    if not Path(file_name).name:
+        raise UploadValidationError("missing_filename")
+
+
+def _upload_validation_message(reason: str, filenames: Any) -> Component:
+    name = _safe_upload_names(filenames)
+    display_name = name[0] if name else "archivo"
+    if reason in {"file_too_large", "total_too_large"}:
+        return build_error_message(
+            (
+                f"El archivo {display_name} supera el tama\u00f1o permitido.",
+                f"{display_name} exceeds the allowed size.",
+            )
+        )
+    if reason == "too_many_files":
+        return build_error_message(
+            (
+                f"Puedes subir un m\u00e1ximo de {MAX_UPLOAD_FILES} archivos cada vez.",
+                f"Maximum {MAX_UPLOAD_FILES} files per upload.",
+            )
+        )
+    if reason == "single_pdf_required":
+        return build_error_message(
+            ("Sube un \u00fanico PDF cada vez.", "Upload one PDF at a time.")
+        )
+    if reason == "missing_data_source":
+        return build_error_message(
+            ("Selecciona una fuente antes de subir el archivo.", "Select the data source before uploading.")
+        )
+    if reason in {"unsupported_file_type", "invalid_mime_type"}:
+        return build_error_message(
+            (
+                "El tipo de archivo no corresponde con la fuente seleccionada.",
+                "The file type does not match the selected source.",
+            )
+        )
+    return build_error_message(
+        (
+            f"No se ha podido validar el archivo {display_name}.",
+            f"The file {display_name} could not be validated.",
+        )
+    )
 
 
 def is_supported_upload_file(source: str, file_name: str) -> bool:
@@ -326,7 +539,13 @@ def is_supported_upload_file(source: str, file_name: str) -> bool:
     return suffix == ".csv"
 
 
-def parse_file_by_source(source: str, file_bytes: bytes, file_name: str) -> dict | list[dict]:
+def parse_file_by_source(
+    source: str,
+    file_bytes: bytes,
+    file_name: str,
+    *,
+    upload_id: str = "",
+) -> dict | list[dict]:
     if source == "FRA":
         from app.import_to_db import parse_fra_csv_text
 
@@ -344,7 +563,12 @@ def parse_file_by_source(source: str, file_bytes: bytes, file_name: str) -> dict
     if source == "FELGTB":
         from app.import_to_db import parse_felgtbi_pdf_bytes
 
-        return parse_felgtbi_pdf_bytes(file_bytes, file_name=file_name)
+        return parse_felgtbi_pdf_bytes(
+            file_bytes,
+            file_name=file_name,
+            require_storage=True,
+            upload_id=upload_id,
+        )
     raise ValueError(f"Unsupported source: {source}")
 
 
