@@ -4,9 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from bson import ObjectId
-from pymongo import MongoClient
-
-from app.config import get_mongo_config
+from app.mongo import get_mongo_collection
 from app.import_to_db.ilga.importer import ILGA_DATASET_CODE, parse_ilga_json_text
 
 INDICATOR_ILGA_COLLECTION = "Indicator_ilga"
@@ -14,28 +12,14 @@ INDICATOR_ILGA_COLLECTION = "Indicator_ilga"
 
 def insert_indicator_ilga_json(file_json: dict[str, Any] | list[Any]) -> int:
     documents = _normalize_documents(file_json)
-    config = get_mongo_config()
-
-    with MongoClient(
-        config.dsn(),
-        serverSelectionTimeoutMS=config.server_selection_timeout_ms,
-        connectTimeoutMS=config.server_selection_timeout_ms,
-        socketTimeoutMS=config.server_selection_timeout_ms,
-    ) as client:
-        collection = client[config.database][INDICATOR_ILGA_COLLECTION]
-        collection.create_index([("dataset", 1), ("year", -1)], background=True)
-        for document in documents:
-            prepared = _prepare_ilga_document(document)
-            collection.update_one(
-                {
-                    "dataset": prepared["dataset"],
-                    "year": prepared["year"],
-                },
-                {
-                    "$setOnInsert": prepared,
-                },
-                upsert=True,
-            )
+    collection = get_mongo_collection(INDICATOR_ILGA_COLLECTION)
+    for document in documents:
+        prepared = _prepare_ilga_document(document)
+        collection.update_one(
+            {"dataset": prepared["dataset"], "year": prepared["year"]},
+            {"$setOnInsert": prepared},
+            upsert=True,
+        )
     return len(documents)
 
 

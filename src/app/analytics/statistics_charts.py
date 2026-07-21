@@ -6,6 +6,7 @@ from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 from app.analytics.geography import EUROPE_CENTROIDS, to_iso3_country_code
 from app.analytics.legal_criteria import (
@@ -68,6 +69,7 @@ def build_europe_choropleth(
     *,
     source: str,
     selected_iso: str | None = None,
+    selected_isos: list[str] | None = None,
     language: str = "es",
 ) -> go.Figure:
     dataframe = pd.DataFrame(ranking_rows)
@@ -171,23 +173,35 @@ def build_europe_choropleth(
                 hovertemplate="<b>%{text}</b><br>%{customdata[1]}<extra></extra>",
             )
         )
-    if selected_iso:
-        selected = dataframe[(dataframe["iso"] == selected_iso) & dataframe["iso3"].ne("")]
-        if not selected.empty:
-            centroid = EUROPE_CENTROIDS.get(selected_iso)
-            if centroid:
-                latitude, longitude = centroid
-                figure.add_trace(
-                    go.Scattergeo(
-                        lat=[latitude],
-                        lon=[longitude],
-                        text=[selected.iloc[0]["country"]],
-                        mode="markers",
-                        marker={"size": 12, "color": "#111827", "line": {"color": "#ffffff", "width": 2}},
-                        hoverinfo="skip",
-                        showlegend=False,
-                    )
-                )
+    selected_codes = {
+        str(value or "").strip().upper()
+        for value in [*(selected_isos or []), selected_iso]
+        if str(value or "").strip()
+    }
+    selected = dataframe[dataframe["iso"].isin(selected_codes) & dataframe["iso3"].ne("")]
+    latitudes: list[float] = []
+    longitudes: list[float] = []
+    labels: list[str] = []
+    for row in selected.itertuples():
+        centroid = EUROPE_CENTROIDS.get(str(row.iso))
+        if centroid:
+            latitude, longitude = centroid
+            latitudes.append(latitude)
+            longitudes.append(longitude)
+            labels.append(str(row.country))
+    if latitudes:
+        figure.add_trace(
+            go.Scattergeo(
+                lat=latitudes,
+                lon=longitudes,
+                text=labels,
+                customdata=[[str(row.iso)] for row in selected.itertuples() if EUROPE_CENTROIDS.get(str(row.iso))],
+                mode="markers",
+                marker={"size": 13, "color": "#111827", "line": {"color": "#ffffff", "width": 2.5}},
+                hovertemplate="<b>%{text}</b><br>Seleccionado<extra></extra>",
+                showlegend=False,
+            )
+        )
     figure.update_layout(
         geo={
             "scope": "europe",
@@ -230,13 +244,22 @@ def build_ranking_chart(
     ranking_rows: list[dict[str, Any]],
     *,
     source: str,
-    limit: int = 20,
+    limit: int = 60,
+    selected_countries: list[str] | None = None,
     language: str = "es",
 ) -> go.Figure:
     dataframe = pd.DataFrame(ranking_rows)
     if dataframe.empty:
         return empty_figure("No hay ranking para mostrar.")
+    if "answer" in dataframe.columns and dataframe["answer"].notna().any():
+        return _build_response_ranking_chart(
+            dataframe,
+            selected_countries=selected_countries,
+            limit=limit,
+            language=language,
+        )
     dataframe = dataframe.sort_values("value", ascending=False).head(limit)
+    selected = _selected_country_keys(selected_countries)
     dataframe["value_text"] = dataframe["value"].apply(format_percentage)
     dataframe["value_label"] = ui_text("chart_value", language)
     figure = go.Figure(
@@ -244,13 +267,75 @@ def build_ranking_chart(
             x=dataframe["value"].iloc[::-1],
             y=dataframe["country"].iloc[::-1],
             orientation="h",
-            marker={"color": CHART_COLORS["fra" if source == "FRA" else "ilga"]},
+            marker={
+                "color": [
+                    "#111827" if _country_key(row.iso, row.country) in selected
+                    else CHART_COLORS["fra" if source == "FRA" else "ilga"]
+                    for row in dataframe.iloc[::-1].itertuples()
+                ]
+            },
             customdata=dataframe[["iso", "value_label", "value_text"]].iloc[::-1].fillna("").to_numpy(),
             hovertemplate="<b>%{y}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>",
         )
     )
     figure.update_layout(xaxis={"title": "Porcentaje", "range": [0, 100]}, yaxis={"title": ""})
     _apply_base_layout(figure)
+    return figure
+
+
+def _build_response_ranking_chart(
+    dataframe: pd.DataFrame,
+    *,
+    selected_countries: list[str] | None,
+    limit: int,
+    language: str,
+) -> go.Figure:
+    dataframe = dataframe.copy()
+    dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
+    dataframe = dataframe.dropna(subset=["value", "country", "answer"])
+    if dataframe.empty:
+        return empty_figure("No hay ranking para mostrar.")
+    country_order = (
+        dataframe.groupby("country", as_index=False)
+        .agg(value=("value", "max"))
+        .sort_values("value", ascending=False)
+        .head(limit)["country"]
+        .tolist()
+    )
+    country_order = list(reversed(country_order))
+    dataframe = dataframe[dataframe["country"].isin(country_order)]
+    selected = _selected_country_keys(selected_countries)
+    figure = go.Figure()
+    for answer, rows in dataframe.groupby("answer", sort=True):
+        rows = rows.set_index("country").reindex(country_order).reset_index()
+        selected_rows = [
+            _country_key(row.iso, row.country) in selected
+            for row in rows.itertuples()
+        ]
+        figure.add_trace(
+            go.Bar(
+                x=rows["value"],
+                y=rows["country"],
+                orientation="h",
+                name=str(answer),
+                marker={
+                    "color": _response_color(_response_key(answer)),
+                    "line": {
+                        "color": ["#111827" if is_selected else "rgba(0,0,0,0)" for is_selected in selected_rows],
+                        "width": [2 if is_selected else 0 for is_selected in selected_rows],
+                    },
+                },
+                hovertemplate=f"<b>%{{y}}</b><br>{answer}: %{{x:.2f}}%<extra></extra>",
+            )
+        )
+    figure.update_layout(
+        barmode="group",
+        xaxis={"title": _chart_text(language, "Porcentaje", "Percentage"), "range": [0, 100]},
+        yaxis={"title": "", "categoryorder": "array", "categoryarray": country_order},
+        height=max(520, len(country_order) * 23),
+    )
+    _apply_base_layout(figure, margin={"l": 115, "r": 25, "t": 20, "b": 60})
+    figure.update_layout(showlegend=True, legend={"orientation": "h", "y": -0.08})
     return figure
 
 
@@ -756,6 +841,345 @@ def build_fra_ilga_scatter(fra_rows: list[dict[str, Any]], ilga_rows: list[dict[
     )
     _apply_base_layout(figure)
     return figure
+
+
+def build_europe_distribution_chart(
+    ranking_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+) -> go.Figure:
+    dataframe = _numeric_ranking_dataframe(ranking_rows)
+    if dataframe.empty:
+        return empty_figure(_chart_text(language, "No hay valores suficientes para analizar la distribución.", "There are not enough values to analyse the distribution."))
+    selected = _selected_country_keys(selected_countries)
+    figure = make_subplots(
+        rows=1,
+        cols=2,
+        subplot_titles=(
+            _chart_text(language, "Histograma", "Histogram"),
+            _chart_text(language, "Boxplot", "Box plot"),
+        ),
+    )
+    figure.add_trace(
+        go.Histogram(x=dataframe["value"], marker={"color": CHART_COLORS["fra"]}, nbinsx=12, name=_chart_text(language, "Países", "Countries")),
+        row=1,
+        col=1,
+    )
+    figure.add_trace(
+        go.Box(
+            x=dataframe["value"],
+            y=["Europa"] * len(dataframe),
+            text=dataframe["country"],
+            marker={"color": CHART_COLORS["fra"]},
+            boxpoints="all",
+            jitter=0.35,
+            pointpos=0,
+            name="Europa",
+            hovertemplate="<b>%{text}</b><br>%{x:.2f}%<extra></extra>",
+        ),
+        row=1,
+        col=2,
+    )
+    if selected:
+        highlighted = dataframe[
+            dataframe.apply(
+                lambda row: _country_key(row.get("iso"), row.get("country")) in selected,
+                axis=1,
+            )
+        ]
+        if not highlighted.empty:
+            figure.add_trace(
+                go.Scatter(
+                    x=highlighted["value"],
+                    y=["Europa"] * len(highlighted),
+                    text=highlighted["country"],
+                    mode="markers",
+                    marker={"color": "#111827", "size": 11, "line": {"color": "white", "width": 2}},
+                    hovertemplate="<b>%{text}</b><br>%{x:.2f}%<extra></extra>",
+                    name=_chart_text(language, "Selección", "Selection"),
+                ),
+                row=1,
+                col=2,
+            )
+    mean = float(dataframe["value"].mean())
+    figure.add_shape(type="line", x0=mean, x1=mean, y0=0, y1=1, xref="x", yref="paper", line={"dash": "dash", "color": CHART_COLORS["ilga"]})
+    figure.add_shape(type="line", x0=mean, x1=mean, y0=0, y1=1, xref="x2", yref="paper", line={"dash": "dash", "color": CHART_COLORS["ilga"]})
+    figure.update_xaxes(title_text=_chart_text(language, "Valor (%)", "Value (%)"))
+    figure.update_yaxes(title_text=_chart_text(language, "Países", "Countries"), row=1, col=1)
+    _apply_base_layout(figure, margin={"l": 55, "r": 25, "t": 55, "b": 55})
+    figure.update_layout(showlegend=False)
+    return figure
+
+
+def build_eu_average_comparison_chart(
+    ranking_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+) -> go.Figure:
+    dataframe = _numeric_ranking_dataframe(ranking_rows)
+    if dataframe.empty:
+        return empty_figure("No hay datos para comparar con la media europea.")
+    mean = float(dataframe["value"].mean())
+    selected = _selected_country_keys(selected_countries)
+    focus = dataframe[
+        dataframe.apply(lambda row: _country_key(row.get("iso"), row.get("country")) in selected, axis=1)
+    ]
+    if focus.empty:
+        focus = dataframe.head(5)
+    focus = focus.assign(difference=focus["value"] - mean).sort_values("difference")
+    colors = [CHART_COLORS["ilga"] if value >= 0 else CHART_COLORS["fra_alt"] for value in focus["difference"]]
+    figure = go.Figure(
+        go.Bar(
+            x=focus["difference"],
+            y=focus["country"],
+            orientation="h",
+            marker={"color": colors},
+            customdata=focus[["value"]].to_numpy(),
+            hovertemplate="<b>%{y}</b><br>Valor: %{customdata[0]:.2f}%<br>Diferencia: %{x:+.2f} pp<extra></extra>",
+        )
+    )
+    figure.add_vline(x=0, line_color="#6b7280", line_width=1.5)
+    average_title = _chart_text(language, "Diferencia frente a la media europea", "Difference from the European average")
+    figure.update_layout(xaxis={"title": f"{average_title} ({mean:.2f}%)"}, yaxis={"title": ""})
+    _apply_base_layout(figure, margin={"l": 110, "r": 25, "t": 20, "b": 60})
+    return figure
+
+
+def build_country_comparison_chart(
+    ranking_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+) -> go.Figure:
+    dataframe = _numeric_ranking_dataframe(ranking_rows)
+    if dataframe.empty:
+        return empty_figure(_chart_text(language, "No hay países comparables.", "There are no comparable countries."))
+    selected = _selected_country_keys(selected_countries)
+    if selected:
+        dataframe = dataframe[
+            dataframe.apply(lambda row: _country_key(row.get("iso"), row.get("country")) in selected, axis=1)
+        ]
+    else:
+        dataframe = dataframe.head(10)
+    dataframe = dataframe.sort_values("value")
+    figure = go.Figure(
+        go.Bar(
+            x=dataframe["value"],
+            y=dataframe["country"],
+            orientation="h",
+            marker={"color": CHART_COLORS["fra"]},
+            text=dataframe["value"].map(lambda value: f"{value:.1f}%"),
+            textposition="outside",
+            hovertemplate="<b>%{y}</b><br>%{x:.2f}%<extra></extra>",
+        )
+    )
+    figure.update_layout(xaxis={"title": _chart_text(language, "Valor (%)", "Value (%)"), "range": [0, 105]}, yaxis={"title": ""})
+    _apply_base_layout(figure, margin={"l": 110, "r": 45, "t": 20, "b": 55})
+    return figure
+
+
+def build_filter_analysis_chart(
+    data_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+) -> go.Figure:
+    dataframe = pd.DataFrame(data_rows)
+    if dataframe.empty or "percentage" not in dataframe:
+        return empty_figure("No hay segmentaciones comparables para esta consulta.")
+    selected = _selected_country_keys(selected_countries)
+    if selected:
+        dataframe = dataframe[
+            dataframe.apply(lambda row: _country_key(row.get("iso"), row.get("country")) in selected, axis=1)
+        ]
+    if "segment" not in dataframe:
+        dataframe["segment"] = dataframe.apply(
+            lambda row: next(
+                (str(value) for value in (row.get("filter_a"), row.get("filter_b")) if str(value or "") not in {"", "All"}),
+                "Todos",
+            ),
+            axis=1,
+        )
+    dataframe["percentage"] = pd.to_numeric(dataframe["percentage"], errors="coerce")
+    grouped = dataframe.dropna(subset=["percentage"]).groupby(["segment", "answer"], as_index=False)["percentage"].mean()
+    if grouped.empty:
+        return empty_figure("No hay segmentaciones comparables para esta consulta.")
+    figure = go.Figure()
+    for answer, rows in grouped.groupby("answer"):
+        figure.add_trace(
+            go.Bar(
+                x=rows["segment"],
+                y=rows["percentage"],
+                name=str(answer),
+                marker={"color": _response_color(_response_key(answer))},
+                hovertemplate="<b>%{x}</b><br>%{y:.2f}%<extra></extra>",
+            )
+        )
+    figure.update_layout(
+        barmode="group",
+        xaxis={"title": _chart_text(language, "Segmento", "Segment")},
+        yaxis={"title": _chart_text(language, "Valor (%)", "Value (%)"), "range": [0, 100]},
+        showlegend=True,
+    )
+    _apply_base_layout(figure, margin={"l": 50, "r": 20, "t": 20, "b": 90})
+    figure.update_layout(showlegend=True, legend={"orientation": "h", "y": -0.25})
+    return figure
+
+
+def build_temporal_evolution_chart(
+    history_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+) -> go.Figure:
+    dataframe = pd.DataFrame(history_rows)
+    if dataframe.empty or not {"year", "country", "value"}.issubset(dataframe.columns):
+        return empty_figure(_chart_text(language, "No hay datos históricos para este indicador.", "There is no historical data for this indicator."))
+    selected = _selected_country_keys(selected_countries)
+    if selected:
+        dataframe = dataframe[
+            dataframe.apply(lambda row: _country_key(row.get("iso"), row.get("country")) in selected, axis=1)
+        ]
+    else:
+        latest = dataframe.sort_values("year").groupby("country", as_index=False).tail(1).nlargest(6, "value")
+        dataframe = dataframe[dataframe["country"].isin(latest["country"])]
+    figure = go.Figure()
+    for country, rows in dataframe.sort_values("year").groupby("country"):
+        figure.add_trace(go.Scatter(x=rows["year"], y=rows["value"], mode="lines+markers", name=str(country)))
+    figure.update_layout(
+        xaxis={"title": _chart_text(language, "Año", "Year"), "dtick": 1},
+        yaxis={"title": _chart_text(language, "Puntuación ILGA (%)", "ILGA score (%)"), "range": [0, 100]},
+    )
+    _apply_base_layout(figure, margin={"l": 55, "r": 25, "t": 20, "b": 55})
+    figure.update_layout(showlegend=True, legend={"orientation": "h", "y": -0.2})
+    return figure
+
+
+def build_legal_reality_gap_chart(
+    combined_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+) -> go.Figure:
+    dataframe = pd.DataFrame(combined_rows)
+    if dataframe.empty:
+        return empty_figure("No hay coincidencias FRA/ILGA para esta consulta.")
+    selected = _selected_country_keys(selected_countries)
+    if selected:
+        dataframe = dataframe[dataframe["iso"].astype(str).str.upper().isin(selected)]
+    else:
+        dataframe = dataframe.assign(gap=(dataframe["ilga_value"] - dataframe["fra_value"]).abs()).nlargest(10, "gap")
+    figure = go.Figure()
+    figure.add_trace(go.Bar(y=dataframe["country"], x=dataframe["ilga_value"], orientation="h", name=_chart_text(language, "Protección legal", "Legal protection"), marker={"color": CHART_COLORS["ilga"]}))
+    figure.add_trace(go.Bar(y=dataframe["country"], x=dataframe["fra_value"], orientation="h", name=_chart_text(language, "Experiencia real", "Lived experience"), marker={"color": CHART_COLORS["fra"]}))
+    figure.update_layout(barmode="group", xaxis={"title": _chart_text(language, "Valor (%)", "Value (%)"), "range": [0, 100]}, yaxis={"title": ""})
+    _apply_base_layout(figure, margin={"l": 110, "r": 20, "t": 20, "b": 60})
+    figure.update_layout(showlegend=True, legend={"orientation": "h", "y": -0.18})
+    return figure
+
+
+def build_combined_scatter(combined_rows: list[dict[str, Any]], language: str = "es") -> go.Figure:
+    dataframe = pd.DataFrame(combined_rows)
+    if dataframe.empty:
+        return empty_figure(_chart_text(language, "No hay coincidencias suficientes para estimar la relación.", "There are not enough matches to estimate the relationship."))
+    correlation = dataframe["ilga_value"].corr(dataframe["fra_value"])
+    figure = go.Figure(
+        go.Scatter(
+            x=dataframe["ilga_value"],
+            y=dataframe["fra_value"],
+            mode="markers+text",
+            text=dataframe["country"],
+            textposition="top center",
+            marker={"size": 10, "color": CHART_COLORS["fra"]},
+            hovertemplate="<b>%{text}</b><br>ILGA: %{x:.2f}%<br>FRA: %{y:.2f}%<extra></extra>",
+        )
+    )
+    figure.update_layout(
+        xaxis={"title": _chart_text(language, "Puntuación ILGA (%)", "ILGA score (%)"), "range": [0, 100]},
+        yaxis={"title": _chart_text(language, "Indicador FRA (%)", "FRA indicator (%)"), "range": [0, 100]},
+        annotations=[
+            {
+                "text": (
+                    f"{_chart_text(language, 'Correlación', 'Correlation')}: {correlation:.2f}"
+                    if pd.notna(correlation)
+                    else _chart_text(language, "Correlación no disponible", "Correlation unavailable")
+                ),
+                "x": 0.01,
+                "y": 0.99,
+                "xref": "paper",
+                "yref": "paper",
+                "showarrow": False,
+                "xanchor": "left",
+            }
+        ],
+    )
+    _apply_base_layout(figure)
+    return figure
+
+
+def build_combined_heatmap(combined_rows: list[dict[str, Any]], language: str = "es") -> go.Figure:
+    dataframe = pd.DataFrame(combined_rows)
+    if dataframe.empty:
+        return empty_figure("No hay coincidencias para construir el mapa de calor.")
+    dataframe = dataframe.sort_values("country")
+    figure = go.Figure(
+        go.Heatmap(
+            z=dataframe[["ilga_value", "fra_value"]].to_numpy(),
+            x=[
+                _chart_text(language, "Protección legal", "Legal protection"),
+                _chart_text(language, "Experiencia real", "Lived experience"),
+            ],
+            y=dataframe["country"],
+            zmin=0,
+            zmax=100,
+            colorscale="RdYlGn",
+            colorbar={"title": "%"},
+            hovertemplate="<b>%{y}</b><br>%{x}: %{z:.2f}%<extra></extra>",
+        )
+    )
+    _apply_base_layout(figure, margin={"l": 110, "r": 25, "t": 20, "b": 70})
+    return figure
+
+
+def build_combined_radar(
+    combined_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+) -> go.Figure:
+    dataframe = pd.DataFrame(combined_rows)
+    if dataframe.empty:
+        return empty_figure(_chart_text(language, "No hay países para comparar en radar.", "There are no countries to compare in the radar chart."))
+    selected = _selected_country_keys(selected_countries)
+    if selected:
+        dataframe = dataframe[dataframe["iso"].astype(str).str.upper().isin(selected)]
+    else:
+        dataframe = dataframe.head(4)
+    figure = go.Figure()
+    dimensions = [
+        _chart_text(language, "Protección legal", "Legal protection"),
+        _chart_text(language, "Experiencia real", "Lived experience"),
+        _chart_text(language, "Equilibrio", "Balance"),
+    ]
+    for row in dataframe.head(6).itertuples():
+        ilga_value = float(str(row.ilga_value))
+        fra_value = float(str(row.fra_value))
+        balance = max(0.0, 100 - abs(ilga_value - fra_value))
+        values = [ilga_value, fra_value, balance]
+        figure.add_trace(go.Scatterpolar(r=[*values, values[0]], theta=[*dimensions, dimensions[0]], fill="toself", name=str(row.country)))
+    figure.update_layout(polar={"radialaxis": {"visible": True, "range": [0, 100]}}, showlegend=True)
+    _apply_base_layout(figure, margin={"l": 45, "r": 45, "t": 35, "b": 45})
+    figure.update_layout(showlegend=True)
+    return figure
+
+
+def _numeric_ranking_dataframe(ranking_rows: list[dict[str, Any]]) -> pd.DataFrame:
+    dataframe = pd.DataFrame(ranking_rows)
+    if dataframe.empty or not {"country", "value"}.issubset(dataframe.columns):
+        return pd.DataFrame(columns=["country", "iso", "value"])
+    if "iso" not in dataframe:
+        dataframe["iso"] = ""
+    dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
+    return dataframe.dropna(subset=["value"]).sort_values("value", ascending=False)
+
+
+def _chart_text(language: str, spanish: str, english: str) -> str:
+    return english if language == "en" else spanish
 
 
 def _apply_base_layout(figure: go.Figure, margin: dict[str, int] | None = None) -> None:

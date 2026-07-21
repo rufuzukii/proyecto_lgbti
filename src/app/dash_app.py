@@ -42,6 +42,7 @@ from app.import_to_db.import_log import (
     get_pending_import_log,
     list_pending_import_logs,
 )
+from app.mongo_indexes import initialize_mongo_indexes
 from app.users.schemas import UserRegister, UserRole
 from app.users.service import (
     UserRecord,
@@ -56,6 +57,45 @@ from app.users.service import (
 )
 
 logger = logging.getLogger(__name__)
+
+DASH_INDEX_STRING = """
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        <script>
+            (function () {
+                var theme = "light";
+                try {
+                    var savedTheme = window.localStorage.getItem("rainbowlens-theme");
+                    if (savedTheme === "dark" || savedTheme === "light") {
+                        theme = savedTheme;
+                    }
+                } catch (_error) {
+                    /* Local storage may be unavailable in privacy-restricted contexts. */
+                }
+                document.documentElement.dataset.theme = theme;
+                document.documentElement.style.colorScheme = theme;
+            })();
+        </script>
+        <link rel="icon" href="/assets/img/rainbow_lens_icono.ico">
+        {%css%}
+        <link rel="stylesheet" href="/assets/responsive/responsive.css">
+    </head>
+    <body>
+        <script>
+            document.body.dataset.theme = document.documentElement.dataset.theme || "light";
+        </script>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+"""
 
 
 @dataclass
@@ -77,26 +117,7 @@ def create_dash_app() -> Dash:
         serve_locally=True,
         title="RainbowLens",
     )
-    app.index_string = """
-    <!DOCTYPE html>
-    <html>
-        <head>
-            {%metas%}
-            <title>{%title%}</title>
-            <link rel="icon" href="/assets/img/rainbow_lens_icono.ico">
-            {%css%}
-            <link rel="stylesheet" href="/assets/responsive/responsive.css">
-        </head>
-        <body>
-            {%app_entry%}
-            <footer>
-                {%config%}
-                {%scripts%}
-                {%renderer%}
-            </footer>
-        </body>
-    </html>
-    """
+    app.index_string = DASH_INDEX_STRING
     app.server.config.update(
         SECRET_KEY=config.secret_key,
         SESSION_COOKIE_HTTPONLY=True,
@@ -104,6 +125,10 @@ def create_dash_app() -> Dash:
         SESSION_COOKIE_SECURE=not config.local_mode,
     )
     init_cache(app.server)
+    try:
+        initialize_mongo_indexes()
+    except Exception:
+        logger.warning("mongo_index_initialization_failed", exc_info=True)
     _register_error_routes(app)
 
     login_manager = LoginManager()

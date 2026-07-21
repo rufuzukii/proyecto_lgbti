@@ -10,6 +10,7 @@ from app.analytics.percentage_display import coerce_percentage
 from app.analytics.repository import (
     get_fra_indicator_answers,
     get_ilga_document_by_year,
+    get_ilga_history_documents,
 )
 from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_A,
@@ -207,6 +208,96 @@ def build_fra_answer_options(document: dict[str, Any] | None) -> list[dict[str, 
     ]
 
 
+def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]:
+    """Derive all FRA control options without constructing a pandas DataFrame."""
+    if not isinstance(document, dict):
+        return {"answers": [], "segmentations": [], "values": {}}
+
+    answer_values: dict[str, str] = {}
+    filter_values: dict[str, dict[str, str]] = {}
+    for answer in document.get("answers", []):
+        if not isinstance(answer, dict):
+            continue
+        answer_value = repair_text_encoding(answer.get("answer")).strip()
+        country = repair_text_encoding(answer.get("country")).strip()
+        if not answer_value or not country:
+            continue
+        answer_values.setdefault(answer_value, normalize_filter_value(answer_value))
+        for raw_type, raw_value in _filters_to_dict(answer.get("filters")).items():
+            filter_type = normalize_filter_type(raw_type)
+            if not filter_type or filter_type == "All":
+                continue
+            filter_values.setdefault(filter_type, {}).setdefault(
+                str(raw_value), normalize_filter_value(raw_value)
+            )
+
+    answers = [
+        {"label": label, "value": value}
+        for value, label in sorted(answer_values.items(), key=lambda item: item[1].casefold())
+    ]
+    ordered_types = ["All", *FRA_FILTER_GROUP_A[1:], *FRA_FILTER_GROUP_B[1:]]
+    segmentations = [
+        display_option(filter_type, filter_type)
+        for filter_type in ordered_types
+        if filter_type == "All" or filter_type in filter_values
+    ]
+    values: dict[str, list[dict[str, Any]]] = {"All": [display_option("All", "All")]}
+    for filter_type in ordered_types[1:]:
+        found = filter_values.get(filter_type)
+        if not found:
+            continue
+        values[filter_type] = [
+            {"label": label, "value": raw_value}
+            for raw_value, label in sorted(found.items(), key=lambda item: item[1].casefold())
+        ]
+    return {"answers": answers, "segmentations": segmentations, "values": values}
+
+
+def get_fra_control_payload(code: str) -> dict[str, Any]:
+    return build_fra_control_payload(get_fra_indicator_answers(code))
+
+
+def _fra_control_payload_from_dataframe(dataframe: pd.DataFrame) -> dict[str, Any]:
+    if dataframe.empty:
+        return {"answers": [], "segmentations": [], "values": {}}
+
+    answers = [
+        {"label": label, "value": value}
+        for value, label in sorted(
+            {
+                str(row.answer): normalize_filter_value(row.answer)
+                for row in dataframe[["answer"]].drop_duplicates().itertuples()
+            }.items(),
+            key=lambda item: item[1],
+        )
+    ]
+    present = _present_filter_types(dataframe)
+    ordered_types = ["All", *FRA_FILTER_GROUP_A[1:], *FRA_FILTER_GROUP_B[1:]]
+    segmentations = [
+        display_option(filter_type, filter_type)
+        for filter_type in ordered_types
+        if filter_type == "All" or filter_type in present
+    ]
+    values: dict[str, list[dict[str, Any]]] = {"All": [display_option("All", "All")]}
+    records = dataframe[["filters"]].to_dict("records")
+    for filter_type in ordered_types[1:]:
+        if filter_type not in present:
+            continue
+        found: dict[str, str] = {}
+        for row in records:
+            filters = row.get("filters")
+            if not isinstance(filters, dict):
+                continue
+            for raw_type, raw_value in filters.items():
+                if normalize_filter_type(raw_type) == filter_type:
+                    found.setdefault(str(raw_value), normalize_filter_value(raw_value))
+        values[filter_type] = [
+            {"label": label, "value": raw_value}
+            for raw_value, label in sorted(found.items(), key=lambda item: item[1].casefold())
+        ]
+    return {"answers": answers, "segmentations": segmentations, "values": values}
+
+
 def build_fra_country_options(document: dict[str, Any] | None) -> list[dict[str, Any]]:
     dataframe = fra_document_to_dataframe(document)
     if dataframe.empty:
@@ -255,22 +346,37 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
             )
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
-    detail_dataframe = filter_fra_detail_dataframe(
+    detail_dataframe = filter_fra_comparison_dataframe(source_dataframe, query)
+    segmentation_dataframe = filter_fra_segmentation_dataframe(
         source_dataframe,
         query,
-        filter_scope=effective_filter_scope,
+        effective_answer=effective_answer,
     )
 
     ranking = aggregate_fra_data(dataframe, ["country", "iso"], "percentage", "mean")
     ranking = ranking.rename(columns={"percentage": "value"}).sort_values("value", ascending=False)
     ranking["value"] = ranking["value"].astype(object).where(pd.notna(ranking["value"]), None)
+    response_ranking = aggregate_fra_data(
+        detail_dataframe,
+        ["country", "iso", "answer"],
+        "percentage",
+        "mean",
+    ).rename(columns={"percentage": "value"})
+    response_ranking["value"] = response_ranking["value"].astype(object).where(
+        pd.notna(response_ranking["value"]), None
+    )
     return {
         "status": "ok",
         "message": "",
         "source": "FRA",
         "data": dataframe.to_dict("records"),
         "detail_data": detail_dataframe.to_dict("records"),
+        "segmentation_data": segmentation_dataframe.to_dict("records"),
+        "available_countries": sorted(
+            value for value in source_dataframe["iso"].dropna().astype(str).unique().tolist() if value
+        ),
         "ranking": ranking.to_dict("records"),
+        "response_ranking": response_ranking.to_dict("records"),
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "methodology": (
             "FRA: porcentajes medios de respuestas de personas encuestadas. "
@@ -279,7 +385,11 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     }
 
 
-def get_ilga_statistics(query: IlgaStatisticsQuery) -> dict[str, Any]:
+def get_ilga_statistics(
+    query: IlgaStatisticsQuery,
+    *,
+    include_history: bool = True,
+) -> dict[str, Any]:
     document = get_ilga_document_by_year(query.year)
     dataframe = ilga_document_to_dataframe(document)
     if dataframe.empty:
@@ -301,6 +411,10 @@ def get_ilga_statistics(query: IlgaStatisticsQuery) -> dict[str, Any]:
         "source": "ILGA-Europe",
         "data": dataframe.to_dict("records"),
         "ranking": ranking.to_dict("records"),
+        "available_countries": sorted(
+            value for value in dataframe["iso"].dropna().astype(str).unique().tolist() if value
+        ),
+        "history": get_ilga_history_rows(query.category, query.criterion) if include_history else [],
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "methodology": (
             "ILGA-Europe Rainbow Map mide leyes, políticas y protecciones jurídicas. "
@@ -340,6 +454,102 @@ def filter_fra_detail_dataframe(
         filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
     filtered = _apply_exact_filter_scope(filtered, query, filter_scope=filter_scope)
     return filtered
+
+
+def filter_fra_comparison_dataframe(
+    dataframe: pd.DataFrame,
+    query: FraStatisticsQuery,
+) -> pd.DataFrame:
+    """Return every response using a comparable scope for each response label.
+
+    Some FRA questions store their aggregate response labels under different
+    technical filter scopes. Selecting one response must not hide the others.
+    """
+    filtered = dataframe.copy()
+    if query.year is not None and "year" in filtered:
+        filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
+    if filtered.empty:
+        return filtered
+
+    requested_a = _selected_filter_label(query.filter_a_name, query.filter_a_value)
+    requested_b = _selected_filter_label(query.filter_b_name, query.filter_b_value)
+    if (requested_a, requested_b) != ("All", "All"):
+        return _apply_exact_filter_scope(filtered, query)
+
+    groups: list[pd.DataFrame] = []
+    for answer in filtered["answer"].dropna().drop_duplicates().tolist():
+        answer_rows = filtered[filtered["answer"] == answer]
+        scope = _available_filter_label_scope(dataframe=answer_rows, answer=str(answer))
+        if scope is not None:
+            answer_rows = _apply_exact_filter_scope(answer_rows, query, filter_scope=scope)
+        groups.append(answer_rows)
+    return pd.concat(groups, ignore_index=True) if groups else filtered.iloc[0:0]
+
+
+def filter_fra_segmentation_dataframe(
+    dataframe: pd.DataFrame,
+    query: FraStatisticsQuery,
+    *,
+    effective_answer: str | None,
+) -> pd.DataFrame:
+    """Return every value for the selected segmentation from the loaded frame."""
+    segmentation_type = normalize_filter_type(query.filter_a_name)
+    opposite_column = "filter_b"
+    if not segmentation_type or segmentation_type == "All":
+        segmentation_type = normalize_filter_type(query.filter_b_name)
+        opposite_column = "filter_a"
+    if not segmentation_type or segmentation_type == "All":
+        return pd.DataFrame(columns=["country", "iso", "answer", "percentage", "segment"])
+
+    filtered = dataframe.copy()
+    if query.year is not None and "year" in filtered:
+        filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
+    if effective_answer:
+        filtered = filtered[filtered["answer"] == effective_answer]
+    if query.countries:
+        selected = {normalize_country_code(country) or str(country) for country in query.countries}
+        filtered = filtered[filtered["iso"].isin(selected) | filtered["country"].isin(selected)]
+    if opposite_column in filtered:
+        filtered = filtered[filtered[opposite_column].apply(lambda value: _same_filter_label(value, "All"))]
+
+    def segment_value(filters: Any) -> str | None:
+        if not isinstance(filters, dict):
+            return None
+        for raw_type, raw_value in filters.items():
+            if normalize_filter_type(raw_type) == segmentation_type:
+                return normalize_filter_value(raw_value)
+        return None
+
+    filtered = filtered.copy()
+    filtered["segment"] = filtered["filters"].apply(segment_value)
+    filtered = filtered[filtered["segment"].notna()]
+    return filtered[["country", "iso", "answer", "percentage", "segment"]]
+
+
+def get_ilga_history_rows(
+    category: str | None,
+    criterion: str | None,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for document in get_ilga_history_documents():
+        dataframe = ilga_document_to_dataframe(document)
+        if dataframe.empty:
+            continue
+        query = IlgaStatisticsQuery(category=category, criterion=criterion)
+        filtered = filter_ilga_dataframe(dataframe, query)
+        if category and category != "Ranking total":
+            ranking = _ilga_category_scores(filtered)
+        else:
+            ranking = filtered[filtered["category"] == "Ranking total"][["country", "iso", "ranking"]]
+            ranking = ranking.rename(columns={"ranking": "value"}).drop_duplicates()
+        if ranking.empty:
+            continue
+        ranking["year"] = _safe_int(document.get("year"))
+        rows.extend(
+            {str(key): value for key, value in record.items()}
+            for record in ranking[["year", "country", "iso", "value"]].to_dict("records")
+        )
+    return rows
 
 
 def filter_ilga_dataframe(dataframe: pd.DataFrame, query: IlgaStatisticsQuery) -> pd.DataFrame:

@@ -5,10 +5,9 @@ import hashlib
 from typing import Any
 
 from bson import ObjectId
-from pymongo import MongoClient
-
-from app.config import get_mongo_config
+from app.mongo import get_mongo_collection
 from app.import_to_db.felgtbi.importer import FELGTBI_SOURCE_CODE
+from app.import_to_db.felgtbi.semantics import sanitize_report_document
 
 INDICATOR_FELGTBI_COLLECTION = "Indicator_felgtbi"
 
@@ -23,53 +22,21 @@ def insert_indicator_felgtbi_json(
         _prepare_indicator_document(document, original_filename=original_filename)
         for document in documents
     ]
-    config = get_mongo_config()
-
-    with MongoClient(
-        config.dsn(),
-        serverSelectionTimeoutMS=config.server_selection_timeout_ms,
-        connectTimeoutMS=config.server_selection_timeout_ms,
-        socketTimeoutMS=config.server_selection_timeout_ms,
-    ) as client:
-        collection = client[config.database][INDICATOR_FELGTBI_COLLECTION]
-        collection.create_index("code", background=True)
-        collection.create_index(
-            [("year", -1), ("category", 1), ("specific_category", 1)],
-            background=True,
-        )
-        collection.create_index("source_document_id", background=True)
-        collection.create_index("original_filename", background=True)
-        collection.create_index([("source", 1), ("report_type", 1)], background=True)
-        collection.create_index(
-            [("source", 1), ("year", -1), ("report_title", 1), ("report_type", 1)],
-            background=True,
-        )
-        collection.create_index(
-            [("source", 1), ("source_document_id", 1), ("year", -1)],
-            background=True,
-        )
-        collection.create_index(
-            [("source", 1), ("source_document_id", 1), ("year", -1), ("code", 1)],
-            background=True,
-        )
-        collection.create_index(
-            [("source", 1), ("original_filename", 1), ("year", -1)],
-            background=True,
-        )
-        for scope in _report_replacement_scopes(prepared_documents):
-            collection.delete_many(scope)
-        for prepared in prepared_documents:
-            has_answers = "answers" in prepared
-            answers = prepared.pop("answers", [])
-            object_id = prepared.pop("_id", None)
-            update: dict[str, Any] = {"$set": prepared}
-            if object_id is not None:
-                update["$setOnInsert"] = {"_id": object_id}
-            if has_answers:
-                update["$set"]["answers"] = answers
-            else:
-                update["$unset"] = {"answers": ""}
-            collection.update_one(_indicator_filter(prepared), update, upsert=True)
+    collection = get_mongo_collection(INDICATOR_FELGTBI_COLLECTION)
+    for scope in _report_replacement_scopes(prepared_documents):
+        collection.delete_many(scope)
+    for prepared in prepared_documents:
+        has_answers = "answers" in prepared
+        answers = prepared.pop("answers", [])
+        object_id = prepared.pop("_id", None)
+        update: dict[str, Any] = {"$set": prepared}
+        if object_id is not None:
+            update["$setOnInsert"] = {"_id": object_id}
+        if has_answers:
+            update["$set"]["answers"] = answers
+        else:
+            update["$unset"] = {"answers": ""}
+        collection.update_one(_indicator_filter(prepared), update, upsert=True)
 
     return len(documents)
 
@@ -114,7 +81,12 @@ def _prepare_indicator_document(
     *,
     original_filename: str | None = None,
 ) -> dict[str, Any]:
-    prepared = deepcopy(document)
+    prepared = sanitize_report_document(deepcopy(document))
+    _remove_derived_image_fields(prepared)
+    figure = prepared.get("figure")
+    if isinstance(figure, dict):
+        for key in ("bucket", "mime_type", "size", "checksum", "upload"):
+            figure.pop(key, None)
     if prepared.get("source") != FELGTBI_SOURCE_CODE:
         raise ValueError("invalid_felgtbi_payload")
     code = str(prepared.get("code") or "").strip()
@@ -154,6 +126,32 @@ def _prepare_indicator_document(
     else:
         prepared.pop("answers", None)
     return prepared
+
+
+def _remove_derived_image_fields(value: Any) -> None:
+    """Keep image identity in MongoDB limited to the object storage key."""
+    if isinstance(value, list):
+        for item in value:
+            _remove_derived_image_fields(item)
+        return
+    if not isinstance(value, dict):
+        return
+
+    derived_keys = {
+        "asset" + "_url",
+        "signed" + "_url",
+        "public" + "_url",
+        "image" + "_url",
+        "image" + "_path",
+        "url" + "_type",
+        "signed" + "_url_expires_in",
+    }
+    for key in derived_keys:
+        value.pop(key, None)
+    value.pop("image" + "_upload", None)
+    value.pop("image" + "_storage", None)
+    for item in value.values():
+        _remove_derived_image_fields(item)
 
 
 def _normalize_documents(file_json: dict[str, Any] | list[Any]) -> list[dict[str, Any]]:

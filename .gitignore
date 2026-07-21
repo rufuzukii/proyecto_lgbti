@@ -114,9 +114,7 @@ tests/unit/analytics/**
 !tests/unit/analytics/test_statistics.py
 !tests/unit/analytics/test_legal_criteria.py
 !tests/unit/analytics/test_spain_collections.py
+!tests/unit/analytics/test_spain_report_visibility.py
 !tests/unit/dash/
 tests/unit/dash/**
 !tests/unit/dash/test_assets_dom_safety.py
-
-# Generated Dash assets
-src/app/dash/assets/generated/

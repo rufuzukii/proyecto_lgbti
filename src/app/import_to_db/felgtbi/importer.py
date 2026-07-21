@@ -9,24 +9,28 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
-from urllib.request import Request, urlopen
 
 from bson import ObjectId
 
+from app.import_to_db.felgtbi.semantics import (
+    ExtractionContext,
+    clean_figure_paragraphs,
+    is_chart_residual_text,
+)
 from app.import_to_db.utils import normalize_header, parse_float
+from app.storage import DEFAULT_SUPABASE_STORAGE_BUCKET
 
 FELGTBI_SOURCE_CODE = "felgtbi_estado_lgtbi"
 FELGTBI_SOURCE_NAME = "FELGTBI+ Estado LGBTIQ+"
 SPAIN_COUNTRY = "Spain"
 SPAIN_COUNTRY_CODE = "ES"
-DEFAULT_SUPABASE_STORAGE_BUCKET = "felgtbi-reports"
 FIGURE_IMAGE_MIME_TYPE = "image/webp"
 FIGURE_IMAGE_EXTENSION = "webp"
 
 YEAR_PATTERN = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
 PERCENT_PATTERN = re.compile(r"(?<!\d)(\d{1,3}(?:[,.]\d{1,2})?)\s*%")
 NUMBER_PATTERN = re.compile(r"(?<![\w])\d{1,4}(?:[,.]\d{1,2})?(?![\w])")
+CHART_NUMBER_PATTERN = re.compile(r"(?<![\w])(?P<value>\d{1,4}(?:[,.]\d{1,2})?)(?P<percent>\s*%)?(?![\w])")
 TOC_ENTRY_PATTERN = re.compile(r"^(?P<title>.+?)\s+\.{3,}\s*(?P<page>\d{1,3})$")
 TOC_DOTS_PAGE_PATTERN = re.compile(r"^\.{3,}\s*(?P<page>\d{1,3})$")
 FIGURE_CAPTION_PATTERN = re.compile(
@@ -340,6 +344,8 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
             text_blocks = page.get_text("blocks")
             page_dict = page.get_text("dict")
             dict_blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
+            page_width = float(page.rect.width)
+            page_height = float(page.rect.height)
             pages.append(
                 {
                     "page": page_index + 1,
@@ -351,14 +357,64 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
                             "x1": block[2],
                             "y1": block[3],
                             "text": block[4],
+                            **_text_block_style(dict_blocks, block),
                         }
                         for block in text_blocks
                         if len(block) >= 5
                     ],
                     "figures": _extract_page_figures(dict_blocks),
+                    "width": page_width,
+                    "height": page_height,
+                    "drawing_count": len(page.get_drawings()),
                 }
             )
     return pages
+
+
+def _text_block_style(
+    dict_blocks: list[dict[str, Any]],
+    text_block: Any,
+) -> dict[str, Any]:
+    """Return font hints for a text block without changing its extracted text."""
+    if len(text_block) < 4:
+        return {}
+    block_bbox = [float(text_block[index]) for index in range(4)]
+    best: dict[str, Any] | None = None
+    best_overlap = 0.0
+    for candidate in dict_blocks:
+        if candidate.get("type") != 0:
+            continue
+        bbox = _safe_bbox(candidate.get("bbox"))
+        if bbox is None:
+            continue
+        overlap = _bbox_overlap_area(block_bbox, bbox)
+        if overlap > best_overlap:
+            best = candidate
+            best_overlap = overlap
+    if best is None:
+        return {}
+
+    spans = [
+        span
+        for line in best.get("lines", [])
+        if isinstance(line, dict)
+        for span in line.get("spans", [])
+        if isinstance(span, dict)
+    ]
+    if not spans:
+        return {}
+    fonts = [str(span.get("font") or "") for span in spans]
+    return {
+        "font_size": round(max(float(span.get("size") or 0) for span in spans), 2),
+        "is_bold": any("bold" in font.casefold() for font in fonts),
+        "is_italic": any("italic" in font.casefold() for font in fonts),
+    }
+
+
+def _bbox_overlap_area(first: list[float], second: list[float]) -> float:
+    width = max(0.0, min(first[2], second[2]) - max(first[0], second[0]))
+    height = max(0.0, min(first[3], second[3]) - max(first[1], second[1]))
+    return width * height
 
 
 def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict]) -> None:
@@ -409,11 +465,9 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
                 mime_type=mime_type,
                 checksum=checksum,
             )
-            uploaded_asset_url = str(upload.get("public_url") or upload.get("signed_url") or "")
-            if uploaded_asset_url:
+            if upload.get("status") in {"uploaded", "reused"}:
                 rendered_assets[asset_id] = {
                     **upload,
-                    "asset_url": uploaded_asset_url,
                     "width": width,
                     "height": height,
                     "size": len(image_bytes),
@@ -426,9 +480,6 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
                 "status": "failed",
                 "bucket": upload.get("bucket") or _supabase_storage_bucket(),
                 "storage_path": storage_path,
-                "public_url": "",
-                "signed_url": "",
-                "asset_url": "",
                 "mime_type": mime_type,
                 "width": width,
                 "height": height,
@@ -447,47 +498,11 @@ def _attach_page_assets(pdf_bytes: bytes, file_name: str, documents: list[dict])
         asset = rendered_assets.get(asset_id)
         if not asset:
             continue
-        asset_url = str(asset.get("public_url") or asset.get("asset_url") or "")
-        context["asset_url"] = asset_url
-        context["image_storage"] = "supabase"
-        context["image_upload"] = {
-            "status": asset.get("status") or "failed",
-            "error": asset.get("error"),
-            "bucket": asset.get("bucket"),
-            "storage_path": asset.get("storage_path"),
-            "public_url": asset.get("public_url"),
-            "signed_url": asset.get("signed_url"),
-            "url_type": asset.get("url_type"),
-            "signed_url_expires_in": asset.get("signed_url_expires_in"),
-            "mime_type": asset.get("mime_type"),
-            "size": asset.get("size"),
-            "checksum": asset.get("checksum"),
-            "width": asset.get("width"),
-            "height": asset.get("height"),
-        }
         figure = document.get("figure")
-        if isinstance(figure, dict):
-            figure.update(
-                {
-                    "bucket": asset.get("bucket"),
-                    "storage_path": asset.get("storage_path"),
-                    "public_url": asset.get("public_url") or "",
-                    "signed_url": asset.get("signed_url") or "",
-                    "url_type": asset.get("url_type"),
-                    "signed_url_expires_in": asset.get("signed_url_expires_in"),
-                    "image_path": asset_url,
-                    "asset_url": asset_url,
-                    "mime_type": asset.get("mime_type"),
-                    "size": asset.get("size"),
-                    "checksum": asset.get("checksum"),
-                    "width": asset.get("width"),
-                    "height": asset.get("height"),
-                    "upload": {
-                        "status": asset.get("status") or "failed",
-                        "error": asset.get("error"),
-                    },
-                }
-            )
+        if isinstance(figure, dict) and asset.get("status") in {"uploaded", "reused"}:
+            figure["storage_path"] = str(asset.get("storage_path") or storage_path)
+            figure["width"] = int(asset.get("width") or 0)
+            figure["height"] = int(asset.get("height") or 0)
 
 
 def _safe_bbox(value: Any) -> list[float] | None:
@@ -582,31 +597,11 @@ def _upload_figure_to_supabase(
                 "storage_path": storage_path,
             }
 
-    bucket_is_public = _supabase_bucket_is_public(config["bucket"])
-    public_url = _supabase_public_url(config["bucket"], storage_path) if bucket_is_public is True else ""
-    signed_url = ""
-    signed_url_expires_in = None
-    url_type = "public" if public_url else ""
-    if bucket_is_public is False:
-        signed_url_expires_in = int(os.getenv("SUPABASE_SIGNED_URL_EXPIRES_IN", "3600") or 3600)
-        try:
-            signed_url = _supabase_signed_url(
-                config["bucket"],
-                storage_path,
-                expires_in=signed_url_expires_in,
-            )
-            url_type = "signed"
-        except Exception:
-            signed_url = ""
     return {
         "status": status,
         "error": None,
         "bucket": config["bucket"],
         "storage_path": storage_path,
-        "public_url": public_url,
-        "signed_url": signed_url,
-        "url_type": url_type,
-        "signed_url_expires_in": signed_url_expires_in,
         "mime_type": mime_type,
     }
 
@@ -628,71 +623,6 @@ def _supabase_storage_config() -> dict[str, str] | None:
 
 def _supabase_storage_bucket() -> str:
     return os.getenv("SUPABASE_STORAGE_BUCKET", DEFAULT_SUPABASE_STORAGE_BUCKET).strip() or DEFAULT_SUPABASE_STORAGE_BUCKET
-
-
-def _supabase_bucket_is_public(bucket: str) -> bool | None:
-    configured = os.getenv("SUPABASE_STORAGE_PUBLIC", "").strip().lower()
-    if configured in {"1", "true", "yes", "public"}:
-        return True
-    if configured in {"0", "false", "no", "private"}:
-        return False
-
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not supabase_url or not service_key:
-        return None
-    request = Request(
-        f"{supabase_url}/storage/v1/bucket/{quote(bucket, safe='')}",
-        headers={
-            "Authorization": f"Bearer {service_key}",
-            "apikey": service_key,
-        },
-        method="GET",
-    )
-    try:
-        with urlopen(request, timeout=6) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except Exception:
-        return None
-    is_public = payload.get("public")
-    return bool(is_public) if isinstance(is_public, bool) else None
-
-
-def _supabase_public_url(bucket: str, storage_path: str) -> str:
-    configured_base = os.getenv("SUPABASE_STORAGE_PUBLIC_BASE_URL", "").strip()
-    if configured_base:
-        base = configured_base.rstrip("/")
-        return f"{base}/{quote(storage_path, safe='/')}"
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    if not supabase_url:
-        return ""
-    return f"{supabase_url}/storage/v1/object/public/{quote(bucket, safe='')}/{quote(storage_path, safe='/')}"
-
-
-def _supabase_signed_url(bucket: str, storage_path: str, *, expires_in: int) -> str:
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    if not supabase_url or not service_key:
-        return ""
-    body = json.dumps({"expiresIn": int(expires_in)}).encode("utf-8")
-    request = Request(
-        f"{supabase_url}/storage/v1/object/sign/{quote(bucket, safe='')}/{quote(storage_path, safe='/')}",
-        data=body,
-        headers={
-            "Authorization": f"Bearer {service_key}",
-            "apikey": service_key,
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    with urlopen(request, timeout=8) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    signed_url = str(payload.get("signedURL") or payload.get("signedUrl") or "").strip()
-    if not signed_url:
-        return ""
-    if signed_url.startswith("http://") or signed_url.startswith("https://"):
-        return signed_url
-    return f"{supabase_url}/storage/v1{signed_url if signed_url.startswith('/') else '/' + signed_url}"
 
 
 def _figure_storage_path(document: dict[str, Any], file_name: str) -> str:
@@ -800,6 +730,29 @@ def parse_felgtbi_text_pages(
             _refresh_content_html(documents)
             return documents
 
+    layout_documents = _build_layout_page_documents(
+        pages=pages,
+        toc_sections=toc_sections,
+        year=resolved_year,
+        report_title=report_title,
+        report_type=report_type,
+        report_category=report_category,
+        sample_size=sample_size,
+        fieldwork=fieldwork,
+    )
+    if layout_documents:
+        _attach_source_document_metadata(
+            layout_documents,
+            file_name=file_name,
+            source_document_id=_build_metadata_source_document_id(
+                file_name,
+                resolved_year,
+                report_title,
+            ),
+        )
+        _refresh_content_html(layout_documents)
+        return layout_documents
+
     documents: list[dict] = []
     seen_codes: set[str] = set()
 
@@ -879,6 +832,383 @@ def parse_felgtbi_text_pages(
     return documents
 
 
+def _build_layout_page_documents(
+    *,
+    pages: list[dict[str, Any]],
+    toc_sections: list[dict[str, Any]],
+    year: int,
+    report_title: str,
+    report_type: str,
+    report_category: str,
+    sample_size: int | None,
+    fieldwork: str,
+) -> list[dict[str, Any]]:
+    """Build one structured section per visual data page when captions are absent.
+
+    Many reports use vector charts and page headings instead of explicit ``Figura``
+    captions.  The previous percentage-only fallback lost those pages completely.
+    Font and position hints let us recognize the page structure without relying on
+    a report filename or a fixed list of section titles.
+    """
+    documents: list[dict[str, Any]] = []
+    seen_codes: set[str] = set()
+    for page in pages:
+        blocks = _raw_text_block_entries(page)
+        heading_block = _layout_page_heading(page, blocks)
+        if heading_block is None or not _is_layout_content_page(page, blocks, heading_block):
+            continue
+
+        page_number = int(page.get("page") or 0)
+        heading = _clean_section_title(str(heading_block.get("text") or ""))
+        if not heading or _is_excluded_section(heading):
+            continue
+        section = _section_for_page(toc_sections, page_number) or report_category
+        section = _clean_section_title(section) or report_category
+        data_points = _extract_layout_data_points(page, blocks, heading_block)
+        visual_bbox = _layout_visual_bbox(page, blocks, heading_block, data_points)
+        if visual_bbox is None and not data_points:
+            continue
+
+        paragraphs_before, paragraphs_after = _layout_context_paragraphs(
+            page,
+            blocks,
+            heading_block,
+            visual_bbox,
+        )
+        semantic_cleanup = clean_figure_paragraphs(
+            paragraphs_before,
+            paragraphs_after,
+            caption=heading,
+        )
+        paragraphs_before = semantic_cleanup.before
+        paragraphs_after = semantic_cleanup.after
+        topic = _infer_topic(
+            heading,
+            str(page.get("text") or ""),
+            " ".join([*paragraphs_before, *paragraphs_after]),
+            section,
+            report_category,
+        )
+        topics = _infer_controlled_topics(
+            section=section,
+            subsection=heading,
+            caption=heading,
+            paragraphs=[*paragraphs_before, *paragraphs_after],
+        )
+        document = _build_figure_document(
+            year=year,
+            report_title=report_title,
+            report_type=report_type,
+            category=report_category,
+            topic=topic,
+            topics=topics,
+            section=section,
+            subsection=heading,
+            figure_caption=heading,
+            figure_source="",
+            figure_number=str(page_number),
+            paragraphs_before=paragraphs_before,
+            paragraphs_after=paragraphs_after,
+            data_points=data_points,
+            sample_size=sample_size,
+            fieldwork=fieldwork,
+            page=page_number,
+            visual_context=_build_visual_context(page_number, visual_bbox, heading),
+        )
+        document.update(
+            {
+                "schema_version": 2,
+                "page": page_number,
+                "content_order": [
+                    "paragraphs_before_figure",
+                    "figure",
+                    "paragraphs_after_figure",
+                    "data_points",
+                ],
+                "extraction": {
+                    "method": "pdf_text_layout",
+                    "text_characters": len(str(page.get("text") or "")),
+                    "block_count": len(blocks),
+                    "data_point_count": len(data_points),
+                    "semantic_cleanup_removed": len(semantic_cleanup.removed),
+                },
+            }
+        )
+        if document["code"] in seen_codes:
+            continue
+        seen_codes.add(document["code"])
+        documents.append(document)
+    return documents
+
+
+def _layout_page_heading(
+    page: dict[str, Any],
+    blocks: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    page_height = float(page.get("height") or 842)
+    candidates = []
+    for block in blocks:
+        text = str(block.get("text") or "").strip()
+        font_size = float(block.get("font_size") or 0)
+        if not text or text.isdigit() or len(text) > 220:
+            continue
+        if float(block.get("y0") or 0) > page_height * 0.3:
+            continue
+        if font_size < 16 and not (bool(block.get("is_bold")) and font_size >= 14):
+            continue
+        candidates.append(block)
+    if not candidates:
+        return None
+    return sorted(
+        candidates,
+        key=lambda block: (
+            -float(block.get("font_size") or 0),
+            float(block.get("y0") or 0),
+            float(block.get("x0") or 0),
+        ),
+    )[0]
+
+
+def _is_layout_content_page(
+    page: dict[str, Any],
+    blocks: list[dict[str, Any]],
+    heading: dict[str, Any],
+) -> bool:
+    if len(blocks) < 3:
+        return False
+    normalized_text = normalize_header(str(page.get("text") or ""))
+    heading_text = normalize_header(str(heading.get("text") or ""))
+    if heading_text in {"indice", "contenido", "pagina"}:
+        return False
+    if "indice" in normalized_text[:120] or "tabla_de_contenidos" in normalized_text[:160]:
+        return False
+    if _is_excluded_section(heading_text):
+        return False
+    values = _layout_numeric_matches(page, blocks, heading)
+    narrative_blocks = [
+        block
+        for block in blocks
+        if len(str(block.get("text") or "").strip()) >= 40
+        and _block_has_letters(str(block.get("text") or ""))
+    ]
+    return len(values) >= 2 or (bool(values) and len(narrative_blocks) >= 2)
+
+
+def _extract_layout_data_points(
+    page: dict[str, Any],
+    blocks: list[dict[str, Any]],
+    heading: dict[str, Any],
+) -> list[dict[str, Any]]:
+    matches = _layout_numeric_matches(page, blocks, heading)
+    points: list[dict[str, Any]] = []
+    seen: set[tuple[str, float]] = set()
+    for index, item in enumerate(matches, start=1):
+        value = float(item["value"])
+        unit = str(item["unit"])
+        label = _nearest_layout_label(blocks, item, heading)
+        text = f"{label}: {_format_layout_value(value, unit)}" if label else f"Resultado {index}: {_format_layout_value(value, unit)}"
+        key = (normalize_header(text), value)
+        if key in seen:
+            continue
+        seen.add(key)
+        point: dict[str, Any] = {
+            "text": text,
+            "label": label or f"Resultado {index}",
+            "value": value,
+            "unit": unit,
+            "page": int(page.get("page") or 0),
+            "bbox": [
+                round(float(item["block"].get("x0") or 0), 2),
+                round(float(item["block"].get("y0") or 0), 2),
+                round(float(item["block"].get("x1") or 0), 2),
+                round(float(item["block"].get("y1") or 0), 2),
+            ],
+        }
+        if unit == "percent":
+            point["percentage"] = value
+        point["html"] = f"<p>{_data_point_inner_html(text)}</p>"
+        points.append(point)
+        if len(points) >= 40:
+            break
+    return points
+
+
+def _layout_numeric_matches(
+    page: dict[str, Any],
+    blocks: list[dict[str, Any]],
+    heading: dict[str, Any],
+) -> list[dict[str, Any]]:
+    page_number = int(page.get("page") or 0)
+    page_height = float(page.get("height") or 842)
+    normalized_page = normalize_header(str(page.get("text") or ""))
+    count_unit = "escano" in normalized_page or "escaño" in str(page.get("text") or "").casefold()
+    page_uses_percent = (
+        "%" in str(page.get("text") or "")
+        or "porcentaje" in normalized_page
+        or "porcentajes" in normalized_page
+    )
+    results: list[dict[str, Any]] = []
+    for block in blocks:
+        text = str(block.get("text") or "").strip()
+        if not text or float(block.get("y0") or 0) <= float(heading.get("y1") or 0):
+            continue
+        if float(block.get("y0") or 0) >= page_height - 35:
+            continue
+        if text.isdigit() and int(text) == page_number:
+            continue
+        if text.startswith("*") or _is_figure_note_text(text):
+            continue
+        block_has_percentages = bool(PERCENT_PATTERN.search(text))
+        block_is_narrative = len(text) > 80 and _block_has_letters(text)
+        for match in CHART_NUMBER_PATTERN.finditer(text):
+            if block_has_percentages and not match.group("percent"):
+                continue
+            if block_is_narrative and not match.group("percent"):
+                continue
+            value = parse_float(match.group("value"))
+            if value is None:
+                continue
+            if 1900 <= value <= 2100 and not match.group("percent"):
+                continue
+            unit = "count" if count_unit else "percent" if (match.group("percent") or page_uses_percent) else "number"
+            maximum = 400 if unit == "count" else 100
+            if value < 0 or value > maximum:
+                continue
+            results.append(
+                {
+                    "value": float(value),
+                    "unit": unit,
+                    "block": block,
+                    "match_start": match.start(),
+                    "match_end": match.end(),
+                }
+            )
+    return results
+
+
+def _nearest_layout_label(
+    blocks: list[dict[str, Any]],
+    item: dict[str, Any],
+    heading: dict[str, Any],
+) -> str:
+    value_block = item["block"]
+    own_text = str(value_block.get("text") or "")
+    own_label = CHART_NUMBER_PATTERN.sub(" ", own_text)
+    own_label = " ".join(own_label.replace("%", " ").split()).strip(" .:-")
+    if (
+        float(value_block.get("y1") or 0) - float(value_block.get("y0") or 0) > 45
+        and len(CHART_NUMBER_PATTERN.findall(own_text)) > 3
+    ):
+        return ""
+    if _is_layout_label(own_label):
+        return _truncate_at_word_boundary(own_label, 120)
+
+    value_center = (float(value_block.get("y0") or 0) + float(value_block.get("y1") or 0)) / 2
+    candidates: list[tuple[float, float, str]] = []
+    for block in blocks:
+        if block is value_block or float(block.get("y0") or 0) <= float(heading.get("y1") or 0):
+            continue
+        text = str(block.get("text") or "").strip()
+        if CHART_NUMBER_PATTERN.search(text) or not _is_layout_label(text):
+            continue
+        if float(block.get("x0") or 0) > float(value_block.get("x0") or 0) + 20:
+            continue
+        center = (float(block.get("y0") or 0) + float(block.get("y1") or 0)) / 2
+        vertical_distance = abs(center - value_center)
+        if vertical_distance > 18:
+            continue
+        horizontal_distance = abs(float(block.get("x1") or 0) - float(value_block.get("x0") or 0))
+        candidates.append((vertical_distance, horizontal_distance, text))
+    if not candidates:
+        return ""
+    return _truncate_at_word_boundary(sorted(candidates)[0][2], 120)
+
+
+def _is_layout_label(text: str) -> bool:
+    clean = " ".join(str(text or "").split()).strip(" .:-")
+    if not clean or len(clean) > 140 or not _block_has_letters(clean):
+        return False
+    if clean.endswith("?") or len(clean.split()) > 18:
+        return False
+    normalized = normalize_header(clean)
+    return normalized not in {"si", "no", "ns", "nc"} or len(clean) <= 4
+
+
+def _block_has_letters(text: str) -> bool:
+    return any(character.isalpha() for character in str(text or ""))
+
+
+def _format_layout_value(value: float, unit: str) -> str:
+    rendered = f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    return f"{rendered}%" if unit == "percent" else rendered
+
+
+def _layout_visual_bbox(
+    page: dict[str, Any],
+    blocks: list[dict[str, Any]],
+    heading: dict[str, Any],
+    data_points: list[dict[str, Any]],
+) -> list[float] | None:
+    if not data_points:
+        return None
+    page_width = float(page.get("width") or 595)
+    page_height = float(page.get("height") or 842)
+    heading_bottom = float(heading.get("y1") or 0)
+    numeric_top = min(float(point["bbox"][1]) for point in data_points)
+    introductory = [
+        block
+        for block in blocks
+        if heading_bottom < float(block.get("y0") or 0) < numeric_top - 2
+        and len(str(block.get("text") or "")) >= 45
+        and _block_has_letters(str(block.get("text") or ""))
+    ]
+    top = max(
+        [heading_bottom + 10, *[float(block.get("y1") or 0) + 8 for block in introductory]]
+    )
+    numeric_bottom = max(float(point["bbox"][3]) for point in data_points)
+    bottom = min(page_height - 45, numeric_bottom + 28)
+    if bottom - top < 70:
+        bottom = min(page_height - 45, top + 120)
+    if bottom <= top:
+        return None
+    return [24.0, round(top, 2), round(page_width - 24, 2), round(bottom, 2)]
+
+
+def _layout_context_paragraphs(
+    page: dict[str, Any],
+    blocks: list[dict[str, Any]],
+    heading: dict[str, Any],
+    bbox: list[float] | None,
+) -> tuple[list[str], list[str]]:
+    if bbox is None:
+        return [], []
+    before: list[str] = []
+    after: list[str] = []
+    for block in blocks:
+        text = " ".join(str(block.get("text") or "").split()).strip()
+        if block is heading or len(text) < 35 or not _block_has_letters(text):
+            continue
+        if _is_excluded_data_sentence(text) or _is_figure_caption_text(text):
+            continue
+        if float(block.get("y1") or 0) <= bbox[1]:
+            before.append(_truncate_at_word_boundary(text, 700))
+        elif float(block.get("y0") or 0) >= bbox[3]:
+            after.append(_truncate_at_word_boundary(text, 700))
+    return _deduplicate_text(before)[:5], _deduplicate_text(after)[:5]
+
+
+def _deduplicate_text(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        key = normalize_header(value)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result
+
+
 def _build_figure_segment_documents(
     *,
     pages: list[dict[str, Any]],
@@ -904,6 +1234,14 @@ def _build_figure_segment_documents(
         source_text = str(segment.get("description") or "")
         paragraphs_before = _extract_block_paragraphs(str(segment.get("before_description") or ""))
         paragraphs_after = _extract_block_paragraphs(str(segment.get("after_description") or ""))
+        semantic_cleanup = clean_figure_paragraphs(
+            paragraphs_before,
+            paragraphs_after,
+            caption=str(segment.get("caption") or ""),
+            figure_source=str(segment.get("source") or ""),
+        )
+        paragraphs_before = semantic_cleanup.before
+        paragraphs_after = semantic_cleanup.after
         paragraphs = [*paragraphs_before, *paragraphs_after]
         data_points = _extract_relevant_data_points(source_text, page=page)
         visual_context = _visual_context_from_segment(segment)
@@ -943,6 +1281,10 @@ def _build_figure_segment_documents(
             page=page,
             visual_context=visual_context,
         )
+        document["extraction"] = {
+            "method": "figure_caption",
+            "semantic_cleanup_removed": len(semantic_cleanup.removed),
+        }
         if document["code"] in seen_codes:
             continue
         seen_codes.add(document["code"])
@@ -981,8 +1323,10 @@ def _build_figure_document(
     description = _paragraphs_plain_summary(paragraphs) or _data_points_plain_summary(data_points) or subsection
     document = {
         "id": str(ObjectId()),
+        "schema_version": 2,
         "source": FELGTBI_SOURCE_CODE,
         "year": year,
+        "page": page,
         "report_title": report_title,
         "report_type": report_type,
         "category": category,
@@ -1003,10 +1347,15 @@ def _build_figure_document(
             "number": figure_number,
             "title": _clean_figure_caption_title(figure_caption),
             "caption": figure_caption,
-            "image_path": "",
             "source": figure_source,
         },
         "content_html": "",
+        "content_order": [
+            "paragraphs_before_figure",
+            "figure",
+            "paragraphs_after_figure",
+            "data_points",
+        ],
         "visual_context": visual_context,
         "code": code,
     }
@@ -1050,13 +1399,6 @@ def _refresh_content_html(documents: list[dict]) -> None:
         data_points = document.get("data_points")
         if not isinstance(data_points, list):
             continue
-        context = document.get("visual_context")
-        figure = document.get("figure")
-        if isinstance(figure, dict) and isinstance(context, dict):
-            asset_url = str(context.get("asset_url") or "")
-            if asset_url:
-                figure["image_path"] = asset_url
-                figure["asset_url"] = asset_url
         paragraphs_before = document.get("paragraphs_before_figure")
         paragraphs_after = document.get("paragraphs_after_figure")
         document["content_html"] = _build_content_html(
@@ -1096,19 +1438,7 @@ def _build_content_html(
     context = visual_context if isinstance(visual_context, dict) else {}
     figure_data = figure if isinstance(figure, dict) else {}
     caption = str(figure_data.get("caption") or context.get("caption") or "")
-    asset_url = str(context.get("asset_url") or "")
-    if asset_url:
-        parts.append(
-            '<figure class="report-figure">\n'
-            '<img src="{src}" alt="{alt}" loading="lazy">\n'
-            '<figcaption>{caption}</figcaption>\n'
-            "</figure>".format(
-                src=html.escape(asset_url, quote=True),
-                alt=html.escape(_figure_alt_text(caption, subsection), quote=True),
-                caption=html.escape(caption or subsection or "Figura"),
-            )
-        )
-    elif caption:
+    if caption:
         parts.append(
             '<figure class="report-figure">'
             f"<figcaption>{html.escape(caption)}</figcaption>"
@@ -1527,7 +1857,6 @@ def _build_visual_context(
     context: dict[str, Any] = {
         "page": page,
         "kind": "pdf_figure" if bbox else "pdf_text",
-        "image_storage": "reference_only",
     }
     if bbox:
         context["bbox"] = bbox
@@ -1581,6 +1910,7 @@ def _extract_figure_segments(
             next_caption,
             previous_caption,
             toc_sections or [],
+            figure_bbox=bbox,
         )
         description = _format_description(
             " ".join([before_description, after_description]),
@@ -1698,6 +2028,8 @@ def _figure_text_parts(
     next_caption: dict[str, Any] | None,
     previous_caption: dict[str, Any] | None,
     toc_sections: list[dict[str, Any]],
+    *,
+    figure_bbox: list[float] | None = None,
 ) -> tuple[str, str]:
     before_fragments: list[str] = []
     after_fragments: list[str] = []
@@ -1752,6 +2084,14 @@ def _figure_text_parts(
                 continue
             if not text.strip():
                 continue
+            context = _figure_block_extraction_context(
+                block,
+                figure_bbox,
+                position="before" if position < caption_position else "after",
+                caption=str(caption.get("caption") or ""),
+            )
+            if is_chart_residual_text(text, context):
+                continue
             if position < caption_position:
                 before_fragments.append(text)
             else:
@@ -1759,6 +2099,51 @@ def _figure_text_parts(
     return (
         _format_description(" ".join(before_fragments), max_length=3000),
         _format_description(" ".join(after_fragments), max_length=3000),
+    )
+
+
+def _figure_block_extraction_context(
+    block: dict[str, Any],
+    figure_bbox: list[float] | None,
+    *,
+    position: str,
+    caption: str,
+) -> ExtractionContext:
+    block_bbox = _safe_bbox(
+        [block.get("x0"), block.get("y0"), block.get("x1"), block.get("y1")]
+    )
+    if not block_bbox or not figure_bbox:
+        return ExtractionContext(
+            near_figure=True,
+            position=position,
+            caption=caption,
+        )
+
+    left = max(block_bbox[0], figure_bbox[0])
+    top = max(block_bbox[1], figure_bbox[1])
+    right = min(block_bbox[2], figure_bbox[2])
+    bottom = min(block_bbox[3], figure_bbox[3])
+    overlaps = right > left and bottom > top
+    inside = (
+        block_bbox[0] >= figure_bbox[0]
+        and block_bbox[1] >= figure_bbox[1]
+        and block_bbox[2] <= figure_bbox[2]
+        and block_bbox[3] <= figure_bbox[3]
+    )
+    vertical_gap = min(
+        abs(block_bbox[1] - figure_bbox[3]),
+        abs(figure_bbox[1] - block_bbox[3]),
+    )
+    horizontally_aligned = (
+        block_bbox[2] >= figure_bbox[0] - 12
+        and block_bbox[0] <= figure_bbox[2] + 12
+    )
+    return ExtractionContext(
+        near_figure=overlaps or (horizontally_aligned and vertical_gap <= 48),
+        inside_figure=inside,
+        overlaps_figure=overlaps,
+        position=position,
+        caption=caption,
     )
 
 
@@ -2005,6 +2390,9 @@ def _raw_text_block_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
                 "x1": float(block.get("x1") or 0),
                 "y1": float(block.get("y1") or block.get("y0") or 0),
                 "text": " ".join(str(block.get("text") or "").split()),
+                "font_size": float(block.get("font_size") or 0),
+                "is_bold": bool(block.get("is_bold")),
+                "is_italic": bool(block.get("is_italic")),
             }
             for block in raw_blocks
             if isinstance(block, dict) and str(block.get("text") or "").strip()
@@ -2017,6 +2405,9 @@ def _raw_text_block_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
             "x1": 0.0,
             "y1": float(index),
             "text": line,
+            "font_size": 0.0,
+            "is_bold": False,
+            "is_italic": False,
         }
         for index, line in enumerate(_clean_lines(str(page.get("text") or "")))
     ]

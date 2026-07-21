@@ -4,44 +4,24 @@ from copy import deepcopy
 from typing import Any
 
 from bson import ObjectId
-from pymongo import MongoClient
-
-from app.config import get_mongo_config
+from app.mongo import get_mongo_collection
 
 INDICATOR_FRA_COLLECTION = "Indicator_fra"
 
 
 def insert_indicator_fra_json(file_json: dict[str, Any] | list[Any]) -> int:
     documents = _normalize_documents(file_json)
-    config = get_mongo_config()
-
-    with MongoClient(
-        config.dsn(),
-        serverSelectionTimeoutMS=config.server_selection_timeout_ms,
-        connectTimeoutMS=config.server_selection_timeout_ms,
-        socketTimeoutMS=config.server_selection_timeout_ms,
-    ) as client:
-        collection = client[config.database][INDICATOR_FRA_COLLECTION]
-        collection.create_index("code", background=True)
-        collection.create_index(
-            [("category", 1), ("specific_category", 1), ("question", 1)],
-            background=True,
-        )
-        for document in documents:
-            prepared = _prepare_indicator_document(document)
-            answers = prepared.pop("answers", [])
-            object_id = prepared.pop("_id", None)
-            update: dict[str, Any] = {
-                "$set": prepared,
-            }
-            if object_id is not None:
-                update["$setOnInsert"] = {"_id": object_id}
-            add_to_set: dict[str, Any] = {}
-            if answers:
-                add_to_set["answers"] = {"$each": answers}
-            if add_to_set:
-                update["$addToSet"] = add_to_set
-            collection.update_one(_question_filter(prepared), update, upsert=True)
+    collection = get_mongo_collection(INDICATOR_FRA_COLLECTION)
+    for document in documents:
+        prepared = _prepare_indicator_document(document)
+        answers = prepared.pop("answers", [])
+        object_id = prepared.pop("_id", None)
+        update: dict[str, Any] = {"$set": prepared}
+        if object_id is not None:
+            update["$setOnInsert"] = {"_id": object_id}
+        if answers:
+            update["$addToSet"] = {"answers": {"$each": answers}}
+        collection.update_one(_question_filter(prepared), update, upsert=True)
 
     return len(documents)
 

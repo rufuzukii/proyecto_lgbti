@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
+import logging
 import re
+import time
 from typing import Any, cast
-from urllib.parse import quote
 
 from dash import Dash, Input, Output, State, ctx, dcc, html
 from dash.development.base_component import Component
@@ -16,9 +16,11 @@ from app.analytics.repository import (
     get_felgtbi_indicators_by_document,
     get_spain_collection_options,
 )
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.storage import supabase_public_image_url
 
+logger = logging.getLogger(__name__)
 PERCENT_TEXT_PATTERN = re.compile(r"(\d{1,3}(?:[,.]\d{1,2})?\s*%)")
 
 TEXT_EN = {
@@ -313,6 +315,7 @@ def register_spain_callbacks(app: Dash) -> None:
         year: int | str | None,
         code: str | None,
     ):
+        navigation_started_at = time.perf_counter()
         if not collection_name:
             return _spain_view_state(
                 empty=_empty_state("No hay fuentes de datos", "No se han encontrado colecciones españolas disponibles."),
@@ -361,7 +364,23 @@ def register_spain_callbacks(app: Dash) -> None:
             )
 
         document = get_felgtbi_indicator_answers(code or "", collection_name, document_id=document_id)
-        return _spain_document_view_state(document)
+        render_started_at = time.perf_counter()
+        view_state = _spain_document_view_state(document)
+        render_ms = (time.perf_counter() - render_started_at) * 1000
+        logger.debug(
+            "spain_section_navigation_rendered",
+            extra={
+                "collection": collection_name,
+                "document": document_id,
+                "code": code,
+                "render_ms": round(render_ms, 2),
+                "total_navigation_ms": round(
+                    (time.perf_counter() - navigation_started_at) * 1000,
+                    2,
+                ),
+            },
+        )
+        return view_state
 
 
 def _spain_visualization_shell() -> list[Any]:
@@ -611,10 +630,10 @@ def _summary_paragraphs(document: dict[str, Any]) -> list[str]:
 
 
 def _value_panel_content(document: dict[str, Any] | None) -> Any:
-    asset_url = _figure_url(document)
-    if asset_url:
+    image_source = _figure_url(document)
+    if image_source:
         return html.Img(
-            src=asset_url,
+            src=image_source,
             alt="Gráfica asociada al indicador",
             className="spain-pdf-figure",
         )
@@ -706,18 +725,37 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
         or document.get("subsection_title")
         or "Figura del informe FELGTBI+"
     ).strip()
+    source = str(figure.get("source") or "").strip()
+    width = _positive_int(figure.get("width"))
+    height = _positive_int(figure.get("height"))
     if not url:
         return _figure_placeholder_component(document, caption=caption)
 
     children: list[Any] = [
         html.Img(
-            src=url,
+            src=None,
             alt=alt_text,
+            width=width,
+            height=height,
             className="report-figure-image",
+            **dash_attrs({"data-lazy-src": url}),
+        ),
+        html.Div(
+            [
+                html.Strong("Imagen no disponible"),
+                html.Span("No se ha podido cargar la figura desde el almacenamiento."),
+            ],
+            className="report-figure-placeholder report-figure-load-error",
+            hidden=True,
         )
     ]
-    if caption:
-        children.append(html.Figcaption(caption))
+    if caption or source:
+        caption_children: list[Any] = []
+        if caption:
+            caption_children.append(html.Span(caption))
+        if source:
+            caption_children.append(html.Small(source, className="report-figure-source"))
+        children.append(html.Figcaption(caption_children))
     return html.Figure(children, className="report-figure")
 
 
@@ -744,13 +782,10 @@ def _has_figure_metadata(document: dict[str, Any] | None) -> bool:
     if not isinstance(document, dict):
         return False
     figure = _dict_or_empty(document.get("figure"))
-    context = _dict_or_empty(document.get("visual_context"))
-    context_upload = _dict_or_empty(context.get("image_upload"))
     return bool(
         figure
         or document.get("figure_caption")
-        or context.get("caption")
-        or _storage_path(figure, context_upload)
+        or figure.get("storage_path")
     )
 
 
@@ -783,71 +818,7 @@ def _figure_url(document: dict[str, Any] | None) -> str:
     if not isinstance(document, dict):
         return ""
     figure = _dict_or_empty(document.get("figure"))
-    context = _dict_or_empty(document.get("visual_context"))
-    upload = _dict_or_empty(figure.get("upload"))
-    context_upload = _dict_or_empty(context.get("image_upload"))
-    public_storage_url = _public_storage_url(figure, context_upload)
-    candidates = [
-        public_storage_url,
-        figure.get("image_url"),
-        figure.get("public_url"),
-        upload.get("public_url"),
-        context_upload.get("public_url"),
-        figure.get("asset_url"),
-        figure.get("image_path"),
-        context.get("asset_url"),
-    ]
-    for candidate in candidates:
-        url = _figure_url_candidate(candidate)
-        if url:
-            return url
-    return ""
-
-
-def _figure_url_candidate(value: Any) -> str:
-    url = str(value or "").strip()
-    if not url:
-        return ""
-    lowered = url.lower()
-    if lowered.startswith(("http://", "https://")):
-        return url
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    if not supabase_url:
-        return url
-    clean_url = url.lstrip("/")
-    if clean_url.startswith("storage/v1/"):
-        return f"{supabase_url}/{clean_url}"
-    if clean_url.startswith("object/"):
-        return f"{supabase_url}/storage/v1/{clean_url}"
-    return url
-
-
-def _public_storage_url(figure: dict[str, Any], context_upload: dict[str, Any]) -> str:
-    bucket = _storage_bucket(figure, context_upload)
-    storage_path = _storage_path(figure, context_upload, bucket=bucket)
-    if not storage_path:
-        return ""
-    configured_base = os.getenv("SUPABASE_STORAGE_PUBLIC_BASE_URL", "").strip()
-    if configured_base:
-        return f"{configured_base.rstrip('/')}/{quote(storage_path, safe='/')}"
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    if not supabase_url or not bucket:
-        return ""
-    return f"{supabase_url}/storage/v1/object/public/{quote(bucket, safe='')}/{quote(storage_path, safe='/')}"
-
-
-def _storage_path(figure: dict[str, Any], context_upload: dict[str, Any], *, bucket: str = "") -> str:
-    for candidate in (
-        figure.get("storage_path"),
-        context_upload.get("storage_path"),
-        figure.get("asset_url"),
-        figure.get("image_path"),
-        context_upload.get("asset_url"),
-    ):
-        storage_path = _storage_path_candidate(candidate, bucket=bucket)
-        if storage_path:
-            return storage_path
-    return ""
+    return supabase_public_image_url(figure.get("storage_path"))
 
 
 def _dict_or_empty(value: Any) -> dict[str, Any]:
@@ -856,86 +827,12 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
     return {}
 
 
-def _storage_path_candidate(value: Any, *, bucket: str = "") -> str:
-    raw_path = str(value or "").strip()
-    if not raw_path:
-        return ""
-    normalized_path = _normalize_storage_path(raw_path, bucket=bucket)
-    if normalized_path and not _looks_like_dash_asset_path(normalized_path):
-        return normalized_path
-    return _generated_asset_storage_path(raw_path)
-
-
-def _normalize_storage_path(value: str, *, bucket: str = "") -> str:
-    path = str(value or "").strip()
-    if not path:
-        return ""
-    path = path.split("?", 1)[0].replace("\\", "/")
-    supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
-    prefixes = []
-    if supabase_url:
-        prefixes.extend(
-            [
-                f"{supabase_url}/storage/v1/object/sign/",
-                f"{supabase_url}/storage/v1/object/public/",
-                f"{supabase_url}/storage/v1/object/",
-            ]
-        )
-    prefixes.extend(
-        [
-            "/storage/v1/object/sign/",
-            "/storage/v1/object/public/",
-            "/storage/v1/object/",
-            "storage/v1/object/sign/",
-            "storage/v1/object/public/",
-            "storage/v1/object/",
-            "/object/sign/",
-            "/object/public/",
-            "/object/",
-            "object/sign/",
-            "object/public/",
-            "object/",
-        ]
-    )
-    for prefix in prefixes:
-        if path.startswith(prefix):
-            path = path[len(prefix) :]
-            break
-    path = path.lstrip("/")
-    if bucket:
-        bucket_prefix = f"{bucket.strip('/')}/"
-        if path.startswith(bucket_prefix):
-            path = path[len(bucket_prefix) :]
-    return path
-
-
-def _looks_like_dash_asset_path(value: str) -> bool:
-    return "/assets/" in f"/{value.lstrip('/')}".lower()
-
-
-def _generated_asset_storage_path(value: str) -> str:
-    clean_value = str(value or "").split("?", 1)[0].replace("\\", "/").rstrip("/")
-    file_name = clean_value.rsplit("/", 1)[-1]
-    match = re.fullmatch(
-        r"(?P<year>20\d{2})_(?P<report>[^_]+)_(?P<section>.+)_(?P<figure>figura-\d+(?:-\d+)*)_[0-9a-fA-F]{8,64}\.(?P<extension>webp|png|jpg|jpeg)",
-        file_name,
-    )
-    if not match:
-        return ""
-    return (
-        f"{match.group('year')}/"
-        f"{match.group('report')}/"
-        f"{match.group('section')}/"
-        f"{match.group('figure')}.{match.group('extension').lower()}"
-    )
-
-
-def _storage_bucket(figure: dict[str, Any], context_upload: dict[str, Any]) -> str:
-    return str(
-        figure.get("bucket")
-        or context_upload.get("bucket")
-        or os.getenv("SUPABASE_STORAGE_BUCKET", "felgtbi-reports")
-    ).strip()
+def _positive_int(value: Any) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _text_list(value: Any) -> list[str]:
@@ -1073,15 +970,6 @@ def _format_percent(value: Any) -> str:
     if isinstance(value, (int, float)):
         return f"{value:.2f}%"
     return "-"
-
-
-def _visual_asset_url(document: dict[str, Any] | None) -> str:
-    if not isinstance(document, dict):
-        return ""
-    context = document.get("visual_context")
-    if not isinstance(context, dict):
-        return ""
-    return str(context.get("asset_url") or "")
 
 
 def _content_html(document: dict[str, Any] | None) -> str:

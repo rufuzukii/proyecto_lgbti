@@ -45,7 +45,6 @@ class FraStatisticsQuery:
     filter_b_value: str | None = None
     group_by: list[str] = field(default_factory=lambda: ["country"])
     mode: str = "all"
-    visualization: str = "ranking"
 
 
 @dataclass(frozen=True)
@@ -55,8 +54,6 @@ class IlgaStatisticsQuery:
     category: str | None = None
     criterion: str | None = None
     mode: str = "all"
-    visualization: str = "ranking"
-    comparison_mode: str = "ranking"
 
 
 @dataclass(frozen=True)

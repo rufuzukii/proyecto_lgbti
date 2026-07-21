@@ -12,12 +12,13 @@ from typing import Any, cast
 
 import psycopg
 from psycopg.rows import dict_row
-from pymongo import MongoClient
 from pymongo.errors import AutoReconnect, ConfigurationError, NetworkTimeout
 
 from app.cache import cache
 from app.config import get_mongo_config, get_postgres_connect_timeout, get_postgres_dsn
 from app.errors import DatabaseUnavailableError
+from app.import_to_db.felgtbi.semantics import sanitize_report_document
+from app.mongo import get_mongo_client
 
 logger = logging.getLogger(__name__)
 ANALYTICS_CACHE_TIMEOUT_SECONDS = int(os.getenv("ANALYTICS_CACHE_TIMEOUT_SECONDS", "3600"))
@@ -97,6 +98,9 @@ SPAIN_DOCUMENT_BLOCKED_STATUSES = {
 }
 _health_check_lock = Lock()
 _health_check_ok_until = 0.0
+_section_cache_metrics_lock = Lock()
+_section_cache_requests = 0
+_section_cache_hits = 0
 
 
 @dataclass(frozen=True) # frozen=true significa que el objeto no puede ser modificado
@@ -269,7 +273,6 @@ def get_fra_mongo_indicators_by_category(category: str) -> list[FraIndicator]:
     if not clean_category:
         return []
     try:
-        _ensure_analytics_indexes()
         rows = _mongo_collection("Indicator_fra").find(
             {"category": clean_category},
             {
@@ -302,7 +305,6 @@ def get_fra_indicator_answers(code: str) -> dict[str, Any] | None:
     if not clean_code:
         return None
     try:
-        _ensure_analytics_indexes()
         return _mongo_collection("Indicator_fra").find_one(
             {"code": clean_code},
             {
@@ -325,7 +327,6 @@ def get_fra_years(code: str | None = None) -> list[int]:
     if clean_code:
         query["code"] = clean_code
     try:
-        _ensure_analytics_indexes()
         raw_dates = _mongo_collection("Indicator_fra").distinct("answers.date", query)
     except Exception:
         logger.exception("fra_years_read_failed", extra={"code": clean_code})
@@ -456,7 +457,6 @@ def get_felgtbi_documents(collection_name: str | None = None) -> list[FelgtbiDoc
     if not resolved_collection:
         return []
     try:
-        _ensure_spain_collection_indexes(resolved_collection)
         rows = _mongo_collection(resolved_collection).find(
             _spain_collection_query(resolved_collection),
             _spain_document_projection(),
@@ -500,7 +500,6 @@ def get_felgtbi_document_years(
 
     query = _spain_document_query(resolved_collection, document)
     try:
-        _ensure_spain_collection_indexes(resolved_collection)
         years = _mongo_collection(resolved_collection).distinct("year", query)
     except Exception:
         logger.exception(
@@ -536,13 +535,16 @@ def get_felgtbi_indicators_by_document(
         except (TypeError, ValueError):
             return []
     try:
-        _ensure_spain_collection_indexes(resolved_collection)
         rows = _mongo_collection(resolved_collection).find(
             query,
-            _spain_indicator_projection(),
+            _spain_navigation_projection(),
             sort=[("year", -1), ("page", 1), ("section_title", 1), ("topic", 1), ("description", 1), ("code", 1)],
         )
-        return [_row_to_felgtbi_indicator(row) for row in rows if row.get("code") and _has_valid_spain_section(row)]
+        return [
+            _row_to_felgtbi_indicator(row)
+            for row in rows
+            if _has_navigable_spain_section(row)
+        ]
     except Exception:
         logger.exception(
             "felgtbi_document_read_failed",
@@ -557,7 +559,6 @@ def get_felgtbi_categories(collection_name: str | None = None) -> list[str]:
     if not resolved_collection:
         return []
     try:
-        _ensure_spain_collection_indexes(resolved_collection)
         mongo_categories = {
             str(category).strip()
             for category in _mongo_collection(resolved_collection).distinct(
@@ -589,7 +590,6 @@ def get_felgtbi_years(
     if clean_category:
         query["category"] = clean_category
     try:
-        _ensure_spain_collection_indexes(resolved_collection)
         years = _mongo_collection(resolved_collection).distinct("year", query)
     except Exception:
         logger.exception(
@@ -627,13 +627,16 @@ def get_felgtbi_indicators_by_category(
         except (TypeError, ValueError):
             return []
     try:
-        _ensure_spain_collection_indexes(resolved_collection)
         rows = _mongo_collection(resolved_collection).find(
             query,
-            _spain_indicator_projection(),
+            _spain_navigation_projection(),
             sort=[("year", -1), ("report_title", 1), ("topic", 1), ("description", 1)],
         )
-        return [_row_to_felgtbi_indicator(row) for row in rows if row.get("code") and _has_valid_spain_section(row)]
+        return [
+            _row_to_felgtbi_indicator(row)
+            for row in rows
+            if _has_navigable_spain_section(row)
+        ]
     except Exception:
         logger.exception(
             "felgtbi_category_read_failed",
@@ -642,7 +645,6 @@ def get_felgtbi_indicators_by_category(
         return []
 
 
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_felgtbi_indicator_answers(
     code: str,
     collection_name: str | None = None,
@@ -655,18 +657,38 @@ def get_felgtbi_indicator_answers(
     clean_code = str(code or "").strip()
     if not clean_code:
         return None
+    section_cache_key = _felgtbi_section_cache_key(
+        resolved_collection,
+        document_id,
+        clean_code,
+    )
+    cached = cache.get(section_cache_key)
+    if isinstance(cached, dict):
+        hit_ratio = _record_section_cache_request(hit=True)
+        logger.debug(
+            "felgtbi_section_cache_hit",
+            extra={
+                "collection": resolved_collection,
+                "document": str(document_id or ""),
+                "code": clean_code,
+                "cache_hit_ratio": hit_ratio,
+                "mongo_query_count": 0,
+            },
+        )
+        return cached
+    hit_ratio = _record_section_cache_request(hit=False)
     document = _resolve_felgtbi_document(document_id, resolved_collection) if document_id else None
     if document_id and document is None:
         return None
     try:
-        _ensure_spain_collection_indexes(resolved_collection)
         query = (
             _spain_document_query(resolved_collection, document)
             if document is not None
             else _spain_collection_query(resolved_collection)
         )
         query["code"] = clean_code
-        return _mongo_collection(resolved_collection).find_one(
+        started_at = time.perf_counter()
+        result = _mongo_collection(resolved_collection).find_one(
             query,
             {
                 "_id": 0,
@@ -688,14 +710,49 @@ def get_felgtbi_indicator_answers(
                 "figure_caption": 1,
                 "figure": 1,
                 "paragraphs": 1,
+                "paragraphs_before_figure": 1,
+                "paragraphs_after_figure": 1,
                 "content_html": 1,
                 "data_points": 1,
                 "visual_context": 1,
+                "page": 1,
+                "schema_version": 1,
+                "content_order": 1,
+                "extraction": 1,
                 "sample_size": 1,
                 "fieldwork": 1,
                 "answers": 1,
             },
         )
+        query_ms = (time.perf_counter() - started_at) * 1000
+        if result is None:
+            return None
+        processing_started_at = time.perf_counter()
+        cleaned = sanitize_report_document(result)
+        processing_ms = (time.perf_counter() - processing_started_at) * 1000
+        serialization_started_at = time.perf_counter()
+        payload_bytes = len(_json_dumps_stable(cleaned).encode("utf-8"))
+        serialization_ms = (time.perf_counter() - serialization_started_at) * 1000
+        cache.set(
+            section_cache_key,
+            cleaned,
+            timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS,
+        )
+        logger.debug(
+            "felgtbi_section_loaded",
+            extra={
+                "collection": resolved_collection,
+                "document": str(document_id or ""),
+                "code": clean_code,
+                "mongo_query_ms": round(query_ms, 2),
+                "processing_ms": round(processing_ms, 2),
+                "serialization_ms": round(serialization_ms, 2),
+                "payload_bytes": payload_bytes,
+                "mongo_query_count": 1,
+                "cache_hit_ratio": hit_ratio,
+            },
+        )
+        return cleaned
     except Exception:
         logger.exception(
             "felgtbi_indicator_values_read_failed",
@@ -711,7 +768,6 @@ def get_felgtbi_indicator_answers(
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_ilga_years() -> list[int]:
     try:
-        _ensure_analytics_indexes()
         years = _mongo_collection("Indicator_ilga").distinct(
             "year",
             {"dataset": "ilga_rainbow_map"},
@@ -740,7 +796,6 @@ def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
         return get_latest_ilga_document()
 
     try:
-        _ensure_analytics_indexes()
         return _mongo_collection("Indicator_ilga").find_one(
             {"dataset": "ilga_rainbow_map", "year": clean_year},
             {"_id": 0, "dataset": 1, "year": 1, "countries": 1},
@@ -751,9 +806,24 @@ def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_ilga_history_documents() -> list[dict[str, Any]]:
+    """Load the projected ILGA history once for temporal and combined analysis."""
+    try:
+        return list(
+            _mongo_collection("Indicator_ilga").find(
+                {"dataset": "ilga_rainbow_map"},
+                {"_id": 0, "year": 1, "countries": 1},
+                sort=[("year", 1)],
+            )
+        )
+    except Exception:
+        logger.exception("ilga_history_read_failed")
+        return []
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_latest_ilga_document() -> dict[str, Any] | None:
     try:
-        _ensure_analytics_indexes()
         return _mongo_collection("Indicator_ilga").find_one(
             {"dataset": "ilga_rainbow_map"},
             {"_id": 0, "dataset": 1, "year": 1, "countries": 1},
@@ -809,7 +879,6 @@ def get_country_lgbti_status_records(
         query["year"] = {"$lte": int(requested_year)}
 
     try:
-        _ensure_country_lgbti_status_indexes()
         rows = list(
             _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).find(
                 query,
@@ -851,7 +920,6 @@ def get_country_lgbti_status_record(
         query["active"] = True
 
     try:
-        _ensure_country_lgbti_status_indexes()
         return _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).find_one(query, {"_id": 0})
     except Exception:
         logger.exception(
@@ -868,7 +936,6 @@ def upsert_country_lgbti_status_record(record: dict[str, Any]) -> None:
         raise ValueError("invalid_country_lgbti_status_year")
     clean_year = int(year)
     try:
-        _ensure_country_lgbti_status_indexes()
         _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).update_one(
             {"country_code": clean_code, "year": clean_year},
             {"$set": record},
@@ -886,7 +953,6 @@ def deactivate_country_lgbti_status_record(country_code: str, year: int) -> bool
     clean_code = str(country_code or "").strip().upper()
     clean_year = int(year)
     try:
-        _ensure_country_lgbti_status_indexes()
         result = _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION).update_one(
             {"country_code": clean_code, "year": clean_year},
             {"$set": {"active": False}},
@@ -902,19 +968,36 @@ def deactivate_country_lgbti_status_record(country_code: str, year: int) -> bool
 
 
 def invalidate_analytics_cache() -> None:
+    global _section_cache_hits, _section_cache_requests
     cache.clear()
+    with _section_cache_metrics_lock:
+        _section_cache_requests = 0
+        _section_cache_hits = 0
+
+
+def _felgtbi_section_cache_key(
+    collection_name: str,
+    document_id: str | None,
+    code: str,
+) -> str:
+    identity = f"{collection_name}\0{document_id or ''}\0{code}"
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return f"felgtbi-section-v2:{digest}"
+
+
+def _record_section_cache_request(*, hit: bool) -> float:
+    global _section_cache_hits, _section_cache_requests
+    with _section_cache_metrics_lock:
+        _section_cache_requests += 1
+        if hit:
+            _section_cache_hits += 1
+        return round(_section_cache_hits / _section_cache_requests, 4)
 
 
 @lru_cache(maxsize=1)
-def _mongo_client_and_database() -> tuple[MongoClient, str]:
+def _mongo_client_and_database() -> tuple[Any, str]:
     config = get_mongo_config()
-    client = MongoClient(
-        config.dsn(),
-        serverSelectionTimeoutMS=config.server_selection_timeout_ms,
-        connectTimeoutMS=config.server_selection_timeout_ms,
-        socketTimeoutMS=config.server_selection_timeout_ms,
-    )
-    return client, config.database
+    return get_mongo_client(), config.database
 
 
 def _mongo_collection(name: str):
@@ -964,7 +1047,7 @@ def _group_spain_documents(rows: Any, collection_name: str) -> list[FelgtbiDocum
             continue
         if not _is_pdf_backed_spain_document(row):
             continue
-        if not _has_valid_spain_section(row):
+        if not _has_navigable_spain_section(row):
             continue
 
         document_id, filter_fields = _spain_document_identity(row, collection_name)
@@ -1185,29 +1268,52 @@ def _nested_value(row: dict[str, Any], field_path: str) -> Any:
 
 
 def _spain_document_projection() -> dict[str, int]:
-    projection = _spain_indicator_projection()
-    projection.update(
-        {
-            "_id": 1,
-            "source_document_id": 1,
-            "original_filename": 1,
-            "filename": 1,
-            "file_name": 1,
-            "source_file": 1,
-            "metadata": 1,
-            "file_metadata": 1,
-            "upload": 1,
-            "import_status": 1,
-            "status": 1,
-            "processing_status": 1,
-            "state": 1,
-            "page": 1,
-        }
-    )
-    return projection
+    return {
+        "_id": 1,
+        "source": 1,
+        "source_document_id": 1,
+        "original_filename": 1,
+        "filename": 1,
+        "file_name": 1,
+        "source_file": 1,
+        "metadata.source_document_id": 1,
+        "metadata.original_filename": 1,
+        "metadata.filename": 1,
+        "metadata.file_name": 1,
+        "metadata.source_file": 1,
+        "metadata.display_name": 1,
+        "metadata.title": 1,
+        "file_metadata.source_document_id": 1,
+        "file_metadata.original_filename": 1,
+        "file_metadata.filename": 1,
+        "file_metadata.file_name": 1,
+        "file_metadata.source_file": 1,
+        "file_metadata.display_name": 1,
+        "file_metadata.title": 1,
+        "upload.original_filename": 1,
+        "upload.filename": 1,
+        "upload.file_name": 1,
+        "upload.source_file": 1,
+        "year": 1,
+        "report_title": 1,
+        "report_type": 1,
+        "import_status": 1,
+        "status": 1,
+        "processing_status": 1,
+        "state": 1,
+        "code": 1,
+        "category": 1,
+        "specific_category": 1,
+        "question": 1,
+        "description": 1,
+        "section_title": 1,
+        "subsection_title": 1,
+        "figure_caption": 1,
+        "page": 1,
+    }
 
 
-def _spain_indicator_projection() -> dict[str, int]:
+def _spain_navigation_projection() -> dict[str, int]:
     return {
         "_id": 0,
         "source": 1,
@@ -1223,19 +1329,21 @@ def _spain_indicator_projection() -> dict[str, int]:
         "report_title": 1,
         "report_type": 1,
         "section_title": 1,
-        "figure_caption": 1,
-        "figure": 1,
-        "paragraphs": 1,
-        "paragraphs_before_figure": 1,
-        "paragraphs_after_figure": 1,
-        "content_html": 1,
-        "data_points": 1,
-        "visual_context": 1,
-        "sample_size": 1,
-        "fieldwork": 1,
-        "answers": 1,
+        "answers.percentage": 1,
+        "answers.value": 1,
         "page": 1,
     }
+
+
+def _has_navigable_spain_section(document: dict[str, Any]) -> bool:
+    if not _clean_text(document.get("code")) or _int_or_none(document.get("year")) is None:
+        return False
+    return bool(
+        _clean_text(document.get("subsection_title"))
+        or _clean_text(document.get("question"))
+        or _clean_text(document.get("description"))
+        or _clean_text(document.get("figure_caption"))
+    )
 
 
 def _row_to_felgtbi_indicator(row: dict[str, Any]) -> FelgtbiIndicator:
@@ -1308,8 +1416,10 @@ def _collection_has_spain_interface_documents(name: str) -> bool:
 
 
 def _has_valid_spain_section(document: dict[str, Any]) -> bool:
-    return _has_valid_spain_chart(document) and (
-        _has_valid_spain_image(document) or _has_valid_spain_information(document)
+    return (
+        _has_valid_spain_information(document)
+        or _has_valid_spain_image(document)
+        or _has_valid_spain_chart(document)
     )
 
 
@@ -1322,7 +1432,7 @@ def _has_valid_spain_chart(document: dict[str, Any]) -> bool:
 
 
 def _has_valid_spain_image(document: dict[str, Any]) -> bool:
-    return _looks_like_valid_asset(_raw_spain_figure_url(document))
+    return bool(_spain_figure_storage_path(document))
 
 
 def _has_valid_spain_information(document: dict[str, Any]) -> bool:
@@ -1386,55 +1496,16 @@ def _data_points_have_numeric_value(data_points: Any) -> bool:
     return False
 
 
-def _raw_spain_figure_url(document: dict[str, Any]) -> str:
+def _spain_figure_storage_path(document: dict[str, Any]) -> str:
     figure = (
         cast(dict[str, Any], document.get("figure"))
         if isinstance(document.get("figure"), dict)
         else {}
     )
-    context = (
-        cast(dict[str, Any], document.get("visual_context"))
-        if isinstance(document.get("visual_context"), dict)
-        else {}
-    )
-    upload = (
-        cast(dict[str, Any], figure.get("upload"))
-        if isinstance(figure.get("upload"), dict)
-        else {}
-    )
-    context_upload = (
-        cast(dict[str, Any], context.get("image_upload"))
-        if isinstance(context.get("image_upload"), dict)
-        else {}
-    )
-    candidates = [
-        figure.get("image_url"),
-        figure.get("signed_url"),
-        upload.get("signed_url"),
-        context_upload.get("signed_url"),
-        figure.get("public_url"),
-        upload.get("public_url"),
-        context_upload.get("public_url"),
-        figure.get("asset_url"),
-        figure.get("image_path"),
-        context.get("asset_url"),
-    ]
-    for candidate in candidates:
-        clean = _clean_text(candidate)
-        if clean:
-            return clean
-    return ""
-
-
-def _looks_like_valid_asset(value: str) -> bool:
-    clean = _clean_text(value)
-    if not clean:
-        return False
-    lowered = clean.lower()
-    return (
-        lowered.startswith(("http://", "https://", "/assets/", "assets/"))
-        or lowered.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"))
-    )
+    storage_path = _clean_text(figure.get("storage_path"))
+    if not storage_path or "://" in storage_path or storage_path.startswith("/"):
+        return ""
+    return storage_path
 
 
 def _text_list_has_value(value: Any) -> bool:
@@ -1548,59 +1619,3 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-@lru_cache(maxsize=1)
-def _ensure_analytics_indexes() -> None:
-    _mongo_collection("Indicator_fra").create_index("code", background=True)
-    _mongo_collection("Indicator_fra").create_index(
-        [("category", 1), ("specific_category", 1), ("question", 1)],
-        background=True,
-    )
-    _mongo_collection("Indicator_ilga").create_index(
-        [("dataset", 1), ("year", -1)],
-        background=True,
-    )
-    _ensure_spain_collection_indexes(DEFAULT_FELGTBI_COLLECTION)
-
-
-@lru_cache(maxsize=64)
-def _ensure_spain_collection_indexes(collection_name: str) -> None:
-    collection = _mongo_collection(collection_name)
-    collection.create_index("code", background=True)
-    collection.create_index("source_document_id", background=True)
-    collection.create_index("original_filename", background=True)
-    collection.create_index(
-        [("year", -1), ("category", 1), ("specific_category", 1)],
-        background=True,
-    )
-    collection.create_index(
-        [("source", 1), ("source_document_id", 1), ("year", -1)],
-        background=True,
-    )
-    collection.create_index(
-        [("source", 1), ("source_document_id", 1), ("year", -1), ("code", 1)],
-        background=True,
-    )
-    collection.create_index(
-        [("source", 1), ("original_filename", 1), ("year", -1)],
-        background=True,
-    )
-    collection.create_index(
-        [("source", 1), ("report_type", 1)],
-        background=True,
-    )
-
-
-@lru_cache(maxsize=1)
-def _ensure_country_lgbti_status_indexes() -> None:
-    collection = _mongo_collection(COUNTRY_LGBTI_STATUS_COLLECTION)
-    collection.create_index(
-        [("country_code", 1), ("year", 1)],
-        unique=True,
-        background=True,
-    )
-    collection.create_index(
-        [("active", 1), ("country_code", 1), ("year", -1)],
-        background=True,
-    )

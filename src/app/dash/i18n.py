@@ -37,11 +37,18 @@ def dash_attrs(attrs: dict[str, Any]) -> dict[str, Any]:
     return attrs
 
 
-def text(es: str, en: str, *, class_name: str | None = None) -> Component:
+def text(
+    es: str,
+    en: str,
+    *,
+    class_name: str | None = None,
+    language: str | None = None,
+) -> Component:
     props = text_attrs(es, en)
     if class_name:
         props["className"] = class_name
-    return html.Span(es, **props)
+    value = en if language == "en" else es
+    return html.Span(value, **props)
 
 
 def ui_text(key: str, language: str = "es") -> str:

@@ -3,6 +3,7 @@
 }
 
 :root {
+  color-scheme: light;
   --font-sans: "Segoe UI", "Inter", Arial, sans-serif;
   --color-bg: #fff7fa;
   --color-surface: #fffefe;
@@ -36,6 +37,7 @@
 
 :root[data-theme="dark"],
 body[data-theme="dark"] {
+  color-scheme: dark;
   --color-bg: #0a0e17;
   --color-surface: #111827;
   --color-surface-strong: #f4a8c0;

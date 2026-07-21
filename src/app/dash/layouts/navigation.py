@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dash import html
+from dash import dcc, html
 from dash.development.base_component import Component
 from flask_login import current_user
 
@@ -23,7 +23,7 @@ def build_navbar(active: str | None = None) -> Component:
         [
             html.Div(
                 [
-                    html.A(
+                    dcc.Link(
                         html.Img(
                             src="/assets/img/rainbow_lens_logo.png",
                             alt="RainbowLens",
@@ -42,7 +42,7 @@ def build_navbar(active: str | None = None) -> Component:
                     html.Ul(
                         [
                             html.Li(
-                                html.A(
+                                dcc.Link(
                                     text(label_es, label_en),
                                     href=href,
                                     className=_nav_link_class(key, active),
@@ -71,13 +71,12 @@ def build_navbar(active: str | None = None) -> Component:
 def _account_link() -> Component:
     if current_user.is_authenticated:
         display_name = getattr(current_user, "username", None) or getattr(current_user, "email", None)
-        return html.A(
-            display_name or "Cuenta",
+        return dcc.Link(
+            text(display_name or "Cuenta", display_name or "Account"),
             href="/user",
             className="nav-link nav-account",
-            **text_attrs(display_name or "Cuenta", display_name or "Account"),
         )
-    return html.A(
+    return dcc.Link(
         text("Entrar", "Sign in"),
         href="/login",
         className="nav-link nav-cta nav-account",
@@ -94,7 +93,7 @@ def _admin_link(active: str | None) -> Component | str:
     class_name = "nav-link nav-admin-cta"
     if active == "admin":
         class_name += " is-active"
-    return html.A(text("Administración", "Administration"), href="/admin", className=class_name)
+    return dcc.Link(text("Administración", "Administration"), href="/admin", className=class_name)
 
 
 def _language_toggle() -> Component:

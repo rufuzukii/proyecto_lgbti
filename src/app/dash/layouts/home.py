@@ -34,8 +34,8 @@ from app.dash.layouts.navigation import build_navbar
 
 
 MAP_MODE_OPTIONS = [
-    {"label": "Situación legal LGBTIQ+ en Europa", "value": "ilga"},
-    {"label": "Discriminación y datos sociales", "value": "fra"},
+    {"label": text("Situación legal LGBTIQ+ en Europa", "LGBTIQ+ legal situation in Europe"), "value": "ilga"},
+    {"label": text("Discriminación y datos sociales", "Discrimination and social data"), "value": "fra"},
 ]
 
 EDITOR_LABELS_EN = {
@@ -307,22 +307,31 @@ def register_home_callbacks(app: Dash) -> None:
         Output("home-fra-indicator", "placeholder"),
         Input("home-map-mode", "value"),
         Input("home-fra-category", "value"),
+        Input("app-language-store", "data"),
     )
-    def update_home_fra_indicators(mode: str | None, category: str | None):
+    def update_home_fra_indicators(
+        mode: str | None,
+        category: str | None,
+        language: str | None,
+    ):
         if mode != "fra":
-            return [], None, True, "Activa la vista de datos sociales"
+            return [], None, True, _localized("Activa la vista de datos sociales", "Enable the social data view", language)
         if not category:
-            return [], None, True, "Selecciona primero una categoría"
+            return [], None, True, _localized("Selecciona primero una categoría", "Select a category first", language)
 
         indicators = get_fra_mongo_indicators_by_category(category)
         if not indicators:
-            return [], None, True, "No hay información disponible para esta categoría"
+            return [], None, True, _localized(
+                "No hay información disponible para esta categoría",
+                "No information is available for this category",
+                language,
+            )
 
         options = [
             {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
             for indicator in indicators
         ]
-        return options, None, False, "Selecciona un indicador"
+        return options, None, False, _localized("Selecciona un indicador", "Select an indicator", language)
 
     @app.callback(
         Output("home-main-map", "figure"),
@@ -346,21 +355,21 @@ def register_home_callbacks(app: Dash) -> None:
             document = get_fra_indicator_answers(fra_code or "")
             return (
                 _home_map_figure(build_fra_choropleth(document, language=language or "es")),
-                text("Mapa europeo de indicadores sociales", "European social indicators map"),
-                _fra_copy(document),
+                text("Mapa europeo de indicadores sociales", "European social indicators map", language=language),
+                _fra_copy(document, language),
                 "home-map-helper-text is-hidden",
-                _fra_source(document),
-                _fra_metrics(document),
+                _fra_source(document, language),
+                _fra_metrics(document, language),
             )
 
         document = get_ilga_document_by_year(ilga_year)
         return (
             _home_map_figure(build_ilga_choropleth(document, language=language or "es")),
-            text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map"),
-            _ilga_copy(document),
+            text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map", language=language),
+            _ilga_copy(document, language),
             "home-map-helper-text",
-            _ilga_source(document),
-            _ilga_metrics(document),
+            _ilga_source(document, language),
+            _ilga_metrics(document, language),
         )
 
     @app.callback(
@@ -1302,11 +1311,16 @@ def _control_class(base_class: str, *, inactive: bool) -> str:
     return " ".join(classes)
 
 
-def _metric(value: str, label_es: str, label_en: str) -> Component:
+def _metric(
+    value: str,
+    label_es: str,
+    label_en: str,
+    language: str | None = None,
+) -> Component:
     return html.Div(
         [
             html.Strong(value),
-            html.Span(label_es, **text_attrs(label_es, label_en)),
+            html.Span(_localized(label_es, label_en, language), **text_attrs(label_es, label_en)),
         ],
         className="home-map-metric",
     )
@@ -1328,29 +1342,31 @@ def _source_summary(
     )
 
 
-def _ilga_copy(document: dict[str, Any] | None):
+def _ilga_copy(document: dict[str, Any] | None, language: str | None = None):
     if not isinstance(document, dict):
-        return text("No hay un Rainbow Map disponible.", "No Rainbow Map is available.")
+        return text("No hay un Rainbow Map disponible.", "No Rainbow Map is available.", language=language)
     year = document.get("year")
     if year:
         return text(
             f"Información legal de {year}",
             f"Legal information for {year}",
+            language=language,
         )
     return text(
         "Información legal LGBTIQ+",
         "LGBTIQ+ legal ranking",
+        language=language,
     )
 
 
-def _ilga_source(document: dict[str, Any] | None):
+def _ilga_source(document: dict[str, Any] | None, language: str | None = None):
     year = document.get("year") if isinstance(document, dict) else None
     if year:
-        return text(f"Fuente: ILGA Europe - {year}", f"Source: ILGA Europe - {year}")
-    return text("Fuente: ILGA Europe", "Source: ILGA Europe")
+        return text(f"Fuente: ILGA Europe - {year}", f"Source: ILGA Europe - {year}", language=language)
+    return text("Fuente: ILGA Europe", "Source: ILGA Europe", language=language)
 
 
-def _ilga_metrics(document: dict[str, Any] | None) -> list[Component]:
+def _ilga_metrics(document: dict[str, Any] | None, language: str | None = None) -> list[Component]:
     countries = (
         document.get("countries", [])
         if isinstance(document, dict) and isinstance(document.get("countries"), list)
@@ -1364,33 +1380,34 @@ def _ilga_metrics(document: dict[str, Any] | None) -> list[Component]:
     average = f"{sum(rankings) / len(rankings):.1f}%" if rankings else "-"
     year = document.get("year") if isinstance(document, dict) else None
     return [
-        _metric(str(year or "-"), "Año", "Year"),
-        _metric(str(len(countries)), "Países", "Countries"),
-        _metric(average, "Media legal", "Legal average"),
+        _metric(str(year or "-"), "Año", "Year", language),
+        _metric(str(len(countries)), "Países", "Countries", language),
+        _metric(average, "Media legal", "Legal average", language),
     ]
 
 
-def _fra_copy(document: dict[str, Any] | None):
+def _fra_copy(document: dict[str, Any] | None, language: str | None = None):
     if not isinstance(document, dict):
         return text(
             "Selecciona una categoría y un indicador social para representar sus valores por país.",
             "Select a category and social indicator to map values by country.",
+            language=language,
         )
     label = (
         f"{document.get('category', '')} - "
         f"{document.get('specific_category', '')}"
     ).strip(" -")
-    return text(label, label)
+    return text(label, label, language=language)
 
 
-def _fra_source(document: dict[str, Any] | None):
+def _fra_source(document: dict[str, Any] | None, language: str | None = None):
     if not isinstance(document, dict):
-        return text("Fuente: FRA", "Source: FRA")
+        return text("Fuente: FRA", "Source: FRA", language=language)
     code = document.get("code", "indicador")
-    return text(f"Fuente: FRA - {code}", f"Source: FRA - {code}")
+    return text(f"Fuente: FRA - {code}", f"Source: FRA - {code}", language=language)
 
 
-def _fra_metrics(document: dict[str, Any] | None) -> list[Component]:
+def _fra_metrics(document: dict[str, Any] | None, language: str | None = None) -> list[Component]:
     answers = document.get("answers", []) if isinstance(document, dict) else []
     countries = {
         str(answer.get("country") or "").strip()
@@ -1404,10 +1421,14 @@ def _fra_metrics(document: dict[str, Any] | None) -> list[Component]:
     ]
     average = f"{sum(percentages) / len(percentages):.1f}%" if percentages else "-"
     return [
-        _metric(str(len(countries)), "Países", "Countries"),
-        _metric(str(len(percentages)), "Observaciones", "Observations"),
-        _metric(average, "Media social", "Social average"),
+        _metric(str(len(countries)), "Países", "Countries", language),
+        _metric(str(len(percentages)), "Observaciones", "Observations", language),
+        _metric(average, "Media social", "Social average", language),
     ]
+
+
+def _localized(es: str, en: str, language: str | None) -> str:
+    return en if language == "en" else es
 
 
 def _fra_indicator_option_label(indicator: FraIndicator) -> str:

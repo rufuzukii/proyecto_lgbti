@@ -70,7 +70,20 @@
     app.i18n.applyLanguage(state.currentLanguage());
     app.theme.applyTheme(state.currentTheme());
     app.segmentedControls.syncActiveStates();
+    observeLazyImages(document);
   });
+
+  const lazyImageObserver = "IntersectionObserver" in window
+    ? new IntersectionObserver((entries, imageObserver) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) {
+            return;
+          }
+          loadLazyImage(entry.target);
+          imageObserver.unobserve(entry.target);
+        });
+      }, { rootMargin: "240px 0px" })
+    : null;
 
   let pendingRefresh = null;
   let pendingRefreshTargets = emptyRefreshTargets();
@@ -98,7 +111,13 @@
       }
     }, 80);
   });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ["data-i18n-es", "data-i18n-en"],
+  });
 
   app.theme.applyTheme(state.currentTheme());
 
@@ -125,10 +144,25 @@
   function refreshTargetsFromMutations(mutations) {
     const targets = emptyRefreshTargets();
     mutations.forEach((mutation) => {
+      if (mutation.type === "characterData") {
+        const parent = mutation.target && mutation.target.parentElement;
+        targets.language =
+          targets.language ||
+          Boolean(parent && parent.matches("[data-i18n-es][data-i18n-en]"));
+        return;
+      }
+      if (mutation.type === "attributes") {
+        const target = mutation.target;
+        targets.language =
+          targets.language ||
+          Boolean(target && target.matches && target.matches("[data-i18n-es][data-i18n-en]"));
+        return;
+      }
       mutation.addedNodes.forEach((node) => {
         if (!isElementNode(node)) {
           return;
         }
+        observeLazyImages(node);
         targets.language =
           targets.language || nodeOrDescendantMatches(node, "[data-i18n-es][data-i18n-en]");
         targets.segmentedControls =
@@ -149,6 +183,47 @@
 
   function nodeOrDescendantMatches(node, selector) {
     return node.matches(selector) || Boolean(node.querySelector(selector));
+  }
+
+  function observeLazyImages(root) {
+    const images = [];
+    if (root.matches && root.matches("img[data-lazy-src]")) {
+      images.push(root);
+    }
+    if (root.querySelectorAll) {
+      images.push(...root.querySelectorAll("img[data-lazy-src]"));
+    }
+    images.forEach((image) => {
+      if (image.dataset.lazyObserved === "true" || !image.dataset.lazySrc) {
+        return;
+      }
+      image.dataset.lazyObserved = "true";
+      if (lazyImageObserver) {
+        lazyImageObserver.observe(image);
+      } else {
+        loadLazyImage(image);
+      }
+    });
+  }
+
+  function loadLazyImage(image) {
+    const source = image.dataset.lazySrc;
+    if (!source) {
+      return;
+    }
+    image.addEventListener("load", () => {
+      image.classList.add("is-loaded");
+      image.removeAttribute("data-lazy-src");
+    }, { once: true });
+    image.addEventListener("error", () => {
+      image.hidden = true;
+      const figure = image.closest(".report-figure");
+      const fallback = figure && figure.querySelector(".report-figure-load-error");
+      if (fallback) {
+        fallback.hidden = false;
+      }
+    }, { once: true });
+    image.src = source;
   }
 
   function clearUploadFileInput() {
