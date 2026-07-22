@@ -516,13 +516,17 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
     with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
         for page_index in range(document.page_count):
             page = document.load_page(page_index)
-            text_blocks = page.get_text("blocks")
             # ``TEXTFLAGS_DICT`` includes the binary content of every image by
             # default.  A report can therefore expand a few megabytes of PDF
             # data into hundreds of megabytes even though this stage only
-            # needs text styles and image coordinates.
+            # needs text styles and image coordinates.  The image-free flags
+            # are also identical to ``TEXTFLAGS_TEXT`` / ``TEXTFLAGS_BLOCKS``,
+            # so one TextPage can serve all three extractions instead of
+            # interpreting each PDF page three times.
             text_dict_flags = fitz.TEXTFLAGS_DICT & ~fitz.TEXT_PRESERVE_IMAGES
-            page_dict = page.get_text("dict", flags=text_dict_flags)
+            text_page = page.get_textpage(flags=text_dict_flags)
+            text_blocks = page.get_text("blocks", textpage=text_page)
+            page_dict = page.get_text("dict", textpage=text_page)
             dict_blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
             image_blocks = [
                 {"type": 1, "bbox": image.get("bbox")}
@@ -538,7 +542,7 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
             pages.append(
                 {
                     "page": page_index + 1,
-                    "text": page.get_text("text"),
+                    "text": page.get_text("text", textpage=text_page),
                     "blocks": [
                         {
                             "x0": block[0],
@@ -556,7 +560,7 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
                     "height": page_height,
                 }
             )
-            del page_dict, dict_blocks, image_blocks, text_blocks, visual_regions, page
+            del text_page, page_dict, dict_blocks, image_blocks, text_blocks, visual_regions, page
     return pages
 
 
