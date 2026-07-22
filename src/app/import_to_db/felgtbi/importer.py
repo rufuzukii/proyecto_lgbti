@@ -18,6 +18,7 @@ from bson import ObjectId
 
 from app.import_to_db.felgtbi.semantics import (
     ExtractionContext,
+    analyze_chart_residual_text,
     clean_figure_paragraphs,
     is_chart_residual_text,
 )
@@ -80,16 +81,25 @@ CHART_NUMBER_PATTERN = re.compile(r"(?<![\w])(?P<value>\d{1,4}(?:[,.]\d{1,2})?)(
 TOC_ENTRY_PATTERN = re.compile(r"^(?P<title>.+?)\s+\.{3,}\s*(?P<page>\d{1,3})$")
 TOC_DOTS_PAGE_PATTERN = re.compile(r"^\.{3,}\s*(?P<page>\d{1,3})$")
 FIGURE_CAPTION_PATTERN = re.compile(
-    r"^\s*(?P<label>Figura|Gr[aá]fico)\s+(?P<number>\d+(?:\.\d+)?)[.:]?\s*(?P<title>.+)?$",
+    r"^\s*(?P<label>Figura|Gr[aá]fico|Tabla|Ilustraci[oó]n)\s+"
+    r"(?P<number>\d+(?:\.\d+)?)[.:]?\s*(?P<title>.+)?$",
     re.IGNORECASE,
 )
 FIGURE_NUMBER_REFERENCE_PATTERN = re.compile(
-    r"\b(?:Figura|Gr[aá]fico)\s+(?P<number>\d+(?:\.\d+)?)",
+    r"\b(?:Figura|Gr[aá]fico|Tabla|Ilustraci[oó]n)\s+(?P<number>\d+(?:\.\d+)?)",
     re.IGNORECASE,
 )
 SECTION_NUMBER_PATTERN = re.compile(r"^\d{1,2}(?:\.\d+)*\.?\s+.+")
 SENTENCE_BREAK_PATTERN = re.compile(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÜÑ¿¡])")
-FIGURE_REFERENCE_PATTERN = re.compile(r"\bFigura\s+\d+(?:\.\d+)?[.:]?\s*", re.IGNORECASE)
+FIGURE_REFERENCE_PATTERN = re.compile(
+    r"\b(?:Figura|Gr[aá]fico|Tabla|Ilustraci[oó]n)\s+\d+(?:\.\d+)?[.:]?\s*",
+    re.IGNORECASE,
+)
+COLLECTION_REFERENCE_PATTERN = re.compile(
+    r"\s*(?::|[,;\-\u2013\u2014])?\s*Estado\s+LGTBI\+?\s+(?:20\d{2})\s*$",
+    re.IGNORECASE,
+)
+CAPTION_SOURCE_PATTERN = re.compile(r"\s+Fuente\s*:\s*", re.IGNORECASE)
 MAX_DATA_POINTS_PER_FIGURE = 8
 KNOWN_SECTION_PREFIXES = (
     "Resumen Ejecutivo",
@@ -521,6 +531,10 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
             ]
             page_width = float(page.rect.width)
             page_height = float(page.rect.height)
+            visual_regions = [
+                *_extract_page_figures(image_blocks, kind="figure"),
+                *_extract_page_vector_regions(page, page_width, page_height),
+            ]
             pages.append(
                 {
                     "page": page_index + 1,
@@ -537,12 +551,12 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
                         for block in text_blocks
                         if len(block) >= 5
                     ],
-                    "figures": _extract_page_figures(image_blocks),
+                    "figures": _deduplicate_visual_regions(visual_regions),
                     "width": page_width,
                     "height": page_height,
                 }
             )
-            del page_dict, dict_blocks, image_blocks, text_blocks, page
+            del page_dict, dict_blocks, image_blocks, text_blocks, visual_regions, page
     return pages
 
 
@@ -1134,14 +1148,26 @@ def _build_layout_page_documents(
     """
     documents: list[dict[str, Any]] = []
     seen_codes: set[str] = set()
+    current_layout_heading = ""
     for page in pages:
         blocks = _raw_text_block_entries(page)
-        heading_block = _layout_page_heading(page, blocks)
+        detected_heading = _layout_page_heading(page, blocks)
+        heading_block = detected_heading or _layout_fallback_heading(
+            page,
+            toc_sections,
+            inherited_heading=current_layout_heading,
+        )
         if heading_block is None or not _is_layout_content_page(page, blocks, heading_block):
             continue
+        if detected_heading is not None:
+            candidate_heading = _clean_section_title(str(detected_heading.get("text") or ""))
+            if candidate_heading and not _is_excluded_section(candidate_heading):
+                current_layout_heading = candidate_heading
 
         page_number = int(page.get("page") or 0)
         heading = _clean_section_title(str(heading_block.get("text") or ""))
+        if heading_block.get("synthetic") and heading:
+            heading = f"{heading} · p. {page_number}"
         if not heading or _is_excluded_section(heading):
             continue
         section = _section_for_page(toc_sections, page_number) or report_category
@@ -1251,12 +1277,41 @@ def _layout_page_heading(
     )[0]
 
 
+def _layout_fallback_heading(
+    page: dict[str, Any],
+    toc_sections: list[dict[str, Any]],
+    *,
+    inherited_heading: str = "",
+) -> dict[str, Any] | None:
+    page_number = int(page.get("page") or 0)
+    section = _clean_section_title(
+        _section_for_page(toc_sections, page_number) or inherited_heading
+    )
+    if not section or _is_excluded_section(section):
+        return None
+    return {
+        "x0": 70.0,
+        "y0": 40.0,
+        "x1": float(page.get("width") or 595) - 70.0,
+        "y1": 70.0,
+        "text": section,
+        "font_size": 16.0,
+        "is_bold": True,
+        "is_italic": False,
+        "synthetic": True,
+    }
+
+
 def _is_layout_content_page(
     page: dict[str, Any],
     blocks: list[dict[str, Any]],
     heading: dict[str, Any],
 ) -> bool:
-    if len(blocks) < 3:
+    page_number = int(page.get("page") or 0)
+    visual_regions = _page_visual_regions(page)
+    if page_number <= 2:
+        return False
+    if len(blocks) < 3 and not visual_regions:
         return False
     normalized_text = normalize_header(str(page.get("text") or ""))
     heading_text = normalize_header(str(heading.get("text") or ""))
@@ -1266,6 +1321,8 @@ def _is_layout_content_page(
         return False
     if _is_excluded_section(heading_text):
         return False
+    if visual_regions:
+        return True
     values = _layout_numeric_matches(page, blocks, heading)
     narrative_blocks = [
         block
@@ -1431,6 +1488,14 @@ def _layout_visual_bbox(
     heading: dict[str, Any],
     data_points: list[dict[str, Any]],
 ) -> list[float] | None:
+    visual_regions = _page_visual_regions(page)
+    if visual_regions:
+        relevant_regions = _regions_for_data_points(visual_regions, data_points)
+        return _union_visual_regions(
+            relevant_regions or visual_regions,
+            float(page.get("width") or 595),
+            float(page.get("height") or 842),
+        )
     if not data_points:
         return None
     page_width = float(page.get("width") or 595)
@@ -1454,6 +1519,59 @@ def _layout_visual_bbox(
     if bottom <= top:
         return None
     return [24.0, round(top, 2), round(page_width - 24, 2), round(bottom, 2)]
+
+
+def _page_visual_regions(page: dict[str, Any]) -> list[list[float]]:
+    figures = page.get("figures")
+    if not isinstance(figures, list):
+        return []
+    regions: list[list[float]] = []
+    for figure in figures:
+        if not isinstance(figure, dict):
+            continue
+        bbox = _safe_bbox(figure.get("bbox"))
+        if bbox is not None:
+            regions.append(bbox)
+    return regions
+
+
+def _regions_for_data_points(
+    regions: list[list[float]],
+    data_points: list[dict[str, Any]],
+) -> list[list[float]]:
+    if not data_points:
+        return []
+    matched: list[list[float]] = []
+    for region in regions:
+        for point in data_points:
+            bbox = _safe_bbox(point.get("bbox"))
+            if bbox is None:
+                continue
+            center_x = (bbox[0] + bbox[2]) / 2
+            center_y = (bbox[1] + bbox[3]) / 2
+            if (
+                region[0] - 18 <= center_x <= region[2] + 18
+                and region[1] - 18 <= center_y <= region[3] + 18
+            ):
+                matched.append(region)
+                break
+    return matched
+
+
+def _union_visual_regions(
+    regions: list[list[float]],
+    page_width: float,
+    page_height: float,
+) -> list[float] | None:
+    if not regions:
+        return None
+    padding = 6.0
+    return [
+        round(max(0.0, min(region[0] for region in regions) - padding), 2),
+        round(max(0.0, min(region[1] for region in regions) - padding), 2),
+        round(min(page_width, max(region[2] for region in regions) + padding), 2),
+        round(min(page_height, max(region[3] for region in regions) + padding), 2),
+    ]
 
 
 def _layout_context_paragraphs(
@@ -2049,12 +2167,66 @@ def _extract_year(text: str) -> int | None:
 
 def _resolve_report_title(full_text: str, file_name: str) -> str:
     lines = _clean_lines(full_text)
-    for line in lines[:60]:
+    for index, line in enumerate(lines[:80]):
+        if normalize_header(line).startswith("titulo_"):
+            title_line = line
+            if index + 1 < len(lines) and re.fullmatch(
+                r"LGTBI\+?\s+20\d{2}",
+                lines[index + 1],
+                flags=re.IGNORECASE,
+            ):
+                title_line = f"{line} {lines[index + 1]}"
+            title = _clean_report_title(title_line)
+            if title:
+                return title
+    for index, line in enumerate(lines[:80]):
         normalized = normalize_header(line)
-        if "estado_lgtbi" in normalized or "estado_lgbti" in normalized:
-            return line[:160]
+        if not _is_collection_reference(normalized):
+            continue
+        for candidate_index in (index - 1, index + 1):
+            if candidate_index < 0 or candidate_index >= len(lines):
+                continue
+            candidate = _clean_report_title(lines[candidate_index])
+            if _is_report_title_candidate(candidate):
+                return candidate
     stem = Path(file_name).stem.replace("-", " ").replace("_", " ").strip()
-    return stem[:160] or FELGTBI_SOURCE_NAME
+    stem_title = _clean_report_title(stem)[:160]
+    if normalize_header(stem_title) in {"informe", "informe_estado"}:
+        for line in lines[:120]:
+            if not SECTION_NUMBER_PATTERN.match(line):
+                continue
+            content_title = re.sub(r"^\d{1,2}(?:\.\d+)*\.?\s+", "", line).strip()
+            if 4 <= len(content_title.split()) <= 16:
+                return _clean_report_title(content_title)
+    return stem_title or FELGTBI_SOURCE_NAME
+
+
+def _clean_report_title(value: str) -> str:
+    title = re.sub(r"^\s*T[ií]tulo\s*:\s*", "", str(value or ""), flags=re.IGNORECASE)
+    title = _strip_collection_reference(title)
+    return title.strip(" .:-")[:160]
+
+
+def _is_collection_reference(normalized: str) -> bool:
+    return bool(re.fullmatch(r"(?:coleccion_)?estado_lgtbi_?20\d{2}", normalized))
+
+
+def _is_report_title_candidate(value: str) -> bool:
+    clean = str(value or "").strip()
+    if not clean or clean.isdigit() or len(clean) > 160:
+        return False
+    normalized = normalize_header(clean)
+    if _is_collection_reference(normalized):
+        return False
+    excluded_prefixes = (
+        "editado_por",
+        "coleccion",
+        "isbn",
+        "madrid",
+        "han_participado",
+        "diseno_de_portada",
+    )
+    return not normalized.startswith(excluded_prefixes)
 
 
 def _resolve_report_type(report_title: str, file_name: str) -> str:
@@ -2105,7 +2277,11 @@ def _clean_lines(text: str) -> list[str]:
     ]
 
 
-def _extract_page_figures(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _extract_page_figures(
+    blocks: list[dict[str, Any]],
+    *,
+    kind: str = "figure",
+) -> list[dict[str, Any]]:
     figures: list[dict[str, Any]] = []
     for block in blocks:
         if block.get("type") != 1:
@@ -2124,11 +2300,74 @@ def _extract_page_figures(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         figures.append(
             {
-                "kind": "figure",
+                "kind": kind,
                 "bbox": [round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)],
             }
         )
     return figures
+
+
+def _extract_page_vector_regions(
+    page: Any,
+    page_width: float,
+    page_height: float,
+) -> list[dict[str, Any]]:
+    try:
+        regions = page.cluster_drawings()
+    except (AttributeError, RuntimeError, ValueError):
+        return []
+
+    page_area = max(page_width * page_height, 1.0)
+    figures: list[dict[str, Any]] = []
+    for region in regions:
+        try:
+            x0, y0, x1, y1 = (
+                float(region.x0),
+                float(region.y0),
+                float(region.x1),
+                float(region.y1),
+            )
+        except (AttributeError, TypeError, ValueError):
+            continue
+        width = x1 - x0
+        height = y1 - y0
+        area_ratio = (width * height) / page_area
+        if width < 80 or height < 60 or area_ratio >= 0.8:
+            continue
+        if y0 < 70 and height < 100:
+            continue
+        figures.append(
+            {
+                "kind": "vector",
+                "bbox": [round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)],
+            }
+        )
+    return figures
+
+
+def _deduplicate_visual_regions(regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for region in regions:
+        bbox = _safe_bbox(region.get("bbox"))
+        if bbox is None:
+            continue
+        duplicate = False
+        for existing in result:
+            existing_bbox = _safe_bbox(existing.get("bbox"))
+            if existing_bbox is None:
+                continue
+            overlap = _bbox_overlap_area(bbox, existing_bbox)
+            smaller_area = min(_bbox_area(bbox), _bbox_area(existing_bbox))
+            if smaller_area > 0 and overlap / smaller_area >= 0.94:
+                duplicate = True
+                break
+        if not duplicate:
+            result.append({"kind": str(region.get("kind") or "visual"), "bbox": bbox})
+    return result
+
+
+def _bbox_area(bbox: list[float]) -> float:
+    return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
 
 
 def _build_visual_context(
@@ -2151,7 +2390,7 @@ def _visual_context_from_segment(segment: dict[str, Any] | None) -> dict[str, An
     if not segment:
         return _build_visual_context(0, None, "")
     return _build_visual_context(
-        int(segment.get("page") or 0),
+        int(segment.get("visual_page") or segment.get("page") or 0),
         _safe_bbox(segment.get("bbox")),
         str(segment.get("caption") or ""),
     )
@@ -2166,8 +2405,11 @@ def _extract_figure_segments(
     for page in pages:
         page_number = int(page.get("page") or 0)
         for block in _raw_text_block_entries(page):
-            match = FIGURE_CAPTION_PATTERN.match(block["text"])
+            raw_caption = str(block.get("text") or "").strip()
+            match = FIGURE_CAPTION_PATTERN.match(raw_caption)
             if match:
+                if _is_toc_figure_reference(page, raw_caption):
+                    continue
                 captions.append(
                     {
                         "page": page_number,
@@ -2176,23 +2418,29 @@ def _extract_figure_segments(
                         "x1": block["x1"],
                         "y1": block["y1"],
                         "figure_number": match.group("number"),
-                        "caption_title": _clean_figure_caption_title(block["text"]),
-                        "caption": block["text"],
+                        "caption_title": _clean_figure_caption_title(raw_caption),
+                        "caption": _clean_figure_caption(raw_caption),
+                        "raw_caption": raw_caption,
                     }
                 )
 
     segments: list[dict[str, Any]] = []
     for index, caption in enumerate(captions):
         previous_caption = captions[index - 1] if index > 0 else None
-        next_caption = captions[index + 1] if index + 1 < len(captions) else None
-        bbox = _figure_bbox_for_caption(pages, caption, next_caption)
+        next_caption = _next_vertical_caption(captions, index)
+        visual_page, bbox = _figure_location_for_caption(
+            pages,
+            caption,
+            next_caption,
+            previous_caption,
+        )
         before_description, after_description = _figure_text_parts(
             pages,
             caption,
             next_caption,
             previous_caption,
             toc_sections or [],
-            figure_bbox=bbox,
+            figure_bbox=bbox if visual_page == int(caption["page"]) else None,
         )
         description = _format_description(
             " ".join([before_description, after_description]),
@@ -2203,12 +2451,14 @@ def _extract_figure_segments(
         segments.append(
             {
                 "page": caption["page"],
+                "visual_page": visual_page,
                 "y0": caption["y0"],
                 "figure_number": caption["figure_number"],
                 "caption_title": caption["caption_title"],
                 "caption": caption["caption"],
                 "bbox": bbox,
-                "source": _figure_source(pages, caption, next_caption),
+                "source": _caption_source(str(caption.get("raw_caption") or ""))
+                or _figure_source(pages, caption, next_caption),
                 "before_description": before_description,
                 "after_description": after_description,
                 "description": description or caption["caption"],
@@ -2219,55 +2469,341 @@ def _extract_figure_segments(
     return segments
 
 
+def _figure_location_for_caption(
+    pages: list[dict[str, Any]],
+    caption: dict[str, Any],
+    next_caption: dict[str, Any] | None,
+    previous_caption: dict[str, Any] | None,
+) -> tuple[int, list[float] | None]:
+    caption_page = int(caption.get("page") or 0)
+    bbox = _figure_bbox_for_caption(
+        pages,
+        caption,
+        next_caption,
+        previous_caption,
+    )
+    if bbox is not None:
+        return caption_page, bbox
+
+    next_page_bbox = _next_page_leading_visual_bbox(pages, caption)
+    if next_page_bbox is not None:
+        return caption_page + 1, next_page_bbox
+    return caption_page, None
+
+
+def _next_page_leading_visual_bbox(
+    pages: list[dict[str, Any]],
+    caption: dict[str, Any],
+) -> list[float] | None:
+    """Find a visual continued on the page after a bottom-of-page caption."""
+    caption_page = _page_by_number(pages, int(caption.get("page") or 0))
+    if not caption_page:
+        return None
+    page_height = float(caption_page.get("height") or 842)
+    if float(caption.get("y0") or 0) < page_height * 0.72:
+        return None
+
+    next_page = _page_by_number(pages, int(caption.get("page") or 0) + 1)
+    if not next_page:
+        return None
+    next_height = float(next_page.get("height") or 842)
+    next_width = float(next_page.get("width") or 595)
+    blocks = [
+        block
+        for block in _raw_text_block_entries(next_page)
+        if float(block.get("y0") or 0) >= 45
+        and float(block.get("y1") or 0) <= next_height - 45
+        and str(block.get("text") or "").strip()
+    ]
+    narrative_starts = [
+        float(block.get("y0") or 0)
+        for block in blocks
+        if _is_semantic_narrative_block(str(block.get("text") or ""))
+    ]
+    narrative_y0 = min(narrative_starts) if narrative_starts else next_height - 45
+
+    leading_regions = [
+        region
+        for region in _page_visual_regions(next_page)
+        if region[1] < narrative_y0 and region[3] <= narrative_y0 + 8
+    ]
+    if leading_regions:
+        return _union_visual_regions(leading_regions, next_width, next_height)
+
+    leading_blocks = [
+        block
+        for block in blocks
+        if float(block.get("y1") or 0) < narrative_y0
+    ]
+    value_count = sum(
+        len(CHART_NUMBER_PATTERN.findall(str(block.get("text") or "")))
+        for block in leading_blocks
+    )
+    if value_count < 2 or not leading_blocks:
+        return None
+
+    x0 = max(24.0, min(float(block.get("x0") or 0) for block in leading_blocks) - 12)
+    y0 = max(45.0, min(float(block.get("y0") or 0) for block in leading_blocks) - 12)
+    x1 = min(next_width - 24.0, max(float(block.get("x1") or 0) for block in leading_blocks) + 12)
+    y1 = min(
+        narrative_y0 - 8,
+        max(float(block.get("y1") or 0) for block in leading_blocks) + 12,
+    )
+    if x1 - x0 < 120 or y1 - y0 < 60:
+        return None
+    return _clamp_bbox([x0, y0, x1, y1], next_width, next_height)
+
+
+def _next_vertical_caption(
+    captions: list[dict[str, Any]],
+    index: int,
+) -> dict[str, Any] | None:
+    current = captions[index]
+    current_page = int(current.get("page") or 0)
+    current_bottom = float(current.get("y1") or 0)
+    for candidate in captions[index + 1 :]:
+        candidate_page = int(candidate.get("page") or 0)
+        if candidate_page > current_page:
+            return candidate
+        if candidate_page == current_page and float(candidate.get("y0") or 0) > current_bottom + 3:
+            return candidate
+    return None
+
+
 def _figure_bbox_for_caption(
     pages: list[dict[str, Any]],
     caption: dict[str, Any],
     next_caption: dict[str, Any] | None,
+    previous_caption: dict[str, Any] | None,
 ) -> list[float] | None:
     page = _page_by_number(pages, int(caption["page"]))
     if not page:
         return None
     page_number = int(caption["page"])
+    page_width = float(page.get("width") or 595)
+    page_height = float(page.get("height") or 842)
     caption_y1 = float(caption["y1"])
     next_y0 = (
         float(next_caption["y0"])
         if next_caption and int(next_caption["page"]) == page_number
-        else 760.0
+        else page_height - 42.0
     )
-    image_bbox = _nearest_image_bbox(page, caption_y1, next_y0)
-    if image_bbox:
-        return image_bbox
-
     source_y0 = _next_source_y0(page, caption_y1, next_y0)
-    bottom = source_y0 - 6 if source_y0 else next_y0 - 6
     top = caption_y1 + 4
+    hard_bottom = next_y0 - 6
+    visual_region = _nearest_visual_region(
+        page,
+        caption,
+        top,
+        hard_bottom,
+        previous_caption,
+    )
+    source_precedes_visual = bool(
+        source_y0
+        and visual_region
+        and source_y0 < float(visual_region["bbox"][1])
+    )
+    if source_y0 and not source_precedes_visual and source_y0 - caption_y1 > 60:
+        hard_bottom = min(hard_bottom, source_y0 - 6)
+    if visual_region and (
+        visual_region["kind"] != "vector"
+        or normalize_header(str(caption.get("raw_caption") or caption.get("caption") or "")).startswith("tabla_")
+    ):
+        return _clamp_bbox(visual_region["bbox"], page_width, page_height)
+
+    narrative_search_y = top + 45
+    if visual_region:
+        narrative_search_y = max(narrative_search_y, visual_region["bbox"][3] + 3)
+    narrative_y0 = _next_narrative_y0(
+        page,
+        narrative_search_y,
+        hard_bottom,
+    )
+    bottom = min(hard_bottom, narrative_y0 - 6 if narrative_y0 else hard_bottom)
+    if visual_region and not narrative_y0:
+        bottom = min(bottom, visual_region["bbox"][3] + 60)
+    elif not visual_region and not narrative_y0:
+        content_bottom = _last_chart_content_y(page, top, hard_bottom)
+        if content_bottom is not None:
+            bottom = min(bottom, content_bottom + 18)
     if bottom - top < 80:
         return None
-    return [70.0, round(top, 2), 525.0, round(bottom, 2)]
+    return _clamp_bbox(
+        [24.0, round(top, 2), page_width - 24.0, round(bottom, 2)],
+        page_width,
+        page_height,
+    )
 
 
-def _nearest_image_bbox(page: dict[str, Any], caption_y1: float, next_y0: float) -> list[float] | None:
+def _nearest_visual_region(
+    page: dict[str, Any],
+    caption: dict[str, Any],
+    top: float,
+    bottom: float,
+    previous_caption: dict[str, Any] | None,
+) -> dict[str, Any] | None:
     figures = page.get("figures")
     if not isinstance(figures, list):
         return None
-    candidates: list[list[float]] = []
+    candidates: list[dict[str, Any]] = []
+    is_table = normalize_header(
+        str(caption.get("raw_caption") or caption.get("caption") or "")
+    ).startswith("tabla_")
     for figure in figures:
         if not isinstance(figure, dict):
             continue
         bbox = _safe_bbox(figure.get("bbox"))
         if not bbox:
             continue
-        if bbox[1] >= caption_y1 - 8 and bbox[3] <= next_y0 + 8:
-            candidates.append(bbox)
+        kind = str(figure.get("kind") or "visual")
+        if kind == "vector" and not is_table and _visual_region_contains_narrative(page, bbox):
             continue
-        if bbox[3] <= caption_y1 + 8 and caption_y1 - bbox[3] <= 520:
-            candidates.append(bbox)
+        if bbox[1] >= top - 8 and bbox[3] <= bottom + 8:
+            candidates.append(
+                {"kind": kind, "bbox": bbox}
+            )
+    if not candidates:
+        for figure in figures:
+            if not isinstance(figure, dict):
+                continue
+            bbox = _safe_bbox(figure.get("bbox"))
+            kind = str(figure.get("kind") or "visual")
+            if (
+                bbox
+                and kind != "vector"
+                and bbox[1] < top < bbox[3] - 80
+                and bbox[3] <= bottom + 8
+            ):
+                candidates.append(
+                    {"kind": kind, "bbox": [bbox[0], top, bbox[2], bbox[3]]}
+                )
+    if not candidates:
+        previous_on_page = bool(
+            previous_caption
+            and int(previous_caption.get("page") or 0) == int(caption.get("page") or 0)
+        )
+        if previous_on_page:
+            return None
+        caption_y0 = float(caption.get("y0") or top)
+        for figure in figures:
+            if not isinstance(figure, dict):
+                continue
+            bbox = _safe_bbox(figure.get("bbox"))
+            kind = str(figure.get("kind") or "visual")
+            if kind == "vector" and not is_table and bbox and _visual_region_contains_narrative(page, bbox):
+                continue
+            if bbox and bbox[3] <= caption_y0 + 8 and caption_y0 - bbox[3] <= 48:
+                candidates.append(
+                    {"kind": kind, "bbox": bbox}
+                )
     if not candidates:
         return None
     return sorted(
         candidates,
-        key=lambda bbox: (abs(bbox[1] - caption_y1), -(bbox[2] - bbox[0]) * (bbox[3] - bbox[1])),
+        key=lambda candidate: (
+            -_horizontal_overlap_ratio(
+                candidate["bbox"],
+                [
+                    float(caption.get("x0") or 0),
+                    float(caption.get("y0") or 0),
+                    float(caption.get("x1") or 0),
+                    float(caption.get("y1") or 0),
+                ],
+            ),
+            abs(
+                (candidate["bbox"][0] + candidate["bbox"][2]) / 2
+                - (float(caption.get("x0") or 0) + float(caption.get("x1") or 0)) / 2
+            ),
+            abs(candidate["bbox"][1] - top),
+            -_bbox_area(candidate["bbox"]),
+        ),
     )[0]
+
+
+def _horizontal_overlap_ratio(first: list[float], second: list[float]) -> float:
+    overlap = max(0.0, min(first[2], second[2]) - max(first[0], second[0]))
+    minimum_width = min(first[2] - first[0], second[2] - second[0])
+    return overlap / minimum_width if minimum_width > 0 else 0.0
+
+
+def _next_narrative_y0(
+    page: dict[str, Any],
+    start_y: float,
+    end_y: float,
+) -> float | None:
+    candidates: list[float] = []
+    for block in _raw_text_block_entries(page):
+        y0 = float(block.get("y0") or 0)
+        if y0 < start_y or y0 >= end_y:
+            continue
+        text = " ".join(str(block.get("text") or "").split()).strip()
+        if _is_semantic_narrative_block(text):
+            candidates.append(y0)
+    return min(candidates) if candidates else None
+
+
+def _last_chart_content_y(
+    page: dict[str, Any],
+    start_y: float,
+    end_y: float,
+) -> float | None:
+    page_number = int(page.get("page") or 0)
+    candidates: list[float] = []
+    for block in _raw_text_block_entries(page):
+        y0 = float(block.get("y0") or 0)
+        y1 = float(block.get("y1") or 0)
+        text = " ".join(str(block.get("text") or "").split()).strip()
+        if y0 < start_y or y1 > end_y or not text:
+            continue
+        if text.isdigit() and int(text) == page_number:
+            continue
+        if _is_figure_caption_text(text) or normalize_header(text).startswith("fuente_"):
+            continue
+        candidates.append(y1)
+    return max(candidates) if candidates else None
+
+
+def _visual_region_contains_narrative(
+    page: dict[str, Any],
+    region: list[float],
+) -> bool:
+    for block in _raw_text_block_entries(page):
+        block_bbox = _safe_bbox(
+            [block.get("x0"), block.get("y0"), block.get("x1"), block.get("y1")]
+        )
+        if block_bbox is None or _bbox_overlap_area(region, block_bbox) <= 0:
+            continue
+        text = " ".join(str(block.get("text") or "").split()).strip()
+        has_sentence_shape = bool(re.search(r"[.!?](?:\s|$)", text)) or len(text.split()) >= 14
+        if has_sentence_shape and _is_semantic_narrative_block(text):
+            return True
+    return False
+
+
+def _is_semantic_narrative_block(text: str) -> bool:
+    clean = " ".join(str(text or "").split()).strip()
+    if len(clean) < 55 or _is_figure_caption_text(clean) or _is_figure_note_text(clean):
+        return False
+    letters = "".join(character for character in clean if character.isalpha())
+    if letters and letters == letters.upper():
+        return False
+    return analyze_chart_residual_text(clean, ExtractionContext()).has_semantic_sentence
+
+
+def _clamp_bbox(
+    bbox: list[float],
+    page_width: float,
+    page_height: float,
+) -> list[float] | None:
+    clamped = [
+        max(0.0, min(page_width, float(bbox[0]))),
+        max(0.0, min(page_height, float(bbox[1]))),
+        max(0.0, min(page_width, float(bbox[2]))),
+        max(0.0, min(page_height, float(bbox[3]))),
+    ]
+    if clamped[2] <= clamped[0] or clamped[3] <= clamped[1]:
+        return None
+    return [round(value, 2) for value in clamped]
 
 
 def _next_source_y0(page: dict[str, Any], start_y: float, end_y: float) -> float | None:
@@ -2449,13 +2985,62 @@ def _figure_description(
 def _clean_figure_caption_title(text: str) -> str:
     match = FIGURE_CAPTION_PATTERN.match(text)
     if not match:
-        return _clean_section_title(text)
-    title = str(match.group("title") or "").strip(" .:-")
+        return _strip_collection_reference(_clean_section_title(text))
+    title = str(match.group("title") or "")
+    title = CAPTION_SOURCE_PATTERN.split(title, maxsplit=1)[0]
+    title = _strip_collection_reference(title).strip(" .:-")
     return _truncate_at_word_boundary(title, 180) if title else ""
+
+
+def _clean_figure_caption(text: str) -> str:
+    match = FIGURE_CAPTION_PATTERN.match(str(text or "").strip())
+    if not match:
+        return _strip_collection_reference(str(text or "")).strip()
+    title = _clean_figure_caption_title(text)
+    label = str(match.group("label") or "Figura").strip()
+    number = str(match.group("number") or "").strip()
+    prefix = f"{label} {number}".strip()
+    return f"{prefix}: {title}" if title else prefix
+
+
+def _caption_source(text: str) -> str:
+    parts = CAPTION_SOURCE_PATTERN.split(str(text or ""), maxsplit=1)
+    if len(parts) != 2:
+        return ""
+    return _truncate_at_word_boundary(parts[1].strip(), 240)
+
+
+def _strip_collection_reference(text: str) -> str:
+    clean = " ".join(str(text or "").split()).strip()
+    previous = None
+    while clean and clean != previous:
+        previous = clean
+        clean = COLLECTION_REFERENCE_PATTERN.sub("", clean).strip(" .,:;-\u2013\u2014")
+    return clean
 
 
 def _is_figure_caption_text(text: str) -> bool:
     return bool(FIGURE_CAPTION_PATTERN.match(str(text or "").strip()))
+
+
+def _is_toc_figure_reference(page: dict[str, Any], text: str) -> bool:
+    clean = " ".join(str(text or "").split()).strip()
+    if (
+        TOC_ENTRY_PATTERN.match(clean)
+        or re.search(r"\.{3,}\s*\d{1,3}\s*$", clean)
+        or re.search(r"\s\d{1,3}\s*$", clean)
+    ):
+        return True
+    normalized_page = normalize_header(str(page.get("text") or ""))
+    references = sum(
+        1
+        for block in _raw_text_block_entries(page)
+        if FIGURE_CAPTION_PATTERN.match(str(block.get("text") or "").strip())
+    )
+    return references >= 3 and (
+        any(marker in normalized_page[:500] for marker in ("indice", "contenido"))
+        or sum("..." in str(block.get("text") or "") for block in _raw_text_block_entries(page)) >= 2
+    )
 
 
 def _mentions_figure_number(text: str, figure_number: str) -> bool:

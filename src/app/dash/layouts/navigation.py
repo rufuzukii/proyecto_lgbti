@@ -18,6 +18,8 @@ def build_navbar(active: str | None = None) -> Component:
         ("Acerca de", "About", "/about", "about"),
         ("Importar datos", "Import data", "/upload", "upload"),
     ]
+    admin_link = _admin_link(active)
+    navbar_class = "navbar navbar--admin" if admin_link is not None else "navbar"
 
     return html.Nav(
         [
@@ -30,13 +32,25 @@ def build_navbar(active: str | None = None) -> Component:
                     ),
                     html.Img(
                         src="/assets/img/rainbow_lens_icono.ico",
-                        alt="",
+                        alt="RainbowLens",
                         className="nav-brand-logo nav-brand-logo-mobile",
                     ),
                 ],
                 href="/",
+                refresh=False,
                 className="nav-brand",
-                title="RainbowLens",
+                title="RainbowLens · Inicio / Home",
+            ),
+            html.Div(
+                [
+                    _language_toggle(),
+                    _theme_toggle(),
+                    html.Div(
+                        _account_link(),
+                        className="nav-account-slot nav-account-slot-desktop",
+                    ),
+                ],
+                className="nav-header-actions",
             ),
             html.Button(
                 [
@@ -60,6 +74,7 @@ def build_navbar(active: str | None = None) -> Component:
             ),
             html.Div(
                 [
+                    html.Div(admin_link, className="nav-admin-slot"),
                     html.Ul(
                         [
                             html.Li(
@@ -74,20 +89,15 @@ def build_navbar(active: str | None = None) -> Component:
                         className="nav-links",
                     ),
                     html.Div(
-                        [
-                            _language_toggle(),
-                            _theme_toggle(),
-                        ],
-                        className="nav-preference-actions",
+                        _account_link(),
+                        className="nav-account-slot nav-account-slot-mobile",
                     ),
-                    _admin_link(active),
-                    _account_link(),
                 ],
                 id="primary-navigation",
                 className="nav-menu",
             ),
         ],
-        className="navbar",
+        className=navbar_class,
         **dash_attrs({"aria-label": "Navegación principal"}),
     )
 
@@ -107,13 +117,13 @@ def _account_link() -> Component:
     )
 
 
-def _admin_link(active: str | None) -> Component | str:
+def _admin_link(active: str | None) -> Component | None:
     if not current_user.is_authenticated:
-        return ""
+        return None
     role = getattr(current_user, "role", None)
     role_value = role.value if isinstance(role, UserRole) else str(role)
     if role_value != UserRole.ADMIN.value:
-        return ""
+        return None
     class_name = "nav-link nav-admin-cta"
     if active == "admin":
         class_name += " is-active"
@@ -127,7 +137,12 @@ def _language_toggle() -> Component:
                 "ES",
                 type="button",
                 className="language-toggle",
-                **dash_attrs({"data-language-toggle": "true"}),
+                **dash_attrs(
+                    {
+                        "data-language-toggle": "true",
+                        "aria-label": "Cambiar idioma / Change language",
+                    }
+                ),
             ),
             html.Span("Idioma", className="nav-control-caption", **text_attrs("Idioma", "Language")),
         ],
@@ -142,7 +157,12 @@ def _theme_toggle() -> Component:
                 html.Span(className="theme-toggle-dot"),
                 type="button",
                 className="theme-toggle",
-                **dash_attrs({"data-theme-toggle": "true"}),
+                **dash_attrs(
+                    {
+                        "data-theme-toggle": "true",
+                        "aria-label": "Cambiar modo de color / Change color mode",
+                    }
+                ),
             ),
             html.Span(
                 "Modo claro",

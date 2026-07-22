@@ -148,7 +148,7 @@
   app.i18n.applyLanguage(state.currentLanguage());
   app.theme.applyTheme(state.currentTheme());
 
-  const compactNavigation = window.matchMedia("(max-width: 1120px)");
+  const compactNavigation = window.matchMedia("(max-width: 1199px)");
   const handleNavigationBreakpoint = (event) => {
     if (!event.matches) {
       closeNavigation(document.querySelector(".navbar.is-menu-open"));
