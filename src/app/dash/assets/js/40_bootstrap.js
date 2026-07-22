@@ -255,14 +255,22 @@
     if (!source) {
       return;
     }
+    const figure = image.closest(".report-figure");
+    const fallback = figure && figure.querySelector(".report-figure-load-error");
+    image.hidden = false;
+    if (fallback) {
+      fallback.hidden = true;
+    }
     image.addEventListener("load", () => {
+      image.hidden = false;
       image.classList.add("is-loaded");
       image.removeAttribute("data-lazy-src");
+      if (fallback) {
+        fallback.hidden = true;
+      }
     }, { once: true });
     image.addEventListener("error", () => {
       image.hidden = true;
-      const figure = image.closest(".report-figure");
-      const fallback = figure && figure.querySelector(".report-figure-load-error");
       if (fallback) {
         fallback.hidden = false;
       }

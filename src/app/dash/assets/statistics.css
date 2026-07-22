@@ -295,11 +295,6 @@
   padding: 0.78rem 1rem;
 }
 
-.spain-detail-content {
-  display: grid;
-  gap: 1rem;
-}
-
 .stats-controls .Select-control {
   border-radius: var(--stats-radius-sm) !important;
   min-height: var(--stats-control-height);
@@ -942,33 +937,6 @@
   font-size: 2rem;
 }
 
-.spain-detail-table {
-  border-collapse: collapse;
-  color: var(--color-text);
-  width: 100%;
-}
-
-.spain-detail-table th,
-.spain-detail-table td {
-  border-bottom: 1px solid var(--panel-border);
-  padding: 0.7rem 0.4rem;
-  text-align: left;
-  vertical-align: top;
-}
-
-.spain-detail-table th {
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  width: 34%;
-}
-
-.spain-detail-scroll {
-  max-height: 640px;
-  overflow: auto;
-  padding-right: 0.25rem;
-}
-
 .spain-pdf-figure {
   background: #fff;
   border: 1px solid var(--panel-border);
@@ -1081,6 +1049,10 @@
   place-content: center;
   text-align: center;
   width: 100%;
+}
+
+.spain-report-html .report-figure-load-error[hidden] {
+  display: none;
 }
 
 .report-figure-placeholder strong {

@@ -443,7 +443,16 @@ def _process_upload(
 
 
 def normalize_upload_values(contents: Any, filenames: Any) -> tuple[list[str], list[str]]:
-    contents_list = [contents] if isinstance(contents, str) else list(contents or [])
+    # Dash supplies a mutable list when ``dcc.Upload(multiple=True)`` is used.
+    # Keep ownership of that list so replacing each processed entry releases
+    # the large base64 string from the callback frame before PDF extraction.
+    contents_list = (
+        [contents]
+        if isinstance(contents, str)
+        else contents
+        if isinstance(contents, list)
+        else list(contents or [])
+    )
     filenames_list = [filenames] if isinstance(filenames, str) else list(filenames or [])
     return contents_list, filenames_list
 

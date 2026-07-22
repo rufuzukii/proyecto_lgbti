@@ -25,7 +25,6 @@ PERCENT_TEXT_PATTERN = re.compile(r"(\d{1,3}(?:[,.]\d{1,2})?\s*%)")
 
 TEXT_EN = {
     "Contenido": "Content",
-    "Detalle": "Detail",
     "No hay información disponible": "No information available",
     "Todavía no hay información estatal para mostrar.": "There is no national information to show yet.",
     "Sin categoría": "No category selected",
@@ -303,7 +302,6 @@ def register_spain_callbacks(app: Dash) -> None:
         Output("spain-section-image", "className"),
         Output("spain-section-graph", "figure"),
         Output("spain-section-graph", "className"),
-        Output("spain-detail-content", "children"),
         Input("spain-source-select", "value"),
         Input("spain-category-select", "value"),
         Input("spain-year-select", "value"),
@@ -319,18 +317,15 @@ def register_spain_callbacks(app: Dash) -> None:
         if not collection_name:
             return _spain_view_state(
                 empty=_empty_state("No hay fuentes de datos", "No se han encontrado colecciones españolas disponibles."),
-                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
         document_options = _document_options(collection_name)
         if not document_options:
             return _spain_view_state(
                 empty=_empty_state("No hay documentos disponibles", "No hay documentos disponibles"),
-                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
         if not document_id:
             return _spain_view_state(
                 empty=_empty_state("No hay documentos disponibles", "Selecciona un documento para cargar sus indicadores."),
-                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
         if document_id not in {option["value"] for option in document_options}:
             return _spain_view_state(
@@ -338,19 +333,16 @@ def register_spain_callbacks(app: Dash) -> None:
                     "El documento seleccionado ya no está disponible",
                     "El documento seleccionado ya no está disponible",
                 ),
-                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
         if not year:
             return _spain_view_state(
                 empty=_empty_state("Sin año", "Selecciona un año para continuar."),
-                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
 
         indicators = get_felgtbi_indicators_by_document(document_id, year, collection_name)
         if not indicators:
             return _spain_view_state(
                 empty=_empty_state("No hay secciones disponibles", "No hay secciones disponibles"),
-                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
 
         indicator_codes = {indicator.code for indicator in indicators}
@@ -360,7 +352,6 @@ def register_spain_callbacks(app: Dash) -> None:
                     "La sección seleccionada ya no está disponible",
                     "La sección seleccionada ya no está disponible",
                 ),
-                detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
 
         document = get_felgtbi_indicator_answers(code or "", collection_name, document_id=document_id)
@@ -418,14 +409,6 @@ def _spain_visualization_shell() -> list[Any]:
             ),
             "stats-panel stats-panel-wide",
         ),
-        _panel(
-            "Detalle",
-            html.Div(
-                _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
-                id="spain-detail-content",
-                className="spain-detail-content",
-            ),
-        ),
     ]
 
 
@@ -436,8 +419,7 @@ def _spain_view_state(
     image_src: str | None = None,
     image_alt: str = "",
     figure: go.Figure | None = None,
-    detail: Any | None = None,
-) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str, Any]:
+) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str]:
     has_empty = empty is not None
     has_report = report is not None
     has_image = bool(image_src)
@@ -453,30 +435,26 @@ def _spain_view_state(
         SPAIN_IMAGE_CLASS if has_image else SPAIN_IMAGE_HIDDEN_CLASS,
         figure or _value_figure(None),
         SPAIN_GRAPH_CLASS if has_graph else SPAIN_GRAPH_HIDDEN_CLASS,
-        detail or _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
     )
 
 
-def _spain_document_view_state(document: dict[str, Any] | None) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str, Any]:
+def _spain_document_view_state(document: dict[str, Any] | None) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str]:
     if not document:
         return _spain_view_state(
             empty=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
-            detail=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
         )
 
-    detail = _detail_panel_content(document)
     if _content_html(document) or _has_structured_report_content(document):
-        return _spain_view_state(report=_html_content_panel(document), detail=detail)
+        return _spain_view_state(report=_html_content_panel(document))
 
     image_src = _figure_url(document)
     if image_src:
         return _spain_view_state(
             image_src=image_src,
             image_alt=_figure_alt_text(document),
-            detail=detail,
         )
 
-    return _spain_view_state(figure=_value_figure(document), detail=detail)
+    return _spain_view_state(figure=_value_figure(document))
 
 
 def _source_options() -> list[dict[str, str]]:
@@ -571,62 +549,6 @@ def _indicator_option_label(
     if report and report not in clean_section:
         return f"{report} · {clean_section}{value_label}"
     return f"{clean_section}{value_label}"
-
-
-def _felgtbi_panels(document: dict[str, Any] | None) -> list[Any]:
-    if _content_html(document) or _has_structured_report_content(document):
-        return [
-            _panel("Contenido", _html_content_panel(document), "stats-panel stats-panel-wide"),
-        ]
-    return [
-        _panel("Contenido", _value_panel_content(document), "stats-panel stats-panel-wide"),
-        _panel("Detalle", _detail_panel_content(document)),
-    ]
-
-
-def _detail_panel_content(document: dict[str, Any] | None) -> Any:
-    if not document:
-        return _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos.")
-    return html.Div(
-        [
-            _summary_content(document),
-            _detail_table(document),
-        ],
-        className="spain-detail-content",
-    )
-
-
-def _summary_content(document: dict[str, Any] | None) -> Component:
-    if not document:
-        return _empty_state("Sin resumen", "Selecciona una sección para ver sus resultados.")
-    paragraphs = _summary_paragraphs(document)
-    return html.Div(
-        [
-            html.H3(str(document.get("report_title") or "Informe FELGTBI+")),
-            *[html.P(paragraph) for paragraph in paragraphs],
-        ],
-        className="spain-summary",
-    )
-
-
-def _summary_paragraphs(document: dict[str, Any]) -> list[str]:
-    section = str(document.get("section_title") or document.get("specific_category") or "").strip()
-    subsection = str(document.get("subsection_title") or document.get("question") or "").strip()
-    intro = " ".join(part for part in [section, subsection] if part)
-    paragraphs = document.get("paragraphs")
-    summary: list[str] = [intro] if intro else []
-    if isinstance(paragraphs, list):
-        summary.extend(
-            str(paragraph or "").strip()
-            for paragraph in paragraphs[:2]
-            if str(paragraph or "").strip()
-        )
-    if len(summary) > 1:
-        return summary[:3]
-    description = str(document.get("description") or "").strip()
-    if description:
-        summary.append(description)
-    return summary or ["Selecciona una sección para consultar el análisis del informe."]
 
 
 def _value_panel_content(document: dict[str, Any] | None) -> Any:
@@ -931,30 +853,6 @@ def _value_figure(document: dict[str, Any] | None) -> go.Figure:
         showlegend=False,
     )
     return figure
-
-
-def _detail_table(document: dict[str, Any] | None) -> Component:
-    if not document:
-        return _empty_state("Sin indicador", "Selecciona un indicador para ver sus datos.")
-    rows = [
-        ("Categoría", document.get("category")),
-        ("Sección", document.get("specific_category")),
-        ("Subsección", document.get("subsection_title") or document.get("question")),
-        ("Figura", document.get("figure_caption")),
-        ("Tipo de informe", document.get("report_type")),
-    ]
-    table = html.Table(
-        [
-            html.Tbody(
-                [
-                    html.Tr([html.Th(str(label)), html.Td(str(value or "-"))])
-                    for label, value in rows
-                ]
-            )
-        ],
-        className="spain-detail-table",
-    )
-    return html.Div(table, className="spain-detail-scroll")
 
 
 def _answers(document: dict[str, Any] | None) -> list[dict[str, Any]]:

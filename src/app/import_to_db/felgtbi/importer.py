@@ -507,8 +507,18 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
         for page_index in range(document.page_count):
             page = document.load_page(page_index)
             text_blocks = page.get_text("blocks")
-            page_dict = page.get_text("dict")
+            # ``TEXTFLAGS_DICT`` includes the binary content of every image by
+            # default.  A report can therefore expand a few megabytes of PDF
+            # data into hundreds of megabytes even though this stage only
+            # needs text styles and image coordinates.
+            text_dict_flags = fitz.TEXTFLAGS_DICT & ~fitz.TEXT_PRESERVE_IMAGES
+            page_dict = page.get_text("dict", flags=text_dict_flags)
             dict_blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
+            image_blocks = [
+                {"type": 1, "bbox": image.get("bbox")}
+                for image in page.get_image_info(hashes=False, xrefs=False)
+                if isinstance(image, dict)
+            ]
             page_width = float(page.rect.width)
             page_height = float(page.rect.height)
             pages.append(
@@ -527,11 +537,12 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
                         for block in text_blocks
                         if len(block) >= 5
                     ],
-                    "figures": _extract_page_figures(dict_blocks),
+                    "figures": _extract_page_figures(image_blocks),
                     "width": page_width,
                     "height": page_height,
                 }
             )
+            del page_dict, dict_blocks, image_blocks, text_blocks, page
     return pages
 
 
@@ -737,12 +748,21 @@ def _pixmap_image_bytes(pixmap: Any) -> tuple[bytes, int, int, str]:
         return pixmap.tobytes("png"), int(pixmap.width), int(pixmap.height), "image/png"
 
     mode = "RGBA" if getattr(pixmap, "alpha", 0) else "RGB"
-    image = Image.frombytes(mode, (int(pixmap.width), int(pixmap.height)), pixmap.samples)
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-    output = io.BytesIO()
-    image.save(output, format="WEBP", quality=88, method=4)
-    return output.getvalue(), image.width, image.height, FIGURE_IMAGE_MIME_TYPE
+    source_image = Image.frombytes(
+        mode,
+        (int(pixmap.width), int(pixmap.height)),
+        pixmap.samples,
+    )
+    rgb_image = source_image if source_image.mode == "RGB" else source_image.convert("RGB")
+    try:
+        with io.BytesIO() as output:
+            rgb_image.save(output, format="WEBP", quality=88, method=4)
+            encoded = output.getvalue()
+        return encoded, rgb_image.width, rgb_image.height, FIGURE_IMAGE_MIME_TYPE
+    finally:
+        if rgb_image is not source_image:
+            rgb_image.close()
+        source_image.close()
 
 
 def _upload_figure_to_supabase(
