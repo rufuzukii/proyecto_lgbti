@@ -65,6 +65,26 @@
   border-bottom: 0;
 }
 
+.admin-table-row:not(.admin-table-header) {
+  transition: background-color var(--transition), box-shadow var(--transition);
+}
+
+.admin-table-row.is-editing {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+  position: relative;
+  z-index: 1;
+}
+
+.admin-table-row.is-saving {
+  cursor: progress;
+  opacity: 0.72;
+}
+
+.admin-table-row.is-saving .admin-action-button {
+  pointer-events: none;
+}
+
 .admin-table-header {
   background: #e7ddff;
   color: var(--color-primary-dark);
@@ -83,7 +103,7 @@
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   background: #ffffff;
   color: var(--color-text);
   font: inherit;
@@ -94,6 +114,14 @@
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(139, 124, 246, 0.18);
   outline: none;
+}
+
+.admin-input:disabled {
+  background: #ffffff;
+  border-color: var(--color-border);
+  color: var(--color-text);
+  cursor: default;
+  opacity: 0.82;
 }
 
 .admin-action-button {
@@ -111,14 +139,76 @@
   color: var(--color-text-on-dark);
 }
 
+.admin-edit-button {
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 38%, var(--color-border));
+  color: var(--color-primary-dark);
+}
+
 .admin-delete-button {
   background: #fee2e2;
   color: #991b1b;
 }
 
+.admin-edit-button:hover,
 .admin-save-button:hover,
-.admin-delete-button:hover {
+.admin-delete-button:hover:not(:disabled) {
   filter: brightness(0.96);
+}
+
+.admin-action-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+  outline-offset: 2px;
+}
+
+.admin-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.admin-delete-dialog {
+  background: transparent;
+  border: 0;
+  color: var(--color-text);
+  max-width: min(92vw, 460px);
+  padding: 0;
+  width: 100%;
+}
+
+.admin-delete-dialog::backdrop {
+  backdrop-filter: blur(3px);
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.admin-delete-dialog-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  padding: 1.35rem;
+}
+
+.admin-delete-dialog-panel h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.admin-delete-dialog-panel p {
+  color: var(--color-text-muted);
+  margin: 0.65rem 0 0;
+}
+
+.admin-delete-dialog-actions {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 1.25rem;
+}
+
+.admin-cancel-button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
 }
 
 .admin-imports-card {
@@ -309,6 +399,18 @@ body[data-theme="dark"] .admin-input {
   color: var(--color-text);
 }
 
+body[data-theme="dark"] .admin-input:disabled {
+  background: #0f1522;
+  border-color: var(--color-border);
+  color: var(--color-text);
+  opacity: 0.82;
+}
+
+body[data-theme="dark"] .admin-table-row.is-editing {
+  background: color-mix(in srgb, var(--color-primary-dark) 12%, var(--panel-bg));
+  box-shadow: inset 0 0 0 2px var(--color-primary-dark);
+}
+
 body[data-theme="dark"] .admin-input:focus {
   border-color: var(--color-primary-dark);
   box-shadow: 0 0 0 3px rgba(246, 186, 208, 0.18);
@@ -328,9 +430,26 @@ body[data-theme="dark"] .admin-save-button {
   color: #0a0e17;
 }
 
+body[data-theme="dark"] .admin-edit-button {
+  background: #27243b;
+  border-color: #6d648b;
+  color: #f0d8ff;
+}
+
 body[data-theme="dark"] .admin-delete-button {
   background: #4d1f2b;
   color: #fecdd3;
+}
+
+body[data-theme="dark"] .admin-delete-dialog-panel {
+  background: var(--panel-bg);
+  border-color: var(--panel-border);
+}
+
+body[data-theme="dark"] .admin-cancel-button {
+  background: var(--panel-muted);
+  border-color: var(--panel-border);
+  color: var(--color-text);
 }
 
 body[data-theme="dark"] .admin-import-file:hover {
@@ -356,6 +475,12 @@ body[data-theme="dark"] .admin-import-modal-panel {
   }
 
   .admin-import-modal-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .admin-delete-dialog-actions {
     grid-template-columns: 1fr;
   }
 }

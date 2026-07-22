@@ -242,12 +242,20 @@ def register_statistics_callbacks(app: Dash) -> None:
     )
     def update_fra_controls(code: str | None):
         if not code:
-            return [], None, [], None, [], None, {}
+            return (
+                [],
+                None,
+                _segmentation_catalog_options(FRA_FILTER_GROUP_A, []),
+                None,
+                _segmentation_catalog_options(FRA_FILTER_GROUP_B, []),
+                None,
+                {},
+            )
         payload = get_fra_control_payload(code)
         answers = payload.get("answers") or []
         segmentations = _translated_segmentation_options(payload.get("segmentations") or [])
-        demographic_options = [item for item in segmentations if item.get("value") in FRA_FILTER_GROUP_A]
-        identity_options = [item for item in segmentations if item.get("value") in FRA_FILTER_GROUP_B]
+        demographic_options = _segmentation_catalog_options(FRA_FILTER_GROUP_A, segmentations)
+        identity_options = _segmentation_catalog_options(FRA_FILTER_GROUP_B, segmentations)
         return (
             answers,
             answers[0]["value"] if answers else None,
@@ -487,6 +495,7 @@ def _controls(
                                 "Age, education, employment, residence, minorities and economic situation.",
                                 "fra-demographic-type",
                                 "fra-demographic-value",
+                                FRA_FILTER_GROUP_A,
                             ),
                             _segmentation_group(
                                 "Filtro de identidad",
@@ -495,6 +504,7 @@ def _controls(
                                 "Sexual orientation, gender identity or expression and sex characteristics.",
                                 "fra-identity-type",
                                 "fra-identity-value",
+                                FRA_FILTER_GROUP_B,
                             ),
                         ],
                         className="stats-segmentation-groups",
@@ -634,9 +644,33 @@ def _translated_segmentation_options(options: list[dict[str, Any]]) -> list[dict
 
 
 def _default_option_value(options: list[dict[str, Any]]) -> Any:
-    if any(item.get("value") == "All" for item in options):
+    enabled = [item for item in options if not item.get("disabled", False)]
+    if any(item.get("value") == "All" for item in enabled):
         return "All"
-    return options[0].get("value") if options else None
+    return enabled[0].get("value") if enabled else None
+
+
+def _segmentation_catalog_options(
+    catalog: tuple[str, ...],
+    available_options: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep the FRA filter catalog stable while disabling unavailable entries."""
+    available = {
+        str(option.get("value") or "")
+        for option in available_options
+        if option.get("value") and not option.get("disabled", False)
+    }
+    options: list[dict[str, Any]] = []
+    for value in catalog:
+        labels = SEGMENTATION_LABELS.get(value, (value, value))
+        options.append(
+            {
+                "label": html.Span(labels[0], **text_attrs(labels[0], labels[1])),
+                "value": value,
+                "disabled": value not in available,
+            }
+        )
+    return options
 
 
 def _segmentation_group(
@@ -646,6 +680,7 @@ def _segmentation_group(
     description_en: str,
     type_id: str,
     value_id: str,
+    type_catalog: tuple[str, ...],
 ) -> Component:
     return html.Section(
         [
@@ -660,7 +695,7 @@ def _segmentation_group(
                 ("Tipo de filtro", "Filter type"),
                 dcc.RadioItems(
                     id=type_id,
-                    options=[],
+                    options=_segmentation_catalog_options(type_catalog, []),
                     value=None,
                     className="stats-radio-card-grid",
                     inputClassName="stats-radio-card-input",

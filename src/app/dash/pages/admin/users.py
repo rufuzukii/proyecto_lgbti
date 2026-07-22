@@ -4,7 +4,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.auth.csrf import get_csrf_token
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.users.schemas import UserRead, UserRole
 
@@ -77,6 +77,7 @@ def build_admin_users_layout(
                                     _message(status, is_error=False),
                                     _message(error, is_error=True),
                                     _build_users_table(users),
+                                    _delete_confirmation_dialog(),
                                 ],
                                 className="admin-card",
                             )
@@ -126,7 +127,7 @@ def _build_users_table(users: list[UserRead]) -> Component:
         [
             html.Div(
                 [
-                    html.Div("Editar", className="admin-table-heading", **text_attrs("Editar", "Edit")),
+                    html.Div("Acción", className="admin-table-heading", **text_attrs("Acción", "Action")),
                     html.Div("Nombre visible", className="admin-table-heading", **text_attrs("Nombre visible", "Display name")),
                     html.Div("Correo electrónico", className="admin-table-heading", **text_attrs("Correo electrónico", "Email address")),
                     html.Div("Organización", className="admin-table-heading", **text_attrs("Organización", "Organization")),
@@ -149,14 +150,35 @@ def _build_user_row(user: UserRead) -> Component:
             dcc.Input(type="hidden", name="csrf_token", value=get_csrf_token()),
             dcc.Input(type="hidden", name="user_id", value=user.id),
             html.Div(
-                html.Button(
-                    "Guardar",
-                    type="submit",
-                    name="action",
-                    value="update",
-                    className="admin-action-button admin-save-button",
-                    **text_attrs("Guardar", "Save"),
-                ),
+                [
+                    html.Button(
+                        "Editar",
+                        type="button",
+                        className="admin-action-button admin-edit-button",
+                        **dash_attrs(
+                            {
+                                "data-admin-user-edit": "true",
+                                "aria-controls": form_id,
+                                "aria-expanded": "false",
+                                **text_attrs("Editar", "Edit"),
+                            }
+                        ),
+                    ),
+                    html.Button(
+                        "Guardar",
+                        type="submit",
+                        name="action",
+                        value="update",
+                        hidden=True,
+                        className="admin-action-button admin-save-button",
+                        **dash_attrs(
+                            {
+                                "data-admin-user-save": "true",
+                                **text_attrs("Guardar", "Save"),
+                            }
+                        ),
+                    ),
+                ],
                 className="admin-table-cell",
             ),
             html.Div(
@@ -166,7 +188,7 @@ def _build_user_row(user: UserRead) -> Component:
                     type="text",
                     value=user.username or "",
                     required=True,
-                    className="admin-input",
+                    className="admin-input admin-editable-input",
                 ),
                 className="admin-table-cell",
             ),
@@ -177,7 +199,7 @@ def _build_user_row(user: UserRead) -> Component:
                     type="email",
                     value=user.email or "",
                     required=True,
-                    className="admin-input",
+                    className="admin-input admin-editable-input",
                 ),
                 className="admin-table-cell",
             ),
@@ -187,27 +209,14 @@ def _build_user_row(user: UserRead) -> Component:
                     name="organization",
                     type="text",
                     value="" if user.organization in {"No organization", "Sin organización"} else (user.organization or ""),
-                    className="admin-input",
+                    className="admin-input admin-editable-input",
                 ),
                 className="admin-table-cell",
             ),
             html.Div(
                 html.Select(
                     id=f"{form_id}-role",
-                    children=[
-                        html.Option(
-                            "Estándar",
-                            value=UserRole.COMMON.value,
-                            selected=_role_value(user.role) == UserRole.COMMON.value,
-                            **text_attrs("Estándar", "Standard"),
-                        ),
-                        html.Option(
-                            "Administración",
-                            value=UserRole.ADMIN.value,
-                            selected=_role_value(user.role) == UserRole.ADMIN.value,
-                            **text_attrs("Administración", "Administration"),
-                        ),
-                    ],
+                    children=_admin_role_options(user.role),
                     name="role",
                     className="admin-input admin-role-select",
                 ),
@@ -220,14 +229,78 @@ def _build_user_row(user: UserRead) -> Component:
                     name="action",
                     value="delete",
                     className="admin-action-button admin-delete-button",
-                    **text_attrs("Eliminar", "Delete"),
+                    **dash_attrs(
+                        {
+                            "data-admin-user-delete": "true",
+                            **text_attrs("Eliminar", "Delete"),
+                        }
+                    ),
                 ),
                 className="admin-table-cell",
             ),
         ],
+        id=form_id,
         action="/admin/users",
         method="post",
         className="admin-table-row",
+        **dash_attrs({"data-admin-user-row": "true"}),
+    )
+
+
+def _delete_confirmation_dialog() -> Component:
+    return html.Dialog(
+        html.Div(
+            [
+                html.H2(
+                    "Confirmar eliminación",
+                    id="admin-user-delete-title",
+                    **text_attrs("Confirmar eliminación", "Confirm deletion"),
+                ),
+                html.P(
+                    "¿Quieres eliminar a este usuario?",
+                    **text_attrs(
+                        "¿Quieres eliminar a este usuario?",
+                        "Do you want to delete this user?",
+                    ),
+                ),
+                html.Div(
+                    [
+                        html.Button(
+                            "Cancelar",
+                            type="button",
+                            className="admin-action-button admin-cancel-button",
+                            **dash_attrs(
+                                {
+                                    "data-admin-user-delete-cancel": "true",
+                                    **text_attrs("Cancelar", "Cancel"),
+                                }
+                            ),
+                        ),
+                        html.Button(
+                            "Eliminar",
+                            type="button",
+                            className="admin-action-button admin-delete-button",
+                            **dash_attrs(
+                                {
+                                    "data-admin-user-delete-confirm": "true",
+                                    **text_attrs("Eliminar", "Delete"),
+                                }
+                            ),
+                        ),
+                    ],
+                    className="admin-delete-dialog-actions",
+                ),
+            ],
+            className="admin-delete-dialog-panel",
+        ),
+        id="admin-user-delete-dialog",
+        className="admin-delete-dialog",
+        **dash_attrs(
+            {
+                "aria-labelledby": "admin-user-delete-title",
+                "aria-modal": "true",
+            }
+        ),
     )
 
 
@@ -240,9 +313,30 @@ def _role_value(role: UserRole | str) -> str:
     return UserRole.COMMON.value
 
 
+def _admin_role_options(role: UserRole | str) -> list[Component]:
+    current = _role_value(role)
+    definitions = [
+        (UserRole.COMMON.value, "Estándar", "Standard"),
+        (UserRole.ADMIN.value, "Administración", "Administration"),
+    ]
+    ordered = sorted(definitions, key=lambda item: item[0] != current)
+    return [
+        html.Option(label_es, value=value, **text_attrs(label_es, label_en))
+        for value, label_es, label_en in ordered
+    ]
+
+
 def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | str:
     if not message:
         return ""
     es, en = message
     class_name = "auth-message auth-message-error" if is_error else "auth-message auth-message-success"
-    return html.Div(es, className=class_name, role="alert", **text_attrs(es, en))
+    attrs = text_attrs(es, en)
+    if not is_error:
+        attrs["data-auto-dismiss-ms"] = "5000"
+    return html.Div(
+        es,
+        className=class_name,
+        role="alert" if is_error else "status",
+        **dash_attrs(attrs),
+    )

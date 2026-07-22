@@ -140,6 +140,21 @@
   border: 1px solid #bbf7d0;
 }
 
+.auth-message[data-auto-dismiss-ms] {
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.auth-message.is-dismissing {
+  opacity: 0;
+  transform: translateY(-0.35rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-message[data-auto-dismiss-ms] {
+    transition: none;
+  }
+}
+
 .logout-form {
   margin-top: 1rem;
 }

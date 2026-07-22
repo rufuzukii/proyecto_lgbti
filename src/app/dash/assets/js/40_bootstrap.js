@@ -1,8 +1,39 @@
 (function (window, document) {
   const app = (window.RainbowLens = window.RainbowLens || {});
   const state = app.state;
+  let pendingAdminUserDelete = null;
 
   document.addEventListener("click", (event) => {
+    const adminUserDeleteConfirm = event.target.closest("[data-admin-user-delete-confirm]");
+    if (adminUserDeleteConfirm) {
+      confirmAdminUserDelete();
+      return;
+    }
+
+    const adminUserDeleteCancel = event.target.closest("[data-admin-user-delete-cancel]");
+    if (adminUserDeleteCancel) {
+      closeAdminUserDeleteDialog(true);
+      return;
+    }
+
+    const adminUserDelete = event.target.closest("[data-admin-user-delete]");
+    if (adminUserDelete && adminUserDelete.dataset.deleteConfirmed !== "true") {
+      event.preventDefault();
+      openAdminUserDeleteDialog(adminUserDelete);
+      return;
+    }
+
+    if (event.target.matches && event.target.matches("#admin-user-delete-dialog")) {
+      closeAdminUserDeleteDialog(true);
+      return;
+    }
+
+    const adminUserEdit = event.target.closest("[data-admin-user-edit]");
+    if (adminUserEdit) {
+      beginAdminUserEdit(adminUserEdit);
+      return;
+    }
+
     const navigationToggle = event.target.closest("[data-nav-menu-toggle]");
     if (navigationToggle) {
       toggleNavigation(navigationToggle);
@@ -57,6 +88,20 @@
   });
 
   document.addEventListener("submit", (event) => {
+    const adminUserRow = event.target.closest("[data-admin-user-row]");
+    const adminUserSubmitter = event.submitter;
+    if (
+      adminUserRow &&
+      adminUserSubmitter &&
+      adminUserSubmitter.name === "action" &&
+      adminUserSubmitter.value === "update"
+    ) {
+      adminUserRow.classList.add("is-saving");
+      adminUserRow.setAttribute("aria-busy", "true");
+      adminUserSubmitter.setAttribute("aria-disabled", "true");
+      return;
+    }
+
     const form = event.target.closest("[data-admin-import-form]");
     if (!form) {
       return;
@@ -77,6 +122,12 @@
     if (event.key !== "Escape") {
       return;
     }
+    const deleteDialog = document.getElementById("admin-user-delete-dialog");
+    if (deleteDialog && deleteDialog.open) {
+      event.preventDefault();
+      closeAdminUserDeleteDialog(true);
+      return;
+    }
     closeNavigation(document.querySelector(".navbar.is-menu-open"));
     const uploadDismiss = document.querySelector("[data-upload-dismiss]");
     if (uploadDismiss) {
@@ -88,6 +139,8 @@
     app.i18n.applyLanguage(state.currentLanguage());
     app.theme.applyTheme(state.currentTheme());
     app.segmentedControls.syncActiveStates();
+    initializeAdminUserRows(document);
+    scheduleAutoDismissMessages(document);
     observeLazyImages(document);
   });
 
@@ -203,6 +256,8 @@
         if (!isElementNode(node)) {
           return;
         }
+        initializeAdminUserRows(node);
+        scheduleAutoDismissMessages(node);
         observeLazyImages(node);
         targets.language =
           targets.language || nodeOrDescendantMatches(node, "[data-i18n-es][data-i18n-en]");
@@ -284,6 +339,144 @@
     if (input) {
       input.value = "";
     }
+  }
+
+  function beginAdminUserEdit(button) {
+    const row = button.closest("[data-admin-user-row]");
+    if (!row) {
+      return;
+    }
+    row.classList.add("is-editing");
+    row.querySelectorAll(".admin-input").forEach((control) => {
+      control.disabled = false;
+    });
+    const saveButton = row.querySelector("[data-admin-user-save]");
+    const deleteButton = row.querySelector(".admin-delete-button");
+    button.hidden = true;
+    button.setAttribute("aria-expanded", "true");
+    if (saveButton) {
+      saveButton.hidden = false;
+    }
+    if (deleteButton) {
+      deleteButton.disabled = true;
+    }
+    const firstInput = row.querySelector(".admin-input");
+    if (firstInput) {
+      firstInput.focus();
+      if (typeof firstInput.select === "function") {
+        firstInput.select();
+      }
+    }
+  }
+
+  function openAdminUserDeleteDialog(button) {
+    const dialog = document.getElementById("admin-user-delete-dialog");
+    if (!dialog || typeof dialog.showModal !== "function") {
+      const language = state.currentLanguage();
+      const question = language === "en"
+        ? "Do you want to delete this user?"
+        : "¿Quieres eliminar a este usuario?";
+      if (window.confirm(question)) {
+        submitAdminUserDelete(button);
+      }
+      return;
+    }
+    pendingAdminUserDelete = button;
+    dialog.showModal();
+    app.i18n.applyLanguage(state.currentLanguage());
+    const cancelButton = dialog.querySelector("[data-admin-user-delete-cancel]");
+    if (cancelButton) {
+      cancelButton.focus();
+    }
+  }
+
+  function closeAdminUserDeleteDialog(returnFocus) {
+    const dialog = document.getElementById("admin-user-delete-dialog");
+    const deleteButton = pendingAdminUserDelete;
+    pendingAdminUserDelete = null;
+    if (dialog && dialog.open) {
+      dialog.close();
+    }
+    if (returnFocus && deleteButton) {
+      deleteButton.focus();
+    }
+  }
+
+  function confirmAdminUserDelete() {
+    const deleteButton = pendingAdminUserDelete;
+    if (!deleteButton) {
+      closeAdminUserDeleteDialog(false);
+      return;
+    }
+    closeAdminUserDeleteDialog(false);
+    submitAdminUserDelete(deleteButton);
+  }
+
+  function submitAdminUserDelete(deleteButton) {
+    const row = deleteButton.closest("[data-admin-user-row]");
+    if (!row) {
+      return;
+    }
+    deleteButton.dataset.deleteConfirmed = "true";
+    row.requestSubmit(deleteButton);
+  }
+
+  function initializeAdminUserRows(root) {
+    const rows = [];
+    if (root.matches && root.matches("[data-admin-user-row]")) {
+      rows.push(root);
+    }
+    if (root.querySelectorAll) {
+      rows.push(...root.querySelectorAll("[data-admin-user-row]"));
+    }
+    rows.forEach((row) => {
+      if (row.dataset.adminUserInitialized === "true") {
+        return;
+      }
+      row.dataset.adminUserInitialized = "true";
+      row.classList.remove("is-editing", "is-saving");
+      row.removeAttribute("aria-busy");
+      row.querySelectorAll(".admin-input").forEach((control) => {
+        control.disabled = true;
+      });
+      const editButton = row.querySelector("[data-admin-user-edit]");
+      const saveButton = row.querySelector("[data-admin-user-save]");
+      const deleteButton = row.querySelector(".admin-delete-button");
+      if (editButton) {
+        editButton.hidden = false;
+        editButton.setAttribute("aria-expanded", "false");
+      }
+      if (saveButton) {
+        saveButton.hidden = true;
+      }
+      if (deleteButton) {
+        deleteButton.disabled = false;
+      }
+    });
+  }
+
+  function scheduleAutoDismissMessages(root) {
+    const messages = [];
+    if (root.matches && root.matches("[data-auto-dismiss-ms]")) {
+      messages.push(root);
+    }
+    if (root.querySelectorAll) {
+      messages.push(...root.querySelectorAll("[data-auto-dismiss-ms]"));
+    }
+    messages.forEach((message) => {
+      if (message.dataset.autoDismissScheduled === "true") {
+        return;
+      }
+      message.dataset.autoDismissScheduled = "true";
+      const configuredDelay = Number.parseInt(message.dataset.autoDismissMs || "5000", 10);
+      const delay = Number.isFinite(configuredDelay) ? Math.max(configuredDelay, 1000) : 5000;
+      window.setTimeout(() => {
+        message.classList.add("is-dismissing");
+        window.setTimeout(() => {
+          message.hidden = true;
+        }, 220);
+      }, delay);
+    });
   }
 
   function toggleNavigation(button) {

@@ -833,6 +833,20 @@
   width: 1px;
 }
 
+.dash-options-list-option:has(.stats-radio-card-input:disabled) .stats-radio-card-label {
+  background: color-mix(in srgb, var(--panel-muted) 58%, var(--panel-bg));
+  border-color: color-mix(in srgb, var(--stats-border) 68%, transparent);
+  color: color-mix(in srgb, var(--stats-text-muted) 62%, transparent);
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.dash-options-list-option:has(.stats-radio-card-input:disabled) .stats-radio-card-label::before {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--stats-border) 65%, transparent);
+  box-shadow: none;
+}
+
 .dash-options-list-option:has(.stats-radio-card-input:checked) .stats-radio-card-label {
   background: var(--stats-selected-bg);
   border-color: var(--stats-primary);

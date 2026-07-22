@@ -79,12 +79,7 @@ def build_home_layout() -> Component:
                                                 id="home-map-title",
                                                 className="home-map-heading",
                                             ),
-                                            html.P(
-                                                _ilga_copy(ilga_document),
-                                                id="home-map-copy",
-                                                className="home-map-copy",
-                                            ),
-                                            html.P(
+                                            html.H2(
                                                 (
                                                     "Selecciona un país para consultar la situación legal actual "
                                                     "de las personas LGBTIQ+."
@@ -171,10 +166,20 @@ def build_home_layout() -> Component:
                             html.Div(id="country-status-editor", className="country-status-editor-shell"),
                             html.Div(
                                 [
-                                    html.Span(
-                                        _ilga_source(ilga_document),
-                                        id="home-map-source",
-                                        className="home-map-source",
+                                    html.Div(
+                                        [
+                                            html.Span(
+                                                _ilga_source(ilga_document),
+                                                id="home-map-source",
+                                                className="home-map-source",
+                                            ),
+                                            html.Span(
+                                                _ilga_copy(ilga_document),
+                                                id="home-map-copy",
+                                                className="home-map-copy",
+                                            ),
+                                        ],
+                                        className="home-map-footer-meta",
                                     ),
                                     html.A(
                                         text("Abrir estadísticas", "Open statistics"),
