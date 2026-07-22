@@ -790,7 +790,7 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
         "stats-analytics-block" if combined else "stats-analytics-block is-hidden",
         _table_columns(table_rows),
         table_rows,
-        _methodology_text(result, source),
+        _methodology_text(result, source, language),
     )
 
 
@@ -924,11 +924,20 @@ def _table_columns(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
     return [{"name": labels.get(key, key), "id": key} for key in rows[0]] if rows else []
 
 
-def _methodology_text(result: dict[str, Any], source: str) -> str:
-    note = str(result.get("methodology") or "")
+def _methodology_text(result: dict[str, Any], source: str, language: str = "es") -> str:
     if source == "FRA":
-        note += " La puntuación ILGA mide leyes y políticas; FRA refleja respuestas de personas encuestadas. Las fuentes no son directamente equivalentes."
-    return note
+        if language == "en":
+            return (
+                "FRA reflects responses from surveyed people. "
+                "The ILGA score measures laws and policies. "
+                "The sources are not directly equivalent."
+            )
+        return (
+            "FRA refleja respuestas de personas encuestadas. "
+            "La puntuación ILGA mide leyes y políticas. "
+            "Las fuentes no son directamente equivalentes."
+        )
+    return str(result.get("methodology") or "")
 
 
 def _source_display_name(source: Any) -> str:

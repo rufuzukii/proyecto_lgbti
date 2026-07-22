@@ -409,8 +409,9 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         "ranking": ranking.to_dict("records"),
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "methodology": (
-            "FRA: porcentajes medios de respuestas de personas encuestadas. "
-            "La agregación por país usa la media de los valores disponibles para la combinación seleccionada."
+            "FRA refleja respuestas de personas encuestadas. "
+            "La puntuación ILGA mide leyes y políticas. "
+            "Las fuentes no son directamente equivalentes."
         ),
     }
 
