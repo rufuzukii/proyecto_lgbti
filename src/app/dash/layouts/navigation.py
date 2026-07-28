@@ -13,7 +13,7 @@ def build_navbar(active: str | None = None) -> Component:
         ("Inicio", "Home", "/", "home"),
         ("España", "Spain", "/spain", "spain"),
         ("Estadísticas", "Statistics", "/statistics", "statistics"),
-        ("Informes", "Reports", "/report", "report"),
+        ("Informes", "Reports", "/informes", "reports"),
         ("Didáctica", "Didactics", "/didactics", "didactics"),
         ("Acerca de", "About", "/about", "about"),
         ("Importar datos", "Import data", "/upload", "upload"),

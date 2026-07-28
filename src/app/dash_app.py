@@ -14,7 +14,7 @@ from pydantic import ValidationError
 from app.analytics import invalidate_analytics_cache
 from app.analytics.repository import assert_analytics_databases_available
 from app.auth.csrf import validate_csrf_token
-from app.auth.permissions import is_admin_user
+from app.auth.permissions import Permission, is_admin_user, user_has_permission
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
@@ -33,6 +33,11 @@ from app.dash.pages.session.register import build_register_layout
 from app.dash.pages.statistics import (
     build_statistics_layout,
     register_statistics_callbacks,
+)
+from app.dash.pages.reports import (
+    build_reports_access_denied_layout,
+    build_reports_layout,
+    register_reports_callbacks,
 )
 from app.dash.pages.spain import build_spain_layout, register_spain_callbacks
 from app.dash.pages.upload import (
@@ -175,6 +180,17 @@ def create_dash_app() -> Dash:
         try:
             if pathname == "/statistics":
                 return build_statistics_layout()
+            if pathname in {"/informes", "/reports"}:
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path=pathname)
+                if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
+                    return build_reports_access_denied_layout()
+                return build_reports_layout(
+                    _report_params(params),
+                    default_language="en" if pathname == "/reports" else "es",
+                )
+            if pathname == "/report":
+                return dcc.Location(href="/informes", id="legacy-reports-redirect")
             if pathname == "/stadistics":
                 return dcc.Location(href="/statistics", id="legacy-statistics-redirect")
             if pathname == "/spain":
@@ -252,6 +268,7 @@ def create_dash_app() -> Dash:
     _register_client_preferences_callbacks(app)
     register_upload_callbacks(app)
     register_statistics_callbacks(app)
+    register_reports_callbacks(app)
     register_spain_callbacks(app)
     register_home_callbacks(app)
     register_about_callbacks(app)
@@ -603,6 +620,44 @@ def _query_params(search: str | None) -> dict[str, list[str]]:
 def _first_param(params: dict[str, list[str]], name: str) -> str | None:
     values = params.get(name)
     return values[0] if values else None
+
+
+def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
+    allowed = {
+        "source",
+        "category",
+        "indicator_id",
+        "indicator_label",
+        "answer",
+        "criterion",
+        "year",
+        "primary_country",
+        "filter_a_name",
+        "filter_a_value",
+        "filter_b_name",
+        "filter_b_value",
+        "title",
+        "organization",
+        "author",
+        "language",
+        "mode",
+        "detail_level",
+        "generated_on",
+    }
+    values: dict[str, object] = {
+        key: first
+        for key in allowed
+        if (first := _first_param(params, key)) is not None
+    }
+    for list_key in ("countries", "sections", "charts"):
+        raw = _first_param(params, list_key)
+        if raw:
+            values[list_key] = [
+                item.strip()
+                for item in raw.split(",")
+                if item.strip()
+            ]
+    return values
 
 
 def _safe_next(value: str | None, default: str = "/user") -> str:

@@ -36,6 +36,20 @@ def has_permission(role: UserRole, permission: Permission) -> bool:
     return permission in ROLE_PERMISSIONS.get(role, set())
 
 
+def user_has_permission(user: object, permission: Permission) -> bool:
+    if not bool(getattr(user, "is_authenticated", False)):
+        return False
+    role = getattr(user, "role", None)
+    if isinstance(role, UserRole):
+        resolved = role
+    else:
+        try:
+            resolved = UserRole(str(role or "").lower())
+        except ValueError:
+            return False
+    return has_permission(resolved, permission)
+
+
 def is_admin_user(user: object) -> bool:
     role = getattr(user, "role", None)
     role_value = role.value if isinstance(role, UserRole) else str(role or "")

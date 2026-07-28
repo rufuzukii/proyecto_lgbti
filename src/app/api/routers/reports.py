@@ -5,5 +5,9 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 
 @router.get("/")
 def build_report() -> dict:
-    return {"status": "pending"}
+    return {
+        "status": "available",
+        "ui_paths": ["/informes", "/reports"],
+        "format": "pdf",
+    }
 

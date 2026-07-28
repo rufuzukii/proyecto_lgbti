@@ -1,0 +1,44 @@
+from typing import Any
+
+
+from app.analytics.figures import build_fra_choropleth, build_ilga_choropleth
+
+
+def _trace(figure: Any, index: int = 0) -> Any:
+    return figure.data[index]
+
+
+def test_home_ilga_choropleth_uses_iso3_locations() -> None:
+    figure = build_ilga_choropleth(
+        {
+            "countries": [
+                {"country": "Spain", "country_code": "ES", "ranking": 77.0},
+                {"country": "Portugal", "country_code": "PT", "ranking": 68.0},
+            ]
+        }
+    )
+    trace = _trace(figure)
+
+    assert trace.locationmode == "ISO-3"
+    assert list(trace.locations) == ["ESP", "PRT"]
+    assert list(trace.text) == ["Spain", "Portugal"]
+    assert trace.customdata[0][0] == "ES"
+
+
+def test_home_fra_choropleth_uses_iso3_locations() -> None:
+    figure = build_fra_choropleth(
+        {
+            "answers": [
+                {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": 52.0},
+                {"country": "Portugal", "country_code": "PT", "answer": "Yes", "percentage": 47.0},
+                {"country": "EU27", "country_code": "EU27", "answer": "Yes", "percentage": 49.0},
+            ]
+        }
+    )
+    trace = _trace(figure)
+
+    assert trace.locationmode == "ISO-3"
+    assert list(trace.locations) == ["ESP", "PRT"]
+    assert list(trace.z) == [52.0, 47.0]
+    assert list(trace.text) == ["Spain", "Portugal"]
+    assert trace.customdata[0][0] == "ES"

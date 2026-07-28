@@ -395,12 +395,29 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     detail_dataframe = filter_fra_comparison_dataframe(source_dataframe, query)
 
     ranking = aggregate_fra_data(dataframe, ["country", "iso"], "percentage", "mean")
-    ranking = ranking.rename(columns={"percentage": "value"}).sort_values("value", ascending=False)
-    ranking["value"] = ranking["value"].astype(object).where(pd.notna(ranking["value"]), None)
+    ranking = ranking.rename(columns={"percentage": "value"})
+    ranking = _complete_country_ranking(
+        ranking,
+        source_dataframe,
+        countries=query.countries,
+    )
+    question = next(
+        (
+            str(value)
+            for value in source_dataframe["question"].dropna().unique().tolist()
+            if str(value).strip()
+        ),
+        clean_code,
+    )
     return {
         "status": "ok",
         "message": "",
         "source": "FRA",
+        "year": query.year,
+        "category": query.category,
+        "indicator": question,
+        "indicator_code": clean_code,
+        "answer": effective_answer,
         "data": dataframe.to_dict("records"),
         "detail_data": detail_dataframe.to_dict("records"),
         "available_countries": sorted(
@@ -445,7 +462,7 @@ def _fra_statistics_cache_key(query: FraStatisticsQuery) -> str:
         "mode": query.mode,
     }
     serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return f"fra-statistics-v3:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+    return f"fra-statistics-v4:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
 def _server_cache_get(key: str) -> Any:
@@ -489,11 +506,11 @@ def _build_ilga_statistics(
     include_history: bool,
 ) -> dict[str, Any]:
     document = get_ilga_document_by_year(query.year)
-    dataframe = ilga_document_to_dataframe(document)
-    if dataframe.empty:
+    source_dataframe = ilga_document_to_dataframe(document)
+    if source_dataframe.empty:
         return _status("empty", "No hay datos ILGA-Europe para el año seleccionado.")
 
-    dataframe = filter_ilga_dataframe(dataframe, query)
+    dataframe = filter_ilga_dataframe(source_dataframe, query)
     if dataframe.empty:
         return _status("empty", "No hay datos ILGA-Europe para la combinación seleccionada.")
 
@@ -502,15 +519,24 @@ def _build_ilga_statistics(
     else:
         ranking = dataframe[dataframe["category"] == "Ranking total"][["country", "iso", "ranking"]]
         ranking = ranking.rename(columns={"ranking": "value"}).drop_duplicates()
-    ranking = ranking.sort_values("value", ascending=False)
+    ranking = _complete_country_ranking(
+        ranking,
+        source_dataframe,
+        countries=query.countries,
+    )
+    effective_year = _safe_int(document.get("year")) if isinstance(document, dict) else query.year
     return {
         "status": "ok",
         "message": "",
         "source": "ILGA-Europe",
+        "year": effective_year,
+        "category": query.category,
+        "indicator": query.criterion or query.category or "Ranking total",
+        "criterion": query.criterion,
         "data": dataframe.to_dict("records"),
         "ranking": ranking.to_dict("records"),
         "available_countries": sorted(
-            value for value in dataframe["iso"].dropna().astype(str).unique().tolist() if value
+            value for value in source_dataframe["iso"].dropna().astype(str).unique().tolist() if value
         ),
         "history": get_ilga_history_rows(query.category, query.criterion) if include_history else [],
         "metrics": _metrics_from_values(ranking["value"].tolist()),
@@ -535,7 +561,7 @@ def _ilga_statistics_cache_key(
         "include_history": include_history,
     }
     serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return f"ilga-statistics-v2:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+    return f"ilga-statistics-v3:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
 def filter_fra_dataframe(
@@ -913,6 +939,84 @@ def _ilga_category_scores(dataframe: pd.DataFrame) -> pd.DataFrame:
     grouped = criteria.groupby(["country", "iso"], dropna=False)[["weighted_value", "weight"]].sum()
     grouped["value"] = 100 * grouped["weighted_value"] / grouped["weight"]
     return grouped.reset_index()[["country", "iso", "value"]]
+
+
+def _complete_country_ranking(
+    ranking: pd.DataFrame,
+    source_dataframe: pd.DataFrame,
+    *,
+    countries: list[str] | None = None,
+) -> pd.DataFrame:
+    """Enrich one European result set once, retaining countries without values."""
+    universe = source_dataframe[["country", "iso"]].copy()
+    universe["iso"] = universe["iso"].fillna("").astype(str).str.upper()
+    universe = universe[
+        universe["country"].notna()
+        & universe["country"].astype(str).str.strip().ne("")
+        & universe["iso"].ne("EU27")
+    ].drop_duplicates("iso", keep="first")
+    if countries:
+        selected = {
+            normalize_country_code(country) or str(country)
+            for country in countries
+        }
+        universe = universe[
+            universe["iso"].isin(selected) | universe["country"].isin(selected)
+        ]
+
+    values = ranking[["iso", "value"]].copy() if not ranking.empty else pd.DataFrame(
+        columns=["iso", "value"]
+    )
+    values["iso"] = values["iso"].fillna("").astype(str).str.upper()
+    values["value"] = pd.to_numeric(values["value"], errors="coerce")
+    values = values.groupby("iso", as_index=False, dropna=False)["value"].mean()
+
+    completed = universe.merge(values, on="iso", how="left", validate="one_to_one")
+    numeric_values = completed["value"].dropna()
+    european_mean = float(numeric_values.mean()) if not numeric_values.empty else None
+    completed["position"] = completed["value"].rank(
+        method="min",
+        ascending=False,
+        na_option="keep",
+    )
+    completed["difference"] = (
+        completed["value"] - european_mean if european_mean is not None else None
+    )
+    completed["absolute_difference"] = (
+        completed["difference"].abs() if european_mean is not None else None
+    )
+    completed["percentage_difference"] = (
+        completed["difference"] / european_mean * 100
+        if european_mean not in (None, 0)
+        else None
+    )
+    completed["european_mean"] = european_mean
+    completed = completed.sort_values(
+        ["value", "country"],
+        ascending=[False, True],
+        na_position="last",
+    )
+    for column in (
+        "value",
+        "position",
+        "difference",
+        "absolute_difference",
+        "percentage_difference",
+        "european_mean",
+    ):
+        completed[column] = completed[column].astype(object).where(
+            pd.notna(completed[column]),
+            None,
+        )
+    completed["position"] = pd.Series(
+        [
+            int(value) if value is not None and pd.notna(value) else None
+            for value in completed["position"].tolist()
+        ],
+        index=completed.index,
+        dtype=object,
+    )
+    return completed.reset_index(drop=True)
 
 
 def _metrics_from_values(values: list[float]) -> dict[str, Any]:

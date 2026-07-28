@@ -102,23 +102,3 @@ registro_funcionalidades/
 
 # Local dev entrypoints
 run_*.py
-
-# Local tests (ignored in repo)
-tests/
-!tests/
-tests/**
-!tests/unit/
-tests/unit/**
-!tests/unit/analytics/
-tests/unit/analytics/**
-!tests/unit/analytics/test_statistics.py
-!tests/unit/analytics/test_legal_criteria.py
-!tests/unit/analytics/test_spain_collections.py
-!tests/unit/analytics/test_spain_report_visibility.py
-!tests/unit/test_upload_page.py
-!tests/unit/import_to_db/
-tests/unit/import_to_db/**
-!tests/unit/import_to_db/test_felgtbi_importer.py
-!tests/unit/dash/
-tests/unit/dash/**
-!tests/unit/dash/test_assets_dom_safety.py

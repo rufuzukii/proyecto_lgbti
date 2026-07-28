@@ -2,7 +2,7 @@ services:
   - type: web
     name: proyecto-lgbti
     env: python
-    buildCommand: pip install -e . -r requirements.txt
+    buildCommand: pip install -e . -r requirements.txt && plotly_get_chrome -y
     startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --access-logfile - --error-logfile -
     envVars:
       - key: APP_ENV
