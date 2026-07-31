@@ -135,6 +135,7 @@ def _ranking_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
         for iso, country in zip(
             dataframe.get("iso", pd.Series(index=dataframe.index, dtype=object)),
             dataframe.get("country", pd.Series(index=dataframe.index, dtype=object)),
+            strict=True,
         )
     ]
     dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
@@ -161,10 +162,7 @@ def _primary_row(
 def _country_names(dataframe: pd.DataFrame, selected: list[str]) -> list[str]:
     if not selected:
         return []
-    names = {
-        str(row.iso): str(row.country or row.iso)
-        for row in dataframe.itertuples()
-    }
+    names = {str(row.iso): str(row.country or row.iso) for row in dataframe.itertuples()}
     return [names.get(normalize_country_code(code), code) for code in selected]
 
 
@@ -215,7 +213,9 @@ def _metrics(
                 ),
                 ReportMetric(
                     "difference",
-                    "Difference from EU average" if language == "en" else "Diferencia con la media UE",
+                    "Difference from EU average"
+                    if language == "en"
+                    else "Diferencia con la media UE",
                     f"{difference:+.1f} pp",
                     difference,
                     "pp",
@@ -624,7 +624,7 @@ def _filter_labels(config: ReportConfiguration) -> list[str]:
 def _number(value: Any) -> float | None:
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return number if math.isfinite(number) else None
 

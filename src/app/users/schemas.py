@@ -1,16 +1,18 @@
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field, SecretStr
+
+MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 128
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     ANONYMOUS = "anonymous"
     ADMIN = "admin"
     COMMON = "common"
 
 
-class UserType(str, Enum):
+class UserType(StrEnum):
     RRHH = "rrhh"
     PROFESOR = "profesor"
     COMUN = "comun"
@@ -18,18 +20,20 @@ class UserType(str, Enum):
 
 class UserRegister(BaseModel):
     name: str = Field(min_length=2, max_length=80)
-    email: str = Field(max_length=254, examples=["user@example.com"])
-    password: str = Field(min_length=8, max_length=32)
-    organization: Optional[str] = Field(default=None, max_length=120)
-    user_type: Optional[UserType] = None
+    email: EmailStr = Field(max_length=254, examples=["user@example.com"])
+    password: SecretStr = Field(
+        min_length=MIN_PASSWORD_LENGTH,
+        max_length=MAX_PASSWORD_LENGTH,
+    )
+    organization: str | None = Field(default=None, max_length=120)
+    user_type: UserType | None = None
 
 
 class UserRead(BaseModel):
     id: str
-    username: Optional[str] = Field(default=None, min_length=2, max_length=80)
-    name: Optional[str] = Field(default=None, min_length=2, max_length=80)
-    email: Optional[str] = Field(default=None, examples=["user@example.com"])
+    username: str | None = Field(default=None, min_length=2, max_length=80)
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    email: str | None = Field(default=None, examples=["user@example.com"])
     role: UserRole = UserRole.COMMON
-    organization: Optional[str] = None
-    user_type: Optional[UserType] = None
-
+    organization: str | None = None
+    user_type: UserType | None = None

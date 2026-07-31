@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[3]
 REPORTS_CSS = ROOT / "src" / "app" / "dash" / "assets" / "reports.css"
 
@@ -24,6 +23,7 @@ def test_reports_dark_theme_covers_dash_controls_and_preview_content() -> None:
 
     assert ".reports-field .DateInput_input" in css
     assert ".reports-shell .Select--multi .Select-value" in css
-    assert ".reports-preview-document .dash-spreadsheet td" in css
+    assert ".reports-preview-grid" in css
+    assert "--ag-background-color: var(--reports-control-bg);" in css
     assert ".reports-preview-chart .js-plotly-plot text" in css
     assert "fill: var(--reports-text) !important;" in css

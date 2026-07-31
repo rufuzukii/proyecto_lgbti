@@ -14,6 +14,7 @@
       const value = selected === "es" ? node.dataset.i18nEs : node.dataset.i18nEn;
       setTextNodeValue(node, value);
     });
+    applyTranslatedAttributes(selected);
 
     if (app.segmentedControls) {
       app.segmentedControls.syncActiveStates();
@@ -40,6 +41,19 @@
   function applySelectTranslations(_language) {
     // Dash owns dropdown internals. Mutating .Select-* text nodes here can
     // race React unmounts and trigger removeChild errors.
+  }
+
+  function applyTranslatedAttributes(language) {
+    ["alt", "aria-label", "title"].forEach((attribute) => {
+      const esAttribute = `data-i18n-${attribute}-es`;
+      const enAttribute = `data-i18n-${attribute}-en`;
+      document.querySelectorAll(`[${esAttribute}][${enAttribute}]`).forEach((node) => {
+        const value = node.getAttribute(language === "en" ? enAttribute : esAttribute);
+        if (typeof value === "string" && node.getAttribute(attribute) !== value) {
+          node.setAttribute(attribute, value);
+        }
+      });
+    });
   }
 
   function setTextNodeValue(node, value) {

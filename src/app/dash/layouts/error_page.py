@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dash import html
 from dash.development.base_component import Component
+
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.errors import DatabaseUnavailableError
@@ -15,8 +16,17 @@ def build_database_unavailable_layout(
             build_navbar(active=None),
             html.Main(
                 [
-                    html.P("Servicio no disponible", className="error-page-code", **text_attrs("Servicio no disponible", "Service unavailable")),
-                    html.H1(text("No ha sido posible cargar la información", "The information could not be loaded")),
+                    html.P(
+                        "Servicio no disponible",
+                        className="error-page-code",
+                        **text_attrs("Servicio no disponible", "Service unavailable"),
+                    ),
+                    html.H1(
+                        text(
+                            "No ha sido posible cargar la información",
+                            "The information could not be loaded",
+                        )
+                    ),
                     html.P(
                         text(
                             "No ha sido posible obtener la información en este momento. Inténtalo de nuevo más tarde.",
@@ -24,7 +34,11 @@ def build_database_unavailable_layout(
                         ),
                         className="error-page-message",
                     ),
-                    html.A(text("Volver al inicio", "Back to home"), href="/", className="error-page-action"),
+                    html.A(
+                        text("Volver al inicio", "Back to home"),
+                        href="/",
+                        className="error-page-action",
+                    ),
                 ],
                 className="error-page-panel",
             ),
@@ -36,7 +50,7 @@ def build_database_unavailable_layout(
 def render_database_unavailable_response(
     error: DatabaseUnavailableError | None = None,
 ) -> tuple[str, int, dict[str, str]]:
-    body = f"""<!DOCTYPE html>
+    body = """<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">

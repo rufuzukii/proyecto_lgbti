@@ -1,12 +1,38 @@
-from pathlib import Path
-import sys
+import pytest
 
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+from app.import_to_db.felgtbi import scraper
+from app.import_to_db.felgtbi.scraper import (
+    discover_felgtbi_pdfs,
+    parse_felgtbi_pdf_links,
+)
 
-from app.import_to_db.felgtbi.scraper import parse_felgtbi_pdf_links
+
+def test_response_limit_defaults_to_previous_20_mebibyte_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("FELGTBI_SCRAPER_MAX_RESPONSE_MB", raising=False)
+
+    assert scraper._response_limit_bytes() == 20 * scraper.MEBIBYTE
+
+
+def test_response_limit_is_configurable_and_safely_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FELGTBI_SCRAPER_MAX_RESPONSE_MB", "35")
+    assert scraper._response_limit_bytes() == 35 * scraper.MEBIBYTE
+
+    monkeypatch.setenv("FELGTBI_SCRAPER_MAX_RESPONSE_MB", "invalid")
+    assert scraper._response_limit_bytes() == 20 * scraper.MEBIBYTE
+
+    monkeypatch.setenv("FELGTBI_SCRAPER_MAX_RESPONSE_MB", "1000")
+    assert scraper._response_limit_bytes() == 100 * scraper.MEBIBYTE
+
+
+def test_discover_felgtbi_pdfs_rejects_non_http_urls() -> None:
+    with pytest.raises(ValueError, match="approved FELGTBI host"):
+        discover_felgtbi_pdfs("file:///tmp/report.html")
+    with pytest.raises(ValueError, match="approved FELGTBI host"):
+        discover_felgtbi_pdfs("https://example.test/report.html")
 
 
 def test_parse_felgtbi_pdf_links_discovers_absolute_pdf_urls() -> None:
@@ -27,9 +53,6 @@ def test_parse_felgtbi_pdf_links_discovers_absolute_pdf_urls() -> None:
 
     assert [link.title for link in links] == [
         "Estado del odio 2026",
-        "Estado socioeconomico",
     ]
     assert links[0].url == "https://felgtbi.org/wp-content/uploads/2026/estado-del-odio-2026.pdf"
     assert links[0].year == 2026
-    assert links[1].url == "https://example.test/estado-socioeconomico-2025.pdf"
-    assert links[1].year == 2025

@@ -1,11 +1,4 @@
-from pathlib import Path
-import sys
 from unittest.mock import patch
-
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from app.analytics.country_status_service import get_country_lgbti_status
 

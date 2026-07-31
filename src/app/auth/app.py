@@ -1,14 +1,22 @@
-from dataclasses import dataclass
 import logging
 import os
-from typing import Optional
+from dataclasses import dataclass
 
-from flask import Flask, jsonify, request
-from flask_login import LoginManager, UserMixin, current_user, login_required, login_user, logout_user
+from flask import Flask, jsonify, request, session
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
 from pydantic import ValidationError
 
-from app.config import get_app_config
 from app.auth.rate_limit import create_rate_limiter
+from app.config import get_app_config
+from app.http_security import configure_flask_security, rate_limit_key
+from app.logging_config import configure_secure_logging
 from app.users.schemas import UserRegister, UserRole
 from app.users.service import UserStorageError, authenticate_user, create_user, get_user
 
@@ -16,18 +24,22 @@ from app.users.service import UserStorageError, authenticate_user, create_user, 
 @dataclass
 class AuthUser(UserMixin):
     id: str
-    email: Optional[str]
+    email: str | None
     role: UserRole
 
 
 def create_auth_app() -> Flask:
+    configure_secure_logging()
     config = get_app_config()
     app = Flask(__name__)
     app.config.update(
         SECRET_KEY=config.secret_key,
-        SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=not config.local_mode,
+        MAX_CONTENT_LENGTH=64 * 1024,
+    )
+    configure_flask_security(
+        app,
+        production=not config.local_mode,
+        cookie_name="rainbowlens_auth_session",
     )
 
     logger = logging.getLogger(__name__)
@@ -42,7 +54,7 @@ def create_auth_app() -> Flask:
     login_manager.session_protection = "strong"
 
     @login_manager.user_loader
-    def load_user(user_id: str) -> Optional[AuthUser]:
+    def load_user(user_id: str) -> AuthUser | None:
         try:
             user = get_user(user_id)
         except UserStorageError:
@@ -58,7 +70,7 @@ def create_auth_app() -> Flask:
         if not isinstance(payload, dict):
             return jsonify({"status": "error", "message": "invalid_payload"}), 400
 
-        rate_key: str = _rate_key(payload.get("email"))
+        rate_key: str = _rate_key(payload.get("email"), include_email=False)
         if rate_limiter.is_blocked(rate_key):
             return jsonify({"status": "error", "message": "rate_limited"}), 429
 
@@ -70,12 +82,9 @@ def create_auth_app() -> Flask:
 
         try:
             user = create_user(data)
-        except ValueError as exc:
+        except ValueError:
             rate_limiter.record_failure(rate_key)
-            if str(exc) == "email_exists":
-                return jsonify({"status": "error", "message": "email_exists"}), 409
-            logger.exception("register_failed")
-            return jsonify({"status": "error", "message": "register_failed"}), 500
+            return jsonify({"status": "error", "message": "registration_failed"}), 400
         except UserStorageError:
             logger.exception("register_storage_error")
             return jsonify({"status": "error", "message": "storage_not_configured"}), 503
@@ -108,6 +117,7 @@ def create_auth_app() -> Flask:
         if record is None:
             rate_limiter.record_failure(rate_key)
             return jsonify({"status": "error", "message": "invalid_credentials"}), 401
+        session.clear()
         login_user(AuthUser(id=record.id, email=record.email, role=record.role))
         rate_limiter.reset(rate_key)
         return jsonify({"status": "ok"})
@@ -116,6 +126,7 @@ def create_auth_app() -> Flask:
     @login_required
     def logout():
         logout_user()
+        session.clear()
         return jsonify({"status": "ok"})
 
     @app.get("/auth/me")
@@ -127,10 +138,9 @@ def create_auth_app() -> Flask:
     return app
 
 
-def _rate_key(email: str | None) -> str:
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-    ip = ip.split(",")[0].strip()
-    email_part = email.strip().lower() if isinstance(email, str) else ""
-    return f"{ip}:{email_part}"
-
-
+def _rate_key(email: str | None, *, include_email: bool = True) -> str:
+    email_part = email.strip().lower()[:254] if isinstance(email, str) else ""
+    return rate_limit_key(
+        subject=email_part if include_email else "",
+        scope="login" if include_email else "registration",
+    )

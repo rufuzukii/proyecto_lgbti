@@ -1,13 +1,6 @@
-from pathlib import Path
-import sys
 from unittest.mock import patch
 
 import pytest
-
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from app.analytics.country_status_admin_service import (
     CountryStatusAuthorizationError,
@@ -20,8 +13,9 @@ from app.users.schemas import UserRole
 
 
 class User:
-    def __init__(self, role):
+    def __init__(self, role, *, is_authenticated=True):
         self.role = role
+        self.is_authenticated = is_authenticated
 
 
 def _payload(**overrides):
@@ -68,37 +62,47 @@ def test_non_admin_cannot_save_country_status() -> None:
 
 
 def test_admin_can_create_country_status_record() -> None:
-    with patch(
-        "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
-        return_value=None,
+    with (
+        patch(
+            "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
+            return_value=None,
+        ),
+        patch(
+            "app.analytics.country_status_admin_service.upsert_country_lgbti_status_record"
+        ) as upsert,
+        patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"),
     ):
-        with patch("app.analytics.country_status_admin_service.upsert_country_lgbti_status_record") as upsert:
-            with patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"):
-                saved = save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="create")
+        saved = save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="create")
 
     assert saved["country_code"] == "ES"
     upsert.assert_called_once()
 
 
 def test_create_rejects_duplicate_country_year() -> None:
-    with patch(
-        "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
-        return_value={"country_code": "ES", "year": 2026},
+    with (
+        patch(
+            "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
+            return_value={"country_code": "ES", "year": 2026},
+        ),
+        pytest.raises(CountryStatusValidationError) as exc_info,
     ):
-        with pytest.raises(CountryStatusValidationError) as exc_info:
-            save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="create")
+        save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="create")
 
     assert "year" in exc_info.value.field_errors
 
 
 def test_admin_can_edit_existing_country_status_record() -> None:
-    with patch(
-        "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
-        return_value={"country_code": "ES", "year": 2026},
+    with (
+        patch(
+            "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
+            return_value={"country_code": "ES", "year": 2026},
+        ),
+        patch(
+            "app.analytics.country_status_admin_service.upsert_country_lgbti_status_record"
+        ) as upsert,
+        patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"),
     ):
-        with patch("app.analytics.country_status_admin_service.upsert_country_lgbti_status_record") as upsert:
-            with patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"):
-                save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="edit")
+        save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="edit")
 
     upsert.assert_called_once()
 
@@ -110,10 +114,22 @@ def test_delete_requires_admin_and_confirmation() -> None:
     with pytest.raises(CountryStatusValidationError):
         delete_country_lgbti_status("ES", 2026, user=User(UserRole.ADMIN), confirmed=False)
 
+    with pytest.raises(CountryStatusAuthorizationError):
+        delete_country_lgbti_status(
+            "ES",
+            2026,
+            user=User(UserRole.ADMIN, is_authenticated=False),
+            confirmed=True,
+        )
+
 
 def test_admin_delete_deactivates_record() -> None:
-    with patch("app.analytics.country_status_admin_service.deactivate_country_lgbti_status_record") as deactivate:
-        with patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"):
-            delete_country_lgbti_status("ES", 2026, user=User(UserRole.ADMIN), confirmed=True)
+    with (
+        patch(
+            "app.analytics.country_status_admin_service.deactivate_country_lgbti_status_record"
+        ) as deactivate,
+        patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"),
+    ):
+        delete_country_lgbti_status("ES", 2026, user=User(UserRole.ADMIN), confirmed=True)
 
     deactivate.assert_called_once_with("ES", 2026)

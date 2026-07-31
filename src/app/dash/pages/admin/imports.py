@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import defaultdict
 import json
+from collections import defaultdict
 from typing import Any
 
 from dash import dcc, html
@@ -13,22 +13,54 @@ from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
 from app.import_to_db.import_log import PendingImportLog
 
-
 STATUS_MESSAGES = {
-    "import_inserted": ("El contenido se ha aprobado correctamente.", "The content was approved successfully."),
-    "import_rejected": ("El contenido se ha descartado correctamente.", "The content was rejected successfully."),
+    "import_inserted": (
+        "El contenido se ha aprobado correctamente.",
+        "The content was approved successfully.",
+    ),
+    "import_rejected": (
+        "El contenido se ha descartado correctamente.",
+        "The content was rejected successfully.",
+    ),
 }
 
 ERROR_MESSAGES = {
-    "access_denied": ("No tienes permisos para acceder a esta página.", "You do not have permission to access this page."),
-    "csrf": ("La sesión ha caducado. Actualiza la página e inténtalo de nuevo.", "The session expired. Refresh the page and try again."),
-    "import_not_found": ("El contenido seleccionado ya no está pendiente.", "The selected content is no longer pending."),
-    "invalid_json_payload": ("El contenido no tiene una estructura válida.", "The content structure is not valid."),
-    "invalid_ilga_payload": ("El contenido legal no tiene la estructura esperada.", "The legal content does not have the expected structure."),
-    "invalid_felgtbi_payload": ("El contenido estatal no tiene la estructura esperada.", "The national content does not have the expected structure."),
-    "unsupported_import_dataset": ("La fuente seleccionada no está admitida.", "The selected source is not supported."),
-    "mongo": ("No ha sido posible aprobar el contenido en este momento. Inténtalo de nuevo más tarde.", "The content could not be approved right now. Please try again later."),
-    "storage": ("La revisión de archivos no está disponible en este momento.", "File review is not available right now."),
+    "access_denied": (
+        "No tienes permisos para acceder a esta página.",
+        "You do not have permission to access this page.",
+    ),
+    "csrf": (
+        "La sesión ha caducado. Actualiza la página e inténtalo de nuevo.",
+        "The session expired. Refresh the page and try again.",
+    ),
+    "import_not_found": (
+        "El contenido seleccionado ya no está pendiente.",
+        "The selected content is no longer pending.",
+    ),
+    "invalid_json_payload": (
+        "El contenido no tiene una estructura válida.",
+        "The content structure is not valid.",
+    ),
+    "invalid_ilga_payload": (
+        "El contenido legal no tiene la estructura esperada.",
+        "The legal content does not have the expected structure.",
+    ),
+    "invalid_felgtbi_payload": (
+        "El contenido estatal no tiene la estructura esperada.",
+        "The national content does not have the expected structure.",
+    ),
+    "unsupported_import_dataset": (
+        "La fuente seleccionada no está admitida.",
+        "The selected source is not supported.",
+    ),
+    "mongo": (
+        "No ha sido posible aprobar el contenido en este momento. Inténtalo de nuevo más tarde.",
+        "The content could not be approved right now. Please try again later.",
+    ),
+    "storage": (
+        "La revisión de archivos no está disponible en este momento.",
+        "File review is not available right now.",
+    ),
 }
 
 
@@ -55,8 +87,14 @@ def build_admin_imports_layout(
                                         href="/admin",
                                         className="profile-back-link admin-imports-back",
                                     ),
-                                    html.P("Administración", className="auth-eyebrow", **text_attrs("Administración", "Administration")),
-                                    html.H1(text("Revisar archivos pendientes", "Review pending files")),
+                                    html.P(
+                                        "Administración",
+                                        className="auth-eyebrow",
+                                        **text_attrs("Administración", "Administration"),
+                                    ),
+                                    html.H1(
+                                        text("Revisar archivos pendientes", "Review pending files")
+                                    ),
                                     html.P(
                                         text(
                                             "Revisa el contenido pendiente agrupado por usuario antes de aprobarlo.",
@@ -94,7 +132,12 @@ def _build_grouped_imports(logs: list[PendingImportLog]) -> Component:
         return html.Div(
             [
                 html.H2(text("No hay archivos pendientes", "No pending files")),
-                html.P(text("No hay archivos en espera de revisión.", "There are no files waiting for review.")),
+                html.P(
+                    text(
+                        "No hay archivos en espera de revisión.",
+                        "There are no files waiting for review.",
+                    )
+                ),
             ],
             className="admin-empty-state",
         )
@@ -135,7 +178,10 @@ def _build_file_link(log: PendingImportLog) -> Component:
     return html.A(
         [
             html.Strong(log.file_name),
-            html.Span(log.created_at or "Sin fecha", **text_attrs(log.created_at or "Sin fecha", log.created_at or "No date")),
+            html.Span(
+                log.created_at or "Sin fecha",
+                **text_attrs(log.created_at or "Sin fecha", log.created_at or "No date"),
+            ),
         ],
         href=f"#{_modal_id(log.id)}",
         className="admin-import-file",
@@ -161,7 +207,11 @@ def _build_import_modal(log: PendingImportLog) -> Component:
                                 ],
                                 className="admin-import-modal-title",
                             ),
-                            html.A(text("Cerrar", "Close"), href="/admin/imports", className="profile-back-link"),
+                            html.A(
+                                text("Cerrar", "Close"),
+                                href="/admin/imports",
+                                className="profile-back-link",
+                            ),
                         ],
                         className="admin-import-modal-header",
                     ),
@@ -190,10 +240,12 @@ def _build_import_modal(log: PendingImportLog) -> Component:
                         action="/admin/imports",
                         method="post",
                         className="admin-import-modal-actions",
-                        **dash_attrs({
-                            "data-admin-import-form": "true",
-                            "data-loading-modal": "admin-import-loading-modal",
-                        }),
+                        **dash_attrs(
+                            {
+                                "data-admin-import-form": "true",
+                                "data-loading-modal": "admin-import-loading-modal",
+                            }
+                        ),
                     ),
                 ],
                 className="admin-import-modal-panel",
@@ -219,5 +271,7 @@ def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | 
     if not message:
         return ""
     es, en = message
-    class_name = "auth-message auth-message-error" if is_error else "auth-message auth-message-success"
+    class_name = (
+        "auth-message auth-message-error" if is_error else "auth-message auth-message-success"
+    )
     return html.Div(es, className=class_name, role="alert", **text_attrs(es, en))

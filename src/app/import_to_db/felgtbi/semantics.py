@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from copy import deepcopy
-from dataclasses import dataclass
-from difflib import SequenceMatcher
 import html
 import re
 import unicodedata
-from typing import Any, Iterable
-
+from collections.abc import Iterable
+from copy import deepcopy
+from dataclasses import dataclass
+from difflib import SequenceMatcher
+from typing import Any
 
 TOKEN_PATTERN = re.compile(r"\d{1,4}(?:[.,]\d+)?\s*%?|[^\W\d_]+", re.UNICODE)
 NUMERIC_TOKEN_PATTERN = re.compile(r"^\d{1,4}(?:[.,]\d+)?\s*%?$", re.UNICODE)
@@ -21,21 +21,99 @@ HTML_PARAGRAPH_PATTERN = re.compile(r"<p(?:\s[^>]*)?>(?P<body>.*?)</p>", re.IGNO
 SENTENCE_END_PATTERN = re.compile(r"[.!?](?:[\s\"'»)]|$)")
 
 FUNCTION_WORDS = {
-    "a", "al", "ante", "como", "con", "de", "del", "desde", "durante",
-    "el", "ella", "ellas", "ellos", "en", "entre", "es", "esta", "este",
-    "la", "las", "lo", "los", "más", "menos", "para", "pero", "por",
-    "que", "se", "según", "sin", "sobre", "su", "sus", "un", "una",
-    "y", "ya", "the", "of", "and", "in", "to", "with", "from", "for",
+    "a",
+    "al",
+    "ante",
+    "como",
+    "con",
+    "de",
+    "del",
+    "desde",
+    "durante",
+    "el",
+    "ella",
+    "ellas",
+    "ellos",
+    "en",
+    "entre",
+    "es",
+    "esta",
+    "este",
+    "la",
+    "las",
+    "lo",
+    "los",
+    "más",
+    "menos",
+    "para",
+    "pero",
+    "por",
+    "que",
+    "se",
+    "según",
+    "sin",
+    "sobre",
+    "su",
+    "sus",
+    "un",
+    "una",
+    "y",
+    "ya",
+    "the",
+    "of",
+    "and",
+    "in",
+    "to",
+    "with",
+    "from",
+    "for",
 }
 VERB_WORDS = {
-    "alcanza", "aumenta", "considera", "conserva", "constituye", "declara",
-    "define", "destaca", "disminuye", "encuentra", "es", "está", "están",
-    "fue", "han", "hay", "incluye", "indica", "muestra", "percibe",
-    "perciben", "presenta", "representa", "señala", "son", "supone", "tiene",
+    "alcanza",
+    "aumenta",
+    "considera",
+    "conserva",
+    "constituye",
+    "declara",
+    "define",
+    "destaca",
+    "disminuye",
+    "encuentra",
+    "es",
+    "está",
+    "están",
+    "fue",
+    "han",
+    "hay",
+    "incluye",
+    "indica",
+    "muestra",
+    "percibe",
+    "perciben",
+    "presenta",
+    "representa",
+    "señala",
+    "son",
+    "supone",
+    "tiene",
 }
 CHART_LABEL_WORDS = {
-    "año", "años", "categoría", "categorías", "edad", "eje", "grupo", "media",
-    "minoría", "mujer", "mujeres", "hombre", "hombres", "ns", "nc", "total",
+    "año",
+    "años",
+    "categoría",
+    "categorías",
+    "edad",
+    "eje",
+    "grupo",
+    "media",
+    "minoría",
+    "mujer",
+    "mujeres",
+    "hombre",
+    "hombres",
+    "ns",
+    "nc",
+    "total",
 }
 
 
@@ -79,7 +157,9 @@ def analyze_chart_residual_text(
     clean = _plain_text(text)
     tokens = TOKEN_PATTERN.findall(clean)
     numeric_tokens = [token for token in tokens if NUMERIC_TOKEN_PATTERN.fullmatch(token.strip())]
-    word_tokens = [token.casefold() for token in tokens if not NUMERIC_TOKEN_PATTERN.fullmatch(token.strip())]
+    word_tokens = [
+        token.casefold() for token in tokens if not NUMERIC_TOKEN_PATTERN.fullmatch(token.strip())
+    ]
     numeric_ratio = len(numeric_tokens) / max(len(tokens), 1)
     percentage_count = sum("%" in token for token in numeric_tokens)
     year_count = sum(bool(YEAR_TOKEN_PATTERN.fullmatch(token.strip())) for token in numeric_tokens)
@@ -88,14 +168,11 @@ def analyze_chart_residual_text(
     verb_count = sum(_looks_like_verb(word) for word in word_tokens)
     has_sentence_end = bool(SENTENCE_END_PATTERN.search(clean))
     has_semantic_sentence = (
-        (
-            len(word_tokens) >= 7
-            and verb_count >= 1
-            and functional_ratio >= 0.1
-            and (has_sentence_end or len(word_tokens) >= 10)
-        )
-        or (len(word_tokens) >= 18 and functional_ratio >= 0.15)
-    )
+        len(word_tokens) >= 7
+        and verb_count >= 1
+        and functional_ratio >= 0.1
+        and (has_sentence_end or len(word_tokens) >= 10)
+    ) or (len(word_tokens) >= 18 and functional_ratio >= 0.15)
 
     score = 0
     reasons: list[str] = []
@@ -134,8 +211,7 @@ def analyze_chart_residual_text(
         reasons.append("few_function_words")
 
     capitalized_labels = sum(
-        token[:1].isupper()
-        for token in re.findall(r"[^\W\d_]+", clean, re.UNICODE)
+        token[:1].isupper() for token in re.findall(r"[^\W\d_]+", clean, re.UNICODE)
     )
     chart_label_count = sum(word in CHART_LABEL_WORDS for word in word_tokens)
     looks_like_legend = bool(re.match(r"^\s*leyenda\s*:", clean, re.IGNORECASE))
@@ -159,8 +235,7 @@ def analyze_chart_residual_text(
     matches_caption = _matches_reference(clean, context.caption)
     matches_source = _matches_reference(clean, context.figure_source)
     matches_image_text = any(
-        _partial_text_match(clean, image_text)
-        for image_text in context.detected_image_texts
+        _partial_text_match(clean, image_text) for image_text in context.detected_image_texts
     )
     if matches_caption:
         score += 5
@@ -183,13 +258,8 @@ def analyze_chart_residual_text(
         and functional_ratio < 0.12
         and (chart_label_count >= 3 or capitalized_labels >= 5 or looks_like_legend)
     )
-    spatial_chart_signal = (
-        (context.inside_figure or context.overlaps_figure)
-        and (
-            numeric_ratio >= 0.15
-            or percentage_count >= 2
-            or fragmented_label_sequence
-        )
+    spatial_chart_signal = (context.inside_figure or context.overlaps_figure) and (
+        numeric_ratio >= 0.15 or percentage_count >= 2 or fragmented_label_sequence
     )
     strong_residual_signal = (
         numeric_ratio >= 0.35
@@ -224,7 +294,9 @@ def clean_figure_paragraphs(
 ) -> CleanedParagraphs:
     removed: list[tuple[str, ResidualTextAnalysis]] = []
     entries: list[tuple[str, str]] = []
-    image_texts = tuple(str(value or "") for value in detected_image_texts if str(value or "").strip())
+    image_texts = tuple(
+        str(value or "") for value in detected_image_texts if str(value or "").strip()
+    )
     for position, values in (("before", before), ("after", after)):
         for value in values:
             text = _plain_text(value)
@@ -334,8 +406,19 @@ def _looks_like_verb(word: str) -> bool:
         return True
     return len(word) >= 6 and word.endswith(
         (
-            "aron", "ieron", "aban", "ían", "ando", "iendo", "ados", "idas",
-            "amos", "emos", "imos", "izan", "perciben",
+            "aron",
+            "ieron",
+            "aban",
+            "ían",
+            "ando",
+            "iendo",
+            "ados",
+            "idas",
+            "amos",
+            "emos",
+            "imos",
+            "izan",
+            "perciben",
         )
     )
 

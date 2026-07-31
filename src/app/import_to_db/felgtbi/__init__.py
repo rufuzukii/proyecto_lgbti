@@ -62,11 +62,11 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "FELGTBI_SOURCE_CODE",
+    "INDICATOR_FELGTBI_COLLECTION",
+    "discover_felgtbi_pdfs",
+    "insert_indicator_felgtbi_json",
     "parse_felgtbi_pdf",
     "parse_felgtbi_pdf_bytes",
-    "parse_felgtbi_text_pages",
-    "INDICATOR_FELGTBI_COLLECTION",
-    "insert_indicator_felgtbi_json",
-    "discover_felgtbi_pdfs",
     "parse_felgtbi_pdf_links",
+    "parse_felgtbi_text_pages",
 ]

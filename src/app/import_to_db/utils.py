@@ -31,4 +31,3 @@ def clean_cell(row: list[str], index: int) -> str:
     if index >= len(row):
         return ""
     return row[index].strip()
-

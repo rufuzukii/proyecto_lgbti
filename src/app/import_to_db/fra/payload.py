@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from bson import ObjectId
 
@@ -143,10 +144,7 @@ def _build_filters(filters: Any) -> list[dict[str, str]]:
 
 def _question_code(document: dict[str, Any]) -> str:
     return str(
-        document.get("code")
-        or document.get("external_code")
-        or document.get("id")
-        or ""
+        document.get("code") or document.get("external_code") or document.get("id") or ""
     ).strip()
 
 

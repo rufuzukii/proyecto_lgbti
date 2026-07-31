@@ -46,9 +46,7 @@ def import_data(request: MongoJsonImportRequest | None = None) -> dict:
     if request_payload.year < 1990 or request_payload.year > 2100:
         return {"status": "error", "message": "Anio fuera de rango."}
 
-    discrimination_dir = _safe_import_path(
-        request_payload.discrimination_dir, expect_dir=True
-    )
+    discrimination_dir = _safe_import_path(request_payload.discrimination_dir, expect_dir=True)
     rainbow_csv = _safe_import_path(request_payload.rainbow_csv, expect_dir=False)
 
     if request_payload.discrimination_dir and discrimination_dir is None:
@@ -81,7 +79,7 @@ def import_data(request: MongoJsonImportRequest | None = None) -> dict:
 
     return {
         "status": "ok",
-        "sources": [str(path) for path, _ in results],
+        "sources": [Path(path).name for path, _ in results],
         "imported": False,
         "import_to_mongo": bool(request_payload.import_to_mongo),
     }

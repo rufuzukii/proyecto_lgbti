@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import date
-import re
-from typing import Any, Mapping
+from typing import Any
 
 import bleach
 import plotly.graph_objects as go
 
 from app.analytics.statistics_normalizers import normalize_country_code
-
+from app.dates import utc_today_iso
 
 DEFAULT_REPORT_SECTIONS: tuple[str, ...] = (
     "executive",
@@ -79,10 +80,10 @@ class ReportConfiguration:
     detail_level: str = "standard"
     sections: tuple[str, ...] = DEFAULT_REPORT_SECTIONS
     charts: tuple[str, ...] = DEFAULT_REPORT_CHARTS
-    generated_on: str = field(default_factory=lambda: date.today().isoformat())
+    generated_on: str = field(default_factory=utc_today_iso)
 
     @classmethod
-    def from_mapping(cls, values: Mapping[str, Any] | None) -> "ReportConfiguration":
+    def from_mapping(cls, values: Mapping[str, Any] | None) -> ReportConfiguration:
         payload = values or {}
         source = "ilga" if str(payload.get("source") or "").lower() == "ilga" else "fra"
         language = "en" if str(payload.get("language") or "").lower() == "en" else "es"
@@ -121,9 +122,11 @@ class ReportConfiguration:
             countries=countries,
             primary_country=primary,
             filter_a_name=sanitize_report_text(payload.get("filter_a_name"), maximum=120) or "All",
-            filter_a_value=sanitize_report_text(payload.get("filter_a_value"), maximum=160) or "All",
+            filter_a_value=sanitize_report_text(payload.get("filter_a_value"), maximum=160)
+            or "All",
             filter_b_name=sanitize_report_text(payload.get("filter_b_name"), maximum=120) or "All",
-            filter_b_value=sanitize_report_text(payload.get("filter_b_value"), maximum=160) or "All",
+            filter_b_value=sanitize_report_text(payload.get("filter_b_value"), maximum=160)
+            or "All",
             title=sanitize_report_text(payload.get("title"), maximum=180)
             or (
                 "LGBTIQ+ diversity and inclusion report"
@@ -204,7 +207,7 @@ def _allowed_values(
 def _safe_year(value: Any) -> int | None:
     try:
         year = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return year if 1900 <= year <= 2200 else None
 
@@ -212,5 +215,5 @@ def _safe_year(value: Any) -> int | None:
 def _safe_date(value: Any) -> str:
     try:
         return date.fromisoformat(str(value)).isoformat()
-    except (TypeError, ValueError):
-        return date.today().isoformat()
+    except TypeError, ValueError:
+        return utc_today_iso()

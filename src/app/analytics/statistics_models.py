@@ -64,9 +64,13 @@ class ValidationResult:
 
 def validate_fra_query(query: FraStatisticsQuery) -> ValidationResult:
     if query.filter_a_name and query.filter_a_name not in FRA_FILTER_GROUP_A:
-        return ValidationResult(False, "El filtro demográfico seleccionado no pertenece al grupo A.")
+        return ValidationResult(
+            False, "El filtro demográfico seleccionado no pertenece al grupo A."
+        )
     if query.filter_b_name and query.filter_b_name not in FRA_FILTER_GROUP_B:
-        return ValidationResult(False, "El filtro de identidad seleccionado no pertenece al grupo B.")
+        return ValidationResult(
+            False, "El filtro de identidad seleccionado no pertenece al grupo B."
+        )
     if query.filter_a_value and not query.filter_a_name:
         return ValidationResult(False, "Selecciona primero el tipo de filtro demográfico.")
     if query.filter_b_value and not query.filter_b_name:

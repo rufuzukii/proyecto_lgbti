@@ -1,26 +1,26 @@
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import pytest
 from flask import Flask
 
 import app.analytics.repository as analytics_repository
-import app.analytics.statistics_service as statistics_service
-from app.cache import cache, init_cache
-from app.analytics.statistics_geodata import merge_statistics_with_geodata
+from app.analytics import statistics_service
+from app.analytics.percentage_display import normalize_percentage_values
 from app.analytics.statistics_charts import (
     COUNTRY_COLORS,
     EUROPE_PERCENTAGE_COLORSCALE,
     NO_RESPONSE_COLOR,
     YES_RESPONSE_COLOR,
     _legal_hover_data,
-    build_europe_distribution_chart,
     build_europe_choropleth,
+    build_europe_distribution_chart,
     build_fra_response_comparison_chart,
     build_ilga_criteria_heatmap,
     normalize_percentage,
     summarize_response_comparison,
 )
+from app.analytics.statistics_geodata import merge_statistics_with_geodata
 from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_A,
     FRA_FILTER_GROUP_B,
@@ -28,7 +28,11 @@ from app.analytics.statistics_models import (
     IlgaStatisticsQuery,
     validate_fra_query,
 )
-from app.analytics.statistics_normalizers import normalize_country_code, normalize_filter_value, repair_text_encoding
+from app.analytics.statistics_normalizers import (
+    normalize_country_code,
+    normalize_filter_value,
+    repair_text_encoding,
+)
 from app.analytics.statistics_service import (
     aggregate_fra_data,
     build_fra_default_filter_types,
@@ -41,6 +45,21 @@ from app.analytics.statistics_service import (
     fra_document_to_dataframe,
     get_fra_statistics,
     ilga_document_to_dataframe,
+)
+from app.cache import cache, init_cache
+from app.dash.pages.statistics import (
+    DATA_TYPE_OPTIONS,
+    _category_options,
+    _control_group,
+    _controls,
+    _detail_summary,
+    _effective_query_mode,
+    _fra_controls_are_ready,
+    _fra_segmentation_card_class,
+    _has_valid_fra_selection,
+    _methodology_text,
+    _segmentation_catalog_options,
+    build_statistics_layout,
 )
 
 
@@ -69,20 +88,6 @@ def test_distribution_chart_highlights_selected_country_without_invalid_box_colo
     assert [trace.type for trace in traces] == ["histogram", "box", "scatter", "scatter"]
     assert list(traces[2].text) == ["Spain", "France"]
     assert list(traces[3].text) == ["Spain"]
-from app.dash.pages.statistics import (
-    DATA_TYPE_OPTIONS,
-    _category_options,
-    _control_group,
-    _controls,
-    _detail_summary,
-    _effective_query_mode,
-    _fra_controls_are_ready,
-    _fra_segmentation_card_class,
-    _has_valid_fra_selection,
-    _methodology_text,
-    _segmentation_catalog_options,
-    build_statistics_layout,
-)
 
 
 @pytest.fixture(autouse=True)
@@ -95,7 +100,7 @@ def _isolate_statistics_cache():
     finally:
         if getattr(cache, "app", None) is not None:
             cache.clear()
-        setattr(cache, "app", previous_app)
+        cast(Any, cache).app = previous_app
 
 
 def test_normalizes_country_codes_and_filter_values() -> None:
@@ -133,7 +138,9 @@ def test_legal_source_hides_sociodemographic_segmentation() -> None:
     assert "is-hidden" in legal_classes
 
 
-def test_statistics_category_options_exclude_hidden_categories(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_statistics_category_options_exclude_hidden_categories(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         "app.dash.pages.statistics.get_fra_categories",
         lambda: ["Discrimination", "Spanish LGBTIQ+ indicators", "Everyday life"],
@@ -333,13 +340,27 @@ def test_fra_dataframe_accepts_string_percentages() -> None:
     assert dataframe.iloc[0]["percentage"] == 67.5
 
 
-def test_fra_dataframe_preserves_missing_percentage_rows_and_warns_invalid(caplog: pytest.LogCaptureFixture) -> None:
+def test_fra_dataframe_preserves_missing_percentage_rows_and_warns_invalid(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     document = {
         "code": "D1",
         "answers": [
-            {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": None, "filters": []},
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": None,
+                "filters": [],
+            },
             {"country": "Portugal", "country_code": "PT", "answer": "Yes", "filters": []},
-            {"country": "France", "country_code": "FR", "answer": "Yes", "percentage": "not-a-number", "filters": []},
+            {
+                "country": "France",
+                "country_code": "FR",
+                "answer": "Yes",
+                "percentage": "not-a-number",
+                "filters": [],
+            },
         ],
     }
 
@@ -347,7 +368,14 @@ def test_fra_dataframe_preserves_missing_percentage_rows_and_warns_invalid(caplo
 
     assert dataframe["country"].tolist() == ["Spain", "Portugal", "France"]
     assert dataframe["percentage"].isna().tolist() == [True, True, True]
-    assert "invalid_percentage_value" in caplog.text
+    warnings = [
+        record for record in caplog.records if "invalid_percentage_values" in record.message
+    ]
+    assert len(warnings) == 1
+    assert "count=1" in warnings[0].message
+    assert "'not-a-number'" in warnings[0].message
+    assert "indicator='D1'" in warnings[0].message
+    assert "countries=['ES', 'FR', 'PT']" in warnings[0].message
 
 
 def test_filter_value_options_show_normalized_label_but_keep_raw_value() -> None:
@@ -392,7 +420,9 @@ def test_fra_default_filters_use_available_scope_when_all_all_is_missing() -> No
     filter_b_options = build_fra_filter_type_options(document, "b")
 
     assert (filter_a, filter_b) == ("All", "Sexual Orientation")
-    assert next(option for option in filter_b_options if option["value"] == "All")["disabled"] is True
+    assert (
+        next(option for option in filter_b_options if option["value"] == "All")["disabled"] is True
+    )
 
 
 def test_classifies_fra_no_data_payload_without_exposing_500() -> None:
@@ -435,11 +465,55 @@ def test_effective_query_mode_follows_country_selection() -> None:
     assert _effective_query_mode("all", ["ES", "PT"]) == "compare"
 
 
-def test_normalize_percentage_handles_strings_and_invalid_values() -> None:
-    assert normalize_percentage("78%") == 78.0
-    assert normalize_percentage("67,5") == 67.5
-    assert normalize_percentage(None) is None
-    assert normalize_percentage("not-a-number") is None
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (42, 42.0),
+        (42.5, 42.5),
+        ("42.5", 42.5),
+        ("42,5", 42.5),
+        ("42.5%", 42.5),
+        (" 42,5 % ", 42.5),
+        (0.42, 0.42),
+        (None, None),
+        ("", None),
+        ("N/A", None),
+        ("NA", None),
+        ("null", None),
+        (float("nan"), None),
+        (float("inf"), None),
+        (-1, None),
+        (101, None),
+        ({}, None),
+        ([], None),
+        (True, None),
+    ],
+)
+def test_normalize_percentage_handles_supported_and_invalid_values(
+    value: object, expected: float | None
+) -> None:
+    assert normalize_percentage(value) == expected
+
+
+def test_percentage_batch_logs_invalid_values_once_and_ignores_missing_markers(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    values = [None, "", "N/A", "NA", "null", float("nan"), {}, {}, "bad"]
+
+    normalized = normalize_percentage_values(
+        values,
+        logger=statistics_service.logger,
+        context={"indicator": "D1", "year": 2024},
+    )
+
+    assert normalized == [None] * len(values)
+    warnings = [
+        record for record in caplog.records if "invalid_percentage_values" in record.message
+    ]
+    assert len(warnings) == 1
+    assert "count=3" in warnings[0].message
+    assert "indicator='D1'" in warnings[0].message
+    assert "year=2024" in warnings[0].message
 
 
 def test_europe_choropleth_uses_percentage_values_with_a_uniform_blue_scale() -> None:
@@ -461,7 +535,9 @@ def test_europe_choropleth_uses_percentage_values_with_a_uniform_blue_scale() ->
         (position, color) for position, color in EUROPE_PERCENTAGE_COLORSCALE
     )
     assert trace.customdata.tolist() == [["ES", "Valor", "63%"], ["PT", "Valor", "37%"]]
-    assert trace.hovertemplate == "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
+    assert (
+        trace.hovertemplate == "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
+    )
 
 
 def test_europe_choropleth_preserves_real_decimals_and_numeric_strings() -> None:
@@ -496,7 +572,9 @@ def test_europe_choropleth_preserves_country_percentages_when_total_is_not_100()
     assert missing_trace.customdata.tolist() == [["FR", "No hay suficiente información"]]
 
 
-def test_europe_choropleth_marks_null_missing_absent_and_invalid_values_grey(caplog: pytest.LogCaptureFixture) -> None:
+def test_europe_choropleth_marks_null_missing_absent_and_invalid_values_grey(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     figure = build_europe_choropleth(
         [
             {"country": "Spain", "iso": "ES", "value": None},
@@ -514,7 +592,10 @@ def test_europe_choropleth_marks_null_missing_absent_and_invalid_values_grey(cap
         ["PT", "No hay suficiente información"],
         ["FR", "No hay suficiente información"],
     ]
-    assert "invalid_percentage_value" in caplog.text
+    assert caplog.text.count("invalid_percentage_values") == 1
+    assert "count=1" in caplog.text
+    assert "value='not-a-number'" not in caplog.text
+    assert "'not-a-number'" in caplog.text
 
 
 def test_europe_choropleth_translates_value_and_missing_hover_texts() -> None:
@@ -534,8 +615,20 @@ def test_europe_choropleth_translates_value_and_missing_hover_texts() -> None:
 def test_ilga_filter_applies_countries_even_when_mode_is_all() -> None:
     dataframe = pd.DataFrame(
         [
-            {"country": "Spain", "iso": "ES", "category": "Ranking total", "criterion": "", "ranking": 77.0},
-            {"country": "Portugal", "iso": "PT", "category": "Ranking total", "criterion": "", "ranking": 68.0},
+            {
+                "country": "Spain",
+                "iso": "ES",
+                "category": "Ranking total",
+                "criterion": "",
+                "ranking": 77.0,
+            },
+            {
+                "country": "Portugal",
+                "iso": "PT",
+                "category": "Ranking total",
+                "criterion": "",
+                "ranking": 68.0,
+            },
         ]
     )
     query = IlgaStatisticsQuery(countries=["ES"], mode="all", category="Ranking total")
@@ -576,10 +669,38 @@ def test_fra_filter_applies_countries_even_when_mode_is_all() -> None:
 def test_fra_detail_filter_keeps_all_countries_and_answers() -> None:
     dataframe = pd.DataFrame(
         [
-            {"country": "Spain", "iso": "ES", "answer": "Yes", "percentage": 20.0, "filters": {"All": "All"}, "year": 2023},
-            {"country": "Spain", "iso": "ES", "answer": "No", "percentage": 80.0, "filters": {"All": "All"}, "year": 2023},
-            {"country": "Portugal", "iso": "PT", "answer": "Yes", "percentage": 30.0, "filters": {"All": "All"}, "year": 2023},
-            {"country": "Portugal", "iso": "PT", "answer": "No", "percentage": 70.0, "filters": {"All": "All"}, "year": 2023},
+            {
+                "country": "Spain",
+                "iso": "ES",
+                "answer": "Yes",
+                "percentage": 20.0,
+                "filters": {"All": "All"},
+                "year": 2023,
+            },
+            {
+                "country": "Spain",
+                "iso": "ES",
+                "answer": "No",
+                "percentage": 80.0,
+                "filters": {"All": "All"},
+                "year": 2023,
+            },
+            {
+                "country": "Portugal",
+                "iso": "PT",
+                "answer": "Yes",
+                "percentage": 30.0,
+                "filters": {"All": "All"},
+                "year": 2023,
+            },
+            {
+                "country": "Portugal",
+                "iso": "PT",
+                "answer": "No",
+                "percentage": 70.0,
+                "filters": {"All": "All"},
+                "year": 2023,
+            },
         ]
     )
     query = FraStatisticsQuery(countries=["ES"], answer="Yes", year=2023)
@@ -590,22 +711,56 @@ def test_fra_detail_filter_keeps_all_countries_and_answers() -> None:
     assert filtered["answer"].tolist() == ["Yes", "No", "Yes", "No"]
 
 
-def test_get_fra_statistics_exposes_detail_data_without_country_or_answer_filter(monkeypatch) -> None:
+def test_get_fra_statistics_exposes_detail_data_without_country_or_answer_filter(
+    monkeypatch,
+) -> None:
     document = {
         "code": "D1",
         "category": "Discrimination",
         "specific_category": "Work",
         "question": "Felt discriminated",
         "answers": [
-            {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": 20.0, "date": "2023", "filters": []},
-            {"country": "Spain", "country_code": "ES", "answer": "No", "percentage": 80.0, "date": "2023", "filters": []},
-            {"country": "Portugal", "country_code": "PT", "answer": "Yes", "percentage": 30.0, "date": "2023", "filters": []},
-            {"country": "Portugal", "country_code": "PT", "answer": "No", "percentage": 70.0, "date": "2023", "filters": []},
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 20.0,
+                "date": "2023",
+                "filters": [],
+            },
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "No",
+                "percentage": 80.0,
+                "date": "2023",
+                "filters": [],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "Yes",
+                "percentage": 30.0,
+                "date": "2023",
+                "filters": [],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "No",
+                "percentage": 70.0,
+                "date": "2023",
+                "filters": [],
+            },
         ],
     }
-    monkeypatch.setattr("app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document)
+    monkeypatch.setattr(
+        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+    )
 
-    result = get_fra_statistics(FraStatisticsQuery(question_code="D1", countries=["ES"], answer="Yes", year=2023))
+    result = get_fra_statistics(
+        FraStatisticsQuery(question_code="D1", countries=["ES"], answer="Yes", year=2023)
+    )
 
     assert result["status"] == "ok"
     assert [row["country"] for row in result["ranking"]] == ["Spain"]
@@ -615,6 +770,7 @@ def test_get_fra_statistics_exposes_detail_data_without_country_or_answer_filter
         ("Portugal", "Yes"),
         ("Portugal", "No"),
     }
+    assert {row["iso"] for row in result["country_universe"]} == {"ES", "PT"}
 
 
 def test_get_fra_statistics_uses_exact_all_filter_rows_for_map_ranking(monkeypatch) -> None:
@@ -624,13 +780,49 @@ def test_get_fra_statistics_uses_exact_all_filter_rows_for_map_ranking(monkeypat
         "specific_category": "Work",
         "question": "Felt discriminated",
         "answers": [
-            {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": 63.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": 3.0, "date": "2023", "filters": [{"type": "Age", "value": "18-24"}, {"type": "Sexual Orientation", "value": "Gay"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "Yes", "percentage": 37.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "Yes", "percentage": 4.0, "date": "2023", "filters": [{"type": "Age", "value": "18-24"}, {"type": "Sexual Orientation", "value": "Gay"}]},
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 63.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 3.0,
+                "date": "2023",
+                "filters": [
+                    {"type": "Age", "value": "18-24"},
+                    {"type": "Sexual Orientation", "value": "Gay"},
+                ],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "Yes",
+                "percentage": 37.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "Yes",
+                "percentage": 4.0,
+                "date": "2023",
+                "filters": [
+                    {"type": "Age", "value": "18-24"},
+                    {"type": "Sexual Orientation", "value": "Gay"},
+                ],
+            },
         ],
     }
-    monkeypatch.setattr("app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document)
+    monkeypatch.setattr(
+        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+    )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1", answer="Yes", year=2023))
 
@@ -641,20 +833,52 @@ def test_get_fra_statistics_uses_exact_all_filter_rows_for_map_ranking(monkeypat
     ]
 
 
-def test_get_fra_statistics_uses_default_answer_instead_of_averaging_all_answers(monkeypatch) -> None:
+def test_get_fra_statistics_uses_default_answer_instead_of_averaging_all_answers(
+    monkeypatch,
+) -> None:
     document = {
         "code": "D1",
         "category": "Discrimination",
         "specific_category": "Work",
         "question": "Felt discriminated",
         "answers": [
-            {"country": "Spain", "country_code": "ES", "answer": "No", "percentage": 60.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": 40.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "No", "percentage": 70.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "Yes", "percentage": 30.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "No",
+                "percentage": 60.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 40.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "No",
+                "percentage": 70.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "Yes",
+                "percentage": 30.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
         ],
     }
-    monkeypatch.setattr("app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document)
+    monkeypatch.setattr(
+        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+    )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1", answer=None, year=2023))
 
@@ -672,13 +896,43 @@ def test_get_fra_statistics_falls_back_to_available_scope_for_selected_answer(mo
         "specific_category": "Areas of life",
         "question": "Felt discriminated",
         "answers": [
-            {"country": "Spain", "country_code": "ES", "answer": "No", "percentage": 63.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "No", "percentage": 62.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": 14.0, "date": "2023", "filters": [{"type": "Sexual Orientation", "value": "Asexual"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "Yes", "percentage": 10.0, "date": "2023", "filters": [{"type": "Sexual Orientation", "value": "Asexual"}]},
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "No",
+                "percentage": 63.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "No",
+                "percentage": 62.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 14.0,
+                "date": "2023",
+                "filters": [{"type": "Sexual Orientation", "value": "Asexual"}],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "Yes",
+                "percentage": 10.0,
+                "date": "2023",
+                "filters": [{"type": "Sexual Orientation", "value": "Asexual"}],
+            },
         ],
     }
-    monkeypatch.setattr("app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document)
+    monkeypatch.setattr(
+        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+    )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1", answer="Yes"))
 
@@ -702,13 +956,43 @@ def test_response_details_compare_all_answers_when_no_is_selected(monkeypatch) -
         "specific_category": "Discrimination in areas of life",
         "question": "Felt discriminated in the 12 months before the survey in any of 8 areas of life",
         "answers": [
-            {"country": "Spain", "country_code": "ES", "answer": "No", "percentage": 63.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Spain", "country_code": "ES", "answer": "Yes", "percentage": 37.0, "date": "2023", "filters": [{"type": "Sexual Orientation", "value": "All"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "No", "percentage": 70.0, "date": "2023", "filters": [{"type": "All", "value": "All"}]},
-            {"country": "Portugal", "country_code": "PT", "answer": "Yes", "percentage": 30.0, "date": "2023", "filters": [{"type": "Sexual Orientation", "value": "All"}]},
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "No",
+                "percentage": 63.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 37.0,
+                "date": "2023",
+                "filters": [{"type": "Sexual Orientation", "value": "All"}],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "No",
+                "percentage": 70.0,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Portugal",
+                "country_code": "PT",
+                "answer": "Yes",
+                "percentage": 30.0,
+                "date": "2023",
+                "filters": [{"type": "Sexual Orientation", "value": "All"}],
+            },
         ],
     }
-    monkeypatch.setattr("app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document)
+    monkeypatch.setattr(
+        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+    )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1_8", answer="No", year=2023))
 
@@ -808,7 +1092,9 @@ def test_fra_response_comparison_builds_stacked_chart_for_three_answers() -> Non
     assert any(annotation.text == "Seleccionado" for annotation in _layout(figure).annotations)
 
 
-def test_fra_response_comparison_never_displays_normalized_segments_above_100() -> None:
+def test_fra_response_comparison_rejects_out_of_range_values_without_zero_bars(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     rows = [
         {"country": "Spain", "iso": "ES", "answer": "Yes", "percentage": 140.0},
         {"country": "Spain", "iso": "ES", "answer": "No", "percentage": 35.0},
@@ -822,14 +1108,17 @@ def test_fra_response_comparison_never_displays_normalized_segments_above_100() 
 
     for trace in _traces(figure):
         assert all(0 <= value <= 100 for value in trace.x)
-    assert all("Porcentaje dentro del país" not in trace.hovertemplate for trace in _traces(figure))
-    assert all("Valor original" not in trace.hovertemplate for trace in _traces(figure))
-    assert all(
-        trace.hovertemplate == "<b>%{y}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
-        for trace in _traces(figure)
+    missing_trace = next(
+        trace for trace in _traces(figure) if trace.name == "No hay suficiente información"
     )
-    spain_index = list(_trace(figure, 0).y).index("Spain")
-    assert sum(trace.x[spain_index] for trace in _traces(figure)) == 100
+    assert set(missing_trace.y) == {"Spain", "Portugal"}
+    assert all(
+        "Spain" not in trace.y
+        for trace in _traces(figure)
+        if trace.name != "No hay suficiente información"
+    )
+    assert caplog.text.count("invalid_percentage_values") == 1
+    assert "count=2" in caplog.text
 
 
 def test_fra_response_comparison_keeps_original_decimals_when_country_total_is_100() -> None:
@@ -841,7 +1130,10 @@ def test_fra_response_comparison_keeps_original_decimals_when_country_total_is_1
     figure = build_fra_response_comparison_chart(rows, language="en")
 
     assert [trace.x[0] for trace in _traces(figure)] == [36.5, 63.5]
-    assert [trace.customdata[0][1:] for trace in _traces(figure)] == [["Value", "36.5%"], ["Value", "63.5%"]]
+    assert [trace.customdata[0][1:] for trace in _traces(figure)] == [
+        ["No", "36.5%", "", ""],
+        ["Yes", "63.5%", "", ""],
+    ]
     assert [trace.marker.color for trace in _traces(figure)] == [
         NO_RESPONSE_COLOR,
         YES_RESPONSE_COLOR,
@@ -879,7 +1171,7 @@ def test_fra_response_comparison_marks_country_without_numeric_information_grey(
     assert list(missing_trace.y) == ["Portugal"]
     assert list(missing_trace.x) == [100]
     assert missing_trace.marker.color == "#9ca3af"
-    assert missing_trace.customdata == (["PT", "No hay suficiente información"],)
+    assert missing_trace.customdata == (["PT", "No hay suficiente información", "", ""],)
 
 
 def test_fra_response_comparison_marks_entire_country_grey_when_one_answer_is_missing() -> None:
@@ -903,7 +1195,7 @@ def test_fra_response_comparison_marks_entire_country_grey_when_one_answer_is_mi
     assert list(missing_trace.y) == ["Albania"]
     assert list(missing_trace.x) == [100]
     assert missing_trace.marker.color == "#9ca3af"
-    assert list(_layout(figure).yaxis.categoryarray)[0] == "Albania"
+    assert next(iter(_layout(figure).yaxis.categoryarray)) == "Albania"
     assert {item["label"]: item["value"] for item in summary["distribution"]} == {
         "Yes": 60.0,
         "No": 40.0,
@@ -922,6 +1214,109 @@ def test_fra_response_comparison_marks_all_missing_numeric_countries_grey_in_eng
     assert trace.name == "There is not enough information"
     assert trace.marker.color == "#9ca3af"
     assert list(trace.y) == ["Portugal"]
+
+
+def test_fra_response_comparison_keeps_all_database_countries_when_map_selects_one() -> None:
+    rows = [
+        {
+            "country": f"Country {index:02d}",
+            "iso": f"X{index:02d}",
+            "answer": "Yes",
+            "percentage": None if index == 26 else float(index + 1),
+            "year": 2024,
+            "source": "FRA",
+        }
+        for index in range(27)
+    ]
+
+    figure = build_fra_response_comparison_chart(rows, selected_countries=["X00"])
+    rendered_countries = {
+        str(country)
+        for trace in _traces(figure)
+        for country in trace.y
+    }
+
+    assert rendered_countries == {f"Country {index:02d}" for index in range(27)}
+    assert _layout(figure).height == 946
+    assert _layout(figure).paper_bgcolor == "rgba(0,0,0,0)"
+
+
+def test_fra_response_comparison_adds_all_30_countries_from_indicator_universe() -> None:
+    universe = [
+        {
+            "country": f"Country {index:02d}",
+            "iso": f"X{index:02d}",
+            "year": 2024,
+            "source": "FRA",
+        }
+        for index in range(30)
+    ]
+    rows = [
+        {
+            **universe[index],
+            "answer": "Yes",
+            "percentage": float(index + 1),
+        }
+        for index in range(24)
+    ]
+
+    figure = build_fra_response_comparison_chart(
+        rows,
+        available_countries=universe,
+        selected_countries=["X00"],
+    )
+    summary = summarize_response_comparison(rows, available_countries=universe)
+    rendered_countries = {
+        str(country)
+        for trace in _traces(figure)
+        for country in trace.y
+    }
+    missing_trace = next(
+        trace for trace in _traces(figure) if trace.name == "No hay suficiente información"
+    )
+
+    assert rendered_countries == {f"Country {index:02d}" for index in range(30)}
+    assert set(missing_trace.y) == {f"Country {index:02d}" for index in range(24, 30)}
+    assert summary["countries"] == 30
+    assert _layout(figure).height == 1030
+
+
+def test_fra_response_hover_includes_answer_percentage_year_and_source() -> None:
+    figure = build_fra_response_comparison_chart(
+        [
+            {
+                "country": "Spain",
+                "iso": "ES",
+                "answer": "Yes",
+                "percentage": "42,5%",
+                "year": 2024,
+                "source": "FRA",
+            }
+        ]
+    )
+    trace = _trace(figure)
+
+    assert list(trace.customdata[0]) == ["ES", "Yes", "42.5%", 2024, "FRA"]
+    assert "Respuesta" in trace.hovertemplate
+    assert "Porcentaje" in trace.hovertemplate
+    assert "Año" in trace.hovertemplate
+    assert "Fuente" in trace.hovertemplate
+
+
+def test_fra_response_comparison_does_not_average_conflicting_duplicates(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    figure = build_fra_response_comparison_chart(
+        [
+            {"country": "Spain", "iso": "ES", "answer": "Yes", "percentage": 40},
+            {"country": "Spain", "iso": "ES", "answer": "Yes", "percentage": 60},
+        ]
+    )
+
+    trace = _trace(figure)
+    assert trace.name == "No hay suficiente información"
+    assert list(trace.y) == ["Spain"]
+    assert "conflicting_percentage_values groups=1" in caplog.text
 
 
 def test_fra_response_comparison_keeps_distinct_answer_meanings() -> None:
@@ -1003,8 +1398,44 @@ def test_ilga_criteria_heatmap_uses_legal_metadata_in_hover() -> None:
 
     english_trace = _trace(build_ilga_criteria_heatmap(rows, language="en"))
     assert list(english_trace.x) == ["Constitutional protection based on sexual orientation"]
-    assert english_trace.customdata[0][0][0] == "Constitutional protection based on sexual orientation"
+    assert (
+        english_trace.customdata[0][0][0] == "Constitutional protection based on sexual orientation"
+    )
     assert "based on sexual orientation" in english_trace.customdata[0][0][1]
+
+
+def test_ilga_criteria_heatmap_shows_complete_dynamic_country_universe() -> None:
+    universe = [
+        {
+            "country": f"Country {index:02d}",
+            "iso": f"X{index:02d}",
+            "ranking": 100 - index,
+            "year": 2026,
+            "source": "ILGA-Europe",
+        }
+        for index in range(20)
+    ]
+    rows = [
+        {
+            **universe[index],
+            "category": "Family",
+            "criterion": "Marriage equality",
+            "criterion_value": 1,
+            "criterion_weight": 1,
+        }
+        for index in range(18)
+    ]
+
+    figure = build_ilga_criteria_heatmap(rows, available_countries=universe)
+
+    assert len(_traces(figure)) == 20
+    assert {trace.y[0] for trace in _traces(figure)} == {
+        f"Country {index:02d}" for index in range(20)
+    }
+    missing = [trace for trace in _traces(figure) if trace.z[0][0] is None]
+    assert {trace.y[0] for trace in missing} == {"Country 18", "Country 19"}
+    assert _layout(figure).height == 750
+    assert _layout(figure).plot_bgcolor == "rgba(0,0,0,0)"
 
 
 def test_ilga_criteria_hover_data_is_translated_for_required_criteria() -> None:
@@ -1102,7 +1533,9 @@ def test_statistics_control_group_omits_empty_id() -> None:
 
 
 def test_statistics_layout_keeps_response_details_without_duplicate_panels(monkeypatch) -> None:
-    monkeypatch.setattr("app.dash.pages.statistics.assert_analytics_databases_available", lambda: None)
+    monkeypatch.setattr(
+        "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
+    )
     monkeypatch.setattr("app.dash.pages.statistics._year_options", lambda _source: [])
     monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _source, _year: [])
     monkeypatch.setattr("app.dash.pages.statistics.build_navbar", lambda **_kwargs: "")
@@ -1110,6 +1543,11 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
     layout = build_statistics_layout()
 
     assert _component_by_id(layout, "stats-response-detail-graph") is not None
+    response_panel = _component_by_id(layout, "stats-response-panel")
+    assert response_panel is not None
+    response_classes = str(response_panel.to_plotly_json()["props"]["className"]).split()
+    assert "stats-panel-wide" in response_classes
+    assert "stats-response-panel" in response_classes
     assert _component_by_id(layout, "stats-ranking-graph") is not None
     assert _component_by_id(layout, "stats-country-comparison-graph") is not None
     assert _component_by_id(layout, "stats-radar-graph") is not None

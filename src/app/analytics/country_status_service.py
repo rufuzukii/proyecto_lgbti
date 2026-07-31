@@ -5,7 +5,10 @@ from typing import Any
 import bleach
 
 from app.analytics.repository import get_country_lgbti_status_records
-from app.analytics.statistics_normalizers import normalize_country_code, repair_text_encoding
+from app.analytics.statistics_normalizers import (
+    normalize_country_code,
+    repair_text_encoding,
+)
 
 ILGA_ANNUAL_REVIEW_2026_URL = (
     "https://www.ilga-europe.org/files/uploads/2026/02/2026-ILGA-EUROPE-ANNUAL-REVIEW.pdf"
@@ -38,7 +41,10 @@ def _normalize_country_codes(country_codes: list[str]) -> list[str]:
     output: list[str] = []
     seen: set[str] = set()
     for country_code in country_codes:
-        clean_code = normalize_country_code(country_code) or repair_text_encoding(country_code).strip().upper()
+        clean_code = (
+            normalize_country_code(country_code)
+            or repair_text_encoding(country_code).strip().upper()
+        )
         if not clean_code or clean_code in seen:
             continue
         seen.add(clean_code)
@@ -103,5 +109,5 @@ def _plain_text_list(value: Any) -> list[str]:
 def _safe_int(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None

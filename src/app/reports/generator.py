@@ -17,4 +17,3 @@ def generate_report(
         else ReportConfiguration.from_mapping(configuration)
     )
     return generate_report_pdf(resolved)
-

@@ -10,4 +10,3 @@ def build_report() -> dict:
         "ui_paths": ["/informes", "/reports"],
         "format": "pdf",
     }
-

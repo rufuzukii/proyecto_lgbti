@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlencode
 
+import dash_ag_grid as dag
 import pandas as pd
-from dash import Dash, Input, Output, State, ctx, dash_table, dcc, html, no_update
+from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
 
 from app.analytics.repository import (
@@ -46,7 +47,10 @@ from app.analytics.statistics_models import (
     FraStatisticsQuery,
     IlgaStatisticsQuery,
 )
-from app.analytics.statistics_normalizers import normalize_country_code, normalize_text_key
+from app.analytics.statistics_normalizers import (
+    normalize_country_code,
+    normalize_text_key,
+)
 from app.analytics.statistics_service import (
     get_fra_control_payload,
     get_fra_statistics,
@@ -55,10 +59,11 @@ from app.analytics.statistics_service import (
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 
-
 DATA_TYPE_OPTIONS = [
     {
-        "label": html.Span("Sociodemográficos", **text_attrs("Sociodemográficos", "Sociodemographic")),
+        "label": html.Span(
+            "Sociodemográficos", **text_attrs("Sociodemográficos", "Sociodemographic")
+        ),
         "value": "fra",
     },
     {
@@ -131,23 +136,63 @@ def build_statistics_layout() -> Component:
                     _controls(years, initial_year, categories),
                     dcc.Loading(
                         [
-                            html.Div(id="stats-status-message", className="stats-status stats-status-warning"),
+                            html.Div(
+                                id="stats-status-message",
+                                className="stats-status stats-status-warning",
+                            ),
                             _map_panel(placeholder),
-                            _block_header("Bloque A", "Estadísticas del conjunto de datos seleccionado", "Selected dataset statistics"),
-                            html.Section(id="stats-metric-row", className="stats-metric-row stats-executive-grid"),
+                            _block_header(
+                                "Bloque A",
+                                "Estadísticas del conjunto de datos seleccionado",
+                                "Selected dataset statistics",
+                            ),
+                            html.Section(
+                                id="stats-metric-row",
+                                className="stats-metric-row stats-executive-grid",
+                            ),
                             html.Section(
                                 [
                                     html.Div(
-                                        _graph_panel("Evolución temporal", "Temporal evolution", "stats-temporal-graph", placeholder),
+                                        _graph_panel(
+                                            "Evolución temporal",
+                                            "Temporal evolution",
+                                            "stats-temporal-graph",
+                                            placeholder,
+                                        ),
                                         id="stats-temporal-panel",
                                         className="stats-panel-wrapper is-hidden",
                                     ),
-                                    _graph_panel("Ranking comparativo", "Comparative ranking", "stats-ranking-graph", placeholder),
-                                    _graph_panel("Distribución europea", "European distribution", "stats-distribution-graph", placeholder),
-                                    _graph_panel("Comparación con la media de la UE", "EU average comparison", "stats-average-graph", placeholder),
-                                    _graph_panel("Comparación entre países", "Country comparison", "stats-country-comparison-graph", placeholder),
+                                    _graph_panel(
+                                        "Ranking comparativo",
+                                        "Comparative ranking",
+                                        "stats-ranking-graph",
+                                        placeholder,
+                                    ),
+                                    _graph_panel(
+                                        "Distribución europea",
+                                        "European distribution",
+                                        "stats-distribution-graph",
+                                        placeholder,
+                                    ),
+                                    _graph_panel(
+                                        "Comparación con la media de la UE",
+                                        "EU average comparison",
+                                        "stats-average-graph",
+                                        placeholder,
+                                    ),
+                                    _graph_panel(
+                                        "Comparación entre países",
+                                        "Country comparison",
+                                        "stats-country-comparison-graph",
+                                        placeholder,
+                                    ),
                                     html.Div(
-                                        _graph_panel("Radar comparativo", "Comparative radar", "stats-radar-graph", placeholder),
+                                        _graph_panel(
+                                            "Radar comparativo",
+                                            "Comparative radar",
+                                            "stats-radar-graph",
+                                            placeholder,
+                                        ),
                                         id="stats-radar-panel",
                                         className="stats-panel-wrapper is-hidden",
                                     ),
@@ -158,7 +203,10 @@ def build_statistics_layout() -> Component:
                                                 "Response details",
                                                 "stats-response-detail-graph",
                                             ),
-                                            html.Div(id="stats-detail-summary", className="stats-detail-summary"),
+                                            html.Div(
+                                                id="stats-detail-summary",
+                                                className="stats-detail-summary",
+                                            ),
                                             dcc.Graph(
                                                 id="stats-response-detail-graph",
                                                 figure=placeholder,
@@ -166,20 +214,42 @@ def build_statistics_layout() -> Component:
                                             ),
                                         ],
                                         id="stats-response-panel",
-                                        className="stats-panel",
+                                        className="stats-panel stats-panel-wide stats-response-panel",
                                     ),
                                 ],
                                 className="stats-grid",
                             ),
                             html.Section(
                                 [
-                                    _block_header("Bloque B", "Relación entre datos sociodemográficos y legales", "Sociodemographic and legal relationship"),
-                                    html.Section(id="stats-combined-metric-row", className="stats-metric-row stats-executive-grid"),
+                                    _block_header(
+                                        "Bloque B",
+                                        "Relación entre datos sociodemográficos y legales",
+                                        "Sociodemographic and legal relationship",
+                                    ),
+                                    html.Section(
+                                        id="stats-combined-metric-row",
+                                        className="stats-metric-row stats-executive-grid",
+                                    ),
                                     html.Div(
                                         [
-                                            _graph_panel("Protección legal vs experiencia real", "Legal protection vs lived experience", "stats-gap-graph", placeholder),
-                                            _graph_panel("Scatter ILGA/FRA", "ILGA/FRA scatter", "stats-scatter-graph", placeholder),
-                                            _graph_panel("Heatmap europeo", "European heatmap", "stats-combined-heatmap", placeholder),
+                                            _graph_panel(
+                                                "Protección legal vs experiencia real",
+                                                "Legal protection vs lived experience",
+                                                "stats-gap-graph",
+                                                placeholder,
+                                            ),
+                                            _graph_panel(
+                                                "Scatter ILGA/FRA",
+                                                "ILGA/FRA scatter",
+                                                "stats-scatter-graph",
+                                                placeholder,
+                                            ),
+                                            _graph_panel(
+                                                "Heatmap europeo",
+                                                "European heatmap",
+                                                "stats-combined-heatmap",
+                                                placeholder,
+                                            ),
                                         ],
                                         className="stats-grid",
                                     ),
@@ -190,32 +260,35 @@ def build_statistics_layout() -> Component:
                             html.Div(
                                 [
                                     html.H2(text("Tabla resumida", "Summary table")),
-                                    dash_table.DataTable(
+                                    dag.AgGrid(
                                         id="stats-results-table",
-                                        columns=[],
-                                        data=[],
-                                        page_size=12,
-                                        sort_action="native",
-                                        filter_action="native",
-                                        export_format="csv",
-                                        style_table={"overflowX": "auto"},
-                                        style_cell={"fontFamily": "Segoe UI, Arial, sans-serif", "fontSize": "0.88rem", "padding": "0.55rem", "textAlign": "left"},
-                                        style_data_conditional=[
-                                            {
-                                                "if": {
-                                                    "filter_query": "{status} = 'Sin datos'"
-                                                },
-                                                "color": "#6b7280",
-                                                "fontStyle": "italic",
+                                        columnDefs=[],
+                                        rowData=[],
+                                        defaultColDef={
+                                            "sortable": True,
+                                            "filter": True,
+                                            "resizable": True,
+                                            "minWidth": 120,
+                                        },
+                                        dashGridOptions={
+                                            "pagination": True,
+                                            "paginationPageSize": 12,
+                                            "paginationPageSizeSelector": False,
+                                            "domLayout": "autoHeight",
+                                            "getRowStyle": {
+                                                "styleConditions": [
+                                                    {
+                                                        "condition": "params.data.status === 'Sin datos' || params.data.status === 'No data'",
+                                                        "style": {
+                                                            "color": "#6b7280",
+                                                            "fontStyle": "italic",
+                                                        },
+                                                    }
+                                                ]
                                             },
-                                            {
-                                                "if": {
-                                                    "filter_query": "{status} = 'No data'"
-                                                },
-                                                "color": "#6b7280",
-                                                "fontStyle": "italic",
-                                            },
-                                        ],
+                                        },
+                                        className="ag-theme-quartz stats-results-grid",
+                                        style={"width": "100%"},
                                     ),
                                 ],
                                 className="stats-panel stats-results-table-panel",
@@ -232,6 +305,25 @@ def build_statistics_layout() -> Component:
 
 
 def register_statistics_callbacks(app: Dash) -> None:
+    @app.callback(
+        Output("stats-category-select", "placeholder"),
+        Output("fra-indicator-select", "placeholder"),
+        Output("ilga-criterion-select", "placeholder"),
+        Input("app-language-store", "data"),
+    )
+    def translate_statistics_controls(language: str | None) -> tuple[str, str, str]:
+        if language == "en":
+            return (
+                "Select a category",
+                "Select a category first",
+                "All criteria",
+            )
+        return (
+            "Selecciona una categoría",
+            "Selecciona primero una categoría",
+            "Todos los criterios",
+        )
+
     @app.callback(
         Output("stats-create-report-link", "href"),
         Input("stats-source-select", "value"),
@@ -280,12 +372,10 @@ def register_statistics_callbacks(app: Dash) -> None:
             ),
             "language": "en" if language == "en" else "es",
             "mode": "automatic",
-            "charts": ",".join(("ranking", "average", "countries", "responses", "temporal", "radar")),
+            "charts": "ranking,average,countries,responses,temporal,radar",
         }
         clean = {
-            key: value
-            for key, value in params.items()
-            if value is not None and str(value).strip()
+            key: value for key, value in params.items() if value is not None and str(value).strip()
         }
         path = "/reports" if language == "en" else "/informes"
         return f"{path}?{urlencode(clean)}"
@@ -303,7 +393,9 @@ def register_statistics_callbacks(app: Dash) -> None:
         years = _year_options(source)
         year = years[0]["value"] if years else None
         is_fra = source == "fra"
-        year_class = "stats-control-field stats-year-field" + (" is-hidden" if is_fra and len(years) <= 1 else "")
+        year_class = "stats-control-field stats-year-field" + (
+            " is-hidden" if is_fra and len(years) <= 1 else ""
+        )
         return (
             years,
             year,
@@ -445,7 +537,9 @@ def register_statistics_callbacks(app: Dash) -> None:
     ) -> dict[str, Any]:
         if source == "fra":
             if not _has_valid_fra_selection(category, fra_code):
-                return _empty_data_result("Selecciona una categoría y una pregunta para cargar las estadísticas.")
+                return _empty_data_result(
+                    "Selecciona una categoría y una pregunta para cargar las estadísticas."
+                )
             controls_ready = _fra_controls_are_ready(
                 category,
                 fra_code,
@@ -475,10 +569,14 @@ def register_statistics_callbacks(app: Dash) -> None:
                     IlgaStatisticsQuery(category="Ranking total"),
                     include_history=False,
                 )
-                result["combined"] = _combine_rankings(result.get("ranking") or [], legal.get("ranking") or [])
+                result["combined"] = _combine_rankings(
+                    result.get("ranking") or [], legal.get("ranking") or []
+                )
             return result
         if not category:
-            return _empty_data_result("Selecciona una categoría jurídica para cargar las estadísticas.")
+            return _empty_data_result(
+                "Selecciona una categoría jurídica para cargar las estadísticas."
+            )
         return get_ilga_statistics(
             IlgaStatisticsQuery(year=_safe_int(year), category=category, criterion=criterion)
         )
@@ -511,7 +609,11 @@ def register_statistics_callbacks(app: Dash) -> None:
         iso = normalize_country_code(iso)
         if not iso:
             return no_update
-        return [country for country in selected if country != iso] if iso in selected else [*selected, iso]
+        return (
+            [country for country in selected if country != iso]
+            if iso in selected
+            else [*selected, iso]
+        )
 
     @app.callback(
         Output("stats-status-message", "children"),
@@ -535,8 +637,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-radar-graph", "figure"),
         Output("stats-radar-panel", "className"),
         Output("stats-combined-block", "className"),
-        Output("stats-results-table", "columns"),
-        Output("stats-results-table", "data"),
+        Output("stats-results-table", "columnDefs"),
+        Output("stats-results-table", "rowData"),
         Output("stats-methodology", "children"),
         Input("stats-data-store", "data"),
         Input("stats-selected-countries", "data"),
@@ -547,7 +649,9 @@ def register_statistics_callbacks(app: Dash) -> None:
         countries: list[str] | None,
         language: str | None,
     ):
-        return _render_dashboard(result or {}, _normalize_selected_countries(countries), language or "es")
+        return _render_dashboard(
+            result or {}, _normalize_selected_countries(countries), language or "es"
+        )
 
 
 def _controls(
@@ -571,25 +675,74 @@ def _controls(
                             labelClassName="stats-segmented-label",
                         ),
                     ),
-                    html.A(text("Restablecer filtros", "Reset filters"), href="/statistics", className="stats-reset-link", role="button"),
+                    html.A(
+                        text("Restablecer filtros", "Reset filters"),
+                        href="/statistics",
+                        className="stats-reset-link",
+                        role="button",
+                    ),
                 ],
                 class_name="stats-filter-card stats-filter-card-compact",
             ),
             _control_group(
                 "Indicador",
                 [
-                    _field(("Categoría", "Category"), dcc.Dropdown(id="stats-category-select", options=categories, value=None, clearable=False, placeholder="Selecciona una categoría")),
-                    _field(("Año", "Year"), dcc.Dropdown(id="stats-year-select", options=years, value=initial_year, clearable=False), element_id="stats-year-field", class_name="stats-control-field stats-year-field"),
+                    _field(
+                        ("Categoría", "Category"),
+                        dcc.Dropdown(
+                            id="stats-category-select",
+                            options=categories,
+                            value=None,
+                            clearable=False,
+                            placeholder="Selecciona una categoría",
+                        ),
+                    ),
+                    _field(
+                        ("Año", "Year"),
+                        dcc.Dropdown(
+                            id="stats-year-select",
+                            options=years,
+                            value=initial_year,
+                            clearable=False,
+                        ),
+                        element_id="stats-year-field",
+                        class_name="stats-control-field stats-year-field",
+                    ),
                     html.Div(
                         [
-                            _field("Pregunta o indicador", dcc.Dropdown(id="fra-indicator-select", options=[], value=None, clearable=False, disabled=True, placeholder="Selecciona primero una categoría")),
-                            _field("Respuesta", dcc.Dropdown(id="fra-answer-select", options=[], value=None, clearable=False)),
+                            _field(
+                                "Pregunta o indicador",
+                                dcc.Dropdown(
+                                    id="fra-indicator-select",
+                                    options=[],
+                                    value=None,
+                                    clearable=False,
+                                    disabled=True,
+                                    placeholder="Selecciona primero una categoría",
+                                ),
+                            ),
+                            _field(
+                                "Respuesta",
+                                dcc.Dropdown(
+                                    id="fra-answer-select", options=[], value=None, clearable=False
+                                ),
+                            ),
                         ],
                         id="stats-fra-controls",
                         className="stats-source-controls",
                     ),
                     html.Div(
-                        [_field("Criterio jurídico", dcc.Dropdown(id="ilga-criterion-select", options=[], value=None, placeholder="Todos los criterios"))],
+                        [
+                            _field(
+                                "Criterio jurídico",
+                                dcc.Dropdown(
+                                    id="ilga-criterion-select",
+                                    options=[],
+                                    value=None,
+                                    placeholder="Todos los criterios",
+                                ),
+                            )
+                        ],
                         id="stats-ilga-controls",
                         className="stats-source-controls is-hidden",
                     ),
@@ -638,7 +791,11 @@ def _field(
     element_id: str | None = None,
     class_name: str = "stats-control-field",
 ) -> Component:
-    label_node = html.Label(label[0], **text_attrs(label[0], label[1])) if isinstance(label, tuple) else html.Label(label, **text_attrs(label, LABELS_EN.get(label, label)))
+    label_node = (
+        html.Label(label[0], **text_attrs(label[0], label[1]))
+        if isinstance(label, tuple)
+        else html.Label(label, **text_attrs(label, LABELS_EN.get(label, label)))
+    )
     props: dict[str, Any] = {"className": class_name}
     if element_id:
         props["id"] = element_id
@@ -668,7 +825,11 @@ def _control_group(
         props["id"] = element_id
     return html.Section(
         [
-            html.H2(title, className="stats-filter-card-title", **text_attrs(title, LABELS_EN.get(title, title))),
+            html.H2(
+                title,
+                className="stats-filter-card-title",
+                **text_attrs(title, LABELS_EN.get(title, title)),
+            ),
             html.Div(children, className="stats-filter-card-body"),
         ],
         **props,
@@ -678,7 +839,11 @@ def _control_group(
 def _header() -> Component:
     return html.Header(
         [
-            html.P("Panel de Estadísticas", className="stats-eyebrow", **text_attrs("Panel de Estadísticas", "Statistics panel")),
+            html.P(
+                "Panel de Estadísticas",
+                className="stats-eyebrow",
+                **text_attrs("Panel de Estadísticas", "Statistics panel"),
+            ),
             html.H1(text("Estadísticas europeas LGBTIQ+", "European LGBTIQ+ statistics")),
             html.P(
                 text(
@@ -722,7 +887,13 @@ def _map_panel(placeholder: Any) -> Component:
                 ],
                 className="stats-panel-heading",
             ),
-            html.P(text("Pulsa sobre cada país para seleccionarlo o deseleccionarlo.", "Click each country to select or deselect it."), className="stats-panel-hint"),
+            html.P(
+                text(
+                    "Pulsa sobre cada país para seleccionarlo o deseleccionarlo.",
+                    "Click each country to select or deselect it.",
+                ),
+                className="stats-panel-hint",
+            ),
             dcc.Graph(
                 id="stats-map-graph",
                 figure=placeholder,
@@ -734,7 +905,9 @@ def _map_panel(placeholder: Any) -> Component:
     )
 
 
-def _graph_panel(title_es: str, title_en: str, graph_id: str, figure: Any | None = None) -> Component:
+def _graph_panel(
+    title_es: str, title_en: str, graph_id: str, figure: Any | None = None
+) -> Component:
     return html.Div(
         [
             _chart_panel_heading(title_es, title_en, graph_id),
@@ -806,10 +979,15 @@ def _year_options(source: str | None) -> list[dict[str, Any]]:
     return [{"label": str(year), "value": year} for year in years]
 
 
-def _category_options(source: str | None, year: int | None) -> list[dict[str, str]]:
+def _category_options(source: str | None, year: int | None) -> list[dict[str, Any]]:
     if source == "fra":
         return _visible_category_options(get_fra_categories())
-    options = [{"label": "Ranking total", "value": "Ranking total"}]
+    options: list[dict[str, Any]] = [
+        {
+            "label": text("Ranking total", "Overall ranking"),
+            "value": "Ranking total",
+        }
+    ]
     options.extend(
         {"label": category, "value": category}
         for category in _visible_categories(get_ilga_criteria_categories_by_year(year))
@@ -817,20 +995,28 @@ def _category_options(source: str | None, year: int | None) -> list[dict[str, st
     return options
 
 
-def _visible_category_options(categories: list[str]) -> list[dict[str, str]]:
+def _visible_category_options(categories: list[str]) -> list[dict[str, Any]]:
     return [{"label": category, "value": category} for category in _visible_categories(categories)]
 
 
 def _visible_categories(categories: list[str]) -> list[str]:
-    return [category for category in categories if normalize_text_key(category) not in EXCLUDED_CATEGORY_KEYS]
+    return [
+        category
+        for category in categories
+        if normalize_text_key(category) not in EXCLUDED_CATEGORY_KEYS
+    ]
 
 
 def _translated_segmentation_options(options: list[dict[str, Any]]) -> list[dict[str, Any]]:
     translated = []
     for option in options:
         value = str(option.get("value") or "")
-        labels = SEGMENTATION_LABELS.get(value, (str(option.get("label") or value), str(option.get("label") or value)))
-        translated.append({**option, "label": html.Span(labels[0], **text_attrs(labels[0], labels[1]))})
+        labels = SEGMENTATION_LABELS.get(
+            value, (str(option.get("label") or value), str(option.get("label") or value))
+        )
+        translated.append(
+            {**option, "label": html.Span(labels[0], **text_attrs(labels[0], labels[1]))}
+        )
     return translated
 
 
@@ -911,7 +1097,9 @@ def _segmentation_group(
 
 def _render_dashboard(result: dict[str, Any], selected: list[str], language: str):
     if result.get("status") != "ok":
-        message = str(result.get("message") or "Selecciona un indicador para cargar los resultados.")
+        message = str(
+            result.get("message") or "Selecciona un indicador para cargar los resultados."
+        )
         empty = empty_figure(message)
         return (
             html.Div([html.Strong(text("Sin resultados", "No results")), html.P(message)]),
@@ -927,7 +1115,7 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             empty,
             "",
             empty,
-            "stats-panel is-hidden",
+            "stats-panel stats-panel-wide stats-response-panel is-hidden",
             [],
             empty,
             empty,
@@ -947,7 +1135,9 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
     history = list(result.get("history") or [])
     combined = list(result.get("combined") or [])
     scope = _selection_scope(ranking, selected, language)
-    map_figure = build_europe_choropleth(ranking, source=source, selected_isos=selected, language=language)
+    map_figure = build_europe_choropleth(
+        ranking, source=source, selected_isos=selected, language=language
+    )
     temporal = build_temporal_evolution_chart(history, selected, language)
     comparative_ranking = build_comparative_ranking_chart(ranking, selected, language)
     distribution = build_europe_distribution_chart(ranking, selected, language)
@@ -959,7 +1149,20 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
         detail_rows=detail,
         source=source,
     )
-    response = build_fra_response_comparison_chart(detail, selected_countries=selected, language=language) if source == "FRA" else build_ilga_criteria_heatmap(data, language=language)
+    response = (
+        build_fra_response_comparison_chart(
+            detail,
+            available_countries=list(result.get("country_universe") or []),
+            selected_countries=selected,
+            language=language,
+        )
+        if source == "FRA"
+        else build_ilga_criteria_heatmap(
+            data,
+            available_countries=list(result.get("country_universe") or []),
+            language=language,
+        )
+    )
     radar, radar_compatible = build_indicator_radar(
         detail if source == "FRA" else data,
         source=source,
@@ -989,9 +1192,7 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
     )
     combined_metrics = _combined_metric_cards(combined)
     table_rows = _table_rows(result, selected, language)
-    available_count = sum(
-        1 for row in ranking if isinstance(row.get("value"), (int, float))
-    )
+    available_count = sum(1 for row in ranking if isinstance(row.get("value"), (int, float)))
     status_detail = (
         f"{available_count} countries with data · {scope['title']}"
         if language == "en"
@@ -1015,9 +1216,14 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
         distribution,
         average,
         comparison,
-        _detail_summary(source, detail, language),
+        _detail_summary(
+            source,
+            detail,
+            language,
+            available_countries=list(result.get("country_universe") or []),
+        ),
         response,
-        "stats-panel" if source == "FRA" else "stats-panel is-hidden",
+        "stats-panel stats-panel-wide stats-response-panel",
         combined_metrics,
         gap,
         scatter,
@@ -1055,11 +1261,7 @@ def _prepare_dashboard_exports(
             indicator=indicator,
             countries=selected_names,
             year=year,
-            source=(
-                "combined"
-                if chart_type in {"gap", "scatter", "heatmap"}
-                else source
-            ),
+            source=("combined" if chart_type in {"gap", "scatter", "heatmap"} else source),
             filters=filters,
             language=language,
         )
@@ -1093,34 +1295,59 @@ def _executive_metric_cards(
     if dataframe.empty:
         return []
     dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
-    dataframe = dataframe.dropna(subset=["value"]).sort_values("value", ascending=False).reset_index(drop=True)
+    dataframe = (
+        dataframe.dropna(subset=["value"])
+        .sort_values("value", ascending=False)
+        .reset_index(drop=True)
+    )
     if dataframe.empty:
         return []
     mean = float(dataframe["value"].mean())
     metrics: list[tuple[str | tuple[str, str], str]] = [
         (("Países analizados", "Countries analysed"), str(len(dataframe))),
         (("Media europea", "European average"), f"{mean:.2f}%"),
-        (("Mayor valor", "Highest value"), f"{dataframe.iloc[0]['country']} · {dataframe.iloc[0]['value']:.2f}%"),
-        (("Menor valor", "Lowest value"), f"{dataframe.iloc[-1]['country']} · {dataframe.iloc[-1]['value']:.2f}%"),
+        (
+            ("Mayor valor", "Highest value"),
+            f"{dataframe.iloc[0]['country']} · {dataframe.iloc[0]['value']:.2f}%",
+        ),
+        (
+            ("Menor valor", "Lowest value"),
+            f"{dataframe.iloc[-1]['country']} · {dataframe.iloc[-1]['value']:.2f}%",
+        ),
     ]
     if selected:
         focus = dataframe[dataframe["iso"].astype(str).str.upper() == selected[0]]
         if not focus.empty:
             row = focus.iloc[0]
             position = int(focus.index[0]) + 1
-            metrics.extend([
-                (("País seleccionado", "Selected country"), f"{row['value']:.2f}%"),
-                (("Diferencia con la media", "Difference from average"), f"{row['value'] - mean:+.2f} pp"),
-                (("Posición", "Rank"), f"{position}/{len(dataframe)}"),
-            ])
+            metrics.extend(
+                [
+                    (("País seleccionado", "Selected country"), f"{row['value']:.2f}%"),
+                    (
+                        ("Diferencia con la media", "Difference from average"),
+                        f"{row['value'] - mean:+.2f} pp",
+                    ),
+                    (("Posición", "Rank"), f"{position}/{len(dataframe)}"),
+                ]
+            )
             historical = pd.DataFrame(history or [])
             if not historical.empty and {"iso", "year", "value"}.issubset(historical.columns):
-                country_history = historical[historical["iso"].astype(str).str.upper() == selected[0]].copy()
+                country_history = historical[
+                    historical["iso"].astype(str).str.upper() == selected[0]
+                ].copy()
                 country_history["value"] = pd.to_numeric(country_history["value"], errors="coerce")
-                country_history = country_history.dropna(subset=["value"]).sort_values("year").drop_duplicates("year", keep="last")
+                country_history = (
+                    country_history.dropna(subset=["value"])
+                    .sort_values("year")
+                    .drop_duplicates("year", keep="last")
+                )
                 if len(country_history) >= 2:
-                    variation = float(country_history.iloc[-1]["value"] - country_history.iloc[-2]["value"])
-                    metrics.append((("Variación interanual", "Year-on-year change"), f"{variation:+.2f} pp"))
+                    variation = float(
+                        country_history.iloc[-1]["value"] - country_history.iloc[-2]["value"]
+                    )
+                    metrics.append(
+                        (("Variación interanual", "Year-on-year change"), f"{variation:+.2f} pp")
+                    )
     return [_metric_card(label, value) for label, value in metrics]
 
 
@@ -1136,11 +1363,20 @@ def _combined_metric_cards(rows: list[dict[str, Any]]) -> list[Any]:
     fra_mean = float(dataframe["fra_value"].mean())
     gap_std = float(dataframe["gap"].std(ddof=0))
     return [
-        _metric_card(("Mejor equilibrio", "Best balance"), f"{best['country']} · {best['gap']:.2f} pp"),
-        _metric_card(("Mayor diferencia", "Largest gap"), f"{largest['country']} · {largest['gap']:.2f} pp"),
-        _metric_card(("Media europea", "European average"), f"ILGA {legal_mean:.1f}% · FRA {fra_mean:.1f}%"),
+        _metric_card(
+            ("Mejor equilibrio", "Best balance"), f"{best['country']} · {best['gap']:.2f} pp"
+        ),
+        _metric_card(
+            ("Mayor diferencia", "Largest gap"), f"{largest['country']} · {largest['gap']:.2f} pp"
+        ),
+        _metric_card(
+            ("Media europea", "European average"), f"ILGA {legal_mean:.1f}% · FRA {fra_mean:.1f}%"
+        ),
         _metric_card(("Desviación de la brecha", "Gap standard deviation"), f"{gap_std:.2f} pp"),
-        _metric_card(("Correlación ILGA/FRA", "ILGA/FRA correlation"), f"{correlation:.2f}" if pd.notna(correlation) else "—"),
+        _metric_card(
+            ("Correlación ILGA/FRA", "ILGA/FRA correlation"),
+            f"{correlation:.2f}" if pd.notna(correlation) else "—",
+        ),
         _metric_card(("Indicadores comparados", "Indicators compared"), "2"),
     ]
 
@@ -1154,10 +1390,16 @@ def _detail_summary(
     source: str,
     rows: list[dict[str, Any]],
     language: str = "es",
+    *,
+    available_countries: list[dict[str, Any]] | None = None,
 ) -> Any:
     if source != "FRA":
         return ""
-    summary = summarize_response_comparison(rows)
+    summary = summarize_response_comparison(
+        rows,
+        available_countries=available_countries,
+        language=language,
+    )
     distribution = summary.get("distribution") or []
     countries_label = "Countries compared" if language == "en" else "Países comparados"
     distribution_label = "Distribution" if language == "en" else "Distribución"
@@ -1197,15 +1439,32 @@ def _detail_summary(
     )
 
 
-def _combine_rankings(fra_rows: list[dict[str, Any]], ilga_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    legal = {normalize_country_code(row.get("iso")): row for row in ilga_rows if normalize_country_code(row.get("iso"))}
+def _combine_rankings(
+    fra_rows: list[dict[str, Any]], ilga_rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    legal = {
+        normalize_country_code(row.get("iso")): row
+        for row in ilga_rows
+        if normalize_country_code(row.get("iso"))
+    }
     combined = []
     for row in fra_rows:
         iso = normalize_country_code(row.get("iso"))
         match = legal.get(iso)
-        if not match or not isinstance(row.get("value"), (int, float)) or not isinstance(match.get("value"), (int, float)):
+        if (
+            not match
+            or not isinstance(row.get("value"), (int, float))
+            or not isinstance(match.get("value"), (int, float))
+        ):
             continue
-        combined.append({"country": row.get("country") or match.get("country"), "iso": iso, "fra_value": float(row["value"]), "ilga_value": float(match["value"])})
+        combined.append(
+            {
+                "country": row.get("country") or match.get("country"),
+                "iso": iso,
+                "fra_value": float(row["value"]),
+                "ilga_value": float(match["value"]),
+            }
+        )
     return combined
 
 
@@ -1218,11 +1477,7 @@ def _table_rows(
     selected_codes = _normalize_selected_countries(selected)
     if selected_codes:
         order = {code: index for index, code in enumerate(selected_codes)}
-        rows = [
-            row
-            for row in rows
-            if normalize_country_code(row.get("iso")) in order
-        ]
+        rows = [row for row in rows if normalize_country_code(row.get("iso")) in order]
         rows.sort(
             key=lambda row: order.get(
                 normalize_country_code(row.get("iso")),
@@ -1243,9 +1498,7 @@ def _table_rows(
             "value": _rounded_number(row.get("value")),
             "ranking": row.get("position"),
             "difference": _rounded_number(row.get("difference")),
-            "difference_percentage": _rounded_number(
-                row.get("percentage_difference")
-            ),
+            "difference_percentage": _rounded_number(row.get("percentage_difference")),
             "year": result.get("year"),
             "indicator": indicator,
             "status": available if row.get("value") is not None else unavailable,
@@ -1275,14 +1528,18 @@ def _table_columns(
         "difference_percentage",
         "year",
     }
-    return [
-        {
-            "name": labels.get(key, (key, key))[1 if language == "en" else 0],
-            "id": key,
-            "type": "numeric" if key in numeric else "text",
-        }
-        for key in rows[0]
-    ] if rows else []
+    return (
+        [
+            {
+                "headerName": labels.get(key, (key, key))[1 if language == "en" else 0],
+                "field": key,
+                "type": "numericColumn" if key in numeric else None,
+            }
+            for key in rows[0]
+        ]
+        if rows
+        else []
+    )
 
 
 def _methodology_text(result: dict[str, Any], source: str, language: str = "es") -> str:
@@ -1302,7 +1559,13 @@ def _methodology_text(result: dict[str, Any], source: str, language: str = "es")
 
 
 def _source_display_name(source: Any) -> str:
-    return "Sociodemográficos" if source == "FRA" else "Legales" if source == "ILGA-Europe" else str(source or "")
+    return (
+        "Sociodemográficos"
+        if source == "FRA"
+        else "Legales"
+        if source == "ILGA-Europe"
+        else str(source or "")
+    )
 
 
 def _selection_scope(
@@ -1328,7 +1591,10 @@ def _selection_scope(
 
 
 def _selected_country_names(ranking: list[dict[str, Any]], selected: list[str]) -> list[str]:
-    names = {normalize_country_code(row.get("iso")): str(row.get("country") or row.get("iso") or "") for row in ranking}
+    names = {
+        normalize_country_code(row.get("iso")): str(row.get("country") or row.get("iso") or "")
+        for row in ranking
+    }
     return [names.get(normalize_country_code(country), country) for country in selected]
 
 
@@ -1365,30 +1631,40 @@ def _fra_controls_are_ready(
 
 
 def _empty_data_result(message: str) -> dict[str, Any]:
-    return {"status": "empty", "message": message, "data": [], "ranking": [], "available_countries": []}
+    return {
+        "status": "empty",
+        "message": message,
+        "data": [],
+        "ranking": [],
+        "available_countries": [],
+    }
 
 
 def _safe_int(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
 def _rounded_number(value: Any) -> float | None:
     try:
         numeric = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return round(numeric, 2) if pd.notna(numeric) else None
 
 
 def _fra_indicator_option_label(indicator: Any) -> str:
-    return str(getattr(indicator, "question", "") or getattr(indicator, "label", "") or getattr(indicator, "code", ""))
+    return str(
+        getattr(indicator, "question", "")
+        or getattr(indicator, "label", "")
+        or getattr(indicator, "code", "")
+    )
 
 
 def _plural(value: Any, singular: str, plural: str) -> str:
     try:
         return singular if float(value or 0) == 1 else plural
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return plural

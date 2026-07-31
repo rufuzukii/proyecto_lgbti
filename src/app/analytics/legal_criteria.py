@@ -5,7 +5,6 @@ import re
 import unicodedata
 from typing import Any
 
-
 SUPPORTED_LANGUAGES = {"es", "en"}
 
 logger = logging.getLogger(__name__)
@@ -83,11 +82,7 @@ def get_criterion_metadata(
         if isinstance(criterion, dict)
         else str(criterion or "").strip()
     )
-    category = (
-        str(criterion.get("category") or "").strip()
-        if isinstance(criterion, dict)
-        else ""
-    )
+    category = str(criterion.get("category") or "").strip() if isinstance(criterion, dict) else ""
     criterion_id = get_criterion_id(source_label, category)
     record = LEGAL_CRITERIA_TRANSLATIONS.get(criterion_id or "")
     if record:
@@ -146,8 +141,8 @@ def stable_criterion_id(source_label: str, category: str | None = None) -> str:
 
 
 def get_criterion_status(
-    value: float | int | str | None,
-    maximum_value: float | int | str | None = None,
+    value: float | str | None,
+    maximum_value: float | str | None = None,
     language: str = "es",
 ) -> dict[str, str]:
     numeric_value = _to_float(value)
@@ -157,9 +152,9 @@ def get_criterion_status(
         status_id = "not_available"
     elif numeric_value <= 0:
         status_id = "not_met"
-    elif numeric_maximum is not None and numeric_maximum > 0 and numeric_value >= numeric_maximum:
-        status_id = "fully_met"
-    elif numeric_maximum is None and numeric_value >= 1:
+    elif (
+        numeric_maximum is not None and numeric_maximum > 0 and numeric_value >= numeric_maximum
+    ) or (numeric_maximum is None and numeric_value >= 1):
         status_id = "fully_met"
     else:
         status_id = "partially_met"
@@ -174,8 +169,8 @@ def get_criterion_status(
 
 
 def get_criterion_score_label(
-    value: float | int | str | None,
-    maximum_value: float | int | str | None,
+    value: float | str | None,
+    maximum_value: float | str | None,
     language: str = "es",
 ) -> str:
     numeric_value = _to_float(value)
@@ -274,7 +269,7 @@ def _to_float(value: Any) -> float | None:
             return None
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -288,9 +283,7 @@ def _normalize_key(value: str | None) -> str:
 
 def _strip_accents(value: str) -> str:
     return "".join(
-        char
-        for char in unicodedata.normalize("NFKD", value)
-        if not unicodedata.combining(char)
+        char for char in unicodedata.normalize("NFKD", value) if not unicodedata.combining(char)
     )
 
 
@@ -663,9 +656,30 @@ _add_criterion(
 )
 
 for _ground, _suffix, _es_ground, _en_ground, _people_es, _people_en in (
-    ("sexual orientation", "sexual_orientation", "orientación sexual", "sexual orientation", "personas por su orientación sexual", "people because of their sexual orientation"),
-    ("gender identity", "gender_identity", "identidad de género", "gender identity", "personas por su identidad de género", "people because of their gender identity"),
-    ("sex characteristics", "sex_characteristics", "características sexuales", "sex characteristics", "personas por sus características sexuales", "people because of their sex characteristics"),
+    (
+        "sexual orientation",
+        "sexual_orientation",
+        "orientación sexual",
+        "sexual orientation",
+        "personas por su orientación sexual",
+        "people because of their sexual orientation",
+    ),
+    (
+        "gender identity",
+        "gender_identity",
+        "identidad de género",
+        "gender identity",
+        "personas por su identidad de género",
+        "people because of their gender identity",
+    ),
+    (
+        "sex characteristics",
+        "sex_characteristics",
+        "características sexuales",
+        "sex characteristics",
+        "personas por sus características sexuales",
+        "people because of their sex characteristics",
+    ),
 ):
     _add_criterion(
         f"hate_crime_law_{_suffix}",
@@ -673,7 +687,9 @@ for _ground, _suffix, _es_ground, _en_ground, _people_es, _people_en in (
         HATE,
         f"Delitos de odio por {_es_ground}",
         f"Hate crime law based on {_en_ground}",
-        f"Indica si la {_es_ground} está reconocida legalmente como una circunstancia protegida en los delitos de odio." if _suffix == "sexual_orientation" else f"Indica si la {_es_ground} está protegida expresamente en la legislación sobre delitos de odio.",
+        f"Indica si la {_es_ground} está reconocida legalmente como una circunstancia protegida en los delitos de odio."
+        if _suffix == "sexual_orientation"
+        else f"Indica si la {_es_ground} está protegida expresamente en la legislación sobre delitos de odio.",
         f"Indicates whether {_en_ground} is legally recognised as a protected ground in hate crime legislation.",
         *_criterion_aliases("Hate crime law", _ground),
         *_criterion_aliases("Hate crime", _ground),
@@ -944,7 +960,12 @@ _add_criterion(
 for _ground, _suffix, _es_ground, _en_ground in (
     ("sexual orientation", "sexual_orientation", "orientación sexual", "sexual orientation"),
     ("gender identity", "gender_identity", "identidad de género", "gender identity"),
-    ("sex characteristics", "sex_characteristics", "características sexuales", "sex characteristics"),
+    (
+        "sex characteristics",
+        "sex_characteristics",
+        "características sexuales",
+        "sex characteristics",
+    ),
 ):
     _add_criterion(
         f"asylum_law_{_suffix}",

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from io import BytesIO
 import html as html_std
+from collections.abc import Mapping
+from io import BytesIO
 from pathlib import Path
-from typing import Mapping
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -11,6 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
+    Flowable,
     Image,
     KeepTogether,
     PageBreak,
@@ -20,10 +21,8 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
-from reportlab.platypus import Flowable
 
 from app.reports.models import ReportContent
-
 
 BRAND_BLUE = colors.HexColor("#2F6BDE")
 INK = colors.HexColor("#172033")
@@ -98,18 +97,22 @@ class PDFExporter:
         section_number = 0
         if _enabled(report, "executive"):
             section_number += 1
-            story.extend(_text_section(
-                f"{section_number}. {_t(language, 'Resumen ejecutivo', 'Executive summary')}",
-                report.executive_summary,
-                styles,
-            ))
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Resumen ejecutivo', 'Executive summary')}",
+                    report.executive_summary,
+                    styles,
+                )
+            )
         if _enabled(report, "methodology"):
             section_number += 1
-            story.extend(_text_section(
-                f"{section_number}. {_t(language, 'Objetivo, alcance y metodología', 'Objective, scope and methodology')}",
-                report.methodology,
-                styles,
-            ))
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Objetivo, alcance y metodología', 'Objective, scope and methodology')}",
+                    report.methodology,
+                    styles,
+                )
+            )
         if _enabled(report, "metrics") and report.metrics:
             section_number += 1
             story.extend(
@@ -129,20 +132,24 @@ class PDFExporter:
 
         if _enabled(report, "workplace") and report.workplace_analysis:
             section_number += 1
-            story.extend(_text_section(
-                f"{section_number}. "
-                f"{_t(language, 'Diversidad e inclusión en el entorno laboral', 'Workplace diversity and inclusion')}",
-                report.workplace_analysis,
-                styles,
-            ))
+            story.extend(
+                _text_section(
+                    f"{section_number}. "
+                    f"{_t(language, 'Diversidad e inclusión en el entorno laboral', 'Workplace diversity and inclusion')}",
+                    report.workplace_analysis,
+                    styles,
+                )
+            )
         if _enabled(report, "demographics") and report.demographic_analysis:
             section_number += 1
-            story.extend(_text_section(
-                f"{section_number}. "
-                f"{_t(language, 'Diferencias sociodemográficas', 'Sociodemographic differences')}",
-                report.demographic_analysis,
-                styles,
-            ))
+            story.extend(
+                _text_section(
+                    f"{section_number}. "
+                    f"{_t(language, 'Diferencias sociodemográficas', 'Sociodemographic differences')}",
+                    report.demographic_analysis,
+                    styles,
+                )
+            )
 
         if report.charts:
             section_number += 1
@@ -165,20 +172,22 @@ class PDFExporter:
                             Spacer(1, 2 * mm),
                         ]
                     )
-                elements.extend([
-                    Paragraph(
-                        _escape(f"{chart_section}.{index}. {chart.title}"),
-                        styles["h2"],
-                    ),
-                    Spacer(1, 2 * mm),
-                    Image(
-                        str(image_path),
-                        width=176 * mm,
-                        height=98 * mm,
-                        kind="proportional",
-                    ),
-                    Spacer(1, 5 * mm),
-                ])
+                elements.extend(
+                    [
+                        Paragraph(
+                            _escape(f"{chart_section}.{index}. {chart.title}"),
+                            styles["h2"],
+                        ),
+                        Spacer(1, 2 * mm),
+                        Image(
+                            str(image_path),
+                            width=176 * mm,
+                            height=98 * mm,
+                            kind="proportional",
+                        ),
+                        Spacer(1, 5 * mm),
+                    ]
+                )
                 story.append(KeepTogether(elements))
 
         if _enabled(report, "comparison") and report.table_rows:
@@ -200,12 +209,14 @@ class PDFExporter:
             )
         if _enabled(report, "risks") and report.conclusions:
             section_number += 1
-            story.extend(_text_section(
-                f"{section_number}. "
-                f"{_t(language, 'Conclusiones y áreas de riesgo', 'Conclusions and risk areas')}",
-                report.conclusions,
-                styles,
-            ))
+            story.extend(
+                _text_section(
+                    f"{section_number}. "
+                    f"{_t(language, 'Conclusiones y áreas de riesgo', 'Conclusions and risk areas')}",
+                    report.conclusions,
+                    styles,
+                )
+            )
         if _enabled(report, "recommendations") and report.recommendations:
             section_number += 1
             derived = [
@@ -258,20 +269,24 @@ class PDFExporter:
             story.append(Spacer(1, 5 * mm))
         if _enabled(report, "limitations") and report.limitations:
             section_number += 1
-            story.extend(_text_section(
-                f"{section_number}. {_t(language, 'Limitaciones', 'Limitations')}",
-                report.limitations,
-                styles,
-                bullets=True,
-            ))
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Limitaciones', 'Limitations')}",
+                    report.limitations,
+                    styles,
+                    bullets=True,
+                )
+            )
         if _enabled(report, "sources") and report.sources:
             section_number += 1
-            story.extend(_text_section(
-                f"{section_number}. {_t(language, 'Fuentes', 'Sources')}",
-                report.sources,
-                styles,
-                bullets=True,
-            ))
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Fuentes', 'Sources')}",
+                    report.sources,
+                    styles,
+                    bullets=True,
+                )
+            )
         return story
 
 
@@ -377,13 +392,16 @@ def _cover_metadata(
         [
             _paragraph(_t(language, "Ámbito", "Scope"), styles["table"], bold=True),
             _paragraph(
-                ", ".join(report.country_names)
-                or _t(language, "Europa", "Europe"),
+                ", ".join(report.country_names) or _t(language, "Europa", "Europe"),
                 styles["table"],
             ),
         ],
         [
-            _paragraph(_t(language, "Autor o departamento", "Author or department"), styles["table"], bold=True),
+            _paragraph(
+                _t(language, "Autor o departamento", "Author or department"),
+                styles["table"],
+                bold=True,
+            ),
             _paragraph(report.configuration.author or "N/A", styles["table"]),
         ],
     ]
@@ -507,10 +525,7 @@ def _text_section(
     if bullets:
         elements.extend(_bullet_list(paragraphs, styles))
     else:
-        elements.extend(
-            Paragraph(_escape(paragraph), styles["body"])
-            for paragraph in paragraphs
-        )
+        elements.extend(Paragraph(_escape(paragraph), styles["body"]) for paragraph in paragraphs)
     elements.append(Spacer(1, 4 * mm))
     return elements
 
@@ -519,10 +534,7 @@ def _bullet_list(
     values: list[str],
     styles: dict[str, ParagraphStyle],
 ) -> list[Paragraph]:
-    return [
-        Paragraph(f"- {_escape(value)}", styles["bullet"])
-        for value in values
-    ]
+    return [Paragraph(f"- {_escape(value)}", styles["bullet"]) for value in values]
 
 
 def _paragraph(
@@ -540,6 +552,8 @@ def _enabled(report: ReportContent, section: str) -> bool:
 
 
 def _page_decorations(canvas, document, *, cover: bool) -> None:
+    canvas.setCreator("RainbowLens")
+    canvas.setProducer("RainbowLens")
     canvas.saveState()
     width, height = A4
     canvas.setFillColor(BRAND_BLUE)

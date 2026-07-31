@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
 import logging
+from datetime import date
 from typing import Any
 from urllib.parse import urlparse
 
@@ -13,7 +13,10 @@ from app.analytics.repository import (
     invalidate_analytics_cache,
     upsert_country_lgbti_status_record,
 )
-from app.analytics.statistics_normalizers import normalize_country_code, repair_text_encoding
+from app.analytics.statistics_normalizers import (
+    normalize_country_code,
+    repair_text_encoding,
+)
 from app.auth.permissions import is_admin_user
 
 logger = logging.getLogger(__name__)
@@ -32,7 +35,9 @@ class CountryStatusValidationError(ValueError):
         self.field_errors = field_errors
 
 
-def load_country_lgbti_status_for_edit(country_code: str, year: int | None) -> dict[str, Any] | None:
+def load_country_lgbti_status_for_edit(
+    country_code: str, year: int | None
+) -> dict[str, Any] | None:
     clean_code = normalize_country_code(country_code)
     if not clean_code or year is None:
         return None
@@ -160,7 +165,8 @@ def validate_country_lgbti_status_payload(payload: dict[str, Any]) -> dict[str, 
     if errors:
         raise CountryStatusValidationError(errors)
 
-    assert year is not None
+    if year is None:
+        raise CountryStatusValidationError({"year": "El año debe estar entre 2000 y 2100."})
     return {
         "dataset": COUNTRY_LGBTI_STATUS_DATASET,
         "country_code": country_code,
@@ -207,17 +213,14 @@ def _plain_text(value: Any) -> str:
 
 
 def _textarea_lines(value: Any) -> list[str]:
-    if isinstance(value, list):
-        raw_lines = value
-    else:
-        raw_lines = repair_text_encoding(value).splitlines()
+    raw_lines = value if isinstance(value, list) else repair_text_encoding(value).splitlines()
     return [line for line in (_plain_text(raw) for raw in raw_lines) if line]
 
 
 def _int_value(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

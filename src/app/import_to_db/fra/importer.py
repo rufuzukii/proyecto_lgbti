@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import Any, Iterable, Mapping, cast
+from typing import Any, cast
 
 import pandas as pd
 from pandas.errors import EmptyDataError
@@ -288,9 +289,7 @@ def _parse_answer_survey_rows(
     return list(documents.values())
 
 
-def parse_answer_survey_csv(
-    file_path: Path | str, *, root: Path | str | None = None
-) -> list[dict]:
+def parse_answer_survey_csv(file_path: Path | str, *, root: Path | str | None = None) -> list[dict]:
     path = Path(file_path)
     csv_text = read_text_with_fallback(path)
     context = build_path_context(path, Path(root) if root else None)
@@ -554,9 +553,7 @@ def parse_prefixed_filter(value: str) -> tuple[str, str] | None:
     return filter_key, raw_filter_value.strip()
 
 
-def build_indicator_code(
-    *, source: str, category: str, topic: str, question: str
-) -> str:
+def build_indicator_code(*, source: str, category: str, topic: str, question: str) -> str:
     return build_question_code(question)
 
 
@@ -595,10 +592,8 @@ def split_indicator_question(
 
 
 def build_question_code(question: str) -> str:
-    seed = "|".join(
-        part for part in [normalize_header(question)] if part
-    ) or "unknown_question"
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+    seed = "|".join(part for part in [normalize_header(question)] if part) or "unknown_question"
+    digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
     return f"fra_{digest}"
 
 

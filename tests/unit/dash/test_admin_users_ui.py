@@ -21,7 +21,9 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     edit = _component_with_class(components, "admin-edit-button")
     save = _component_with_class(components, "admin-save-button")
     delete = _component_with_class(components, "admin-delete-button")
-    editable_fields = [component for component in components if "admin-editable-input" in _classes(component)]
+    editable_fields = [
+        component for component in components if "admin-editable-input" in _classes(component)
+    ]
     role = _component_with_class(components, "admin-role-select")
 
     assert _props(row)["data-admin-user-row"] == "true"

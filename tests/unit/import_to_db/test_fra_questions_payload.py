@@ -3,7 +3,10 @@ from unittest.mock import MagicMock, patch
 
 from app.import_to_db.fra import parse_fra_csv_text
 from app.import_to_db.fra.indicators import _normalize_documents
-from app.import_to_db.fra.mongo import _prepare_indicator_document, insert_indicator_fra_json
+from app.import_to_db.fra.mongo import (
+    _prepare_indicator_document,
+    insert_indicator_fra_json,
+)
 
 
 def _payload_dict(payload: Any) -> dict[str, Any]:

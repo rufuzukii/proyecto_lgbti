@@ -4,7 +4,8 @@ from dash import dcc, html
 from dash.development.base_component import Component
 from flask_login import current_user
 
-from app.dash.i18n import dash_attrs, text, text_attrs
+from app.auth.permissions import Permission, user_has_permission
+from app.dash.i18n import attribute_attrs, dash_attrs, text, text_attrs
 from app.users.schemas import UserRole
 
 
@@ -18,6 +19,8 @@ def build_navbar(active: str | None = None) -> Component:
         ("Acerca de", "About", "/about", "about"),
         ("Importar datos", "Import data", "/upload", "upload"),
     ]
+    if not user_has_permission(current_user, Permission.UPLOAD_DATA):
+        links = [link for link in links if link[3] != "upload"]
     admin_link = _admin_link(active)
     navbar_class = "navbar navbar--admin" if admin_link is not None else "navbar"
 
@@ -69,6 +72,9 @@ def build_navbar(active: str | None = None) -> Component:
                         "data-nav-menu-toggle": "true",
                         "aria-controls": "primary-navigation",
                         "aria-expanded": "false",
+                        "aria-label": "Abrir menú",
+                        **attribute_attrs("title", "Menú", "Menu"),
+                        **attribute_attrs("aria-label", "Abrir menú", "Open menu"),
                     }
                 ),
             ),
@@ -98,13 +104,24 @@ def build_navbar(active: str | None = None) -> Component:
             ),
         ],
         className=navbar_class,
-        **dash_attrs({"aria-label": "Navegación principal"}),
+        **dash_attrs(
+            {
+                "aria-label": "Navegación principal",
+                **attribute_attrs(
+                    "aria-label",
+                    "Navegación principal",
+                    "Primary navigation",
+                ),
+            }
+        ),
     )
 
 
 def _account_link() -> Component:
     if current_user.is_authenticated:
-        display_name = getattr(current_user, "username", None) or getattr(current_user, "email", None)
+        display_name = getattr(current_user, "username", None) or getattr(
+            current_user, "email", None
+        )
         return dcc.Link(
             text(display_name or "Cuenta", display_name or "Account"),
             href="/user",
@@ -144,7 +161,9 @@ def _language_toggle() -> Component:
                     }
                 ),
             ),
-            html.Span("Idioma", className="nav-control-caption", **text_attrs("Idioma", "Language")),
+            html.Span(
+                "Idioma", className="nav-control-caption", **text_attrs("Idioma", "Language")
+            ),
         ],
         className="nav-control-stack",
     )
@@ -167,7 +186,9 @@ def _theme_toggle() -> Component:
             html.Span(
                 "Modo claro",
                 className="nav-control-caption theme-mode-caption",
-                **dash_attrs({"data-theme-label": "true", **text_attrs("Modo claro", "Light mode")}),
+                **dash_attrs(
+                    {"data-theme-label": "true", **text_attrs("Modo claro", "Light mode")}
+                ),
             ),
         ],
         className="nav-control-stack",

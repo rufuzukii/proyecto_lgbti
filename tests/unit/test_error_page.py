@@ -1,11 +1,3 @@
-from pathlib import Path
-import sys
-
-ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
 from app.dash.layouts.error_page import render_database_unavailable_response
 from app.dash_app import create_dash_app
 from app.errors import DatabaseUnavailableError

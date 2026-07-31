@@ -9,7 +9,6 @@ from app.dash.i18n import text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.users.schemas import UserRole
 
-
 STATUS_MESSAGES = {
     "profile_updated": ("Tu perfil se ha actualizado.", "Your profile was updated."),
     "signed_in": ("Sesión iniciada.", "You are signed in."),
@@ -29,8 +28,8 @@ ERROR_MESSAGES = {
         "Enter a valid email address.",
     ),
     "weak_password": (
-        "La nueva contraseña debe tener entre 8 y 32 caracteres.",
-        "The new password must be between 8 and 32 characters.",
+        "La nueva contraseña debe tener entre 12 y 128 caracteres.",
+        "The new password must be between 12 and 128 characters.",
     ),
     "email_exists": (
         "Ese email ya está en uso por otra cuenta.",
@@ -164,8 +163,8 @@ def _profile_card(
     organization: str,
     role: UserRole | str,
 ) -> Component:
-    organization_es = organization if organization else "Sin organización"
-    organization_en = organization if organization else "No organization"
+    organization_es = organization or "Sin organización"
+    organization_en = organization or "No organization"
     return html.Section(
         [
             html.Div(
@@ -185,7 +184,9 @@ def _profile_card(
             ),
             html.Div(
                 [
-                    _detail_row("Nombre visible", "Display name", username or "No definido", "Not set"),
+                    _detail_row(
+                        "Nombre visible", "Display name", username or "No definido", "Not set"
+                    ),
                     _detail_row("Email", "Email", email or "No definido", "Not set"),
                     _detail_row("Organización", "Organization", organization_es, organization_en),
                     _detail_row("Rol", "Role", _role_label(role), _role_label(role)),
@@ -330,6 +331,9 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                 name="username",
                 type="text",
                 required=True,
+                minLength=2,
+                maxLength=80,
+                autoComplete="name",
                 value=username,
                 className="auth-input",
             ),
@@ -347,6 +351,8 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                 name="email",
                 type="email",
                 required=True,
+                maxLength=254,
+                autoComplete="email",
                 value=email,
                 className="auth-input",
             ),
@@ -372,6 +378,8 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                 name="current_password",
                 type="password",
                 required=True,
+                maxLength=128,
+                autoComplete="current-password",
                 className="auth-input",
             ),
             html.Label(
@@ -383,14 +391,17 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                 id="profile-new-password",
                 name="new_password",
                 type="password",
+                minLength=12,
+                maxLength=128,
+                autoComplete="new-password",
                 className="auth-input",
             ),
             html.P(
-                "Entre 8 y 32 caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
+                "Entre 12 y 128 caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
                 className="auth-help",
                 **text_attrs(
-                    "Entre 8 y 32 caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
-                    "Between 8 and 32 characters. Leave it empty to update only name or email.",
+                    "Entre 12 y 128 caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
+                    "Between 12 and 128 characters. Leave it empty to update only name or email.",
                 ),
             ),
             html.Div(
@@ -497,5 +508,7 @@ def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | 
     if not message:
         return ""
     es, en = message
-    class_name = "auth-message auth-message-error" if is_error else "auth-message auth-message-success"
+    class_name = (
+        "auth-message auth-message-error" if is_error else "auth-message auth-message-success"
+    )
     return html.Div(es, className=class_name, role="alert", **text_attrs(es, en))

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, cast
 
-import json
-from dotenv import load_dotenv
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Json
@@ -24,9 +23,6 @@ class PendingImportLog:
     file_json: JsonPayload | None
     created_at: str | None = None
     record_count: int = 0
-
-# Load local .env values without replacing variables already provided by the process.
-load_dotenv()
 
 
 def _resolve_postgres_dsn() -> str:
@@ -193,8 +189,10 @@ def _row_to_pending_import_log(row: Any) -> PendingImportLog:
 
 def test_connection() -> dict[str, Any]:
     dsn = _resolve_postgres_dsn()
-    with psycopg.connect(dsn, connect_timeout=get_postgres_connect_timeout()) as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            result = cursor.fetchone()
+    with (
+        psycopg.connect(dsn, connect_timeout=get_postgres_connect_timeout()) as conn,
+        conn.cursor() as cursor,
+    ):
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
     return {"ok": result is not None}

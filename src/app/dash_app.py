@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
-from dash import Dash, Input, Output, State, dcc, html
-from flask import redirect, request
+from dash import Dash, Input, Output, dcc, html
+from flask import redirect, request, session
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
 from pydantic import ValidationError
 
 from app.analytics import invalidate_analytics_cache
 from app.analytics.repository import assert_analytics_databases_available
-from app.auth.csrf import validate_csrf_token
+from app.auth.csrf import rotate_csrf_token, validate_csrf_token
 from app.auth.permissions import Permission, is_admin_user, user_has_permission
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
@@ -27,30 +27,35 @@ from app.dash.layouts.error_page import (
 from app.dash.layouts.home import build_home_layout, register_home_callbacks
 from app.dash.layouts.user_page import build_user_page_layout
 from app.dash.pages.admin.imports import build_admin_imports_layout
-from app.dash.pages.admin.users import build_access_denied_layout, build_admin_users_layout
-from app.dash.pages.session.login import build_login_layout
-from app.dash.pages.session.register import build_register_layout
-from app.dash.pages.statistics import (
-    build_statistics_layout,
-    register_statistics_callbacks,
+from app.dash.pages.admin.users import (
+    build_access_denied_layout,
+    build_admin_users_layout,
 )
 from app.dash.pages.reports import (
     build_reports_access_denied_layout,
     build_reports_layout,
     register_reports_callbacks,
 )
+from app.dash.pages.session.login import build_login_layout
+from app.dash.pages.session.register import build_register_layout
 from app.dash.pages.spain import build_spain_layout, register_spain_callbacks
+from app.dash.pages.statistics import (
+    build_statistics_layout,
+    register_statistics_callbacks,
+)
 from app.dash.pages.upload import (
     MAX_UPLOAD_REQUEST_BYTES,
     build_upload_layout,
     register_upload_callbacks,
 )
 from app.errors import DatabaseUnavailableError
+from app.http_security import configure_flask_security, rate_limit_key
 from app.import_to_db.import_log import (
     delete_import_log,
     get_pending_import_log,
     list_pending_import_logs,
 )
+from app.logging_config import configure_secure_logging
 from app.mongo_indexes import initialize_mongo_indexes
 from app.users.schemas import UserRegister, UserRole
 from app.users.service import (
@@ -66,6 +71,18 @@ from app.users.service import (
 )
 
 logger = logging.getLogger(__name__)
+SAFE_NEXT_PATHS = {
+    "/",
+    "/about",
+    "/admin",
+    "/admin/imports",
+    "/informes",
+    "/reports",
+    "/spain",
+    "/statistics",
+    "/upload",
+    "/user",
+}
 
 DASH_INDEX_STRING = """
 <!DOCTYPE html>
@@ -130,9 +147,11 @@ def create_dash_app() -> Dash:
     app.server.config.update(
         SECRET_KEY=config.secret_key,
         MAX_CONTENT_LENGTH=MAX_UPLOAD_REQUEST_BYTES,
-        SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=not config.local_mode,
+    )
+    configure_flask_security(
+        app.server,
+        production=not config.local_mode,
+        cookie_name="rainbowlens_session",
     )
     init_cache(app.server)
     try:
@@ -142,7 +161,7 @@ def create_dash_app() -> Dash:
     _register_error_routes(app)
 
     login_manager = LoginManager()
-    login_manager.session_protection = "basic"
+    login_manager.session_protection = "strong"
     login_manager.init_app(app.server)
     _register_user_loader(login_manager)
     _register_auth_routes(app)
@@ -163,7 +182,15 @@ def create_dash_app() -> Dash:
             html.Footer(
                 [
                     html.Strong("RainbowLens"),
-                    html.Span("Version 1.0.0"),
+                    html.Span(
+                        "Versión 1.0.0",
+                        **dash_attrs(
+                            {
+                                "data-i18n-es": "Versión 1.0.0",
+                                "data-i18n-en": "Version 1.0.0",
+                            }
+                        ),
+                    ),
                 ],
                 className="site-footer",
             ),
@@ -196,6 +223,10 @@ def create_dash_app() -> Dash:
             if pathname == "/spain":
                 return build_spain_layout()
             if pathname == "/upload":
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path="/upload")
+                if not user_has_permission(current_user, Permission.UPLOAD_DATA):
+                    return build_access_denied_layout()
                 return build_upload_layout()
             if pathname == "/about":
                 return build_about_layout()
@@ -276,13 +307,7 @@ def create_dash_app() -> Dash:
 
 
 def _configure_application_logging() -> None:
-    level_name = os.getenv("LOG_LEVEL", "INFO").strip().upper()
-    level = getattr(logging, level_name, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
-    logging.getLogger("app").setLevel(level)
+    configure_secure_logging()
 
 
 def _register_client_preferences_callbacks(app: Dash) -> None:
@@ -397,7 +422,9 @@ def _register_auth_routes(app: Dash) -> None:
             rate_limiter.record_failure(rate_key)
             return _redirect("/login", error="invalid_credentials", next_path=next_path)
 
+        session.clear()
         login_user(_session_user_from_record(record), remember=False, fresh=True)
+        rotate_csrf_token()
         rate_limiter.reset(rate_key)
         return redirect(next_path)
 
@@ -407,7 +434,7 @@ def _register_auth_routes(app: Dash) -> None:
         if not validate_csrf_token(request.form.get("csrf_token")):
             return _redirect("/register", error="csrf", next_path=next_path)
 
-        rate_key = _rate_key(request.form.get("email"))
+        rate_key = _rate_key(request.form.get("email"), include_email=False)
         if rate_limiter.is_blocked(rate_key):
             return _redirect("/register", error="rate_limited", next_path=next_path)
 
@@ -427,9 +454,9 @@ def _register_auth_routes(app: Dash) -> None:
         try:
             created_user = create_user(payload, role=UserRole.COMMON)
             record = get_user_record(created_user.id)
-        except ValueError as exc:
+        except ValueError:
             rate_limiter.record_failure(rate_key)
-            return _redirect("/register", error=str(exc), next_path=next_path)
+            return _redirect("/register", error="registration_failed", next_path=next_path)
         except UserStorageError:
             logger.exception("register_storage_error")
             return _redirect("/register", error="storage", next_path=next_path)
@@ -440,7 +467,9 @@ def _register_auth_routes(app: Dash) -> None:
         if record is None:
             return _redirect("/register", error="storage", next_path=next_path)
 
+        session.clear()
         login_user(_session_user_from_record(record), remember=False, fresh=True)
+        rotate_csrf_token()
         rate_limiter.reset(rate_key)
         return redirect(next_path)
 
@@ -449,6 +478,7 @@ def _register_auth_routes(app: Dash) -> None:
         if not validate_csrf_token(request.form.get("csrf_token")):
             return _redirect("/user", error="csrf")
         logout_user()
+        session.clear()
         return redirect("/")
 
     @app.server.post("/auth/profile")
@@ -476,6 +506,7 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/user", mode="edit", error="storage")
 
         login_user(_session_user_from_record(updated), remember=False, fresh=True)
+        rotate_csrf_token()
         return _redirect("/user", status="profile_updated")
 
     @app.server.post("/admin/users")
@@ -645,23 +676,27 @@ def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
         "generated_on",
     }
     values: dict[str, object] = {
-        key: first
-        for key in allowed
-        if (first := _first_param(params, key)) is not None
+        key: first for key in allowed if (first := _first_param(params, key)) is not None
     }
     for list_key in ("countries", "sections", "charts"):
         raw = _first_param(params, list_key)
         if raw:
-            values[list_key] = [
-                item.strip()
-                for item in raw.split(",")
-                if item.strip()
-            ]
+            values[list_key] = [item.strip() for item in raw.split(",") if item.strip()]
     return values
 
 
 def _safe_next(value: str | None, default: str = "/user") -> str:
-    if not value or not value.startswith("/") or value.startswith("//"):
+    if not value or "\\" in value:
+        return default
+    parsed = urlsplit(value)
+    decoded_path = unquote(parsed.path)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.fragment
+        or decoded_path.startswith("//")
+        or decoded_path not in SAFE_NEXT_PATHS
+    ):
         return default
     return value
 
@@ -676,8 +711,9 @@ def _redirect(path: str, **params: str | None):
     return redirect(f"{path}{query}")
 
 
-def _rate_key(email: str | None) -> str:
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-    ip = ip.split(",")[0].strip()
-    email_part = email.strip().lower() if isinstance(email, str) else ""
-    return f"{ip}:{email_part}"
+def _rate_key(email: str | None, *, include_email: bool = True) -> str:
+    email_part = email.strip().lower()[:254] if isinstance(email, str) else ""
+    return rate_limit_key(
+        subject=email_part if include_email else "",
+        scope="login" if include_email else "registration",
+    )

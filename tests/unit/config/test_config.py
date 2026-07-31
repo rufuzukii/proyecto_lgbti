@@ -1,14 +1,11 @@
-from pathlib import Path
-import sys
-
 import pytest
 
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from app.config import get_app_config, get_mongo_config, get_postgres_config, get_postgres_dsn
+from app.config import (
+    get_app_config,
+    get_mongo_config,
+    get_postgres_config,
+    get_postgres_dsn,
+)
 
 
 def test_get_postgres_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -30,7 +27,8 @@ def test_get_app_config_local_default_secret(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("LOCAL_MODE", "true")
     monkeypatch.delenv("SECRET_KEY", raising=False)
     cfg = get_app_config()
-    assert cfg.secret_key == "local-dev-secret-key"
+    assert len(cfg.secret_key) >= 32
+    assert cfg.secret_key == get_app_config().secret_key
     assert cfg.debug is True
 
 
@@ -40,6 +38,45 @@ def test_get_app_config_requires_secret_in_production(monkeypatch: pytest.Monkey
     monkeypatch.delenv("SECRET_KEY", raising=False)
     with pytest.raises(RuntimeError):
         get_app_config()
+
+
+def test_config_representations_do_not_expose_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("LOCAL_MODE", "true")
+    monkeypatch.setenv("SECRET_KEY", "secret-key-value")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "database-password")
+    monkeypatch.setenv("MONGO_URI", "mongodb://user:mongo-password@localhost/app")
+
+    assert "secret-key-value" not in repr(get_app_config())
+    assert "database-password" not in repr(get_postgres_config())
+    assert "mongo-password" not in repr(get_mongo_config())
+
+
+def test_production_database_urls_require_tls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("LOCAL_MODE", "false")
+    monkeypatch.setenv("SECRET_KEY", "s" * 32)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://user:password@example.net/app?sslmode=disable",
+    )
+    with pytest.raises(RuntimeError, match="require TLS"):
+        get_postgres_dsn()
+
+    monkeypatch.setenv("MONGO_URI", "mongodb://user:password@example.net/app?tls=false")
+    with pytest.raises(RuntimeError, match="cannot disable TLS"):
+        get_mongo_config()
+
+
+def test_production_mongo_uri_enables_tls_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("LOCAL_MODE", "false")
+    monkeypatch.setenv("SECRET_KEY", "s" * 32)
+    monkeypatch.setenv("MONGO_URI", "mongodb://user:password@example.net/app")
+
+    assert get_mongo_config().uri == "mongodb://user:password@example.net/app?tls=true"
 
 
 def test_get_postgres_dsn_requires_database_in_production(
@@ -60,4 +97,3 @@ def test_get_mongo_config_reads_database_from_uri(monkeypatch: pytest.MonkeyPatc
     cfg = get_mongo_config()
 
     assert cfg.database == "rainbow_data"
-

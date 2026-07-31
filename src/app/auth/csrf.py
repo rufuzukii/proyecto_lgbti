@@ -21,3 +21,10 @@ def validate_csrf_token(token: str | None) -> bool:
     if not isinstance(expected, str) or not isinstance(token, str):
         return False
     return hmac.compare_digest(expected, token)
+
+
+def rotate_csrf_token() -> str:
+    """Replace the token after an authentication boundary changes."""
+    token = token_urlsafe(32)
+    session[SESSION_KEY] = token
+    return token

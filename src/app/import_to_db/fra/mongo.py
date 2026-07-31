@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from bson import ObjectId
+
 from app.mongo import get_mongo_collection
 
 INDICATOR_FRA_COLLECTION = "Indicator_fra"
@@ -52,7 +53,11 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
 
 
 def _normalize_documents(file_json: dict[str, Any] | list[Any]) -> list[dict[str, Any]]:
-    if isinstance(file_json, dict) and file_json.get("code") and isinstance(file_json.get("answers"), list):
+    if (
+        isinstance(file_json, dict)
+        and file_json.get("code")
+        and isinstance(file_json.get("answers"), list)
+    ):
         return [deepcopy(file_json)]
     if isinstance(file_json, dict) and isinstance(file_json.get("questions"), list):
         questions = file_json["questions"]

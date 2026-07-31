@@ -4,8 +4,9 @@ from copy import deepcopy
 from typing import Any
 
 from bson import ObjectId
-from app.mongo import get_mongo_collection
+
 from app.import_to_db.ilga.importer import ILGA_DATASET_CODE, parse_ilga_json_text
+from app.mongo import get_mongo_collection
 
 INDICATOR_ILGA_COLLECTION = "Indicator_ilga"
 
@@ -32,7 +33,8 @@ def _prepare_ilga_document(document: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise ValueError("invalid_ilga_payload") from exc
     if isinstance(prepared, list):
-        raise ValueError("invalid_ilga_payload")
+        # Persistence callers expose one stable exception for malformed payloads.
+        raise ValueError("invalid_ilga_payload")  # noqa: TRY004
 
     prepared["_id"] = _resolve_object_id(document.get("id"))
     return prepared

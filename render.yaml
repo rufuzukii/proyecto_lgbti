@@ -15,6 +15,8 @@ services:
         value: 3.14.2
       - key: SECRET_KEY
         generateValue: true
+      - key: SESSION_LIFETIME_HOURS
+        value: "12"
       - key: DATABASE_URL
         sync: false
       - key: POSTGRES_SSL_MODE
@@ -65,5 +67,19 @@ services:
         value: "30"
       - key: UPLOAD_MAX_REQUEST_MB
         value: "90"
+      - key: UPLOAD_MAX_ATTEMPTS
+        value: "10"
+      - key: UPLOAD_WINDOW_SECONDS
+        value: "3600"
       - key: PDF_FIGURE_MAX_PIXELS
         value: "2500000"
+      - key: PDF_MAX_PAGES
+        value: "500"
+      - key: FELGTBI_SCRAPER_MAX_RESPONSE_MB
+        value: "20"
+      - key: REPORT_PREVIEW_MAX_ATTEMPTS
+        value: "30"
+      - key: REPORT_DOWNLOAD_MAX_ATTEMPTS
+        value: "10"
+      - key: REPORT_RATE_WINDOW_SECONDS
+        value: "3600"

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import date
 import logging
+import os
 from typing import Any
 
-from dash import Dash, Input, Output, State, dash_table, dcc, html, no_update
+import dash_ag_grid as dag
+from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.development.base_component import Component
 from flask_login import current_user
 
@@ -20,8 +21,11 @@ from app.analytics.repository import (
 from app.analytics.statistics_exports import chart_graph_config
 from app.analytics.statistics_normalizers import normalize_text_key
 from app.auth.permissions import Permission, user_has_permission
-from app.dash.i18n import dash_attrs, text, text_attrs
+from app.auth.rate_limit import create_rate_limiter
+from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.dates import utc_today_iso
+from app.http_security import rate_limit_key
 from app.reports.models import (
     DEFAULT_REPORT_CHARTS,
     DEFAULT_REPORT_SECTIONS,
@@ -41,22 +45,39 @@ EXCLUDED_CATEGORIES = {
     normalize_text_key("Spanish LGBTIQ+ indicators"),
 }
 
-COUNTRY_OPTIONS = [
-    ("AT", "Austria"), ("BE", "Bélgica / Belgium"), ("BG", "Bulgaria"),
-    ("HR", "Croacia / Croatia"), ("CY", "Chipre / Cyprus"),
-    ("CZ", "República Checa / Czechia"), ("DK", "Dinamarca / Denmark"),
-    ("EE", "Estonia"), ("FI", "Finlandia / Finland"), ("FR", "Francia / France"),
-    ("DE", "Alemania / Germany"), ("GR", "Grecia / Greece"),
-    ("HU", "Hungría / Hungary"), ("IE", "Irlanda / Ireland"),
-    ("IT", "Italia / Italy"), ("LV", "Letonia / Latvia"),
-    ("LT", "Lituania / Lithuania"), ("LU", "Luxemburgo / Luxembourg"),
-    ("MT", "Malta"), ("NL", "Países Bajos / Netherlands"),
-    ("PL", "Polonia / Poland"), ("PT", "Portugal"), ("RO", "Rumanía / Romania"),
-    ("SK", "Eslovaquia / Slovakia"), ("SI", "Eslovenia / Slovenia"),
-    ("ES", "España / Spain"), ("SE", "Suecia / Sweden"),
-    ("GB", "Reino Unido / United Kingdom"), ("NO", "Noruega / Norway"),
-    ("IS", "Islandia / Iceland"), ("CH", "Suiza / Switzerland"),
-]
+REPORT_COUNTRY_CODES = (
+    "AT",
+    "BE",
+    "BG",
+    "HR",
+    "CY",
+    "CZ",
+    "DK",
+    "EE",
+    "FI",
+    "FR",
+    "DE",
+    "GR",
+    "HU",
+    "IE",
+    "IT",
+    "LV",
+    "LT",
+    "LU",
+    "MT",
+    "NL",
+    "PL",
+    "PT",
+    "RO",
+    "SK",
+    "SI",
+    "ES",
+    "SE",
+    "GB",
+    "NO",
+    "IS",
+    "CH",
+)
 
 SECTION_LABELS = {
     "executive": ("Resumen ejecutivo", "Executive summary"),
@@ -96,7 +117,9 @@ def build_reports_layout(
     years = _year_options(config.source)
     year = config.year or (years[0]["value"] if years else None)
     categories = _category_options(config.source, year)
-    category = config.category or (categories[0]["value"] if config.source == "ilga" and categories else "")
+    category = config.category or (
+        categories[0]["value"] if config.source == "ilga" and categories else ""
+    )
     indicators = _indicator_options(config.source, category, year)
     if config.indicator_id and config.indicator_id not in {item["value"] for item in indicators}:
         indicators.append(
@@ -125,7 +148,12 @@ def build_reports_layout(
                                 className="stats-eyebrow",
                                 **text_attrs("Informes para RRHH", "HR reports"),
                             ),
-                            html.H1(text("Informe de diversidad e inclusión", "Diversity and inclusion report")),
+                            html.H1(
+                                text(
+                                    "Informe de diversidad e inclusión",
+                                    "Diversity and inclusion report",
+                                )
+                            ),
                             html.P(
                                 text(
                                     "Configura, previsualiza y descarga un informe basado en las estadísticas europeas actuales.",
@@ -138,7 +166,15 @@ def build_reports_layout(
                     ),
                     html.Div(
                         [
-                            _configuration_panel(config, years, year, categories, category, indicators, country_options),
+                            _configuration_panel(
+                                config,
+                                years,
+                                year,
+                                categories,
+                                category,
+                                indicators,
+                                country_options,
+                            ),
                             _content_panel(config),
                         ],
                         className="reports-config-grid",
@@ -211,7 +247,9 @@ def build_reports_access_denied_layout() -> Component:
                             "Your account is not allowed to generate reports.",
                         )
                     ),
-                    dcc.Link(text("Volver a Estadísticas", "Back to Statistics"), href="/statistics"),
+                    dcc.Link(
+                        text("Volver a Estadísticas", "Back to Statistics"), href="/statistics"
+                    ),
                 ],
                 className="reports-access-denied",
             ),
@@ -220,6 +258,17 @@ def build_reports_access_denied_layout() -> Component:
 
 
 def register_reports_callbacks(app: Dash) -> None:
+    preview_rate_limiter = create_rate_limiter(
+        max_attempts=max(1, int(os.getenv("REPORT_PREVIEW_MAX_ATTEMPTS", "30"))),
+        window_seconds=max(60, int(os.getenv("REPORT_RATE_WINDOW_SECONDS", "3600"))),
+        namespace="report-previews",
+    )
+    download_rate_limiter = create_rate_limiter(
+        max_attempts=max(1, int(os.getenv("REPORT_DOWNLOAD_MAX_ATTEMPTS", "10"))),
+        window_seconds=max(60, int(os.getenv("REPORT_RATE_WINDOW_SECONDS", "3600"))),
+        namespace="report-downloads",
+    )
+
     @app.callback(
         Output("report-year-select", "options"),
         Output("report-year-select", "value"),
@@ -229,7 +278,9 @@ def register_reports_callbacks(app: Dash) -> None:
     def update_report_years(source: str | None, current_year: int | None):
         options = _year_options(source or "fra")
         values = {item["value"] for item in options}
-        return options, current_year if current_year in values else (options[0]["value"] if options else None)
+        return options, current_year if current_year in values else (
+            options[0]["value"] if options else None
+        )
 
     @app.callback(
         Output("report-category-select", "options"),
@@ -272,9 +323,7 @@ def register_reports_callbacks(app: Dash) -> None:
         values = {item["value"] for item in options}
         value = current_indicator if current_indicator in values else None
         is_fra = source == "fra"
-        criterion_options = (
-            [] if is_fra else _criterion_options(year, category or "")
-        )
+        criterion_options = [] if is_fra else _criterion_options(year, category or "")
         criterion_values = {item["value"] for item in criterion_options}
         return (
             options,
@@ -344,11 +393,30 @@ def register_reports_callbacks(app: Dash) -> None:
             return (
                 no_update,
                 no_update,
-                _t(language, "No tienes permiso para generar informes.", "You are not allowed to generate reports."),
+                _t(
+                    language,
+                    "No tienes permiso para generar informes.",
+                    "You are not allowed to generate reports.",
+                ),
                 "reports-status reports-status-error",
                 no_update,
                 True,
             )
+        limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="report-preview")
+        if preview_rate_limiter.is_blocked(limiter_key):
+            return (
+                no_update,
+                no_update,
+                _t(
+                    language,
+                    "Has alcanzado el límite temporal de vistas previas.",
+                    "You have reached the temporary preview limit.",
+                ),
+                "reports-status reports-status-error",
+                no_update,
+                True,
+            )
+        preview_rate_limiter.record_failure(limiter_key)
         config = _configuration_from_controls(
             title=title,
             organization=organization,
@@ -375,7 +443,11 @@ def register_reports_callbacks(app: Dash) -> None:
             return (
                 _preview_error(config.language),
                 "reports-preview-empty",
-                _t(config.language, "No se ha podido generar la vista previa.", "The preview could not be generated."),
+                _t(
+                    config.language,
+                    "No se ha podido generar la vista previa.",
+                    "The preview could not be generated.",
+                ),
                 "reports-status reports-status-error",
                 no_update,
                 True,
@@ -419,17 +491,35 @@ def register_reports_callbacks(app: Dash) -> None:
         if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
             return (
                 no_update,
-                _t(language, "No tienes permiso para generar informes.", "You are not allowed to generate reports."),
+                _t(
+                    language,
+                    "No tienes permiso para generar informes.",
+                    "You are not allowed to generate reports.",
+                ),
                 "reports-status reports-status-error",
             )
-        try:
-            generated = generate_report_pdf(
-                ReportConfiguration.from_mapping(stored_configuration)
+        limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="report-download")
+        if download_rate_limiter.is_blocked(limiter_key):
+            return (
+                no_update,
+                _t(
+                    language,
+                    "Has alcanzado el límite temporal de informes.",
+                    "You have reached the temporary report limit.",
+                ),
+                "reports-status reports-status-error",
             )
+        download_rate_limiter.record_failure(limiter_key)
+        try:
+            generated = generate_report_pdf(ReportConfiguration.from_mapping(stored_configuration))
         except ReportGenerationError:
             return (
                 no_update,
-                _t(language, "No se ha podido generar el informe.", "The report could not be generated."),
+                _t(
+                    language,
+                    "No se ha podido generar el informe.",
+                    "The report could not be generated.",
+                ),
                 "reports-status reports-status-error",
             )
         return (
@@ -450,7 +540,7 @@ def _configuration_panel(
     categories: list[dict[str, Any]],
     category: str,
     indicators: list[dict[str, Any]],
-    country_options: list[dict[str, str]],
+    country_options: list[dict[str, Any]],
 ) -> Component:
     return html.Section(
         [
@@ -538,11 +628,7 @@ def _configuration_panel(
                 "ILGA-Europe criterion",
                 dcc.Dropdown(
                     id="report-criterion-select",
-                    options=(
-                        []
-                        if config.source == "fra"
-                        else _criterion_options(year, category)
-                    ),
+                    options=([] if config.source == "fra" else _criterion_options(year, category)),
                     value=config.criterion or None,
                     clearable=True,
                 ),
@@ -587,7 +673,7 @@ def _configuration_panel(
                 "Generation date",
                 dcc.DatePickerSingle(
                     id="report-generated-on",
-                    date=config.generated_on or date.today().isoformat(),
+                    date=config.generated_on or utc_today_iso(),
                     display_format="YYYY-MM-DD",
                 ),
             ),
@@ -711,18 +797,40 @@ def _preview_content(content) -> list[Component]:
         )
         for chart in content.charts
     ]
-    table = dash_table.DataTable(
-        columns=[
-            {"name": "Country" if language == "en" else "País", "id": "country"},
-            {"name": "Value" if language == "en" else "Valor", "id": "value", "type": "numeric"},
-            {"name": "Rank" if language == "en" else "Posición", "id": "position", "type": "numeric"},
-            {"name": "EU difference" if language == "en" else "Diferencia UE", "id": "difference", "type": "numeric"},
-            {"name": "Year" if language == "en" else "Año", "id": "year", "type": "numeric"},
+    table = dag.AgGrid(
+        columnDefs=[
+            {"headerName": "Country" if language == "en" else "País", "field": "country"},
+            {
+                "headerName": "Value" if language == "en" else "Valor",
+                "field": "value",
+                "type": "numericColumn",
+            },
+            {
+                "headerName": "Rank" if language == "en" else "Posición",
+                "field": "position",
+                "type": "numericColumn",
+            },
+            {
+                "headerName": "EU difference" if language == "en" else "Diferencia UE",
+                "field": "difference",
+                "type": "numericColumn",
+            },
+            {
+                "headerName": "Year" if language == "en" else "Año",
+                "field": "year",
+                "type": "numericColumn",
+            },
         ],
-        data=content.table_rows,
-        sort_action="native",
-        page_size=10,
-        style_table={"overflowX": "auto"},
+        rowData=content.table_rows,
+        defaultColDef={"sortable": True, "filter": True, "resizable": True},
+        dashGridOptions={
+            "pagination": True,
+            "paginationPageSize": 10,
+            "paginationPageSizeSelector": False,
+            "domLayout": "autoHeight",
+        },
+        className="ag-theme-quartz reports-preview-grid",
+        style={"width": "100%"},
     )
     components: list[Component] = [
         html.Header(
@@ -772,11 +880,11 @@ def _preview_content(content) -> list[Component]:
     if "comparison" in enabled and content.table_rows:
         components.append(
             html.Div(
-            [
-                html.H3("Comparación" if language == "es" else "Comparison"),
-                table,
-            ],
-            className="reports-preview-section",
+                [
+                    html.H3("Comparación" if language == "es" else "Comparison"),
+                    table,
+                ],
+                className="reports-preview-section",
             )
         )
     if "risks" in enabled and content.conclusions:
@@ -812,19 +920,11 @@ def _preview_recommendations(content) -> Component:
     return html.Div(
         [
             html.H3("Recomendaciones" if language == "es" else "Recommendations"),
-            html.H4(
-                "Derivadas de las métricas"
-                if language == "es"
-                else "Derived from metrics"
-            )
+            html.H4("Derivadas de las métricas" if language == "es" else "Derived from metrics")
             if derived
             else None,
             html.Ul([html.Li(item) for item in derived]),
-            html.H4(
-                "Buenas prácticas generales"
-                if language == "es"
-                else "General good practices"
-            ),
+            html.H4("Buenas prácticas generales" if language == "es" else "General good practices"),
             html.Ul([html.Li(item) for item in general]),
         ],
         className="reports-preview-section",
@@ -871,13 +971,20 @@ def _year_options(source: str) -> list[dict[str, Any]]:
     return [{"label": str(year), "value": year} for year in values]
 
 
-def _category_options(source: str, year: int | None) -> list[dict[str, str]]:
+def _category_options(source: str, year: int | None) -> list[dict[str, Any]]:
     if source == "fra":
         values = get_fra_categories()
     else:
         values = ["Ranking total", *get_ilga_criteria_categories_by_year(year)]
     return [
-        {"label": category, "value": category}
+        {
+            "label": (
+                text("Ranking total", "Overall ranking")
+                if category == "Ranking total"
+                else category
+            ),
+            "value": category,
+        }
         for category in values
         if normalize_text_key(category) not in EXCLUDED_CATEGORIES
     ]
@@ -909,14 +1016,14 @@ def _criterion_options(
     ]
 
 
-def _country_options(selected: tuple[str, ...]) -> list[dict[str, str]]:
-    known = {code for code, _label in COUNTRY_OPTIONS}
-    values = [{"label": label, "value": code} for code, label in COUNTRY_OPTIONS]
-    values.extend(
-        {"label": code, "value": code}
-        for code in selected
-        if code not in known
-    )
+def _country_options(selected: tuple[str, ...]) -> list[dict[str, Any]]:
+    known = set(REPORT_COUNTRY_CODES)
+    values = [
+        {"label": text(label_es, label_en), "value": code}
+        for code in REPORT_COUNTRY_CODES
+        for label_es, label_en in [country_labels(code)]
+    ]
+    values.extend({"label": code, "value": code} for code in selected if code not in known)
     return values
 
 

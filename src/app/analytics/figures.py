@@ -105,8 +105,7 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
                     "thickness": 13,
                 },
                 hovertemplate=(
-                    "<b>%{text}</b><br>"
-                    "%{customdata[1]}: %{customdata[2]}<extra></extra>"
+                    "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
                 ),
             )
         )
@@ -179,8 +178,7 @@ def build_fra_country_bar(document: dict[str, Any] | None) -> go.Figure:
             marker={"color": "#a55233"},
             customdata=[item["observations"] for item in answers],
             hovertemplate=(
-                "<b>%{x}</b><br>Media: %{y:.2f}%"
-                "<br>Observaciones: %{customdata}<extra></extra>"
+                "<b>%{x}</b><br>Media: %{y:.2f}%<br>Observaciones: %{customdata}<extra></extra>"
             ),
         )
     )
@@ -217,8 +215,7 @@ def build_fra_answer_distribution(document: dict[str, Any] | None) -> go.Figure:
             customdata=[item["observations"] for item in answers],
             marker={"color": "#3266a8"},
             hovertemplate=(
-                "<b>%{x}</b><br>Media: %{y:.2f}%"
-                "<br>Observaciones: %{customdata}<extra></extra>"
+                "<b>%{x}</b><br>Media: %{y:.2f}%<br>Observaciones: %{customdata}<extra></extra>"
             ),
         )
     )
@@ -243,7 +240,8 @@ def build_fra_country_answer_bar(
     selected_answer = answer or _default_fra_answer(document)
     answers = _aggregate_fra_answers(document, answer=selected_answer)
     answers = [
-        item for item in answers
+        item
+        for item in answers
         if item["country_code"] != "EU27" and item["country"].upper() != "EU27"
     ]
     answers = sorted(answers, key=lambda item: item["percentage"], reverse=True)[:limit]
@@ -256,8 +254,7 @@ def build_fra_country_answer_bar(
             marker={"color": "#a55233"},
             customdata=[item["observations"] for item in reversed(answers)],
             hovertemplate=(
-                "<b>%{y}</b><br>%{x:.2f}%"
-                "<br>Observaciones: %{customdata}<extra></extra>"
+                "<b>%{y}</b><br>%{x:.2f}%<br>Observaciones: %{customdata}<extra></extra>"
             ),
         )
     )
@@ -346,7 +343,7 @@ def build_fra_choropleth(
         logger=logger,
         context={"chart": "home_fra_choropleth"},
     )
-    for item, display_value in zip(answers, display_values):
+    for item, display_value in zip(answers, display_values, strict=True):
         item["display_value"] = display_value
         item["display_value_text"] = format_percentage(display_value)
         item["value_label"] = ui_text("chart_value", language)
@@ -381,8 +378,7 @@ def build_fra_choropleth(
                     "thickness": 13,
                 },
                 hovertemplate=(
-                    "<b>%{text}</b><br>"
-                    "%{customdata[1]}: %{customdata[2]}<extra></extra>"
+                    "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
                 ),
             )
         )
@@ -394,8 +390,7 @@ def build_fra_choropleth(
                 text=[item["country"] for item in unavailable],
                 z=[0] * len(unavailable),
                 customdata=[
-                    [item["country_code"], item["missing_message"]]
-                    for item in unavailable
+                    [item["country_code"], item["missing_message"]] for item in unavailable
                 ],
                 zmin=0,
                 zmax=1,
@@ -632,9 +627,7 @@ def build_ilga_category_heatmap(
                     [1.0, "#167d68"],
                 ],
                 colorbar={"title": "Valor"},
-                hovertemplate=(
-                    "<b>%{y}</b><br>%{x}<br>Valor: %{z}<extra></extra>"
-                ),
+                hovertemplate=("<b>%{y}</b><br>%{x}<br>Valor: %{z}<extra></extra>"),
             )
         )
     else:
@@ -888,7 +881,7 @@ def _representative_filter_type(rows: list[dict[str, Any]]) -> str | None:
     ]
     if not scored:
         return None
-    return sorted(scored, key=lambda item: item[1], reverse=True)[0][0]
+    return max(scored, key=lambda item: item[1])[0]
 
 
 def _add_empty_annotation(figure: go.Figure, text: str) -> None:

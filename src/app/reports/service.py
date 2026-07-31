@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
-from pathlib import Path
 import tempfile
 import time
+from dataclasses import dataclass
+from pathlib import Path
 
 from app.analytics.statistics_exports import (
     build_export_filename,
@@ -121,9 +121,7 @@ def generate_report_pdf(configuration: ReportConfiguration) -> GeneratedReport:
                 "country_count": len(configuration.countries),
             },
         )
-        raise ReportGenerationError(
-            "The report could not be generated."
-        ) from exc
+        raise ReportGenerationError("The report could not be generated.") from exc
 
 
 def _report_filename(

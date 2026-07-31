@@ -3,9 +3,10 @@ from __future__ import annotations
 import csv
 import json
 import re
+from collections.abc import Iterable
 from io import StringIO
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from bson import ObjectId
 
@@ -108,7 +109,8 @@ def _normalize_ilga_document(document: dict[str, Any]) -> dict:
 
 def _normalize_country(country: Any) -> dict:
     if not isinstance(country, dict):
-        raise ValueError("invalid_ilga_payload")
+        # Import callers expose one stable exception for every malformed payload.
+        raise ValueError("invalid_ilga_payload")  # noqa: TRY004
 
     country_name = str(country.get("country") or "").strip()
     country_code = str(country.get("country_code") or "").strip()

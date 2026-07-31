@@ -32,10 +32,7 @@ def test_get_criterion_id_accepts_common_ilga_abbreviation_aliases() -> None:
 
 
 def test_stable_criterion_id_falls_back_without_using_visible_text_only_when_known() -> None:
-    assert (
-        stable_criterion_id("Marriage equality", "Family")
-        == "marriage_equality"
-    )
+    assert stable_criterion_id("Marriage equality", "Family") == "marriage_equality"
     assert (
         stable_criterion_id("Dataset-specific criterion", "Custom category")
         == "custom_category_dataset_specific_criterion"

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any, cast
 
 import plotly.graph_objects as go
@@ -20,7 +20,6 @@ from app.analytics.statistics_exports import (
     prepare_figure_for_export,
 )
 from app.dash.pages.statistics import _render_dashboard, build_statistics_layout
-
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -71,9 +70,7 @@ def test_export_metadata_keeps_current_context_and_document_resolution() -> None
     assert layout.meta["export_width"] == EXPORT_WIDTH
     assert layout.meta["export_height"] == EXPORT_HEIGHT
     assert layout.meta["export_scale"] == EXPORT_SCALE
-    assert layout.meta["export_filename"].endswith(
-        "_espana-francia_2024.png"
-    )
+    assert layout.meta["export_filename"].endswith("_espana-francia_2024.png")
     assert "Discriminación en el empleo" in layout.title.text
     assert "Fuente: FRA EU LGBTIQ Survey III" in layout.title.text
     assert "Respuesta: Yes" in layout.title.text
@@ -118,8 +115,7 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
         if getattr(component, "className", "") == "stats-chart-export-button"
     ]
     targets = {
-        component.to_plotly_json()["props"]["data-chart-export-target"]
-        for component in buttons
+        component.to_plotly_json()["props"]["data-chart-export-target"] for component in buttons
     }
 
     assert targets == {
@@ -141,30 +137,28 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
         for component in buttons
     )
     assert all(
-        component.to_plotly_json()["props"]["data-export-width"]
-        == str(EXPORT_WIDTH)
+        component.to_plotly_json()["props"]["data-export-width"] == str(EXPORT_WIDTH)
         for component in buttons
     )
 
 
 def test_client_export_reuses_rendered_plot_without_server_requests() -> None:
-    script = (
-        ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js"
-    ).read_text(encoding="utf-8")
+    script = (ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js").read_text(
+        encoding="utf-8"
+    )
 
     assert "window.Plotly.downloadImage(graph, options)" in script
     assert "fetch(" not in script
     assert "XMLHttpRequest" not in script
     assert 'button.setAttribute("aria-busy", "true")' in script
     assert "button.disabled = false" in script
-    assert "statistics_chart_export_failed" in script
+    assert "setErrorVisibility(error, true)" in script
+    assert "console.error" not in script
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
 def test_client_export_allows_two_consecutive_downloads() -> None:
-    script_path = (
-        ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js"
-    )
+    script_path = ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js"
     harness = f"""
 const fs = require("fs");
 const vm = require("vm");

@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import html
 import logging
-from pathlib import Path
 import re
 import unicodedata
-from typing import Any, Iterable, cast
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any, cast
 
 import plotly.graph_objects as go
 import plotly.io as pio
-
 
 EXPORT_FORMAT = "png"
 EXPORT_WIDTH = 1600
@@ -43,11 +43,7 @@ def build_export_filename(
     year: int | str | None,
 ) -> str:
     """Build a safe, descriptive PNG filename with a bounded length."""
-    country_values = [
-        str(country).strip()
-        for country in countries or []
-        if str(country).strip()
-    ]
+    country_values = [str(country).strip() for country in countries or [] if str(country).strip()]
     parts = [
         "rainbow-lens",
         _slug(chart_type, fallback="grafico", limit=32),
@@ -74,13 +70,11 @@ def prepare_figure_for_export(
     language: str = "es",
 ) -> go.Figure:
     """Attach visible context and client-export metadata to an existing figure."""
-    country_values = [
-        str(country).strip()
-        for country in countries or []
-        if str(country).strip()
-    ]
-    scope = ", ".join(country_values) if country_values else (
-        "Europe" if language == "en" else "Europa"
+    country_values = [str(country).strip() for country in countries or [] if str(country).strip()]
+    scope = (
+        ", ".join(country_values)
+        if country_values
+        else ("Europe" if language == "en" else "Europa")
     )
     source_label = _source_label(source, language)
     details = [
@@ -229,9 +223,7 @@ def _prepare_report_figure(figure: go.Figure) -> go.Figure:
     title_text = getattr(cast(Any, prepared).layout.title, "text", None)
     if isinstance(title_text, str):
         prepared.update_layout(
-            title_text=title_text.replace("·", " - ")
-            .replace("–", "-")
-            .replace("—", "-")
+            title_text=title_text.replace("·", " - ").replace("–", "-").replace("—", "-")
         )
     return prepared
 

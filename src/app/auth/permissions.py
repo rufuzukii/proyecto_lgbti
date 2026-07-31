@@ -1,13 +1,14 @@
-from enum import Enum
+from enum import StrEnum
 
 from app.users.schemas import UserRole, UserType
 
 
-class Permission(str, Enum):
+class Permission(StrEnum):
     VIEW_DASHBOARD = "view_dashboard"
     MANAGE_USERS = "manage_users"
     EXPORT_DATA = "export_data"
     EXPORT_CHARTS = "export_charts"
+    UPLOAD_DATA = "upload_data"
     GENERATE_REPORTS = "generate_reports"
     ACCESS_EDU = "access_edu"
 
@@ -18,6 +19,7 @@ ROLE_PERMISSIONS = {
         Permission.MANAGE_USERS,
         Permission.EXPORT_DATA,
         Permission.EXPORT_CHARTS,
+        Permission.UPLOAD_DATA,
         Permission.GENERATE_REPORTS,
         Permission.ACCESS_EDU,
     },
@@ -25,6 +27,7 @@ ROLE_PERMISSIONS = {
         Permission.VIEW_DASHBOARD,
         Permission.EXPORT_DATA,
         Permission.EXPORT_CHARTS,
+        Permission.UPLOAD_DATA,
         Permission.GENERATE_REPORTS,
         Permission.ACCESS_EDU,
     },
@@ -51,6 +54,8 @@ def user_has_permission(user: object, permission: Permission) -> bool:
 
 
 def is_admin_user(user: object) -> bool:
+    if not bool(getattr(user, "is_authenticated", False)):
+        return False
     role = getattr(user, "role", None)
     role_value = role.value if isinstance(role, UserRole) else str(role or "")
     return role_value.lower() == UserRole.ADMIN.value
@@ -62,4 +67,3 @@ def can_access_user_type(role: UserRole, user_type: UserType | None) -> bool:
     if role == UserRole.COMMON:
         return user_type in {UserType.RRHH, UserType.PROFESOR, UserType.COMUN}
     return False
-

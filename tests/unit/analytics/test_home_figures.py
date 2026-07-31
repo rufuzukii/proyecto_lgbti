@@ -1,6 +1,5 @@
 from typing import Any
 
-
 from app.analytics.figures import build_fra_choropleth, build_ilga_choropleth
 
 

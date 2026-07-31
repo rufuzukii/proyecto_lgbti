@@ -1,10 +1,8 @@
+import logging
 from typing import Any
 from unittest.mock import patch
 
-import logging
-
 from app.dash.layouts.about import _country_criteria_panel, build_about_layout
-
 
 REQUIRED_URLS = {
     "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/",
@@ -17,9 +15,11 @@ REQUIRED_URLS = {
 
 
 def test_about_sources_include_required_external_links() -> None:
-    with patch("app.dash.layouts.about.get_latest_ilga_document", return_value=None):
-        with patch("app.dash.layouts.about.build_navbar", return_value=""):
-            layout = build_about_layout()
+    with (
+        patch("app.dash.layouts.about.get_latest_ilga_document", return_value=None),
+        patch("app.dash.layouts.about.build_navbar", return_value=""),
+    ):
+        layout = build_about_layout()
 
     links = [component for component in _walk(layout) if _component_prop(component, "href")]
     links_by_href = {_component_prop(component, "href"): component for component in links}
@@ -34,9 +34,11 @@ def test_about_sources_include_required_external_links() -> None:
 
 
 def test_about_source_cards_include_integrated_context_without_about_cards() -> None:
-    with patch("app.dash.layouts.about.get_latest_ilga_document", return_value=None):
-        with patch("app.dash.layouts.about.build_navbar", return_value=""):
-            layout = build_about_layout()
+    with (
+        patch("app.dash.layouts.about.get_latest_ilga_document", return_value=None),
+        patch("app.dash.layouts.about.build_navbar", return_value=""),
+    ):
+        layout = build_about_layout()
 
     about_cards = [
         component
@@ -54,6 +56,22 @@ def test_about_source_cards_include_integrated_context_without_about_cards() -> 
         "ILGA Europe evalúa leyes y políticas públicas" in _text_content(card)
         and "En la aplicación, estos datos permiten comparar países" in _text_content(card)
         for card in resource_cards
+    )
+    translated_nodes = [
+        component
+        for component in _walk(layout)
+        if _component_prop(component, "data-i18n-en")
+    ]
+    assert any(
+        _component_prop(component, "data-i18n-en")
+        == "Recommended sources for further reading"
+        for component in translated_nodes
+    )
+    assert any(
+        _component_prop(component, "data-i18n-en")
+        == "Annual comparison of the legal and policy situation of LGBTIQ+ "
+        "people in 49 European countries."
+        for component in translated_nodes
     )
 
 
@@ -76,9 +94,11 @@ def test_about_ilga_breakdown_starts_empty_without_default_country() -> None:
             }
         ],
     }
-    with patch("app.dash.layouts.about.get_latest_ilga_document", return_value=document):
-        with patch("app.dash.layouts.about.build_navbar", return_value=""):
-            layout = build_about_layout()
+    with (
+        patch("app.dash.layouts.about.get_latest_ilga_document", return_value=document),
+        patch("app.dash.layouts.about.build_navbar", return_value=""),
+    ):
+        layout = build_about_layout()
 
     dropdown = _find_by_id(layout, "about-ilga-country")
     panel = _find_by_id(layout, "about-ilga-criteria")

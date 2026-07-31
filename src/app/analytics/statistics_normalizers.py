@@ -129,6 +129,6 @@ def _decode_mojibake_once(text: str) -> str:
     for source_encoding in ("latin1", "cp1252"):
         try:
             return text.encode(source_encoding).decode("utf-8")
-        except (UnicodeEncodeError, UnicodeDecodeError):
+        except UnicodeEncodeError, UnicodeDecodeError:
             continue
     return text

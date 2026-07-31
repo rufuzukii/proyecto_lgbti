@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
 from typing import Any
 
 from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
@@ -16,8 +15,8 @@ from app.analytics.country_status_admin_service import (
     load_country_lgbti_status_for_edit,
     save_country_lgbti_status,
 )
-from app.analytics.figures import build_ilga_choropleth
 from app.analytics.country_status_service import get_country_lgbti_status
+from app.analytics.figures import build_ilga_choropleth
 from app.analytics.repository import (
     get_ilga_document_by_year,
     get_ilga_years,
@@ -25,9 +24,9 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics_normalizers import normalize_country_code
 from app.auth.permissions import is_admin_user
-from app.dash.i18n import dash_attrs, text, text_attrs
+from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
-
+from app.dates import utc_today, utc_today_iso
 
 EDITOR_LABELS_EN = {
     "Identificación": "Identification",
@@ -75,7 +74,9 @@ def build_home_layout() -> Component:
                                                 **text_attrs("RainbowLens", "RainbowLens"),
                                             ),
                                             html.H1(
-                                                text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map"),
+                                                text(
+                                                    "Mapa europeo LGBTIQ+", "European LGBTIQ+ map"
+                                                ),
                                                 id="home-map-title",
                                                 className="home-map-heading",
                                             ),
@@ -163,7 +164,9 @@ def build_home_layout() -> Component:
                                 role="status",
                             ),
                             html.Div(id="home-country-status", className="country-status-anchor"),
-                            html.Div(id="country-status-editor", className="country-status-editor-shell"),
+                            html.Div(
+                                id="country-status-editor", className="country-status-editor-shell"
+                            ),
                             html.Div(
                                 [
                                     html.Div(
@@ -221,6 +224,17 @@ def build_home_layout() -> Component:
 
 
 def register_home_callbacks(app: Dash) -> None:
+    @app.callback(
+        Output("home-country-select", "placeholder"),
+        Input("app-language-store", "data"),
+    )
+    def translate_home_controls(language: str | None) -> str:
+        return (
+            "Select on the map or here"
+            if language == "en"
+            else "Selecciona en el mapa o aquí"
+        )
+
     @app.callback(
         Output("home-main-map", "figure"),
         Output("home-map-title", "children"),
@@ -327,7 +341,6 @@ def register_home_callbacks(app: Dash) -> None:
         if not _any_clicks(open_clicks):
             raise PreventUpdate
         trigger = ctx.triggered_id
-        trigger_type = trigger.get("type") if isinstance(trigger, dict) else trigger
         if not isinstance(trigger, dict):
             return no_update, no_update, no_update
         if not is_admin_user(current_user):
@@ -433,8 +446,11 @@ def register_home_callbacks(app: Dash) -> None:
         reviewed_at = _first_value(reviewed_at_values)
         observations = _first_value(observations_values)
         active_values = _first_value(active_value_lists, [])
+        delete_confirm_values = _first_value(delete_confirm_value_lists, [])
         selected_country_code = normalize_country_code(country or country_code)
-        selected_country_name = label_by_code.get(selected_country_code) or str(country or "").strip()
+        selected_country_name = (
+            label_by_code.get(selected_country_code) or str(country or "").strip()
+        )
         payload = {
             "country": selected_country_name,
             "country_code": selected_country_code,
@@ -458,7 +474,7 @@ def register_home_callbacks(app: Dash) -> None:
                     selected_country_code,
                     int(year or 0),
                     user=current_user,
-                    confirmed=True,
+                    confirmed="confirm" in (delete_confirm_values or []),
                 )
             except CountryStatusValidationError as exc:
                 return (
@@ -467,7 +483,7 @@ def register_home_callbacks(app: Dash) -> None:
                     "No se pudieron eliminar los datos. Revisa el país y el año.",
                     refresh or 0,
                 )
-            except (CountryStatusAuthorizationError, RuntimeError):
+            except CountryStatusAuthorizationError, RuntimeError:
                 return [], {}, "No se pudieron eliminar los datos.", refresh or 0
             empty_state = {"mode": "create", "country_code": "", "year": None, "exists": False}
             return (
@@ -495,7 +511,7 @@ def register_home_callbacks(app: Dash) -> None:
                 "No se pudieron guardar los cambios. Revisa los campos e intentalo de nuevo.",
                 refresh or 0,
             )
-        except (CountryStatusAuthorizationError, RuntimeError):
+        except CountryStatusAuthorizationError, RuntimeError:
             return [], {}, "No se pudieron guardar los cambios.", refresh or 0
 
         message = (
@@ -503,7 +519,12 @@ def register_home_callbacks(app: Dash) -> None:
             if state.get("mode") == "create"
             else "Los datos se han actualizado correctamente."
         )
-        return [], {"country_code": saved["country_code"], "year": saved["year"]}, message, (refresh or 0) + 1
+        return (
+            [],
+            {"country_code": saved["country_code"], "year": saved["year"]},
+            message,
+            (refresh or 0) + 1,
+        )
 
     @app.callback(
         Output({"type": "country-status-form-country-code", "slot": ALL}, "value"),
@@ -526,7 +547,7 @@ def _home_map_figure(figure: Any) -> Any:
     return figure
 
 
-def _ilga_country_options(document: dict[str, Any] | None) -> list[dict[str, str]]:
+def _ilga_country_options(document: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(document, dict):
         return []
     countries = []
@@ -536,8 +557,27 @@ def _ilga_country_options(document: dict[str, Any] | None) -> list[dict[str, str
         country_name = str(country.get("country") or "").strip()
         country_code = normalize_country_code(country.get("country_code"), country_name)
         if country_name and country_code:
-            countries.append({"label": f"{country_name} ({country_code})", "value": country_code})
-    return sorted(countries, key=lambda item: item["label"])
+            name_es, name_en = country_labels(country_code, country_name)
+            countries.append(
+                {
+                    "label": text(
+                        f"{name_es} ({country_code})",
+                        f"{name_en} ({country_code})",
+                    ),
+                    "value": country_code,
+                    "title": country_name,
+                    "sort_label": name_es,
+                }
+            )
+    ordered = sorted(countries, key=lambda item: str(item["sort_label"]))
+    return [
+        {
+            "label": item["label"],
+            "value": item["value"],
+            "title": item["title"],
+        }
+        for item in ordered
+    ]
 
 
 def _iso_from_map_click(click_data: dict[str, Any] | None) -> str:
@@ -564,11 +604,11 @@ def _country_label_map(options: list[dict[str, Any]]) -> dict[str, str]:
     labels: dict[str, str] = {}
     for option in options:
         code = normalize_country_code(option.get("value"))
-        label = str(option.get("label") or code).strip()
+        label = str(option.get("title") or code).strip()
         if "(" in label:
             label = label.rsplit("(", 1)[0].strip()
         if code:
-            labels[code] = label
+            labels[code] = country_labels(code, label)[0]
     return labels
 
 
@@ -579,17 +619,32 @@ def _country_status_section(
     *,
     can_manage: bool = False,
 ) -> Component:
-    title = (
-        f"Información LGBTIQ+ de {_status_country_name(statuses[0], label_by_code)}"
+    first_country_code = str(statuses[0].get("country_code") or "").strip().upper()
+    first_country_fallback = _status_country_name(statuses[0], label_by_code)
+    first_country_es, first_country_en = country_labels(
+        first_country_code,
+        first_country_fallback,
+    )
+    title_es = (
+        f"Información LGBTIQ+ de {first_country_es}"
         if len(statuses) == 1
         else "Información LGBTIQ+ de los países seleccionados"
+    )
+    title_en = (
+        f"LGBTIQ+ information for {first_country_en}"
+        if len(statuses) == 1
+        else "LGBTIQ+ information for the selected countries"
     )
     return html.Section(
         [
             html.Header(
                 [
-                    html.P("Contexto del país", className="country-status-eyebrow", **text_attrs("Contexto del país", "Country context")),
-                    html.H2(title),
+                    html.P(
+                        "Contexto del país",
+                        className="country-status-eyebrow",
+                        **text_attrs("Contexto del país", "Country context"),
+                    ),
+                    html.H2(title_es, **text_attrs(title_es, title_en)),
                 ],
                 className="country-status-section__header",
             ),
@@ -613,55 +668,85 @@ def _country_status_card(
 ) -> Component:
     country_name = _status_country_name(status, label_by_code)
     country_code = str(status.get("country_code") or "").strip()
+    country_name_es, country_name_en = country_labels(country_code, country_name)
     year = status.get("year")
     if not status.get("available"):
         summary_es, summary_en = _status_translated_text(status, "summary")
         children: list[Any] = [
-                html.Header(
-                    [
-                        html.H3(country_name),
-                        html.Span(country_code, className="country-status-card__year"),
-                    ],
-                    className="country-status-card__header",
-                ),
-                html.P(
-                    summary_es,
-                    className="country-status-card__empty",
-                    **text_attrs(summary_es, summary_en),
-                ),
+            html.Header(
+                [
+                    html.H3(
+                        country_name_es,
+                        **text_attrs(country_name_es, country_name_en),
+                    ),
+                    html.Span(country_code, className="country-status-card__year"),
+                ],
+                className="country-status-card__header",
+            ),
+            html.P(
+                summary_es,
+                className="country-status-card__empty",
+                **text_attrs(summary_es, summary_en),
+            ),
         ]
         if can_manage:
-            children.append(_country_status_admin_button("add", country_code, requested_year, "Añadir información"))
+            children.append(
+                _country_status_admin_button(
+                    "add", country_code, requested_year, "Añadir información"
+                )
+            )
         return html.Article(children, className="country-status-card country-status-card--empty")
 
     details_children = []
-    details_children.extend(_status_text_block("Contexto legal", status.get("legal_context"), "Legal context"))
-    details_children.extend(_status_text_block("Contexto social", status.get("social_context"), "Social context"))
-    details_children.extend(_status_list_block("Avances destacados", status.get("positive_developments"), "Key progress"))
-    details_children.extend(_status_list_block("Retos principales", status.get("main_challenges"), "Main challenges"))
+    details_children.extend(
+        _status_text_block("Contexto legal", status.get("legal_context"), "Legal context")
+    )
+    details_children.extend(
+        _status_text_block("Contexto social", status.get("social_context"), "Social context")
+    )
+    details_children.extend(
+        _status_list_block(
+            "Avances destacados", status.get("positive_developments"), "Key progress"
+        )
+    )
+    details_children.extend(
+        _status_list_block("Retos principales", status.get("main_challenges"), "Main challenges")
+    )
 
     children: list[Any] = [
         html.Header(
             [
                 html.Div(
                     [
-                        html.H3(country_name),
+                        html.H3(
+                            country_name_es,
+                            **text_attrs(country_name_es, country_name_en),
+                        ),
                         html.Span(country_code, className="country-status-card__code"),
                     ],
                     className="country-status-card__title",
                 ),
-                html.Span(f"Año {year or '-'}", className="country-status-card__year", **text_attrs(f"Año {year or '-'}", f"Year {year or '-'}")),
+                html.Span(
+                    f"Año {year or '-'}",
+                    className="country-status-card__year",
+                    **text_attrs(f"Año {year or '-'}", f"Year {year or '-'}"),
+                ),
             ],
             className="country-status-card__header",
         ),
     ]
     if status.get("title"):
-        children.append(html.H4(str(status.get("title")), className="country-status-card__subtitle"))
+        children.append(
+            html.H4(str(status.get("title")), className="country-status-card__subtitle")
+        )
     if requested_year and year and int(year) != int(requested_year):
+        notice_es = f"Información disponible para {year}."
+        notice_en = f"Information available for {year}."
         children.append(
             html.P(
-                f"Información disponible para {year}.",
+                notice_es,
                 className="country-status-card__notice",
+                **text_attrs(notice_es, notice_en),
             )
         )
     children.append(html.P(status.get("summary"), className="country-status-card__summary"))
@@ -669,7 +754,10 @@ def _country_status_card(
         children.append(
             html.Details(
                 [
-                    html.Summary("Ver contexto completo", **text_attrs("Ver contexto completo", "View full context")),
+                    html.Summary(
+                        "Ver contexto completo",
+                        **text_attrs("Ver contexto completo", "View full context"),
+                    ),
                     *details_children,
                 ],
                 className="country-status-card__details",
@@ -694,6 +782,10 @@ def _country_status_admin_button(
     year: int | str | None,
     label: str,
 ) -> Component:
+    label_en = {
+        "Añadir información": "Add information",
+        "Editar": "Edit",
+    }.get(label, label)
     return html.Button(
         label,
         id={
@@ -704,6 +796,7 @@ def _country_status_admin_button(
         },
         type="button",
         className="country-status-admin-button",
+        **text_attrs(label, label_en),
     )
 
 
@@ -727,8 +820,20 @@ def _country_status_editor(
                         [
                             html.Div(
                                 [
-                                    html.P("Administración", className="country-status-eyebrow", **text_attrs("Administración", "Administration")),
-                                    html.H2(title, **text_attrs(title, "Edit country information" if exists else "Add country information")),
+                                    html.P(
+                                        "Administración",
+                                        className="country-status-eyebrow",
+                                        **text_attrs("Administración", "Administration"),
+                                    ),
+                                    html.H2(
+                                        title,
+                                        **text_attrs(
+                                            title,
+                                            "Edit country information"
+                                            if exists
+                                            else "Add country information",
+                                        ),
+                                    ),
                                     html.P(
                                         "Los cambios se aplicarán a la información visible en la aplicación.",
                                         className="country-status-editor-copy",
@@ -745,6 +850,7 @@ def _country_status_editor(
                                 id=_editor_id("country-status-editor-cancel"),
                                 type="button",
                                 className="country-status-editor-cancel",
+                                **text_attrs("Cancelar", "Cancel"),
                             ),
                         ],
                         className="country-status-editor-header",
@@ -783,13 +889,21 @@ def _country_status_editor(
                                             min=2000,
                                             max=2100,
                                             step=1,
-                                            value=_record_value(record, "year", date.today().year),
+                                            value=_record_value(record, "year", utc_today().year),
                                         ),
                                         errors.get("year"),
                                     ),
                                     dcc.Checklist(
                                         id=_editor_id("country-status-form-active"),
-                                        options=[{"label": "Información visible", "value": "active"}],
+                                        options=[
+                                            {
+                                                "label": text(
+                                                    "Información visible",
+                                                    "Visible information",
+                                                ),
+                                                "value": "active",
+                                            }
+                                        ],
                                         value=["active"] if record.get("active", True) else [],
                                         className="country-status-editor-checklist",
                                     ),
@@ -888,7 +1002,9 @@ def _country_status_editor(
                                             id=_editor_id("country-status-form-reviewed-at"),
                                             type="text",
                                             placeholder="AAAA-MM-DD",
-                                            value=_record_value(record, "reviewed_at", date.today().isoformat()),
+                                            value=_record_value(
+                                                record, "reviewed_at", utc_today_iso()
+                                            ),
                                         ),
                                         errors.get("reviewed_at"),
                                     ),
@@ -908,11 +1024,29 @@ def _country_status_editor(
                                     )
                                 ],
                             ),
-                            dcc.Checklist(
-                                id=_editor_id("country-status-delete-confirm"),
-                                options=[],
-                                value=[],
-                                className="country-status-editor-checklist is-hidden",
+                            html.Div(
+                                [
+                                    dcc.Checklist(
+                                        id=_editor_id("country-status-delete-confirm"),
+                                        options=[
+                                            {
+                                                "label": text(
+                                                    "Confirmo que quiero eliminar esta información",
+                                                    "I confirm that I want to delete this information",
+                                                ),
+                                                "value": "confirm",
+                                            }
+                                        ],
+                                        value=[],
+                                        className="country-status-editor-checklist",
+                                    ),
+                                    _editor_error(errors.get("delete_confirm")),
+                                ],
+                                className=(
+                                    "country-status-editor-delete-confirm"
+                                    if exists
+                                    else "country-status-editor-delete-confirm is-hidden"
+                                ),
                             ),
                         ],
                         className="country-status-editor-body",
@@ -924,6 +1058,7 @@ def _country_status_editor(
                                 id=_editor_id("country-status-editor-save"),
                                 type="button",
                                 className="country-status-editor-save",
+                                **text_attrs("Guardar cambios", "Save changes"),
                             ),
                             (
                                 html.Button(
@@ -931,6 +1066,7 @@ def _country_status_editor(
                                     id=_editor_id("country-status-editor-delete"),
                                     type="button",
                                     className="country-status-editor-delete",
+                                    **text_attrs("Eliminar", "Delete"),
                                 )
                                 if exists
                                 else html.Button(
@@ -938,6 +1074,7 @@ def _country_status_editor(
                                     id=_editor_id("country-status-editor-delete"),
                                     type="button",
                                     className="country-status-editor-delete is-hidden",
+                                    **text_attrs("Eliminar", "Delete"),
                                 )
                             ),
                         ],
@@ -976,7 +1113,7 @@ def _any_clicks(*groups: Sequence[int | None] | None) -> bool:
             try:
                 if int(value or 0) > 0:
                     return True
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
     return False
 
@@ -1009,7 +1146,7 @@ def _editor_initial_record(
     return {
         "country_code": country_code,
         "country": label_by_code.get(country_code, country_code),
-        "year": year or date.today().year,
+        "year": year or utc_today().year,
         "title": "",
         "summary": "",
         "legal_context": "",
@@ -1019,7 +1156,7 @@ def _editor_initial_record(
         "main_challenges": [],
         "source_name": "ILGA-Europe Annual Review 2026",
         "source_url": "https://www.ilga-europe.org/files/uploads/2026/02/2026-ILGA-EUROPE-ANNUAL-REVIEW.pdf",
-        "reviewed_at": date.today().isoformat(),
+        "reviewed_at": utc_today_iso(),
         "active": True,
     }
 
@@ -1044,7 +1181,7 @@ def _empty_country_status_editor_record() -> dict[str, Any]:
 
 
 def _record_value(record: dict[str, Any], key: str, default: Any) -> Any:
-    return record[key] if key in record else default
+    return record.get(key, default)
 
 
 def _ensure_country_option(
@@ -1073,7 +1210,7 @@ def _lines_value(value: Any) -> str:
 def _safe_year(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -1102,7 +1239,10 @@ def _status_text_block(title: str, value: Any, title_en: str) -> list[Any]:
 def _status_list_block(title: str, values: Any, title_en: str) -> list[Any]:
     if not isinstance(values, list) or not values:
         return []
-    return [html.H4(title, **text_attrs(title, title_en)), html.Ul([html.Li(str(value)) for value in values if str(value).strip()])]
+    return [
+        html.H4(title, **text_attrs(title, title_en)),
+        html.Ul([html.Li(str(value)) for value in values if str(value).strip()]),
+    ]
 
 
 def _status_source(status: dict[str, Any]) -> Component:
@@ -1178,7 +1318,9 @@ def _source_summary(
         [
             html.H2(title),
             html.P(body_es, **text_attrs(body_es, body_en)),
-            html.A(text(link_label[0], link_label[1]), href="/about", className="home-analysis-link"),
+            html.A(
+                text(link_label[0], link_label[1]), href="/about", className="home-analysis-link"
+            ),
         ],
         className="home-source-card",
     )
@@ -1186,7 +1328,9 @@ def _source_summary(
 
 def _ilga_copy(document: dict[str, Any] | None, language: str | None = None):
     if not isinstance(document, dict):
-        return text("No hay un Rainbow Map disponible.", "No Rainbow Map is available.", language=language)
+        return text(
+            "No hay un Rainbow Map disponible.", "No Rainbow Map is available.", language=language
+        )
     year = document.get("year")
     if year:
         return text(
@@ -1204,7 +1348,9 @@ def _ilga_copy(document: dict[str, Any] | None, language: str | None = None):
 def _ilga_source(document: dict[str, Any] | None, language: str | None = None):
     year = document.get("year") if isinstance(document, dict) else None
     if year:
-        return text(f"Fuente: ILGA Europe - {year}", f"Source: ILGA Europe - {year}", language=language)
+        return text(
+            f"Fuente: ILGA Europe - {year}", f"Source: ILGA Europe - {year}", language=language
+        )
     return text("Fuente: ILGA Europe", "Source: ILGA Europe", language=language)
 
 

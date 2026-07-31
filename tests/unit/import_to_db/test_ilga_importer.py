@@ -1,11 +1,4 @@
-from pathlib import Path
-import sys
 from unittest.mock import MagicMock, patch
-
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from app.import_to_db.ilga import parse_ilga_csv_text, parse_ilga_json_text
 from app.import_to_db.ilga.mongo import insert_indicator_ilga_json

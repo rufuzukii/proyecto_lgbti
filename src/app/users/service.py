@@ -1,30 +1,42 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import psycopg
-from psycopg.rows import dict_row
+from email_validator import EmailNotValidError, validate_email
 from psycopg.errors import UniqueViolation
+from psycopg.rows import dict_row
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.config import get_postgres_connect_timeout, get_postgres_dsn
-from app.users.schemas import UserRead, UserRegister, UserRole, UserType
+from app.users.schemas import (
+    MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    UserRead,
+    UserRegister,
+    UserRole,
+    UserType,
+)
 
 
 class UserStorageError(RuntimeError):
     """Raised when the configured users table cannot support secure auth."""
 
 
+_DUMMY_PASSWORD_HASH = generate_password_hash("not-a-real-account-password")
+
+
 @dataclass
 class UserRecord:
     id: str
-    username: Optional[str]
+    username: str | None
     email: str
     role: UserRole
-    organization: Optional[str]
-    password_hash: Optional[str]
-    user_type: Optional[UserType] = None
+    organization: str | None
+    password_hash: str | None
+    user_type: UserType | None = None
 
     @property
     def display_name(self) -> str:
@@ -43,14 +55,14 @@ def list_users() -> list[UserRead]:
     return [_row_to_user_read(row) for row in rows]
 
 
-def get_user(user_id: str) -> Optional[UserRead]:
+def get_user(user_id: str) -> UserRead | None:
     record = get_user_record(user_id)
     if record is None:
         return None
     return _record_to_user_read(record)
 
 
-def get_user_record(user_id: str) -> Optional[UserRecord]:
+def get_user_record(user_id: str) -> UserRecord | None:
     if not user_id:
         return None
     with _connect() as conn:
@@ -65,7 +77,7 @@ def get_user_record(user_id: str) -> Optional[UserRecord]:
     return _row_to_user_record(row) if row else None
 
 
-def get_user_record_by_email(email: str) -> Optional[UserRecord]:
+def get_user_record_by_email(email: str) -> UserRecord | None:
     normalized = _normalize_email(email)
     if not normalized:
         return None
@@ -86,9 +98,14 @@ def create_user(payload: UserRegister, *, role: UserRole = UserRole.COMMON) -> U
     if not normalized_email:
         raise ValueError("invalid_email")
 
+    username = _normalize_user_text(payload.name)
+    if len(username) < 2 or len(username) > 80:
+        raise ValueError("invalid_username")
     assigned_role = role if role == UserRole.ADMIN else UserRole.COMMON
     organization = _normalize_optional_text(payload.organization)
-    password_hash = generate_password_hash(payload.password)
+    if organization and len(organization) > 120:
+        raise ValueError("invalid_organization")
+    password_hash = generate_password_hash(payload.password.get_secret_value())
 
     try:
         with _connect() as conn:
@@ -98,7 +115,13 @@ def create_user(payload: UserRegister, *, role: UserRole = UserRole.COMMON) -> U
                 values (%s, %s, %s, %s, %s)
                 returning id::text, username, email, role, organization
                 """,
-                (payload.name.strip(), normalized_email, assigned_role.value, organization, password_hash),
+                (
+                    username,
+                    normalized_email,
+                    assigned_role.value,
+                    organization,
+                    password_hash,
+                ),
             ).fetchone()
             conn.commit()
     except UniqueViolation as exc:
@@ -107,13 +130,17 @@ def create_user(payload: UserRegister, *, role: UserRole = UserRole.COMMON) -> U
     return _row_to_user_read(row)
 
 
-def authenticate_user(email: str, password: str) -> Optional[UserRecord]:
-    if not email or not password:
+def authenticate_user(email: str, password: str) -> UserRecord | None:
+    if not email or not password or len(password) > MAX_PASSWORD_LENGTH:
         return None
     record = get_user_record_by_email(email)
-    if record is None or not record.password_hash:
-        return None
-    if not check_password_hash(record.password_hash, password):
+    password_hash = (
+        record.password_hash
+        if record is not None and record.password_hash
+        else _DUMMY_PASSWORD_HASH
+    )
+    password_matches = check_password_hash(password_hash, password)
+    if record is None or not record.password_hash or not password_matches:
         return None
     return record
 
@@ -132,18 +159,22 @@ def update_user_profile(
     if not record.password_hash or not check_password_hash(record.password_hash, current_password):
         raise ValueError("invalid_current_password")
 
-    clean_username = username.strip()
+    clean_username = _normalize_user_text(username)
     normalized_email = _normalize_email(email)
-    clean_new_password = (new_password or "").strip()
+    clean_new_password = new_password or ""
 
     if len(clean_username) < 2 or len(clean_username) > 80:
         raise ValueError("invalid_username")
     if not normalized_email or len(normalized_email) > 254:
         raise ValueError("invalid_email")
-    if clean_new_password and (len(clean_new_password) < 8 or len(clean_new_password) > 32):
+    if clean_new_password and not (
+        MIN_PASSWORD_LENGTH <= len(clean_new_password) <= MAX_PASSWORD_LENGTH
+    ):
         raise ValueError("weak_password")
 
-    next_hash = generate_password_hash(clean_new_password) if clean_new_password else record.password_hash
+    next_hash = (
+        generate_password_hash(clean_new_password) if clean_new_password else record.password_hash
+    )
 
     try:
         with _connect() as conn:
@@ -175,7 +206,7 @@ def update_user_as_admin(
     role: str,
     organization: str | None,
 ) -> UserRecord:
-    clean_username = username.strip()
+    clean_username = _normalize_user_text(username)
     normalized_email = _normalize_email(email)
     clean_organization = _normalize_optional_text(organization)
     parsed_role = _parse_admin_role(role)
@@ -241,14 +272,31 @@ def _postgres_dsn() -> str:
 
 
 def _normalize_email(email: str | None) -> str:
-    return email.strip().lower() if isinstance(email, str) else ""
+    if not isinstance(email, str):
+        return ""
+    try:
+        return validate_email(
+            email.strip(),
+            check_deliverability=False,
+        ).normalized.casefold()
+    except EmailNotValidError:
+        return ""
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
     if not isinstance(value, str):
         return None
-    clean_value = value.strip()
+    clean_value = _normalize_user_text(value)
     return clean_value or None
+
+
+def _normalize_user_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).strip()
+    return "".join(
+        character
+        for character in normalized
+        if unicodedata.category(character) not in {"Cc", "Cf", "Cs"}
+    ).strip()
 
 
 def _row_to_user_record(row: Any) -> UserRecord:
@@ -298,7 +346,7 @@ def _parse_role(value: str | None) -> UserRole:
 
 
 def _parse_admin_role(value: str | None) -> UserRole:
-    parsed_role = _parse_role(value)
-    if parsed_role not in {UserRole.ADMIN, UserRole.COMMON}:
+    clean_value = str(value or "").strip().casefold()
+    if clean_value not in {UserRole.ADMIN.value, UserRole.COMMON.value}:
         raise ValueError("invalid_role")
-    return parsed_role
+    return UserRole(clean_value)

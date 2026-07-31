@@ -2,8 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-import app.dash.layouts.navigation as navigation
-
+from app.dash.layouts import navigation
 
 ROOT = Path(__file__).resolve().parents[3]
 ASSETS_JS = ROOT / "src" / "app" / "dash" / "assets" / "js"
@@ -36,7 +35,10 @@ def test_statistics_segmented_buttons_use_outer_dash_options() -> None:
 
     assert ".dash-options-list-option" in js
     assert "markClickedLabel" not in js
-    assert ".stats-data-type-control .dash-options-list-option:has(.stats-segmented-input:checked)" in css
+    assert (
+        ".stats-data-type-control .dash-options-list-option:has(.stats-segmented-input:checked)"
+        in css
+    )
     assert "stats-data-type-control--fra .stats-segmented-label:nth-of-type" not in css
     assert "stats-data-type-control--ilga .stats-segmented-label:nth-of-type" not in css
 
@@ -83,7 +85,11 @@ def test_navbar_exposes_an_accessible_collapsible_mobile_menu(monkeypatch) -> No
         for component in components
         if getattr(component, "className", "") == "nav-menu-toggle"
     )
-    menu = next(component for component in components if getattr(component, "id", None) == "primary-navigation")
+    menu = next(
+        component
+        for component in components
+        if getattr(component, "id", None) == "primary-navigation"
+    )
     mobile_logo = next(
         component
         for component in components
@@ -96,6 +102,9 @@ def test_navbar_exposes_an_accessible_collapsible_mobile_menu(monkeypatch) -> No
     assert toggle_props["aria-controls"] == "primary-navigation"
     assert toggle_props["aria-expanded"] == "false"
     assert toggle_props["data-nav-menu-toggle"] == "true"
+    assert toggle_props["data-i18n-title-en"] == "Menu"
+    assert toggle_props["data-i18n-aria-label-en"] == "Open menu"
+    assert _props(navbar)["data-i18n-aria-label-en"] == "Primary navigation"
     assert menu_props["className"] == "nav-menu"
     assert mobile_logo_props["src"].endswith("rainbow_lens_icono.ico")
     assert mobile_logo_props["alt"] == "RainbowLens"
@@ -182,14 +191,30 @@ def test_non_admin_navbar_omits_admin_link_and_keeps_upload_with_preferences(mon
         for component in components
         if getattr(component, "className", "") == "nav-header-actions"
     )
-    upload_link = next(component for component in components if getattr(component, "href", None) == "/upload")
+    upload_link = next(
+        component for component in components if getattr(component, "href", None) == "/upload"
+    )
 
     header_children = cast(list[Any], _props(header_actions)["children"])
     assert _props(navbar)["className"] == "navbar"
-    assert not any("nav-admin-cta" in getattr(component, "className", "") for component in components)
+    assert not any(
+        "nav-admin-cta" in getattr(component, "className", "") for component in components
+    )
     assert len(header_children) == 3
     assert "nav-account-slot-desktop" in _props(header_children[-1])["className"]
     assert _props(upload_link)["className"] == "nav-link is-active nav-cta"
+
+
+def test_anonymous_navbar_does_not_expose_upload_action(monkeypatch) -> None:
+    monkeypatch.setattr(
+        navigation,
+        "current_user",
+        SimpleNamespace(is_authenticated=False, role="anonymous"),
+    )
+
+    components = list(_walk(navigation.build_navbar()))
+
+    assert not any(getattr(component, "href", None) == "/upload" for component in components)
 
 
 def test_navbar_icon_controls_have_initial_accessible_names(monkeypatch) -> None:
@@ -200,11 +225,21 @@ def test_navbar_icon_controls_have_initial_accessible_names(monkeypatch) -> None
     )
 
     components = list(_walk(navigation.build_navbar()))
-    language = next(component for component in components if getattr(component, "className", "") == "language-toggle")
-    theme = next(component for component in components if getattr(component, "className", "") == "theme-toggle")
+    language = next(
+        component
+        for component in components
+        if getattr(component, "className", "") == "language-toggle"
+    )
+    theme = next(
+        component
+        for component in components
+        if getattr(component, "className", "") == "theme-toggle"
+    )
 
     assert language.to_plotly_json()["props"]["aria-label"] == "Cambiar idioma / Change language"
-    assert theme.to_plotly_json()["props"]["aria-label"] == "Cambiar modo de color / Change color mode"
+    assert (
+        theme.to_plotly_json()["props"]["aria-label"] == "Cambiar modo de color / Change color mode"
+    )
 
 
 def test_responsive_css_is_loaded_last_without_important_overrides() -> None:

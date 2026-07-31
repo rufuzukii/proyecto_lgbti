@@ -1,9 +1,8 @@
 from pathlib import Path
 
-from app.dash.layouts.navigation import _theme_toggle
 import app.dash_app as dash_app_module
+from app.dash.layouts.navigation import _theme_toggle
 from app.dash_app import DASH_INDEX_STRING
-
 
 ASSETS = Path(__file__).resolve().parents[2] / "src" / "app" / "dash" / "assets"
 
@@ -62,10 +61,13 @@ def test_language_store_and_initialization_preserve_saved_language() -> None:
 
 def test_language_is_applied_immediately_on_boot_and_route_changes() -> None:
     bootstrap = (ASSETS / "js" / "40_bootstrap.js").read_text(encoding="utf-8")
+    i18n = (ASSETS / "js" / "10_i18n.js").read_text(encoding="utf-8")
 
     assert "if (targets.language)" in bootstrap
     assert "targets.language = false" in bootstrap
     assert "app.i18n.applyLanguage(state.currentLanguage());" in bootstrap
+    assert '["alt", "aria-label", "title"]' in i18n
+    assert "applyTranslatedAttributes(selected);" in i18n
 
 
 def test_dash_initial_loading_text_is_replaced_by_centered_spinner() -> None:

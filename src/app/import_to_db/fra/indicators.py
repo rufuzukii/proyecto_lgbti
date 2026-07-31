@@ -137,7 +137,11 @@ def _serialize_answer_types(values: list[str]) -> str:
 
 
 def _normalize_documents(file_json: dict[str, Any] | list[Any]) -> list[dict[str, Any]]:
-    if isinstance(file_json, dict) and file_json.get("code") and isinstance(file_json.get("answers"), list):
+    if (
+        isinstance(file_json, dict)
+        and file_json.get("code")
+        and isinstance(file_json.get("answers"), list)
+    ):
         return [file_json]
     if isinstance(file_json, dict) and isinstance(file_json.get("questions"), list):
         questions = file_json["questions"]
@@ -171,13 +175,22 @@ def _resolve_specific_category(document: dict[str, Any]) -> str | None:
 
 def _indicator_payload(document: dict[str, Any]) -> dict[str, Any]:
     questions = document.get("questions")
-    if not document.get("question") and isinstance(questions, list) and questions and isinstance(questions[0], dict):
+    if (
+        not document.get("question")
+        and isinstance(questions, list)
+        and questions
+        and isinstance(questions[0], dict)
+    ):
         return questions[0]
     return document
 
 
 def _question_entries(document: dict[str, Any]) -> list[dict[str, Any]]:
     questions = document.get("questions")
-    if not document.get("answers") and isinstance(questions, list) and all(isinstance(item, dict) for item in questions):
+    if (
+        not document.get("answers")
+        and isinstance(questions, list)
+        and all(isinstance(item, dict) for item in questions)
+    ):
         return questions
     return [document]

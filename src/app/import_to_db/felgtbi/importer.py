@@ -13,6 +13,7 @@ import unicodedata
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from bson import ObjectId
 
@@ -47,7 +48,7 @@ def _peak_memory_mb() -> float | None:
         resource_module = importlib.import_module("resource")
         peak = float(resource_module.getrusage(resource_module.RUSAGE_SELF).ru_maxrss)
         return round(peak / 1024, 2)
-    except (AttributeError, ImportError, OSError, ValueError):
+    except AttributeError, ImportError, OSError, ValueError:
         return None
 
 
@@ -62,22 +63,35 @@ def _pdf_import_log(
     exc_info: bool = False,
     **fields: Any,
 ) -> None:
+    safe_file_name = Path(file_name).name
     payload = {
         "event": event,
         "upload_id": upload_id or None,
-        "filename": Path(file_name).name,
+        "file_extension": Path(safe_file_name).suffix.casefold(),
+        "file_name_digest": hashlib.sha256(
+            safe_file_name.encode("utf-8"),
+            usedforsecurity=False,
+        ).hexdigest()[:16],
         "phase": phase,
         "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 2),
         "peak_memory_mb": _peak_memory_mb(),
         "worker_pid": os.getpid(),
         **fields,
     }
-    logger.log(level, "pdf_import_event %s", json.dumps(payload, ensure_ascii=True, default=str), exc_info=exc_info)
+    logger.log(
+        level,
+        "pdf_import_event %s",
+        json.dumps(payload, ensure_ascii=True, default=str),
+        exc_info=exc_info,
+    )
+
 
 YEAR_PATTERN = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
 PERCENT_PATTERN = re.compile(r"(?<!\d)(\d{1,3}(?:[,.]\d{1,2})?)\s*%")
 NUMBER_PATTERN = re.compile(r"(?<![\w])\d{1,4}(?:[,.]\d{1,2})?(?![\w])")
-CHART_NUMBER_PATTERN = re.compile(r"(?<![\w])(?P<value>\d{1,4}(?:[,.]\d{1,2})?)(?P<percent>\s*%)?(?![\w])")
+CHART_NUMBER_PATTERN = re.compile(
+    r"(?<![\w])(?P<value>\d{1,4}(?:[,.]\d{1,2})?)(?P<percent>\s*%)?(?![\w])"
+)
 TOC_ENTRY_PATTERN = re.compile(r"^(?P<title>.+?)\s+\.{3,}\s*(?P<page>\d{1,3})$")
 TOC_DOTS_PAGE_PATTERN = re.compile(r"^\.{3,}\s*(?P<page>\d{1,3})$")
 FIGURE_CAPTION_PATTERN = re.compile(
@@ -514,6 +528,11 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
 
     pages: list[dict[str, Any]] = []
     with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
+        if document.needs_pass:
+            raise PdfExtractionError("encrypted_pdf_not_supported")
+        maximum_pages = max(1, int(os.getenv("PDF_MAX_PAGES", "500")))
+        if document.page_count > maximum_pages:
+            raise PdfExtractionError("pdf_page_limit_exceeded")
         for page_index in range(document.page_count):
             page = document.load_page(page_index)
             # ``TEXTFLAGS_DICT`` includes the binary content of every image by
@@ -725,7 +744,9 @@ def _attach_page_assets(
         page_number = int(context.get("page") or 0)
         bbox = _safe_bbox(context.get("bbox"))
         storage_path = _figure_storage_path(document, file_name)
-        asset_id = f"{page_number}:{','.join(str(value) for value in bbox)}:{storage_path}" if bbox else ""
+        asset_id = (
+            f"{page_number}:{','.join(str(value) for value in bbox)}:{storage_path}" if bbox else ""
+        )
         asset = rendered_assets.get(asset_id)
         if not asset:
             continue
@@ -752,7 +773,7 @@ def _safe_bbox(value: Any) -> list[float] | None:
         return None
     try:
         bbox = [float(item) for item in value]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
         return None
@@ -799,7 +820,7 @@ def _upload_figure_to_supabase(
             "storage_path": storage_path,
         }
     try:
-        from botocore.exceptions import ClientError
+        from botocore.exceptions import BotoCoreError, ClientError
     except ImportError:
         return {
             "status": "failed",
@@ -833,7 +854,7 @@ def _upload_figure_to_supabase(
                 "bucket": config["bucket"],
                 "storage_path": storage_path,
             }
-    except Exception as exc:
+    except (BotoCoreError, OSError) as exc:
         return {
             "status": "failed",
             "error": f"head_object:{exc.__class__.__name__}",
@@ -863,7 +884,7 @@ def _upload_figure_to_supabase(
                 "bucket": config["bucket"],
                 "storage_path": storage_path,
             }
-        except Exception as exc:
+        except (BotoCoreError, OSError) as exc:
             return {
                 "status": "failed",
                 "error": f"put_object:{exc.__class__.__name__}",
@@ -912,6 +933,13 @@ def _supabase_storage_config() -> dict[str, str] | None:
     secret_key = os.getenv("SUPABASE_S3_SECRET_KEY", "").strip()
     if not endpoint or not access_key or not secret_key:
         return None
+    parsed_endpoint = urlsplit(endpoint)
+    if parsed_endpoint.scheme not in {"http", "https"} or not parsed_endpoint.hostname:
+        return None
+    from app.config import get_app_config
+
+    if not get_app_config().local_mode and parsed_endpoint.scheme != "https":
+        return None
     return {
         "bucket": _supabase_storage_bucket(),
         "endpoint": endpoint,
@@ -922,7 +950,10 @@ def _supabase_storage_config() -> dict[str, str] | None:
 
 
 def _supabase_storage_bucket() -> str:
-    return os.getenv("SUPABASE_STORAGE_BUCKET", DEFAULT_SUPABASE_STORAGE_BUCKET).strip() or DEFAULT_SUPABASE_STORAGE_BUCKET
+    return (
+        os.getenv("SUPABASE_STORAGE_BUCKET", DEFAULT_SUPABASE_STORAGE_BUCKET).strip()
+        or DEFAULT_SUPABASE_STORAGE_BUCKET
+    )
 
 
 def _figure_storage_path(document: dict[str, Any], file_name: str) -> str:
@@ -931,7 +962,9 @@ def _figure_storage_path(document: dict[str, Any], file_name: str) -> str:
     section_slug = _slugify(
         str(document.get("section_title") or document.get("specific_category") or "seccion")
     )
-    figure_number = str(document.get("figure_number") or (document.get("figure") or {}).get("number") or "")
+    figure_number = str(
+        document.get("figure_number") or (document.get("figure") or {}).get("number") or ""
+    )
     figure_slug = _figure_file_stem(figure_number)
     return f"{year}/{report_slug}/{section_slug}/{figure_slug}.{FIGURE_IMAGE_EXTENSION}"
 
@@ -949,14 +982,14 @@ def _slugify(value: str) -> str:
 
 
 def _asset_key(pdf_bytes: bytes, file_name: str) -> str:
-    digest = hashlib.sha1()
+    digest = hashlib.sha1(usedforsecurity=False)
     digest.update(str(file_name or "felgtbi.pdf").encode("utf-8", errors="ignore"))
     digest.update(pdf_bytes)
     return digest.hexdigest()[:16]
 
 
 def _build_pdf_source_document_id(pdf_bytes: bytes, file_name: str) -> str:
-    digest = hashlib.sha1()
+    digest = hashlib.sha1(usedforsecurity=False)
     digest.update(_safe_original_filename(file_name).encode("utf-8", errors="ignore"))
     digest.update(pdf_bytes)
     return f"felgtbi_pdf_{digest.hexdigest()[:16]}"
@@ -964,7 +997,9 @@ def _build_pdf_source_document_id(pdf_bytes: bytes, file_name: str) -> str:
 
 def _build_metadata_source_document_id(file_name: str, year: int, report_title: str) -> str:
     seed = f"{_safe_original_filename(file_name)}|{year}|{report_title}"
-    digest = hashlib.sha1(seed.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    digest = hashlib.sha1(seed.encode("utf-8", errors="ignore"), usedforsecurity=False).hexdigest()[
+        :16
+    ]
     return f"felgtbi_pdf_{digest}"
 
 
@@ -1025,7 +1060,9 @@ def parse_felgtbi_text_pages(
             _attach_source_document_metadata(
                 documents,
                 file_name=file_name,
-                source_document_id=_build_metadata_source_document_id(file_name, resolved_year, report_title),
+                source_document_id=_build_metadata_source_document_id(
+                    file_name, resolved_year, report_title
+                ),
             )
             _refresh_content_html(documents)
             return documents
@@ -1127,7 +1164,9 @@ def parse_felgtbi_text_pages(
     _attach_source_document_metadata(
         documents,
         file_name=file_name,
-        source_document_id=_build_metadata_source_document_id(file_name, resolved_year, report_title),
+        source_document_id=_build_metadata_source_document_id(
+            file_name, resolved_year, report_title
+        ),
     )
     return documents
 
@@ -1271,14 +1310,14 @@ def _layout_page_heading(
         candidates.append(block)
     if not candidates:
         return None
-    return sorted(
+    return min(
         candidates,
         key=lambda block: (
             -float(block.get("font_size") or 0),
             float(block.get("y0") or 0),
             float(block.get("x0") or 0),
         ),
-    )[0]
+    )
 
 
 def _layout_fallback_heading(
@@ -1349,7 +1388,11 @@ def _extract_layout_data_points(
         value = float(item["value"])
         unit = str(item["unit"])
         label = _nearest_layout_label(blocks, item, heading)
-        text = f"{label}: {_format_layout_value(value, unit)}" if label else f"Resultado {index}: {_format_layout_value(value, unit)}"
+        text = (
+            f"{label}: {_format_layout_value(value, unit)}"
+            if label
+            else f"Resultado {index}: {_format_layout_value(value, unit)}"
+        )
         key = (normalize_header(text), value)
         if key in seen:
             continue
@@ -1413,7 +1456,13 @@ def _layout_numeric_matches(
                 continue
             if 1900 <= value <= 2100 and not match.group("percent"):
                 continue
-            unit = "count" if count_unit else "percent" if (match.group("percent") or page_uses_percent) else "number"
+            unit = (
+                "count"
+                if count_unit
+                else "percent"
+                if (match.group("percent") or page_uses_percent)
+                else "number"
+            )
             maximum = 400 if unit == "count" else 100
             if value < 0 or value > maximum:
                 continue
@@ -1464,7 +1513,7 @@ def _nearest_layout_label(
         candidates.append((vertical_distance, horizontal_distance, text))
     if not candidates:
         return ""
-    return _truncate_at_word_boundary(sorted(candidates)[0][2], 120)
+    return _truncate_at_word_boundary(min(candidates)[2], 120)
 
 
 def _is_layout_label(text: str) -> bool:
@@ -1513,9 +1562,7 @@ def _layout_visual_bbox(
         and len(str(block.get("text") or "")) >= 45
         and _block_has_letters(str(block.get("text") or ""))
     ]
-    top = max(
-        [heading_bottom + 10, *[float(block.get("y1") or 0) + 8 for block in introductory]]
-    )
+    top = max([heading_bottom + 10, *[float(block.get("y1") or 0) + 8 for block in introductory]])
     numeric_bottom = max(float(point["bbox"][3]) for point in data_points)
     bottom = min(page_height - 45, numeric_bottom + 28)
     if bottom - top < 70:
@@ -1724,7 +1771,11 @@ def _build_figure_document(
         for index, point in enumerate(data_points, start=1)
         if (answer := _answer_from_data_point(index, point, sample_size, fieldwork)) is not None
     ]
-    description = _paragraphs_plain_summary(paragraphs) or _data_points_plain_summary(data_points) or subsection
+    description = (
+        _paragraphs_plain_summary(paragraphs)
+        or _data_points_plain_summary(data_points)
+        or subsection
+    )
     document = {
         "id": str(ObjectId()),
         "schema_version": 2,
@@ -2274,11 +2325,7 @@ def _extract_fieldwork(text: str) -> str:
 
 
 def _clean_lines(text: str) -> list[str]:
-    return [
-        " ".join(line.strip().split())
-        for line in text.splitlines()
-        if line and line.strip()
-    ]
+    return [" ".join(line.strip().split()) for line in text.splitlines() if line and line.strip()]
 
 
 def _extract_page_figures(
@@ -2318,7 +2365,7 @@ def _extract_page_vector_regions(
 ) -> list[dict[str, Any]]:
     try:
         regions = page.cluster_drawings()
-    except (AttributeError, RuntimeError, ValueError):
+    except AttributeError, RuntimeError, ValueError:
         return []
 
     page_area = max(page_width * page_height, 1.0)
@@ -2331,7 +2378,7 @@ def _extract_page_vector_regions(
                 float(region.x1),
                 float(region.y1),
             )
-        except (AttributeError, TypeError, ValueError):
+        except AttributeError, TypeError, ValueError:
             continue
         width = x1 - x0
         height = y1 - y0
@@ -2447,7 +2494,7 @@ def _extract_figure_segments(
             figure_bbox=bbox if visual_page == int(caption["page"]) else None,
         )
         description = _format_description(
-            " ".join([before_description, after_description]),
+            f"{before_description} {after_description}",
             max_length=6000,
         )
         if not bbox and not description:
@@ -2534,14 +2581,9 @@ def _next_page_leading_visual_bbox(
     if leading_regions:
         return _union_visual_regions(leading_regions, next_width, next_height)
 
-    leading_blocks = [
-        block
-        for block in blocks
-        if float(block.get("y1") or 0) < narrative_y0
-    ]
+    leading_blocks = [block for block in blocks if float(block.get("y1") or 0) < narrative_y0]
     value_count = sum(
-        len(CHART_NUMBER_PATTERN.findall(str(block.get("text") or "")))
-        for block in leading_blocks
+        len(CHART_NUMBER_PATTERN.findall(str(block.get("text") or ""))) for block in leading_blocks
     )
     if value_count < 2 or not leading_blocks:
         return None
@@ -2603,15 +2645,15 @@ def _figure_bbox_for_caption(
         previous_caption,
     )
     source_precedes_visual = bool(
-        source_y0
-        and visual_region
-        and source_y0 < float(visual_region["bbox"][1])
+        source_y0 and visual_region and source_y0 < float(visual_region["bbox"][1])
     )
     if source_y0 and not source_precedes_visual and source_y0 - caption_y1 > 60:
         hard_bottom = min(hard_bottom, source_y0 - 6)
     if visual_region and (
         visual_region["kind"] != "vector"
-        or normalize_header(str(caption.get("raw_caption") or caption.get("caption") or "")).startswith("tabla_")
+        or normalize_header(
+            str(caption.get("raw_caption") or caption.get("caption") or "")
+        ).startswith("tabla_")
     ):
         return _clamp_bbox(visual_region["bbox"], page_width, page_height)
 
@@ -2663,24 +2705,15 @@ def _nearest_visual_region(
         if kind == "vector" and not is_table and _visual_region_contains_narrative(page, bbox):
             continue
         if bbox[1] >= top - 8 and bbox[3] <= bottom + 8:
-            candidates.append(
-                {"kind": kind, "bbox": bbox}
-            )
+            candidates.append({"kind": kind, "bbox": bbox})
     if not candidates:
         for figure in figures:
             if not isinstance(figure, dict):
                 continue
             bbox = _safe_bbox(figure.get("bbox"))
             kind = str(figure.get("kind") or "visual")
-            if (
-                bbox
-                and kind != "vector"
-                and bbox[1] < top < bbox[3] - 80
-                and bbox[3] <= bottom + 8
-            ):
-                candidates.append(
-                    {"kind": kind, "bbox": [bbox[0], top, bbox[2], bbox[3]]}
-                )
+            if bbox and kind != "vector" and bbox[1] < top < bbox[3] - 80 and bbox[3] <= bottom + 8:
+                candidates.append({"kind": kind, "bbox": [bbox[0], top, bbox[2], bbox[3]]})
     if not candidates:
         previous_on_page = bool(
             previous_caption
@@ -2694,15 +2727,18 @@ def _nearest_visual_region(
                 continue
             bbox = _safe_bbox(figure.get("bbox"))
             kind = str(figure.get("kind") or "visual")
-            if kind == "vector" and not is_table and bbox and _visual_region_contains_narrative(page, bbox):
+            if (
+                kind == "vector"
+                and not is_table
+                and bbox
+                and _visual_region_contains_narrative(page, bbox)
+            ):
                 continue
             if bbox and bbox[3] <= caption_y0 + 8 and caption_y0 - bbox[3] <= 48:
-                candidates.append(
-                    {"kind": kind, "bbox": bbox}
-                )
+                candidates.append({"kind": kind, "bbox": bbox})
     if not candidates:
         return None
-    return sorted(
+    return min(
         candidates,
         key=lambda candidate: (
             -_horizontal_overlap_ratio(
@@ -2721,7 +2757,7 @@ def _nearest_visual_region(
             abs(candidate["bbox"][1] - top),
             -_bbox_area(candidate["bbox"]),
         ),
-    )[0]
+    )
 
 
 def _horizontal_overlap_ratio(first: list[float], second: list[float]) -> float:
@@ -2878,11 +2914,11 @@ def _figure_text_parts(
                     continue
                 if _mentions_figure_number(block["text"], figure_number):
                     before_caption_context_seen = True
-                elif not before_caption_context_seen:
-                    continue
-                elif _mentions_other_figure_number(block["text"], figure_number):
-                    continue
-                elif _section_changed(toc_sections, caption_section, page_number):
+                elif (
+                    not before_caption_context_seen
+                    or _mentions_other_figure_number(block["text"], figure_number)
+                    or _section_changed(toc_sections, caption_section, page_number)
+                ):
                     continue
             if next_caption and page_number == end_page and block["y0"] >= next_caption["y0"]:
                 continue
@@ -2892,9 +2928,12 @@ def _figure_text_parts(
                 continue
             if _is_figure_caption_text(text):
                 continue
-            if position > caption_position and _section_changed(toc_sections, caption_section, page_number):
-                if not _mentions_figure_number(text, figure_number):
-                    continue
+            if (
+                position > caption_position
+                and _section_changed(toc_sections, caption_section, page_number)
+                and not _mentions_figure_number(text, figure_number)
+            ):
+                continue
             if position > caption_position and _looks_like_heading(text):
                 heading_after_caption_seen = True
                 continue
@@ -2931,9 +2970,7 @@ def _figure_block_extraction_context(
     position: str,
     caption: str,
 ) -> ExtractionContext:
-    block_bbox = _safe_bbox(
-        [block.get("x0"), block.get("y0"), block.get("x1"), block.get("y1")]
-    )
+    block_bbox = _safe_bbox([block.get("x0"), block.get("y0"), block.get("x1"), block.get("y1")])
     if not block_bbox or not figure_bbox:
         return ExtractionContext(
             near_figure=True,
@@ -2957,8 +2994,7 @@ def _figure_block_extraction_context(
         abs(figure_bbox[1] - block_bbox[3]),
     )
     horizontally_aligned = (
-        block_bbox[2] >= figure_bbox[0] - 12
-        and block_bbox[0] <= figure_bbox[2] + 12
+        block_bbox[2] >= figure_bbox[0] - 12 and block_bbox[0] <= figure_bbox[2] + 12
     )
     return ExtractionContext(
         near_figure=overlaps or (horizontally_aligned and vertical_gap <= 48),
@@ -3043,7 +3079,8 @@ def _is_toc_figure_reference(page: dict[str, Any], text: str) -> bool:
     )
     return references >= 3 and (
         any(marker in normalized_page[:500] for marker in ("indice", "contenido"))
-        or sum("..." in str(block.get("text") or "") for block in _raw_text_block_entries(page)) >= 2
+        or sum("..." in str(block.get("text") or "") for block in _raw_text_block_entries(page))
+        >= 2
     )
 
 
@@ -3060,8 +3097,7 @@ def _mentions_other_figure_number(text: str, figure_number: str) -> bool:
 
 def _mentioned_figure_numbers(text: str) -> set[str]:
     return {
-        match.group("number")
-        for match in FIGURE_NUMBER_REFERENCE_PATTERN.finditer(str(text or ""))
+        match.group("number") for match in FIGURE_NUMBER_REFERENCE_PATTERN.finditer(str(text or ""))
     }
 
 
@@ -3195,9 +3231,7 @@ def _is_toc_continuation_title(value: str) -> bool:
         return False
     if normalized in {"lgtbi", "lgbti", "personas lgtbi", "personas lgbti"}:
         return True
-    if len(value.split()) < 3 and not SECTION_NUMBER_PATTERN.match(value):
-        return True
-    return False
+    return bool(len(value.split()) < 3 and not SECTION_NUMBER_PATTERN.match(value))
 
 
 def _clean_section_title(value: str) -> str:
@@ -3290,11 +3324,9 @@ def _page_text_block_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
         merged_blocks: list[dict[str, Any]] = []
         for block in cleaned_blocks:
             text = block["text"]
-            if merged_blocks and _should_merge_spatial_heading_blocks(merged_blocks[-1], block):
-                merged_blocks[-1]["text"] = f"{merged_blocks[-1]['text']} {text}"
-                merged_blocks[-1]["x1"] = max(float(merged_blocks[-1]["x1"]), float(block["x1"]))
-                merged_blocks[-1]["y1"] = max(float(merged_blocks[-1]["y1"]), float(block["y1"]))
-            elif (
+            if (
+                merged_blocks and _should_merge_spatial_heading_blocks(merged_blocks[-1], block)
+            ) or (
                 merged_blocks
                 and _blocks_can_text_merge(merged_blocks[-1], block)
                 and _should_merge_blocks(merged_blocks[-1]["text"], text)
@@ -3352,9 +3384,7 @@ def _blocks_can_text_merge(previous: dict[str, Any], current: dict[str, Any]) ->
     if previous_left != current_left:
         return False
     gap = float(current.get("y0") or 0) - float(previous.get("y1") or 0)
-    if gap > 14:
-        return False
-    return True
+    return not gap > 14
 
 
 def _should_merge_spatial_heading_blocks(previous: dict[str, Any], current: dict[str, Any]) -> bool:
@@ -3369,9 +3399,7 @@ def _should_merge_spatial_heading_blocks(previous: dict[str, Any], current: dict
     if float(previous.get("x1") or 0) > 225 or float(current.get("x1") or 0) > 225:
         return False
     gap = float(current.get("y0") or 0) - float(previous.get("y1") or 0)
-    if gap < -2 or gap > 8:
-        return False
-    return True
+    return not (gap < -2 or gap > 8)
 
 
 def _should_merge_blocks(previous: str, current: str) -> bool:
@@ -3466,7 +3494,13 @@ def _clause_for_percentage(sentence: str, match: re.Match[str]) -> str:
         start = topic_boundary_matches[-1].start() + 1
     elif conjunction_match and conjunction_match.start() >= start:
         start = conjunction_match.start()
-    y_match = list(re.finditer(r"\s+y\s+(?:un|el|la)?\s*\d{1,3}(?:[,.]\d{1,2})?\s*%", sentence[match.end() :], re.IGNORECASE))
+    y_match = list(
+        re.finditer(
+            r"\s+y\s+(?:un|el|la)?\s*\d{1,3}(?:[,.]\d{1,2})?\s*%",
+            sentence[match.end() :],
+            re.IGNORECASE,
+        )
+    )
     comma = sentence.find(",", match.end())
     semicolon = sentence.find(";", match.end())
     period = sentence.find(".", match.end())
@@ -3587,9 +3621,7 @@ def _looks_like_side_heading_block(block: dict[str, Any]) -> bool:
     if not 2 <= len(words) <= 24:
         return False
     normalized = normalize_header(value)
-    if normalized.isdigit() or _is_excluded_section(value):
-        return False
-    return True
+    return not (normalized.isdigit() or _is_excluded_section(value))
 
 
 def _infer_category(text: str) -> str:
@@ -3602,7 +3634,7 @@ def _infer_category(text: str) -> str:
 
 def _build_code(year: int, report_title: str, question: str, percentage: float, page: int) -> str:
     seed = f"{FELGTBI_SOURCE_CODE}|{year}|{report_title}|{page}|{question}|{percentage}"
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+    digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
     return f"felgtbi_{digest}"
 
 
@@ -3614,5 +3646,5 @@ def _build_subsection_code(
     page: int,
 ) -> str:
     seed = f"{FELGTBI_SOURCE_CODE}|html|{year}|{report_title}|{page}|{subsection}|{caption}"
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:12]
+    digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
     return f"felgtbi_{digest}"

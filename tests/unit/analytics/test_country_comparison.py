@@ -93,7 +93,7 @@ def test_direct_fra_comparison_groups_binary_and_multiple_answers_by_country() -
             ("Spain", "ES", (60.0, 30.0, 10.0)),
             ("France", "FR", (50.0, 35.0, 15.0)),
         )
-        for answer, value in zip(("Yes", "No", "Unknown"), values)
+        for answer, value in zip(("Yes", "No", "Unknown"), values, strict=True)
     ]
 
     figure = build_country_comparison_chart(
@@ -106,9 +106,7 @@ def test_direct_fra_comparison_groups_binary_and_multiple_answers_by_country() -
     assert figure.layout.barmode == "group"
     assert {trace.name for trace in _traces(figure)} == {"Spain", "France"}
     assert all(list(trace.x) == ["Yes", "No", "Unknown"] for trace in _traces(figure))
-    assert {
-        trace.name: trace.marker.color for trace in _traces(figure)
-    } == {
+    assert {trace.name: trace.marker.color for trace in _traces(figure)} == {
         "Spain": country_color("ES", "Spain"),
         "France": country_color("FR", "France"),
     }

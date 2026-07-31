@@ -1,11 +1,58 @@
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 import math
+from collections import Counter
+from collections.abc import Iterable
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
-
 MISSING_PERCENTAGE_COLOR = "#9ca3af"
+MISSING_PERCENTAGE_STRINGS = frozenset({"", "n/a", "na", "null", "none", "nan"})
+
+
+def normalize_percentage(
+    value: Any,
+    *,
+    logger: Any | None = None,
+    context: dict[str, Any] | None = None,
+) -> float | None:
+    """Normalize percentage points stored by FRA and ILGA on a 0-100 scale.
+
+    Decimal values such as ``0.42`` remain ``0.42`` percentage points. They are
+    never assumed to be proportions because the persisted fields already
+    represent percentages.
+    """
+    if is_missing_percentage_value(value):
+        return None
+    if isinstance(value, bool):
+        _warn_invalid_percentage(value, logger=logger, context=context)
+        return None
+    if isinstance(value, (dict, list, set, tuple, bytes, bytearray)):
+        _warn_invalid_percentage(value, logger=logger, context=context)
+        return None
+
+    clean_value: Any = value
+    if isinstance(value, str):
+        clean_value = value.strip()
+        if clean_value.endswith("%"):
+            clean_value = clean_value[:-1].strip()
+        if "%" in clean_value or ("," in clean_value and "." in clean_value):
+            _warn_invalid_percentage(value, logger=logger, context=context)
+            return None
+        clean_value = clean_value.replace(",", ".")
+
+    try:
+        numeric_value = float(clean_value)
+    except TypeError, ValueError:
+        _warn_invalid_percentage(value, logger=logger, context=context)
+        return None
+
+    if math.isnan(numeric_value):
+        return None
+    if not math.isfinite(numeric_value) or not 0 <= numeric_value <= 100:
+        _warn_invalid_percentage(value, logger=logger, context=context)
+        return None
+    return numeric_value
 
 
 def coerce_percentage(
@@ -14,34 +61,58 @@ def coerce_percentage(
     logger: Any | None = None,
     context: dict[str, Any] | None = None,
 ) -> float | None:
+    """Backward-compatible alias for the centralized percentage normalizer."""
+    return normalize_percentage(value, logger=logger, context=context)
+
+
+def normalize_percentage_values(
+    values: Iterable[Any],
+    *,
+    logger: Any | None = None,
+    context: dict[str, Any] | None = None,
+) -> list[float | None]:
+    """Normalize a batch and emit at most one contextual warning for it."""
+    normalized: list[float | None] = []
+    invalid_values: Counter[str] = Counter()
+    for value in values:
+        parsed = normalize_percentage(value)
+        normalized.append(parsed)
+        if parsed is None and not is_missing_percentage_value(value):
+            invalid_values[_display_invalid_percentage(value)] += 1
+
+    if logger is not None and invalid_values:
+        count = sum(invalid_values.values())
+        values_summary = [
+            f"{value} ({occurrences})" if occurrences > 1 else value
+            for value, occurrences in invalid_values.most_common(12)
+        ]
+        context_text = _format_log_context(context)
+        message = f"invalid_percentage_values count={count} values={values_summary!r}"
+        if context_text:
+            message = f"{message} {context_text}"
+        extra = {
+            "invalid_percentage_count": count,
+            "invalid_percentage_values": values_summary,
+        }
+        if context:
+            extra.update(context)
+        logger.warning(message, extra=extra)
+    return normalized
+
+
+def is_missing_percentage_value(value: Any) -> bool:
     if value is None:
-        return None
-    try:
-        if value != value:
-            return None
-    except (TypeError, ValueError):
-        pass
-    if isinstance(value, bool):
-        _warn_invalid_percentage(value, logger=logger, context=context)
-        return None
-
-    clean_value: Any = value
+        return True
     if isinstance(value, str):
-        clean_value = value.strip()
-        if not clean_value:
-            return None
-        clean_value = clean_value.replace("%", "").replace(",", ".").strip()
-
+        return value.strip().casefold() in MISSING_PERCENTAGE_STRINGS
+    if isinstance(value, (bool, dict, list, set, tuple, bytes, bytearray)):
+        return False
+    if type(value).__name__ == "NAType" and type(value).__module__.startswith("pandas"):
+        return True
     try:
-        numeric_value = float(clean_value)
-    except (TypeError, ValueError):
-        _warn_invalid_percentage(value, logger=logger, context=context)
-        return None
-
-    if not math.isfinite(numeric_value):
-        _warn_invalid_percentage(value, logger=logger, context=context)
-        return None
-    return numeric_value
+        return math.isnan(float(value))
+    except TypeError, ValueError, OverflowError:
+        return False
 
 
 def format_percentage(value: Any) -> str | None:
@@ -66,8 +137,8 @@ def prepare_percentage_display_values(
 ) -> tuple[list[float | int | None], bool]:
     parsed: list[tuple[int, float]] = []
     output: list[float | int | None] = [None] * len(values)
-    for index, value in enumerate(values):
-        parsed_value = coerce_percentage(value, logger=logger, context=context)
+    normalized_values = normalize_percentage_values(values, logger=logger, context=context)
+    for index, parsed_value in enumerate(normalized_values):
         if parsed_value is None:
             continue
         parsed.append((index, parsed_value))
@@ -96,14 +167,8 @@ def prepare_percentage_display_values(
 
 
 def _largest_remainder_percentages(values: list[tuple[int, float]], total: float) -> dict[int, int]:
-    exact_values = [
-        (index, max(0.0, value) / total * 100.0)
-        for index, value in values
-    ]
-    allocations = {
-        index: int(math.floor(exact_value))
-        for index, exact_value in exact_values
-    }
+    exact_values = [(index, max(0.0, value) / total * 100.0) for index, value in values]
+    allocations = {index: math.floor(exact_value) for index, exact_value in exact_values}
     missing_points = 100 - sum(allocations.values())
     if missing_points <= 0:
         return allocations
@@ -121,17 +186,13 @@ def _largest_remainder_percentages(values: list[tuple[int, float]], total: float
 
 
 def _percentage_decimal(value: Any) -> Decimal | None:
-    if value is None or isinstance(value, bool):
+    normalized = normalize_percentage(value)
+    if normalized is None:
         return None
-    if isinstance(value, str):
-        value = value.strip()
-        if not value:
-            return None
-        value = value.replace("%", "").replace(",", ".").strip()
 
     try:
-        decimal_value = Decimal(str(value))
-    except (InvalidOperation, ValueError):
+        decimal_value = Decimal(str(normalized))
+    except InvalidOperation, ValueError:
         return None
     if not decimal_value.is_finite():
         return None
@@ -146,7 +207,25 @@ def _warn_invalid_percentage(
 ) -> None:
     if logger is None:
         return
-    extra = {"invalid_percentage": repr(value)}
+    display_value = _display_invalid_percentage(value)
+    extra = {"invalid_percentage": display_value}
     if context:
         extra.update(context)
-    logger.warning("invalid_percentage_value", extra=extra)
+    context_text = _format_log_context(context)
+    message = f"invalid_percentage_value value={display_value}"
+    if context_text:
+        message = f"{message} {context_text}"
+    logger.warning(message, extra=extra)
+
+
+def _display_invalid_percentage(value: Any) -> str:
+    return repr(value).replace("\r", "\\r").replace("\n", "\\n")[:160]
+
+
+def _format_log_context(context: dict[str, Any] | None) -> str:
+    clean_context = context or {}
+    return " ".join(
+        f"{key}={clean_context[key]!r}"
+        for key in sorted(clean_context)
+        if clean_context[key] is not None
+    )

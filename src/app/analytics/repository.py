@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from functools import lru_cache
 import hashlib
 import logging
 import os
 import re
-from threading import Lock
 import time
+from dataclasses import dataclass
+from functools import lru_cache
+from threading import Lock
 from typing import Any, cast
 
 import psycopg
@@ -23,7 +23,9 @@ from app.mongo import get_mongo_client
 logger = logging.getLogger(__name__)
 ANALYTICS_CACHE_TIMEOUT_SECONDS = int(os.getenv("ANALYTICS_CACHE_TIMEOUT_SECONDS", "3600"))
 ANALYTICS_HEALTH_CHECK_TTL_SECONDS = int(os.getenv("ANALYTICS_HEALTH_CHECK_TTL_SECONDS", "15"))
-SPAIN_COLLECTIONS_CACHE_TIMEOUT_SECONDS = int(os.getenv("SPAIN_COLLECTIONS_CACHE_TIMEOUT_SECONDS", "300"))
+SPAIN_COLLECTIONS_CACHE_TIMEOUT_SECONDS = int(
+    os.getenv("SPAIN_COLLECTIONS_CACHE_TIMEOUT_SECONDS", "300")
+)
 MONGO_UNAVAILABLE_ERRORS = (AutoReconnect, ConfigurationError, NetworkTimeout)
 COUNTRY_LGBTI_STATUS_COLLECTION = "country_lgbti_status"
 DEFAULT_FELGTBI_COLLECTION = "Indicator_felgtbi"
@@ -103,7 +105,7 @@ _section_cache_requests = 0
 _section_cache_hits = 0
 
 
-@dataclass(frozen=True) # frozen=true significa que el objeto no puede ser modificado
+@dataclass(frozen=True)  # frozen=true significa que el objeto no puede ser modificado
 class FraIndicator:
     code: str
     category: str
@@ -505,7 +507,7 @@ def get_felgtbi_document_years(
     for year in years:
         try:
             clean_years.append(int(year))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
     return sorted(set(clean_years), reverse=True)
 
@@ -525,19 +527,22 @@ def get_felgtbi_indicators_by_document(
     if year is not None and str(year).strip():
         try:
             query["year"] = int(year)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return []
     try:
         rows = _mongo_collection(resolved_collection).find(
             query,
             _spain_navigation_projection(),
-            sort=[("year", -1), ("page", 1), ("section_title", 1), ("topic", 1), ("description", 1), ("code", 1)],
+            sort=[
+                ("year", -1),
+                ("page", 1),
+                ("section_title", 1),
+                ("topic", 1),
+                ("description", 1),
+                ("code", 1),
+            ],
         )
-        return [
-            _row_to_felgtbi_indicator(row)
-            for row in rows
-            if _has_navigable_spain_section(row)
-        ]
+        return [_row_to_felgtbi_indicator(row) for row in rows if _has_navigable_spain_section(row)]
     except Exception:
         logger.exception(
             "felgtbi_document_read_failed",
@@ -595,7 +600,7 @@ def get_felgtbi_years(
     for year in years:
         try:
             clean_years.append(int(year))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
     return sorted(set(clean_years), reverse=True)
 
@@ -617,7 +622,7 @@ def get_felgtbi_indicators_by_category(
     if year is not None and str(year).strip():
         try:
             query["year"] = int(year)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return []
     try:
         rows = _mongo_collection(resolved_collection).find(
@@ -625,11 +630,7 @@ def get_felgtbi_indicators_by_category(
             _spain_navigation_projection(),
             sort=[("year", -1), ("report_title", 1), ("topic", 1), ("description", 1)],
         )
-        return [
-            _row_to_felgtbi_indicator(row)
-            for row in rows
-            if _has_navigable_spain_section(row)
-        ]
+        return [_row_to_felgtbi_indicator(row) for row in rows if _has_navigable_spain_section(row)]
     except Exception:
         logger.exception(
             "felgtbi_category_read_failed",
@@ -773,7 +774,7 @@ def get_ilga_years() -> list[int]:
     for year in years:
         try:
             clean_years.append(int(year))
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
     return sorted(clean_years, reverse=True)
 
@@ -782,7 +783,7 @@ def get_ilga_years() -> list[int]:
 def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
     try:
         clean_year = int(year) if year is not None and str(year).strip() else None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         clean_year = None
 
     if clean_year is None:
@@ -905,7 +906,7 @@ def get_country_lgbti_status_record(
         return None
     try:
         clean_year = int(year)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
     query: dict[str, Any] = {"country_code": clean_code, "year": clean_year}
@@ -1021,7 +1022,9 @@ def _spain_document_query(collection_name: str, document: FelgtbiDocument) -> di
     return query
 
 
-def _resolve_felgtbi_document(document_id: str | None, collection_name: str | None) -> FelgtbiDocument | None:
+def _resolve_felgtbi_document(
+    document_id: str | None, collection_name: str | None
+) -> FelgtbiDocument | None:
     clean_id = str(document_id or "").strip()
     if not clean_id:
         return None
@@ -1092,7 +1095,9 @@ def _group_spain_documents(rows: Any, collection_name: str) -> list[FelgtbiDocum
     )
 
 
-def _spain_document_identity(row: dict[str, Any], collection_name: str) -> tuple[str, tuple[tuple[str, Any], ...]]:
+def _spain_document_identity(
+    row: dict[str, Any], collection_name: str
+) -> tuple[str, tuple[tuple[str, Any], ...]]:
     source_document_id = _clean_text(
         row.get("source_document_id")
         or _nested_value(row, "metadata.source_document_id")
@@ -1128,7 +1133,7 @@ def _spain_document_identity(row: dict[str, Any], collection_name: str) -> tuple
             "filter_fields": filter_fields,
         }
     )
-    digest = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:16]
+    digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     return f"legacy:{digest}", tuple(filter_fields)
 
 
@@ -1387,7 +1392,7 @@ def _collection_has_spain_interface_documents(name: str) -> bool:
                 "year": {"$exists": True, "$nin": ["", None]},
                 "$or": [
                     *country_clauses,
-                ]
+                ],
             },
             {
                 "_id": 0,
@@ -1517,12 +1522,19 @@ def _is_technical_collection_name(name: str) -> bool:
     if any(clean_name.lower().startswith(prefix) for prefix in SPAIN_COLLECTION_EXCLUDED_PREFIXES):
         return True
     tokens = set(normalized.split("_"))
-    return bool(tokens.intersection({"cache", "backup", "bak", "scratch", "temporary", "test", "log", "logs"}))
+    return bool(
+        tokens.intersection(
+            {"cache", "backup", "bak", "scratch", "temporary", "test", "log", "logs"}
+        )
+    )
 
 
 def _spain_collection_sort_key(name: str) -> tuple[int, str]:
     clean_name = str(name or "").strip()
-    return (0 if clean_name == DEFAULT_FELGTBI_COLLECTION else 1, _spain_collection_label(clean_name))
+    return (
+        0 if clean_name == DEFAULT_FELGTBI_COLLECTION else 1,
+        _spain_collection_label(clean_name),
+    )
 
 
 def _spain_collection_label(name: str, *, language: str = "es") -> str:
@@ -1534,16 +1546,16 @@ def _spain_collection_label(name: str, *, language: str = "es") -> str:
 
 
 def _readable_collection_label(name: str, *, language: str = "es") -> str:
-    tokens = [
-        token
-        for token in re.split(r"[^0-9A-Za-zÀ-ÿ]+", str(name or ""))
-        if token
-    ]
+    tokens = [token for token in re.split(r"[^0-9A-Za-zÀ-ÿ]+", str(name or "")) if token]
     if not tokens:
         return "Fuente de datos" if language == "es" else "Data source"
     normalized_tokens = {token.lower() for token in tokens}
     if {"felgtbi", "discrimination", "reports"}.issubset(normalized_tokens):
-        return "FELGTBI - Discrimination reports" if language == "en" else "FELGTBI - Informes de discriminación"
+        return (
+            "FELGTBI - Discrimination reports"
+            if language == "en"
+            else "FELGTBI - Informes de discriminación"
+        )
 
     translations_es = {
         "felgtbi": "FELGTBI",
@@ -1610,5 +1622,5 @@ def _first_percentage(answers: Any) -> float | None:
 def _int_or_none(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None

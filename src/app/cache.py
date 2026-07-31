@@ -10,11 +10,7 @@ cache = Cache()
 
 def init_cache(app: Flask) -> None:
     cache_type = os.getenv("CACHE_TYPE", "SimpleCache").strip() or "SimpleCache"
-    redis_url = (
-        os.getenv("CACHE_REDIS_URL")
-        or os.getenv("REDIS_URL")
-        or ""
-    ).strip()
+    redis_url = (os.getenv("CACHE_REDIS_URL") or os.getenv("REDIS_URL") or "").strip()
     if cache_type.lower() in {"redis", "rediscache"} and not redis_url:
         cache_type = "SimpleCache"
 
@@ -34,8 +30,7 @@ def init_cache(app: Flask) -> None:
             response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
         elif request.path.startswith("/assets/"):
             response.headers["Cache-Control"] = (
-                "public, max-age="
-                f"{_env_int('STATIC_CACHE_MAX_AGE', 86400)}"
+                f"public, max-age={_env_int('STATIC_CACHE_MAX_AGE', 86400)}"
             )
         return response
 

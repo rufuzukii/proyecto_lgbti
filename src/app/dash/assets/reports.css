@@ -431,34 +431,15 @@ body[data-theme="dark"] .reports-shell .Select--multi .Select-value-icon {
     color: var(--reports-muted-text) !important;
 }
 
-html[data-theme="dark"] .reports-preview-document .dash-table-container,
-html[data-theme="dark"] .reports-preview-document .dash-spreadsheet-container,
-html[data-theme="dark"] .reports-preview-document .dash-spreadsheet-inner,
-html[data-theme="dark"] .reports-preview-document .dash-spreadsheet,
-body[data-theme="dark"] .reports-preview-document .dash-table-container,
-body[data-theme="dark"] .reports-preview-document .dash-spreadsheet-container,
-body[data-theme="dark"] .reports-preview-document .dash-spreadsheet-inner,
-body[data-theme="dark"] .reports-preview-document .dash-spreadsheet {
-    background: var(--reports-control-bg) !important;
-    color: var(--reports-text) !important;
-}
-
-html[data-theme="dark"] .reports-preview-document .dash-spreadsheet td,
-html[data-theme="dark"] .reports-preview-document .dash-spreadsheet th,
-html[data-theme="dark"] .reports-preview-document .dash-spreadsheet .cell,
-body[data-theme="dark"] .reports-preview-document .dash-spreadsheet td,
-body[data-theme="dark"] .reports-preview-document .dash-spreadsheet th,
-body[data-theme="dark"] .reports-preview-document .dash-spreadsheet .cell {
-    background-color: var(--reports-control-bg) !important;
-    border-color: var(--reports-border) !important;
-    color: var(--reports-text) !important;
-}
-
-html[data-theme="dark"] .reports-preview-document .dash-spreadsheet th,
-html[data-theme="dark"] .reports-preview-document .dash-header,
-body[data-theme="dark"] .reports-preview-document .dash-spreadsheet th,
-body[data-theme="dark"] .reports-preview-document .dash-header {
-    background-color: #151d2c !important;
+html[data-theme="dark"] .reports-preview-grid,
+body[data-theme="dark"] .reports-preview-grid {
+    --ag-background-color: var(--reports-control-bg);
+    --ag-foreground-color: var(--reports-text);
+    --ag-border-color: var(--reports-border);
+    --ag-header-background-color: #151d2c;
+    --ag-header-foreground-color: var(--reports-text);
+    --ag-odd-row-background-color: #121a28;
+    --ag-row-hover-color: #243044;
 }
 
 html[data-theme="dark"] .reports-preview-chart .js-plotly-plot text,

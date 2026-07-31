@@ -1,12 +1,4 @@
-from pathlib import Path
-import sys
-
 import pytest
-
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
 from app.import_to_db.felgtbi.importer import (
     StorageUploadError,
@@ -219,9 +211,7 @@ def test_pdf_page_extraction_keeps_image_bbox_without_extracting_image_bytes(mon
     extraction_flags = text_page_flags[0]
     assert extraction_flags is not None
     assert not extraction_flags & fitz.TEXT_PRESERVE_IMAGES
-    assert pages[0]["figures"] == [
-        {"kind": "figure", "bbox": [85.0, 180.0, 505.0, 495.0]}
-    ]
+    assert pages[0]["figures"] == [{"kind": "figure", "bbox": [85.0, 180.0, 505.0, 495.0]}]
 
 
 def test_pdf_page_extraction_detects_vector_chart_regions() -> None:
@@ -358,9 +348,7 @@ def test_report_and_figure_titles_remove_repeated_collection_reference() -> None
 
     assert _resolve_report_title(full_text, "Informe-DDOO_24.pdf") == "Estado del odio"
     assert (
-        _clean_figure_caption_title(
-            "Grafico 8: Donde sufriste la agresion, Estado LGTBI+ 2024"
-        )
+        _clean_figure_caption_title("Grafico 8: Donde sufriste la agresion, Estado LGTBI+ 2024")
         == "Donde sufriste la agresion"
     )
 

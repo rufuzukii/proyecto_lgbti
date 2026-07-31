@@ -1,15 +1,9 @@
-from pathlib import Path
 import sys
 from types import SimpleNamespace
 
 from flask import Flask
 
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-import app.analytics.repository as repository
+from app.analytics import repository
 from app.analytics.repository import (
     FelgtbiDocument,
     _has_valid_spain_section,
@@ -22,7 +16,10 @@ from app.dash.pages.spain import (
     _spain_document_view_state,
     _spain_visualization_shell,
 )
-from app.import_to_db.felgtbi.importer import _attach_page_assets, parse_felgtbi_text_pages
+from app.import_to_db.felgtbi.importer import (
+    _attach_page_assets,
+    parse_felgtbi_text_pages,
+)
 from app.import_to_db.felgtbi.mongo import _prepare_indicator_document
 from app.import_to_db.felgtbi.semantics import (
     ExtractionContext,
@@ -55,9 +52,7 @@ def test_structured_section_activates_the_visible_dash_report_slot() -> None:
         "subsection_title": "Estimación de voto",
         "paragraphs_before_figure": ["Resultados sobre la población encuestada."],
         "figure": {"caption": "Estimación de voto", "number": "4"},
-        "data_points": [
-            {"text": "PSOE: 44,5%", "value": 44.5, "percentage": 44.5}
-        ],
+        "data_points": [{"text": "PSOE: 44,5%", "value": 44.5, "percentage": 44.5}],
         "answers": [{"answer": "PSOE", "value": 44.5, "percentage": 44.5}],
     }
 
@@ -156,9 +151,7 @@ def test_chart_labels_and_years_are_removed_but_real_percentage_sentences_remain
         "étnica, un 7,7 % se categorizan como personas con alguna discapacidad y un 6,5 % "
         "se define como personas migrantes."
     )
-    short_narrative = (
-        "Destaca el 10,8 % que se define como perteneciente a una minoría religiosa."
-    )
+    short_narrative = "Destaca el 10,8 % que se define como perteneciente a una minoría religiosa."
     extracted_without_final_period = (
         "Aunque algunas personas no denuncian porque no le dieron importancia (25%), por "
         "vergüenza (19%), porque no se les ocurrió (13%), por miedo (12%) o por desconfianza "
@@ -341,7 +334,9 @@ def test_section_cache_avoids_duplicate_mongo_queries(monkeypatch) -> None:
         section_count=1,
         filter_fields=(("source_document_id", "doc-1"),),
     )
-    monkeypatch.setattr(repository, "_resolve_spain_collection_name", lambda _value: "Indicator_felgtbi")
+    monkeypatch.setattr(
+        repository, "_resolve_spain_collection_name", lambda _value: "Indicator_felgtbi"
+    )
     monkeypatch.setattr(repository, "_resolve_felgtbi_document", lambda *_args: selected_document)
     monkeypatch.setattr(repository, "_mongo_collection", lambda _name: collection)
 

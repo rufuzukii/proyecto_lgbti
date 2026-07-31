@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import hashlib
+from copy import deepcopy
 from typing import Any
 
 from bson import ObjectId
-from app.mongo import get_mongo_collection
+
 from app.import_to_db.felgtbi.importer import FELGTBI_SOURCE_CODE
 from app.import_to_db.felgtbi.semantics import sanitize_report_document
+from app.mongo import get_mongo_collection
 
 INDICATOR_FELGTBI_COLLECTION = "Indicator_felgtbi"
 
@@ -219,14 +220,16 @@ def _fallback_source_document_id(document: dict[str, Any], original_filename: st
             document.get("report_type"),
         )
     )
-    digest = hashlib.sha1(seed.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    digest = hashlib.sha1(seed.encode("utf-8", errors="ignore"), usedforsecurity=False).hexdigest()[
+        :16
+    ]
     return f"felgtbi_pdf_{digest}"
 
 
 def _int_or_none(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

@@ -2,12 +2,14 @@ from typing import Any
 
 from dash import Dash
 
-from app.dash.layouts.home import _country_status_card
-from app.dash.layouts.home import _country_status_editor
-from app.dash.layouts.home import _empty_country_status_editor_record
-from app.dash.layouts.home import _any_clicks
-from app.dash.layouts.home import build_home_layout, register_home_callbacks
-
+from app.dash.layouts.home import (
+    _any_clicks,
+    _country_status_card,
+    _country_status_editor,
+    _empty_country_status_editor_record,
+    build_home_layout,
+    register_home_callbacks,
+)
 
 STATUS = {
     "available": True,
@@ -54,14 +56,19 @@ def test_admin_missing_country_status_card_renders_add_button() -> None:
     empty_summary_props = empty_summary.to_plotly_json()["props"]
 
     assert _contains_text(card, "Añadir información")
-    assert empty_summary_props["data-i18n-es"] == "Todavía no hay información disponible para este país."
-    assert empty_summary_props["data-i18n-en"] == "No information is available for this country yet."
+    assert (
+        empty_summary_props["data-i18n-es"]
+        == "Todavía no hay información disponible para este país."
+    )
+    assert (
+        empty_summary_props["data-i18n-en"] == "No information is available for this country yet."
+    )
 
 
 def test_home_country_status_editor_callbacks_use_existing_store_ids(monkeypatch) -> None:
     monkeypatch.setattr("app.dash.layouts.home.build_navbar", lambda active=None: "")
     monkeypatch.setattr("app.dash.layouts.home.get_latest_ilga_document", lambda: None)
-    monkeypatch.setattr("app.dash.layouts.home.get_ilga_years", lambda: [])
+    monkeypatch.setattr("app.dash.layouts.home.get_ilga_years", list)
 
     app = Dash(__name__, suppress_callback_exceptions=True)
     app.layout = build_home_layout()
@@ -79,9 +86,7 @@ def test_home_country_status_editor_callbacks_use_existing_store_ids(monkeypatch
     assert "country-status-editor-state" not in callback_outputs
     assert callback_outputs.issubset(layout_ids)
     callback_inputs = {
-        item["id"]
-        for callback in app.callback_map.values()
-        for item in callback["inputs"]
+        item["id"] for callback in app.callback_map.values() for item in callback["inputs"]
     }
     joined_inputs = " ".join(callback_inputs)
     assert "country-status-open-editor" in joined_inputs
@@ -112,7 +117,10 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
     }
 
     assert "Selecciona un país para consultar la situación legal actual" in _text_content(helper)
-    assert helper_props["data-i18n-en"] == "Select a country to view the current legal situation of LGBTIQ+ people."
+    assert (
+        helper_props["data-i18n-en"]
+        == "Select a country to view the current legal situation of LGBTIQ+ people."
+    )
     assert helper_props["className"] == "home-map-helper-text"
     assert type(helper).__name__ == "H2"
     footer_children = footer_meta.to_plotly_json()["props"]["children"]
@@ -145,6 +153,33 @@ def test_country_status_editor_ignores_dynamic_components_without_clicks() -> No
     assert _any_clicks([None], [1])
 
 
+def test_existing_country_status_requires_explicit_delete_confirmation() -> None:
+    editor = _country_status_editor(
+        {
+            "country": "España",
+            "country_code": "ES",
+            "year": 2026,
+            "summary": "Descripción suficientemente larga para editar el registro.",
+            "source_name": "ILGA-Europe",
+            "source_url": "https://www.ilga-europe.org/",
+            "reviewed_at": "2026-07-29",
+            "active": True,
+        },
+        {"mode": "edit", "country_code": "ES", "year": 2026, "exists": True},
+        [{"label": "España (ES)", "value": "ES"}],
+        {},
+    )
+
+    confirmation = _find_component_by_id(
+        editor,
+        {"type": "country-status-delete-confirm", "slot": "main"},
+    )
+    props = confirmation.to_plotly_json()["props"]
+
+    assert props["options"][0]["value"] == "confirm"
+    assert props["value"] == []
+
+
 def test_country_status_editor_empty_record_keeps_form_blank() -> None:
     editor = _country_status_editor(
         _empty_country_status_editor_record(),
@@ -153,13 +188,48 @@ def test_country_status_editor_empty_record_keeps_form_blank() -> None:
         {},
     )
 
-    assert _find_component_by_dict_id(editor, {"type": "country-status-form-country", "slot": "main"}).value == ""
-    assert _find_component_by_dict_id(editor, {"type": "country-status-form-country-code", "slot": "main"}).value == ""
-    assert _find_component_by_dict_id(editor, {"type": "country-status-form-year", "slot": "main"}).value == ""
-    assert _find_component_by_dict_id(editor, {"type": "country-status-form-source-name", "slot": "main"}).value == ""
-    assert _find_component_by_dict_id(editor, {"type": "country-status-form-source-url", "slot": "main"}).value == ""
-    assert _find_component_by_dict_id(editor, {"type": "country-status-form-reviewed-at", "slot": "main"}).value == ""
-    assert _find_component_by_dict_id(editor, {"type": "country-status-form-active", "slot": "main"}).value == []
+    assert (
+        _find_component_by_dict_id(
+            editor, {"type": "country-status-form-country", "slot": "main"}
+        ).value
+        == ""
+    )
+    assert (
+        _find_component_by_dict_id(
+            editor, {"type": "country-status-form-country-code", "slot": "main"}
+        ).value
+        == ""
+    )
+    assert (
+        _find_component_by_dict_id(
+            editor, {"type": "country-status-form-year", "slot": "main"}
+        ).value
+        == ""
+    )
+    assert (
+        _find_component_by_dict_id(
+            editor, {"type": "country-status-form-source-name", "slot": "main"}
+        ).value
+        == ""
+    )
+    assert (
+        _find_component_by_dict_id(
+            editor, {"type": "country-status-form-source-url", "slot": "main"}
+        ).value
+        == ""
+    )
+    assert (
+        _find_component_by_dict_id(
+            editor, {"type": "country-status-form-reviewed-at", "slot": "main"}
+        ).value
+        == ""
+    )
+    assert (
+        _find_component_by_dict_id(
+            editor, {"type": "country-status-form-active", "slot": "main"}
+        ).value
+        == []
+    )
 
 
 def _contains_text(component: Any, expected: str) -> bool:
@@ -190,7 +260,7 @@ def _component_ids(component: Any) -> set[str]:
     return output
 
 
-def _find_component_by_id(component: Any, expected_id: str) -> Any:
+def _find_component_by_id(component: Any, expected_id: Any) -> Any:
     if getattr(component, "id", None) == expected_id:
         return component
     children = getattr(component, "children", None)

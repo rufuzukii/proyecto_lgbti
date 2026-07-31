@@ -4,10 +4,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from dash import Dash
 import fitz
-from PIL import Image
 import plotly.graph_objects as go
+from dash import Dash
+from PIL import Image
 
 from app.analytics.statistics_exports import (
     _prepare_report_figure,
@@ -16,6 +16,8 @@ from app.analytics.statistics_exports import (
 from app.auth.permissions import Permission, user_has_permission
 from app.dash.pages import reports as reports_page
 from app.dash_app import _report_params
+from app.reports import generator as report_generator
+from app.reports import service as report_service
 from app.reports.builder import HRReportBuilder
 from app.reports.models import (
     ReportConfiguration,
@@ -23,8 +25,6 @@ from app.reports.models import (
     sanitize_report_text,
 )
 from app.reports.pdf_exporter import PDFExporter
-from app.reports import generator as report_generator
-from app.reports import service as report_service
 from app.users.schemas import UserRole
 
 
@@ -262,9 +262,7 @@ def test_report_export_removes_interactive_selection_annotations() -> None:
 
     prepared = _prepare_report_figure(figure)
 
-    assert [annotation.text for annotation in figure.layout.annotations] == [
-        "Seleccionado"
-    ]
+    assert [annotation.text for annotation in figure.layout.annotations] == ["Seleccionado"]
     assert list(prepared.layout.annotations) == []
 
 
@@ -273,7 +271,16 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
         _configuration(
             mode="custom",
             charts=["ranking", "average"],
-            sections=["executive", "methodology", "metrics", "comparison", "risks", "recommendations", "limitations", "sources"],
+            sections=[
+                "executive",
+                "methodology",
+                "metrics",
+                "comparison",
+                "risks",
+                "recommendations",
+                "limitations",
+                "sources",
+            ],
         ),
         ReportDataset(_fra_result(), query_seconds=0.01),
     )
@@ -292,10 +299,7 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
 
     pdf_bytes = PDFExporter().export(content, chart_paths)
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
-    extracted = "\n".join(
-        cast(str, page.get_text())
-        for page in document
-    )
+    extracted = "\n".join(cast(str, page.get_text()) for page in document)
 
     assert pdf_bytes.startswith(b"%PDF")
     assert len(document) >= 3
@@ -305,6 +309,11 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert "FRA EU LGBTIQ Survey III" in extracted
     assert "España" in extracted
     assert "RainbowLens" in extracted
+    metadata = document.metadata
+    assert metadata is not None
+    assert metadata["creator"] == "RainbowLens"
+    assert metadata["producer"] == "RainbowLens"
+    assert "ReportLab" not in " ".join(str(value) for value in metadata.values())
 
 
 def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
@@ -369,15 +378,29 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
             username="People Team",
         ),
     )
-    monkeypatch.setattr(reports_page, "_year_options", lambda _source: [{"label": "2024", "value": 2024}])
-    monkeypatch.setattr(reports_page, "_category_options", lambda _source, _year: [{"label": "Employment", "value": "Employment"}])
-    monkeypatch.setattr(reports_page, "_indicator_options", lambda *_args: [{"label": "Workplace discrimination", "value": "EMP_1"}])
+    monkeypatch.setattr(
+        reports_page, "_year_options", lambda _source: [{"label": "2024", "value": 2024}]
+    )
+    monkeypatch.setattr(
+        reports_page,
+        "_category_options",
+        lambda _source, _year: [{"label": "Employment", "value": "Employment"}],
+    )
+    monkeypatch.setattr(
+        reports_page,
+        "_indicator_options",
+        lambda *_args: [{"label": "Workplace discrimination", "value": "EMP_1"}],
+    )
     monkeypatch.setattr(reports_page, "_criterion_options", lambda *_args: [])
 
     layout = reports_page.build_reports_layout(_configuration().to_dict())
     components = list(_walk(layout))
     ids = {getattr(component, "id", None) for component in components}
-    store = next(component for component in components if getattr(component, "id", None) == "report-config-store")
+    store = next(
+        component
+        for component in components
+        if getattr(component, "id", None) == "report-config-store"
+    )
 
     assert {
         "report-preview-button",

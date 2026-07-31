@@ -28,7 +28,9 @@ def merge_statistics_with_geodata(
         data = data.drop_duplicates("_stats_iso", keep="first")
 
     merged = geodata.merge(data, on="_stats_iso", how="left", suffixes=("", "_stat"))
-    merged["has_statistics"] = merged[data_iso_column].notna() if data_iso_column in merged else False
+    merged["has_statistics"] = (
+        merged[data_iso_column].notna() if data_iso_column in merged else False
+    )
     merged.attrs["missing_geometry_iso"] = sorted(
         set(data["_stats_iso"].dropna()).difference(set(geodata["_stats_iso"].dropna()))
     )

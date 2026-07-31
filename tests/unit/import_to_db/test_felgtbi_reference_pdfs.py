@@ -1,20 +1,15 @@
-from functools import lru_cache
 import os
-from pathlib import Path
 import re
-import sys
 import unicodedata
+from functools import cache
+from pathlib import Path
 
 import pytest
 
-
-ROOT = Path(__file__).resolve().parents[3]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-from app.import_to_db.felgtbi.importer import extract_pdf_pages, parse_felgtbi_text_pages
-
+from app.import_to_db.felgtbi.importer import (
+    extract_pdf_pages,
+    parse_felgtbi_text_pages,
+)
 
 REFERENCE_ROOT = Path(
     os.getenv(
@@ -58,12 +53,7 @@ REFERENCE_CASES = (
 
 
 def _ascii_name(value: str) -> str:
-    return (
-        unicodedata.normalize("NFKD", value)
-        .encode("ascii", "ignore")
-        .decode("ascii")
-        .casefold()
-    )
+    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii").casefold()
 
 
 def _reference_pdf(year: str, normalized_name: str) -> Path:
@@ -75,7 +65,7 @@ def _reference_pdf(year: str, normalized_name: str) -> Path:
     pytest.skip(f"PDF de referencia no disponible: {year}/{normalized_name}")
 
 
-@lru_cache(maxsize=None)
+@cache
 def _parse_reference(year: str, normalized_name: str):
     path = _reference_pdf(year, normalized_name)
     pages = extract_pdf_pages(path.read_bytes())
@@ -98,7 +88,10 @@ def test_reference_pdf_figures_have_bounded_crops_and_clean_titles(
 
     assert len(documents) >= minimum_documents
     assert {document["report_title"] for document in documents} == {expected_title}
-    assert all(not COLLECTION_SUFFIX.search(str(document.get("figure_caption") or "")) for document in documents)
+    assert all(
+        not COLLECTION_SUFFIX.search(str(document.get("figure_caption") or ""))
+        for document in documents
+    )
 
     for document in documents:
         bbox = (document.get("visual_context") or {}).get("bbox")
@@ -110,8 +103,16 @@ def test_reference_pdf_figures_have_bounded_crops_and_clean_titles(
 
 def test_ddoo_2024_reference_crops_exclude_known_following_paragraphs() -> None:
     _pages, documents = _parse_reference("2024", "informe-ddoo_24.pdf")
-    graph_1 = next(document for document in documents if document["page"] == 14 and document["figure_number"] == "1")
-    graph_8 = next(document for document in documents if document["page"] == 23 and document["figure_number"] == "8")
+    graph_1 = next(
+        document
+        for document in documents
+        if document["page"] == 14 and document["figure_number"] == "1"
+    )
+    graph_8 = next(
+        document
+        for document in documents
+        if document["page"] == 23 and document["figure_number"] == "8"
+    )
 
     assert graph_1["visual_context"]["bbox"][3] < 344.6
     assert graph_8["visual_context"]["bbox"][3] < 396.5
@@ -128,7 +129,10 @@ def test_family_and_political_reference_layouts_use_distinct_visual_regions() ->
 
     assert family_page_21["visual_context"]["bbox"][1] >= 490
     assert len(political_page_7) == 2
-    assert political_page_7[0]["visual_context"]["bbox"] != political_page_7[1]["visual_context"]["bbox"]
+    assert (
+        political_page_7[0]["visual_context"]["bbox"]
+        != political_page_7[1]["visual_context"]["bbox"]
+    )
 
 
 def test_2025_political_legend_is_not_mistaken_for_narrative() -> None:

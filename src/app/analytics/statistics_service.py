@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import hashlib
 import json
 import logging
 import re
 import time
+from copy import deepcopy
 from typing import Any
 
 import pandas as pd
 
-from app.cache import cache
-from app.analytics.percentage_display import coerce_percentage
+from app.analytics.percentage_display import (
+    coerce_percentage,
+    normalize_percentage_values,
+)
 from app.analytics.repository import (
     ANALYTICS_CACHE_TIMEOUT_SECONDS,
     get_fra_indicator_answers,
@@ -32,6 +34,7 @@ from app.analytics.statistics_normalizers import (
     normalize_filter_value,
     repair_text_encoding,
 )
+from app.cache import cache
 
 logger = logging.getLogger(__name__)
 NO_DATA_MESSAGE = (
@@ -45,21 +48,32 @@ def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
     if not isinstance(document, dict):
         return _empty_fra_dataframe()
 
-    for answer in document.get("answers", []):
-        if not isinstance(answer, dict):
-            continue
-        percentage = coerce_percentage(
-            _answer_percentage_value(answer),
-            logger=logger,
-            context={
-                "collection": "Indicator_fra",
-                "document_code": document.get("code"),
-                "country": answer.get("country"),
-                "country_code": answer.get("country_code"),
-                "answer": answer.get("answer"),
-                "field": "answers.percentage",
-            },
-        )
+    answers = [answer for answer in document.get("answers", []) if isinstance(answer, dict)]
+    raw_percentages = [_answer_percentage_value(answer) for answer in answers]
+    normalized_percentages = normalize_percentage_values(
+        raw_percentages,
+        logger=logger,
+        context={
+            "collection": "Indicator_fra",
+            "indicator": document.get("code"),
+            "field": "answers.percentage",
+            "countries": sorted(
+                {
+                    str(answer.get("country_code") or answer.get("country") or "").strip()
+                    for answer in answers
+                    if str(answer.get("country_code") or answer.get("country") or "").strip()
+                }
+            ),
+            "years": sorted(
+                {
+                    year
+                    for answer in answers
+                    if (year := _extract_year(answer.get("date"))) is not None
+                }
+            ),
+        },
+    )
+    for answer, percentage in zip(answers, normalized_percentages, strict=True):
         country = repair_text_encoding(answer.get("country")).strip()
         answer_value = repair_text_encoding(answer.get("answer")).strip()
         if not country or not answer_value:
@@ -69,7 +83,9 @@ def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
             {
                 "source": "FRA",
                 "category": repair_text_encoding(document.get("category")).strip(),
-                "specific_category": repair_text_encoding(document.get("specific_category")).strip(),
+                "specific_category": repair_text_encoding(
+                    document.get("specific_category")
+                ).strip(),
                 "question": repair_text_encoding(document.get("question")).strip(),
                 "question_code": repair_text_encoding(document.get("code")).strip(),
                 "country": country,
@@ -137,7 +153,9 @@ def ilga_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
     return pd.DataFrame(rows) if rows else _empty_ilga_dataframe()
 
 
-def build_fra_filter_type_options(document: dict[str, Any] | None, group: str) -> list[dict[str, Any]]:
+def build_fra_filter_type_options(
+    document: dict[str, Any] | None, group: str
+) -> list[dict[str, Any]]:
     allowed = FRA_FILTER_GROUP_A if group == "a" else FRA_FILTER_GROUP_B
     dataframe = fra_document_to_dataframe(document)
     present = _present_filter_types(dataframe)
@@ -166,11 +184,21 @@ def build_fra_default_filter_types(document: dict[str, Any] | None) -> tuple[str
         if _has_rows_with_filter_types(dataframe, filter_a_type=filter_type, filter_b_type=None):
             return filter_type, "All"
 
-    present_a = [filter_type for filter_type in FRA_FILTER_GROUP_A[1:] if filter_type in _present_filter_types(dataframe)]
-    present_b = [filter_type for filter_type in FRA_FILTER_GROUP_B[1:] if filter_type in _present_filter_types(dataframe)]
+    present_a = [
+        filter_type
+        for filter_type in FRA_FILTER_GROUP_A[1:]
+        if filter_type in _present_filter_types(dataframe)
+    ]
+    present_b = [
+        filter_type
+        for filter_type in FRA_FILTER_GROUP_B[1:]
+        if filter_type in _present_filter_types(dataframe)
+    ]
     for filter_a_type in present_a:
         for filter_b_type in present_b:
-            if _has_rows_with_filter_types(dataframe, filter_a_type=filter_a_type, filter_b_type=filter_b_type):
+            if _has_rows_with_filter_types(
+                dataframe, filter_a_type=filter_a_type, filter_b_type=filter_b_type
+            ):
                 return filter_a_type, filter_b_type
     return "All", "All"
 
@@ -324,7 +352,10 @@ def build_fra_country_options(document: dict[str, Any] | None) -> list[dict[str,
         return []
     countries = dataframe[["country", "iso"]].drop_duplicates().sort_values("country")
     return [
-        {"label": f"{row.country} ({row.iso})" if row.iso else row.country, "value": row.iso or row.country}
+        {
+            "label": f"{row.country} ({row.iso})" if row.iso else row.country,
+            "value": row.iso or row.country,
+        }
         for row in countries.itertuples()
         if row.country
     ]
@@ -336,7 +367,10 @@ def build_ilga_country_options(document: dict[str, Any] | None) -> list[dict[str
         return []
     countries = dataframe[["country", "iso"]].drop_duplicates().sort_values("country")
     return [
-        {"label": f"{row.country} ({row.iso})" if row.iso else row.country, "value": row.iso or row.country}
+        {
+            "label": f"{row.country} ({row.iso})" if row.iso else row.country,
+            "value": row.iso or row.country,
+        }
         for row in countries.itertuples()
         if row.country
     ]
@@ -382,7 +416,9 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     dataframe = filter_fra_dataframe(dataframe, query, effective_answer=effective_answer)
     effective_filter_scope = None
     if dataframe.empty:
-        effective_filter_scope = _available_filter_label_scope(dataframe=source_dataframe, answer=effective_answer)
+        effective_filter_scope = _available_filter_label_scope(
+            dataframe=source_dataframe, answer=effective_answer
+        )
         if effective_filter_scope is not None:
             dataframe = filter_fra_dataframe(
                 source_dataframe,
@@ -393,6 +429,7 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
     detail_dataframe = filter_fra_comparison_dataframe(source_dataframe, query)
+    country_universe = _fra_country_universe(source_dataframe, query.year)
 
     ranking = aggregate_fra_data(dataframe, ["country", "iso"], "percentage", "mean")
     ranking = ranking.rename(columns={"percentage": "value"})
@@ -420,8 +457,9 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         "answer": effective_answer,
         "data": dataframe.to_dict("records"),
         "detail_data": detail_dataframe.to_dict("records"),
+        "country_universe": country_universe.to_dict("records"),
         "available_countries": sorted(
-            value for value in source_dataframe["iso"].dropna().astype(str).unique().tolist() if value
+            value for value in country_universe["iso"].dropna().astype(str).tolist() if value
         ),
         "ranking": ranking.to_dict("records"),
         "metrics": _metrics_from_values(ranking["value"].tolist()),
@@ -431,6 +469,24 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
             "Las fuentes no son directamente equivalentes."
         ),
     }
+
+
+def _fra_country_universe(dataframe: pd.DataFrame, year: int | None) -> pd.DataFrame:
+    """Countries represented by the indicator and year, regardless of segmentation."""
+    universe = dataframe.copy()
+    if year is not None and "year" in universe:
+        universe = universe[(universe["year"].isna()) | (universe["year"] == year)]
+    universe = universe[
+        universe["iso"].astype(str).str.upper().ne("EU27")
+        & universe["country"].astype(str).str.upper().ne("EU27")
+    ]
+    return (
+        universe[["country", "iso", "year", "source"]]
+        .dropna(subset=["country"])
+        .sort_values(["country", "iso"])
+        .drop_duplicates(["iso", "country"])
+        .reset_index(drop=True)
+    )
 
 
 def _fra_dataframe_for_code(code: str) -> pd.DataFrame:
@@ -525,6 +581,13 @@ def _build_ilga_statistics(
         countries=query.countries,
     )
     effective_year = _safe_int(document.get("year")) if isinstance(document, dict) else query.year
+    country_universe = (
+        source_dataframe[source_dataframe["category"].eq("Ranking total")][
+            ["country", "iso", "ranking", "year", "source"]
+        ]
+        .drop_duplicates(["iso", "country"])
+        .sort_values(["ranking", "country"], ascending=[False, True])
+    )
     return {
         "status": "ok",
         "message": "",
@@ -534,16 +597,18 @@ def _build_ilga_statistics(
         "indicator": query.criterion or query.category or "Ranking total",
         "criterion": query.criterion,
         "data": dataframe.to_dict("records"),
+        "country_universe": country_universe.to_dict("records"),
         "ranking": ranking.to_dict("records"),
         "available_countries": sorted(
-            value for value in source_dataframe["iso"].dropna().astype(str).unique().tolist() if value
+            value
+            for value in source_dataframe["iso"].dropna().astype(str).unique().tolist()
+            if value
         ),
-        "history": get_ilga_history_rows(query.category, query.criterion) if include_history else [],
+        "history": get_ilga_history_rows(query.category, query.criterion)
+        if include_history
+        else [],
         "metrics": _metrics_from_values(ranking["value"].tolist()),
-        "methodology": (
-            "ILGA-Europe Rainbow Map mide leyes, políticas y protecciones jurídicas. "
-            ""
-        ),
+        "methodology": ("ILGA-Europe Rainbow Map mide leyes, políticas y protecciones jurídicas. "),
     }
 
 
@@ -641,7 +706,9 @@ def get_ilga_history_rows(
         if category and category != "Ranking total":
             ranking = _ilga_category_scores(filtered)
         else:
-            ranking = filtered[filtered["category"] == "Ranking total"][["country", "iso", "ranking"]]
+            ranking = filtered[filtered["category"] == "Ranking total"][
+                ["country", "iso", "ranking"]
+            ]
             ranking = ranking.rename(columns={"ranking": "value"}).drop_duplicates()
         if ranking.empty:
             continue
@@ -683,7 +750,9 @@ def aggregate_fra_data(
     if missing:
         raise ValueError("invalid_group_by")
     numeric_dataframe = dataframe.copy()
-    numeric_dataframe[value_column] = pd.to_numeric(numeric_dataframe[value_column], errors="coerce")
+    numeric_dataframe[value_column] = pd.to_numeric(
+        numeric_dataframe[value_column], errors="coerce"
+    )
     grouped = numeric_dataframe.groupby(group_by, dropna=False)[value_column]
     if aggregation == "mean":
         result = grouped.mean()
@@ -775,19 +844,25 @@ def _available_filter_label_scope(
     if candidates.empty:
         return None
 
-    valid_candidates = candidates[candidates["percentage"].notna()] if "percentage" in candidates else candidates
+    valid_candidates = (
+        candidates[candidates["percentage"].notna()] if "percentage" in candidates else candidates
+    )
     if valid_candidates.empty:
         valid_candidates = candidates
 
     if _has_exact_filter_labels(valid_candidates, "All", "All"):
         return "All", "All"
 
-    all_a = valid_candidates[valid_candidates["filter_a"].apply(lambda value: _same_filter_label(value, "All"))]
+    all_a = valid_candidates[
+        valid_candidates["filter_a"].apply(lambda value: _same_filter_label(value, "All"))
+    ]
     non_all_b_values = _sorted_non_all_filter_values(all_a, "filter_b")
     if non_all_b_values:
         return "All", non_all_b_values[0]
 
-    all_b = valid_candidates[valid_candidates["filter_b"].apply(lambda value: _same_filter_label(value, "All"))]
+    all_b = valid_candidates[
+        valid_candidates["filter_b"].apply(lambda value: _same_filter_label(value, "All"))
+    ]
     non_all_a_values = _sorted_non_all_filter_values(all_b, "filter_a")
     if non_all_a_values:
         return non_all_a_values[0], "All"
@@ -796,7 +871,8 @@ def _available_filter_label_scope(
         {
             (normalize_filter_value(row.filter_a), normalize_filter_value(row.filter_b))
             for row in valid_candidates[["filter_a", "filter_b"]].itertuples()
-            if not _same_filter_label(row.filter_a, "All") and not _same_filter_label(row.filter_b, "All")
+            if not _same_filter_label(row.filter_a, "All")
+            and not _same_filter_label(row.filter_b, "All")
         },
         key=lambda item: (item[0].casefold(), item[1].casefold()),
     )
@@ -821,7 +897,10 @@ def _filter_matches(filters: Any, filter_name: str, filter_value: str) -> bool:
     for raw_type, raw_value in filters.items():
         if normalize_filter_type(raw_type) != filter_name:
             continue
-        if repair_text_encoding(raw_value).strip() == filter_value or normalize_filter_value(raw_value) == expected_label:
+        if (
+            repair_text_encoding(raw_value).strip() == filter_value
+            or normalize_filter_value(raw_value) == expected_label
+        ):
             return True
     return False
 
@@ -854,10 +933,7 @@ def _all_filter_type_available(dataframe: pd.DataFrame, group: str) -> bool:
     if dataframe.empty or "filters" not in dataframe:
         return True
     allowed = FRA_FILTER_GROUP_A if group == "a" else FRA_FILTER_GROUP_B
-    return any(
-        not _row_has_group_filter(filters, allowed)
-        for filters in dataframe["filters"]
-    )
+    return any(not _row_has_group_filter(filters, allowed) for filters in dataframe["filters"])
 
 
 def _has_exact_filter_labels(dataframe: pd.DataFrame, filter_a: str, filter_b: str) -> bool:
@@ -899,15 +975,15 @@ def _row_filter_scope_matches(
         return False
     if filter_a_type is not None and not _row_has_filter_type(filters, filter_a_type):
         return False
-    if filter_b_type is not None and not _row_has_filter_type(filters, filter_b_type):
-        return False
-    return True
+    return not (filter_b_type is not None and not _row_has_filter_type(filters, filter_b_type))
 
 
 def _row_has_group_filter(filters: Any, allowed: tuple[str, ...]) -> bool:
     if not isinstance(filters, dict):
         return False
-    allowed_keys = {normalize_filter_type(filter_type) for filter_type in allowed if filter_type != "All"}
+    allowed_keys = {
+        normalize_filter_type(filter_type) for filter_type in allowed if filter_type != "All"
+    }
     return any(normalize_filter_type(key) in allowed_keys for key in filters)
 
 
@@ -956,16 +1032,13 @@ def _complete_country_ranking(
         & universe["iso"].ne("EU27")
     ].drop_duplicates("iso", keep="first")
     if countries:
-        selected = {
-            normalize_country_code(country) or str(country)
-            for country in countries
-        }
-        universe = universe[
-            universe["iso"].isin(selected) | universe["country"].isin(selected)
-        ]
+        selected = {normalize_country_code(country) or str(country) for country in countries}
+        universe = universe[universe["iso"].isin(selected) | universe["country"].isin(selected)]
 
-    values = ranking[["iso", "value"]].copy() if not ranking.empty else pd.DataFrame(
-        columns=["iso", "value"]
+    values = (
+        ranking[["iso", "value"]].copy()
+        if not ranking.empty
+        else pd.DataFrame(columns=["iso", "value"])
     )
     values["iso"] = values["iso"].fillna("").astype(str).str.upper()
     values["value"] = pd.to_numeric(values["value"], errors="coerce")
@@ -986,9 +1059,7 @@ def _complete_country_ranking(
         completed["difference"].abs() if european_mean is not None else None
     )
     completed["percentage_difference"] = (
-        completed["difference"] / european_mean * 100
-        if european_mean not in (None, 0)
-        else None
+        completed["difference"] / european_mean * 100 if european_mean not in (None, 0) else None
     )
     completed["european_mean"] = european_mean
     completed = completed.sort_values(
@@ -1004,9 +1075,13 @@ def _complete_country_ranking(
         "percentage_difference",
         "european_mean",
     ):
-        completed[column] = completed[column].astype(object).where(
-            pd.notna(completed[column]),
-            None,
+        completed[column] = (
+            completed[column]
+            .astype(object)
+            .where(
+                pd.notna(completed[column]),
+                None,
+            )
         )
     completed["position"] = pd.Series(
         [
@@ -1041,7 +1116,7 @@ def _extract_year(value: Any) -> int | None:
 def _safe_int(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -1065,7 +1140,7 @@ def _default_fra_answer_from_dataframe(dataframe: pd.DataFrame) -> str | None:
     }
     if not values:
         return None
-    return sorted(values.items(), key=lambda item: item[1])[0][0]
+    return min(values.items(), key=lambda item: item[1])[0]
 
 
 def _status(status: str, message: str) -> dict[str, Any]:

@@ -45,11 +45,7 @@
     button.setAttribute("aria-busy", "true");
     try {
       await window.Plotly.downloadImage(graph, options);
-    } catch (errorReason) {
-      window.console.error("statistics_chart_export_failed", {
-        chart: targetId,
-        error: errorReason,
-      });
+    } catch (_errorReason) {
       setErrorVisibility(error, true);
     } finally {
       button.disabled = false;

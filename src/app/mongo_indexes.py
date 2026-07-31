@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from functools import lru_cache
 import logging
-from typing import Any, Iterable, Mapping
+from collections.abc import Iterable, Mapping
+from functools import lru_cache
+from typing import Any
 
 from pymongo import ASCENDING, DESCENDING, IndexModel
 from pymongo.errors import OperationFailure
@@ -47,11 +48,11 @@ def initialize_mongo_indexes() -> None:
                 ],
                 name="fra_category_question_code",
             ),
-        ]
+        ],
     )
     _ensure_collection_indexes(
         "Indicator_ilga",
-        [IndexModel([("dataset", ASCENDING), ("year", DESCENDING)], name="ilga_dataset_year")]
+        [IndexModel([("dataset", ASCENDING), ("year", DESCENDING)], name="ilga_dataset_year")],
     )
     spain_indexes = [
         IndexModel([("code", ASCENDING)], name="felgtbi_code"),
@@ -98,7 +99,7 @@ def initialize_mongo_indexes() -> None:
                 [("active", ASCENDING), ("country_code", ASCENDING), ("year", DESCENDING)],
                 name="active_country_year",
             ),
-        ]
+        ],
     )
 
 

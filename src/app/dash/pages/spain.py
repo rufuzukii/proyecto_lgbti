@@ -3,11 +3,12 @@ from __future__ import annotations
 import logging
 import re
 import time
+from html import escape as escape_html
 from typing import Any, cast
 
+import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, ctx, dcc, html
 from dash.development.base_component import Component
-import plotly.graph_objects as go
 
 from app.analytics.repository import (
     get_felgtbi_document_options,
@@ -75,8 +76,12 @@ def build_spain_layout() -> Component:
                 [
                     html.Header(
                         [
-                            html.P("España", className="stats-eyebrow", **text_attrs("España", "Spain")),
-                            html.H1(text("Indicadores estatales LGBTIQ+", "National LGBTIQ+ indicators")),
+                            html.P(
+                                "España", className="stats-eyebrow", **text_attrs("España", "Spain")
+                            ),
+                            html.H1(
+                                text("Indicadores estatales LGBTIQ+", "National LGBTIQ+ indicators")
+                            ),
                             html.P(
                                 text(
                                     "Explora información estatal sobre derechos, percepción social y experiencias de las personas LGBTIQ+.",
@@ -110,7 +115,11 @@ def build_spain_layout() -> Component:
                             ),
                             html.Div(
                                 [
-                                    html.Label("Documento", htmlFor="spain-category-select", **text_attrs("Documento", "Document")),
+                                    html.Label(
+                                        "Documento",
+                                        htmlFor="spain-category-select",
+                                        **text_attrs("Documento", "Document"),
+                                    ),
                                     dcc.Dropdown(
                                         id="spain-category-select",
                                         options=documents,
@@ -125,7 +134,11 @@ def build_spain_layout() -> Component:
                             ),
                             html.Div(
                                 [
-                                    html.Label("Año", htmlFor="spain-year-select", **text_attrs("Año", "Year")),
+                                    html.Label(
+                                        "Año",
+                                        htmlFor="spain-year-select",
+                                        **text_attrs("Año", "Year"),
+                                    ),
                                     dcc.Dropdown(
                                         id="spain-year-select",
                                         options=years,
@@ -140,7 +153,11 @@ def build_spain_layout() -> Component:
                             ),
                             html.Div(
                                 [
-                                    html.Label("Indicador", htmlFor="spain-topic-select", **text_attrs("Indicador", "Indicator")),
+                                    html.Label(
+                                        "Indicador",
+                                        htmlFor="spain-topic-select",
+                                        **text_attrs("Indicador", "Indicator"),
+                                    ),
                                     html.Div(
                                         [
                                             dcc.Dropdown(
@@ -149,7 +166,11 @@ def build_spain_layout() -> Component:
                                                 value=None,
                                                 clearable=False,
                                                 className="spain-dropdown spain-topic-dropdown",
-                                                disabled=not bool(initial_source and initial_document and initial_year),
+                                                disabled=not bool(
+                                                    initial_source
+                                                    and initial_document
+                                                    and initial_year
+                                                ),
                                                 placeholder="Selecciona un indicador",
                                             ),
                                             html.Div(
@@ -205,6 +226,26 @@ def build_spain_layout() -> Component:
 
 def register_spain_callbacks(app: Dash) -> None:
     @app.callback(
+        Output("spain-source-select", "options"),
+        Output("spain-source-select", "placeholder"),
+        Output("spain-category-select", "placeholder"),
+        Output("spain-year-select", "placeholder"),
+        Output("spain-topic-select", "placeholder"),
+        Input("app-language-store", "data"),
+    )
+    def translate_spain_controls(
+        language: str | None,
+    ) -> tuple[list[dict[str, str]], str, str, str, str]:
+        is_english = language == "en"
+        return (
+            _source_options("en" if is_english else "es"),
+            "Select a source" if is_english else "Selecciona una fuente",
+            "Select a document" if is_english else "Selecciona un documento",
+            "Select a year" if is_english else "Selecciona un año",
+            "Select an indicator" if is_english else "Selecciona un indicador",
+        )
+
+    @app.callback(
         Output("spain-category-select", "options"),
         Output("spain-category-select", "value"),
         Output("spain-category-select", "disabled"),
@@ -227,7 +268,9 @@ def register_spain_callbacks(app: Dash) -> None:
         Input("spain-category-select", "value"),
         State("spain-year-select", "value"),
     )
-    def update_year_selector(collection_name: str | None, document_id: str | None, current_year: int | str | None):
+    def update_year_selector(
+        collection_name: str | None, document_id: str | None, current_year: int | str | None
+    ):
         years = _year_options(collection_name, document_id)
         if not years:
             return [], None, True
@@ -259,16 +302,60 @@ def register_spain_callbacks(app: Dash) -> None:
         current_code: str | None,
     ):
         if not collection_name:
-            return [], None, True, text("No hay fuentes de datos disponibles.", "No data sources are available."), True, True
+            return (
+                [],
+                None,
+                True,
+                text("No hay fuentes de datos disponibles.", "No data sources are available."),
+                True,
+                True,
+            )
         document_options = _document_options(collection_name)
         if not document_options:
-            return [], None, True, text("No hay documentos disponibles", "No documents available"), True, True
+            return (
+                [],
+                None,
+                True,
+                text("No hay documentos disponibles", "No documents available"),
+                True,
+                True,
+            )
         if not document_id:
-            return [], None, True, text("Selecciona un documento para cargar sus indicadores.", "Select a document to load its indicators."), True, True
+            return (
+                [],
+                None,
+                True,
+                text(
+                    "Selecciona un documento para cargar sus indicadores.",
+                    "Select a document to load its indicators.",
+                ),
+                True,
+                True,
+            )
         if document_id not in {option["value"] for option in document_options}:
-            return [], None, True, text("El documento seleccionado ya no está disponible", "The selected document is no longer available"), True, True
+            return (
+                [],
+                None,
+                True,
+                text(
+                    "El documento seleccionado ya no está disponible",
+                    "The selected document is no longer available",
+                ),
+                True,
+                True,
+            )
         if not year:
-            return [], None, True, text("Selecciona un año para cargar sus indicadores.", "Select a year to load its indicators."), True, True
+            return (
+                [],
+                None,
+                True,
+                text(
+                    "Selecciona un año para cargar sus indicadores.",
+                    "Select a year to load its indicators.",
+                ),
+                True,
+                True,
+            )
 
         indicators = get_felgtbi_indicators_by_document(document_id, year, collection_name)
         options = _indicator_options(indicators)
@@ -316,16 +403,24 @@ def register_spain_callbacks(app: Dash) -> None:
         navigation_started_at = time.perf_counter()
         if not collection_name:
             return _spain_view_state(
-                empty=_empty_state("No hay fuentes de datos", "No se han encontrado colecciones españolas disponibles."),
+                empty=_empty_state(
+                    "No hay fuentes de datos",
+                    "No se han encontrado colecciones españolas disponibles.",
+                ),
             )
         document_options = _document_options(collection_name)
         if not document_options:
             return _spain_view_state(
-                empty=_empty_state("No hay documentos disponibles", "No hay documentos disponibles"),
+                empty=_empty_state(
+                    "No hay documentos disponibles", "No hay documentos disponibles"
+                ),
             )
         if not document_id:
             return _spain_view_state(
-                empty=_empty_state("No hay documentos disponibles", "Selecciona un documento para cargar sus indicadores."),
+                empty=_empty_state(
+                    "No hay documentos disponibles",
+                    "Selecciona un documento para cargar sus indicadores.",
+                ),
             )
         if document_id not in {option["value"] for option in document_options}:
             return _spain_view_state(
@@ -354,7 +449,9 @@ def register_spain_callbacks(app: Dash) -> None:
                 ),
             )
 
-        document = get_felgtbi_indicator_answers(code or "", collection_name, document_id=document_id)
+        document = get_felgtbi_indicator_answers(
+            code or "", collection_name, document_id=document_id
+        )
         render_started_at = time.perf_counter()
         view_state = _spain_document_view_state(document)
         render_ms = (time.perf_counter() - render_started_at) * 1000
@@ -438,7 +535,9 @@ def _spain_view_state(
     )
 
 
-def _spain_document_view_state(document: dict[str, Any] | None) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str]:
+def _spain_document_view_state(
+    document: dict[str, Any] | None,
+) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str]:
     if not document:
         return _spain_view_state(
             empty=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
@@ -457,22 +556,27 @@ def _spain_document_view_state(document: dict[str, Any] | None) -> tuple[Any, st
     return _spain_view_state(figure=_value_figure(document))
 
 
-def _source_options() -> list[dict[str, str]]:
-    return get_spain_collection_options()
+def _source_options(language: str = "es") -> list[dict[str, str]]:
+    return get_spain_collection_options(language)
 
 
 def _document_options(collection_name: str | None = None) -> list[dict[str, str]]:
     return get_felgtbi_document_options(collection_name)
 
 
-def _year_options(collection_name: str | None = None, document_id: str | None = None) -> list[dict[str, Any]]:
-    return [{"label": str(year), "value": year} for year in get_felgtbi_document_years(document_id, collection_name)]
+def _year_options(
+    collection_name: str | None = None, document_id: str | None = None
+) -> list[dict[str, Any]]:
+    return [
+        {"label": str(year), "value": year}
+        for year in get_felgtbi_document_years(document_id, collection_name)
+    ]
 
 
 def _int_or_original(value: Any) -> Any:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return value
 
 
@@ -635,10 +739,7 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
     url = _figure_url(document)
     figure = _dict_or_empty(document.get("figure"))
     caption = str(
-        figure.get("caption")
-        or document.get("figure_caption")
-        or figure.get("title")
-        or ""
+        figure.get("caption") or document.get("figure_caption") or figure.get("title") or ""
     ).strip()
     alt_text = str(
         figure.get("alt_text")
@@ -664,12 +765,21 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
         ),
         html.Div(
             [
-                html.Strong("Imagen no disponible"),
-                html.Span("No se ha podido cargar la figura desde el almacenamiento."),
+                html.Strong(
+                    "Imagen no disponible",
+                    **text_attrs("Imagen no disponible", "Image unavailable"),
+                ),
+                html.Span(
+                    "No se ha podido cargar la figura desde el almacenamiento.",
+                    **text_attrs(
+                        "No se ha podido cargar la figura desde el almacenamiento.",
+                        "The figure could not be loaded from storage.",
+                    ),
+                ),
             ],
             className="report-figure-placeholder report-figure-load-error",
             hidden=True,
-        )
+        ),
     ]
     if caption or source:
         caption_children: list[Any] = []
@@ -681,15 +791,23 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
     return html.Figure(children, className="report-figure")
 
 
-def _figure_placeholder_component(document: dict[str, Any] | None, *, caption: str = "") -> Any | None:
+def _figure_placeholder_component(
+    document: dict[str, Any] | None, *, caption: str = ""
+) -> Any | None:
     if not _has_figure_metadata(document):
         return None
     title = "Imagen no disponible"
     children: list[Any] = [
         html.Div(
             [
-                html.Strong(title),
-                html.Span("La imagen no está disponible temporalmente."),
+                html.Strong(title, **text_attrs(title, "Image unavailable")),
+                html.Span(
+                    "La imagen no está disponible temporalmente.",
+                    **text_attrs(
+                        "La imagen no está disponible temporalmente.",
+                        "The image is temporarily unavailable.",
+                    ),
+                ),
             ],
             className="report-figure-placeholder",
         )
@@ -704,11 +822,7 @@ def _has_figure_metadata(document: dict[str, Any] | None) -> bool:
     if not isinstance(document, dict):
         return False
     figure = _dict_or_empty(document.get("figure"))
-    return bool(
-        figure
-        or document.get("figure_caption")
-        or figure.get("storage_path")
-    )
+    return bool(figure or document.get("figure_caption") or figure.get("storage_path"))
 
 
 def _figure_caption_text(document: dict[str, Any] | None) -> str:
@@ -716,10 +830,7 @@ def _figure_caption_text(document: dict[str, Any] | None) -> str:
         return ""
     figure = _dict_or_empty(document.get("figure"))
     return str(
-        figure.get("caption")
-        or document.get("figure_caption")
-        or figure.get("title")
-        or ""
+        figure.get("caption") or document.get("figure_caption") or figure.get("title") or ""
     ).strip()
 
 
@@ -752,7 +863,7 @@ def _dict_or_empty(value: Any) -> dict[str, Any]:
 def _positive_int(value: Any) -> int | None:
     try:
         number = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return number if number > 0 else None
 
@@ -780,7 +891,7 @@ def _sanitize_report_html(content_html: str) -> str:
     try:
         import bleach
     except ImportError:
-        return content_html
+        return escape_html(content_html)
 
     allowed_tags = [
         "section",
@@ -877,7 +988,10 @@ def _content_html(document: dict[str, Any] | None) -> str:
 
 
 def _panel(title: str, child: Any, class_name: str = "stats-panel") -> Component:
-    return html.Section([html.H2(title, **text_attrs(title, TEXT_EN.get(title, title))), child], className=class_name)
+    return html.Section(
+        [html.H2(title, **text_attrs(title, TEXT_EN.get(title, title))), child],
+        className=class_name,
+    )
 
 
 def _empty_state(title: str, detail: str) -> Component:

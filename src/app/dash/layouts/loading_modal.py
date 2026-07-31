@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dash import html
 from dash.development.base_component import Component
+
 from app.dash.i18n import dash_attrs, text_attrs
 
 

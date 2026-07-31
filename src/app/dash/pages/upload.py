@@ -2,25 +2,29 @@ from __future__ import annotations
 
 import base64
 import binascii
-import json
+import hashlib
 import importlib
+import json
 import logging
 import os
-from pathlib import Path
+import re
 import threading
 import time
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from dash import Dash, Input, Output, State, dcc, html
 from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
+from flask_login import current_user
+
+from app.auth.permissions import Permission, user_has_permission
+from app.auth.rate_limit import create_rate_limiter
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
-from flask_login import current_user
-
-from app.analytics import invalidate_analytics_cache
+from app.http_security import rate_limit_key
 
 logger = logging.getLogger(__name__)
 MEBIBYTE = 1024 * 1024
@@ -38,16 +42,27 @@ MAX_UPLOAD_BYTES = _upload_limit_bytes("UPLOAD_MAX_FILE_MB", 20)
 MAX_UPLOAD_TOTAL_BYTES = _upload_limit_bytes("UPLOAD_MAX_TOTAL_MB", 30)
 MAX_UPLOAD_REQUEST_BYTES = _upload_limit_bytes("UPLOAD_MAX_REQUEST_MB", 90)
 MAX_UPLOAD_FILES = 3
+MAX_UPLOAD_FILENAME_LENGTH = 180
 _UPLOAD_PROCESSING_LOCK = threading.Lock()
 
 
 class UploadValidationError(ValueError):
     pass
 
+
 DATA_SOURCE_OPTIONS = [
-    {"label": "Encuesta europea LGBTIQ+", "value": "FRA"},
-    {"label": "Mapa legal europeo", "value": "ILGA"},
-    {"label": "Estado LGBTIQ+ en España", "value": "FELGTB"},
+    {
+        "label": text("Encuesta europea LGBTIQ+", "European LGBTIQ+ survey"),
+        "value": "FRA",
+    },
+    {
+        "label": text("Mapa legal europeo", "European legal map"),
+        "value": "ILGA",
+    },
+    {
+        "label": text("Estado LGBTIQ+ en España", "LGBTIQ+ situation in Spain"),
+        "value": "FELGTB",
+    },
 ]
 
 
@@ -83,7 +98,7 @@ def _memory_usage_mb() -> float | None:
         resource_module = importlib.import_module("resource")
         peak = float(resource_module.getrusage(resource_module.RUSAGE_SELF).ru_maxrss)
         return round(peak / 1024, 2)
-    except (AttributeError, ImportError, OSError, ValueError):
+    except AttributeError, ImportError, OSError, ValueError:
         return None
 
 
@@ -96,11 +111,17 @@ def _upload_log(
     **fields: Any,
 ) -> None:
     started_at = float(trace.get("started_at") or time.perf_counter())
+    filenames = _safe_upload_names(trace.get("filename"))
+    filename = filenames[0] if filenames else "upload"
     payload = {
         "event": event,
         "upload_id": trace.get("upload_id"),
         "phase": trace.get("phase"),
-        "filename": trace.get("filename"),
+        "file_extension": Path(filename).suffix.casefold(),
+        "file_name_digest": hashlib.sha256(
+            filename.encode("utf-8"),
+            usedforsecurity=False,
+        ).hexdigest()[:16],
         "data_source": trace.get("data_source"),
         "mime_type": trace.get("mime_type"),
         "size_bytes": trace.get("size_bytes"),
@@ -110,7 +131,12 @@ def _upload_log(
         "worker_pid": os.getpid(),
         **fields,
     }
-    logger.log(level, "upload_event %s", json.dumps(payload, ensure_ascii=True, default=str), exc_info=exc_info)
+    logger.log(
+        level,
+        "upload_event %s",
+        json.dumps(payload, ensure_ascii=True, default=str),
+        exc_info=exc_info,
+    )
 
 
 def _build_upload_component() -> Component:
@@ -150,7 +176,11 @@ def build_upload_layout() -> Component:
                 [
                     html.Header(
                         [
-                            html.P("Revisión de datos", className="upload-eyebrow", **text_attrs("Revisión de datos", "Data review")),
+                            html.P(
+                                "Revisión de datos",
+                                className="upload-eyebrow",
+                                **text_attrs("Revisión de datos", "Data review"),
+                            ),
                             html.H1(text("Subir archivo para revisión", "Upload file for review")),
                             html.P(
                                 text(
@@ -194,10 +224,19 @@ def build_upload_layout() -> Component:
                                     html.H2(text("Proceso de revisión", "Review process")),
                                     html.Ol(
                                         [
-                                            html.Li("El archivo se valida y prepara para su revisión.", **text_attrs("El archivo se valida y prepara para su revisión.", "The file is validated and prepared for review.")),
+                                            html.Li(
+                                                "El archivo se valida y prepara para su revisión.",
+                                                **text_attrs(
+                                                    "El archivo se valida y prepara para su revisión.",
+                                                    "The file is validated and prepared for review.",
+                                                ),
+                                            ),
                                             html.Li(
                                                 "El contenido queda pendiente de aprobación.",
-                                                **text_attrs("El contenido queda pendiente de aprobación.", "The content remains pending approval."),
+                                                **text_attrs(
+                                                    "El contenido queda pendiente de aprobación.",
+                                                    "The content remains pending approval.",
+                                                ),
                                             ),
                                             html.Li(
                                                 "Una persona administradora lo revisa antes de incorporarlo a la aplicación.",
@@ -232,7 +271,14 @@ def build_upload_layout() -> Component:
         ]
     )
 
+
 def register_upload_callbacks(app: Dash) -> None:
+    upload_rate_limiter = create_rate_limiter(
+        max_attempts=max(1, int(os.getenv("UPLOAD_MAX_ATTEMPTS", "10"))),
+        window_seconds=max(60, int(os.getenv("UPLOAD_WINDOW_SECONDS", "3600"))),
+        namespace="uploads",
+    )
+
     @app.callback(
         Output("upload-output", "children"),
         Output("upload-control-container", "children"),
@@ -252,6 +298,28 @@ def register_upload_callbacks(app: Dash) -> None:
     def handle_upload(contents, filenames, data_source):
         if not contents:
             raise PreventUpdate
+        if not user_has_permission(current_user, Permission.UPLOAD_DATA):
+            return (
+                build_error_message(
+                    (
+                        "Debes iniciar sesión para importar datos.",
+                        "You must sign in to import data.",
+                    )
+                ),
+                _build_upload_component(),
+            )
+        limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="upload")
+        if upload_rate_limiter.is_blocked(limiter_key):
+            return (
+                build_error_message(
+                    (
+                        "Has alcanzado el límite temporal de importaciones. Inténtalo más tarde.",
+                        "You have reached the temporary import limit. Try again later.",
+                    )
+                ),
+                _build_upload_component(),
+            )
+        upload_rate_limiter.record_failure(limiter_key)
         trace: dict[str, Any] = {
             "upload_id": uuid4().hex,
             "started_at": time.perf_counter(),
@@ -284,7 +352,8 @@ def register_upload_callbacks(app: Dash) -> None:
                 exception_message=str(exc),
             )
             result = _upload_validation_message(str(exc), trace.get("filename"))
-        except Exception as exc:
+        # This callback is the application boundary for PDF, storage and database failures.
+        except Exception as exc:  # noqa: BLE001
             _upload_log(
                 logging.ERROR,
                 "failed",
@@ -322,11 +391,15 @@ def _process_upload(
     *,
     trace: dict[str, Any] | None = None,
 ) -> Component:
-    trace = trace if trace is not None else {
-        "upload_id": uuid4().hex,
-        "started_at": time.perf_counter(),
-        "data_source": data_source,
-    }
+    trace = (
+        trace
+        if trace is not None
+        else {
+            "upload_id": uuid4().hex,
+            "started_at": time.perf_counter(),
+            "data_source": data_source,
+        }
+    )
     trace["phase"] = "validation"
     if not filenames:
         raise UploadValidationError("missing_filename")
@@ -347,7 +420,7 @@ def _process_upload(
     for index, (data, name) in enumerate(zip(contents_list, filenames_list, strict=True)):
         phase_started = time.perf_counter()
         trace["phase"] = "validation"
-        safe_name = Path(name).name if name else "upload.csv"
+        safe_name = _safe_upload_filename(name)
         trace["filename"] = safe_name
         _upload_log(logging.INFO, "phase_started", trace)
         if not is_supported_upload_file(data_source, safe_name):
@@ -403,21 +476,6 @@ def _process_upload(
         if not payload:
             raise UploadValidationError("empty_payload")
 
-        if data_source == "FRA":
-            phase_started = time.perf_counter()
-            trace["phase"] = "mongo_persistence"
-            _upload_log(logging.INFO, "phase_started", trace)
-            from app.import_to_db.fra import upsert_indicators_from_json
-
-            upsert_indicators_from_json(payload)
-            invalidate_analytics_cache()
-            _upload_log(
-                logging.INFO,
-                "phase_completed",
-                trace,
-                mongo_elapsed_ms=round((time.perf_counter() - phase_started) * 1000, 2),
-            )
-
         phase_started = time.perf_counter()
         trace["phase"] = "pending_import_persistence"
         _upload_log(logging.INFO, "phase_started", trace)
@@ -464,7 +522,19 @@ def _safe_upload_names(filenames: Any) -> list[str]:
         values = list(filenames)
     else:
         values = []
-    return [Path(str(value or "upload")).name for value in values]
+    return [_safe_upload_filename(value) for value in values]
+
+
+def _safe_upload_filename(value: Any) -> str:
+    filename = Path(str(value or "upload")).name
+    filename = re.sub(r"[\x00-\x1f\x7f]", "", filename).strip().strip(".")
+    if not filename:
+        return "upload"
+    if len(filename) <= MAX_UPLOAD_FILENAME_LENGTH:
+        return filename
+    suffix = Path(filename).suffix[:20]
+    stem_length = MAX_UPLOAD_FILENAME_LENGTH - len(suffix)
+    return f"{filename[:stem_length].rstrip()}{suffix}"
 
 
 def _validate_upload_metadata(
@@ -481,7 +551,13 @@ def _validate_upload_metadata(
     suffix = Path(file_name).suffix.casefold()
     allowed_mime_types = {
         ".pdf": {"application/pdf", "application/octet-stream", ""},
-        ".csv": {"text/csv", "text/plain", "application/vnd.ms-excel", "application/octet-stream", ""},
+        ".csv": {
+            "text/csv",
+            "text/plain",
+            "application/vnd.ms-excel",
+            "application/octet-stream",
+            "",
+        },
         ".json": {"application/json", "text/json", "text/plain", "application/octet-stream", ""},
     }
     if mime_type not in allowed_mime_types.get(suffix, set()):
@@ -522,7 +598,10 @@ def _upload_validation_message(reason: str, filenames: Any) -> Component:
         )
     if reason == "missing_data_source":
         return build_error_message(
-            ("Selecciona una fuente antes de subir el archivo.", "Select the data source before uploading.")
+            (
+                "Selecciona una fuente antes de subir el archivo.",
+                "Select the data source before uploading.",
+            )
         )
     if reason in {"unsupported_file_type", "invalid_mime_type"}:
         return build_error_message(
@@ -603,10 +682,12 @@ def build_error_message(message: tuple[str, str], details: list[str] | None = No
                     id="upload-error-close",
                     type="button",
                     className="upload-message-close",
-                    **dash_attrs({
-                        **text_attrs("Cerrar", "Close"),
-                        "data-upload-dismiss": "true",
-                    }),
+                    **dash_attrs(
+                        {
+                            **text_attrs("Cerrar", "Close"),
+                            "data-upload-dismiss": "true",
+                        }
+                    ),
                 ),
             ],
             className="upload-message-header",
@@ -627,10 +708,12 @@ def build_error_message(message: tuple[str, str], details: list[str] | None = No
                 id="upload-error-retry",
                 type="button",
                 className="upload-message-retry",
-                **dash_attrs({
-                    **text_attrs("Volver a intentar", "Try again"),
-                    "data-upload-dismiss": "true",
-                }),
+                **dash_attrs(
+                    {
+                        **text_attrs("Volver a intentar", "Try again"),
+                        "data-upload-dismiss": "true",
+                    }
+                ),
             ),
             className="upload-message-actions",
         )
@@ -649,7 +732,10 @@ def build_success_message(
     records_en = f"{total_documents} prepared record{'s' if total_documents != 1 else ''}"
     return html.Div(
         [
-            html.Strong("Archivo enviado a revisión", **text_attrs("Archivo enviado a revisión", "File sent for review")),
+            html.Strong(
+                "Archivo enviado a revisión",
+                **text_attrs("Archivo enviado a revisión", "File sent for review"),
+            ),
             html.P(
                 records_es,
                 **text_attrs(records_es, records_en),

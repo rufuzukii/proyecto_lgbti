@@ -47,12 +47,20 @@ def test_creates_index_when_its_key_does_not_exist(monkeypatch) -> None:
 
 
 def test_does_not_replace_an_incompatible_existing_index(monkeypatch, caplog) -> None:
-    collection = FakeCollection([{"name": "country_code_1_year_1", "key": {"country_code": 1, "year": 1}}])
+    collection = FakeCollection(
+        [{"name": "country_code_1_year_1", "key": {"country_code": 1, "year": 1}}]
+    )
     monkeypatch.setattr(mongo_indexes, "get_mongo_collection", lambda _name: collection)
 
     mongo_indexes._ensure_collection_indexes(
         "country_lgbti_status",
-        [IndexModel([("country_code", ASCENDING), ("year", ASCENDING)], unique=True, name="country_year_unique")],
+        [
+            IndexModel(
+                [("country_code", ASCENDING), ("year", ASCENDING)],
+                unique=True,
+                name="country_year_unique",
+            )
+        ],
     )
 
     assert collection.created == []
@@ -73,9 +81,7 @@ def test_fra_category_selector_uses_a_covered_compound_index(monkeypatch) -> Non
 
     fra_indexes = captured["Indicator_fra"]
     category_index = next(
-        index
-        for index in fra_indexes
-        if index.document.get("name") == "fra_category_question_code"
+        index for index in fra_indexes if index.document.get("name") == "fra_category_question_code"
     )
     assert list(category_index.document["key"].items()) == [
         ("category", 1),

@@ -1,13 +1,38 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
-from urllib.parse import urljoin
-from urllib.request import Request, urlopen
+from urllib.parse import urljoin, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from app.import_to_db.felgtbi.importer import YEAR_PATTERN
 
 DEFAULT_FELGTBI_STATE_URL = "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/"
+DEFAULT_ALLOWED_HOSTS = {"felgtbi.org", "www.felgtbi.org"}
+MEBIBYTE = 1024 * 1024
+DEFAULT_MAX_RESPONSE_MEBIBYTES = 20
+MIN_MAX_RESPONSE_MEBIBYTES = 1
+MAX_MAX_RESPONSE_MEBIBYTES = 100
+
+
+def _response_limit_bytes() -> int:
+    configured_value = os.getenv(
+        "FELGTBI_SCRAPER_MAX_RESPONSE_MB",
+        str(DEFAULT_MAX_RESPONSE_MEBIBYTES),
+    )
+    try:
+        configured_mebibytes = int(configured_value)
+    except ValueError:
+        configured_mebibytes = DEFAULT_MAX_RESPONSE_MEBIBYTES
+    bounded_mebibytes = max(
+        MIN_MAX_RESPONSE_MEBIBYTES,
+        min(configured_mebibytes, MAX_MAX_RESPONSE_MEBIBYTES),
+    )
+    return bounded_mebibytes * MEBIBYTE
+
+
+MAX_RESPONSE_BYTES = _response_limit_bytes()
 
 
 @dataclass(frozen=True)
@@ -25,13 +50,18 @@ def discover_felgtbi_pdfs(
     *,
     timeout_seconds: int = 10,
 ) -> list[dict]:
+    _validate_felgtbi_url(page_url)
     request = Request(page_url, headers={"User-Agent": "RainbowLens/1.0"})
-    with urlopen(request, timeout=timeout_seconds) as response:
-        html_text = response.read().decode("utf-8", errors="replace")
-    return [
-        link.to_dict()
-        for link in parse_felgtbi_pdf_links(html_text, base_url=page_url)
-    ]
+    opener = build_opener(_SafeRedirectHandler())
+    with opener.open(request, timeout=max(1, min(timeout_seconds, 30))) as response:
+        content_type = str(response.headers.get("Content-Type") or "").casefold()
+        if content_type and "text/html" not in content_type:
+            raise ValueError("page_url did not return HTML")
+        response_bytes = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(response_bytes) > MAX_RESPONSE_BYTES:
+            raise ValueError("page_url response is too large")
+        html_text = response_bytes.decode("utf-8", errors="replace")
+    return [link.to_dict() for link in parse_felgtbi_pdf_links(html_text, base_url=page_url)]
 
 
 def parse_felgtbi_pdf_links(html_text: str, *, base_url: str) -> list[FelgtbiPdfLink]:
@@ -66,7 +96,8 @@ class _PdfAnchorParser(HTMLParser):
             return
         url = urljoin(self.base_url, self._current_href)
         title = " ".join(" ".join(self._current_text).split()) or url.rsplit("/", 1)[-1]
-        self.links.append(FelgtbiPdfLink(title=title, url=url, year=_extract_year(title, url)))
+        if _is_allowed_felgtbi_url(url):
+            self.links.append(FelgtbiPdfLink(title=title, url=url, year=_extract_year(title, url)))
         self._current_href = None
         self._current_text = []
 
@@ -77,3 +108,28 @@ def _extract_year(*values: str) -> int | None:
         if match:
             return int(match.group(1))
     return None
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _validate_felgtbi_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _validate_felgtbi_url(value: str) -> None:
+    if not _is_allowed_felgtbi_url(value):
+        raise ValueError("page_url must use HTTPS on an approved FELGTBI host")
+
+
+def _is_allowed_felgtbi_url(value: str) -> bool:
+    parsed = urlsplit(value)
+    return parsed.scheme == "https" and (parsed.hostname or "").casefold() in _allowed_hosts()
+
+
+def _allowed_hosts() -> set[str]:
+    configured = {
+        item.strip().casefold()
+        for item in os.getenv("FELGTBI_ALLOWED_HOSTS", "").split(",")
+        if item.strip()
+    }
+    return configured or DEFAULT_ALLOWED_HOSTS

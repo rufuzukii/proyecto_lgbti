@@ -3,7 +3,6 @@ from __future__ import annotations
 from app.analytics.statistics_normalizers import normalize_text_key
 from app.reports.models import ReportRecommendation
 
-
 NEGATIVE_INDICATOR_TERMS = {
     "discrimination",
     "discriminacion",
@@ -24,7 +23,6 @@ POSITIVE_INDICATOR_TERMS = {
     "openness",
     "apertura",
     "inclusion",
-    "inclusion",
     "inclusión",
     "wellbeing",
     "bienestar",
@@ -36,22 +34,26 @@ POSITIVE_INDICATOR_TERMS = {
     "igualdad de oportunidades",
 }
 
-HR_RELEVANT_TERMS = NEGATIVE_INDICATOR_TERMS | POSITIVE_INDICATOR_TERMS | {
-    "work",
-    "workplace",
-    "employment",
-    "empleo",
-    "laboral",
-    "job",
-    "denuncia",
-    "reporting",
-    "promotion",
-    "promocion",
-    "promoción",
-    "recruitment",
-    "seleccion",
-    "selección",
-}
+HR_RELEVANT_TERMS = (
+    NEGATIVE_INDICATOR_TERMS
+    | POSITIVE_INDICATOR_TERMS
+    | {
+        "work",
+        "workplace",
+        "employment",
+        "empleo",
+        "laboral",
+        "job",
+        "denuncia",
+        "reporting",
+        "promotion",
+        "promocion",
+        "promoción",
+        "recruitment",
+        "seleccion",
+        "selección",
+    }
+)
 
 
 def is_hr_relevant_indicator(indicator: str) -> bool:
@@ -80,20 +82,14 @@ def build_recommendations(
     relevant = is_hr_relevant_indicator(indicator)
     recommendations: list[ReportRecommendation] = []
     gap = (
-        country_value - eu_average
-        if country_value is not None and eu_average is not None
-        else None
+        country_value - eu_average if country_value is not None and eu_average is not None else None
     )
 
     if relevant and gap is not None:
         if direction == "negative" and gap > threshold:
-            recommendations.extend(
-                _derived_negative_recommendations(language)
-            )
+            recommendations.extend(_derived_negative_recommendations(language))
         elif direction == "positive" and gap < -threshold:
-            recommendations.extend(
-                _derived_positive_recommendations(language)
-            )
+            recommendations.extend(_derived_positive_recommendations(language))
 
     recommendations.extend(_general_recommendations(language))
     deduplicated: list[ReportRecommendation] = []

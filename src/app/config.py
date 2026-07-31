@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
-from urllib.parse import quote_plus, unquote, urlparse
+import secrets
+from dataclasses import dataclass, field
+from urllib.parse import parse_qs, quote_plus, unquote, urlparse, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 
-load_dotenv()
+if (
+    os.getenv("APP_ENV", "local").strip().casefold() != "production"
+    or os.getenv("LOCAL_MODE", "").strip().casefold() in {"1", "true", "yes", "on"}
+):
+    load_dotenv()
+
+_LOCAL_SECRET_KEY = secrets.token_urlsafe(32)
 
 
 def _get_env(name: str, default: str | None = None) -> str | None:
@@ -43,7 +50,7 @@ def _is_production() -> bool:
 class AppConfig:
     env: str
     local_mode: bool
-    secret_key: str
+    secret_key: str = field(repr=False)
     api_host: str
     api_port: int
     auth_host: str
@@ -62,7 +69,7 @@ class PostgresConfig:
     port: int
     database: str
     user: str
-    password: str
+    password: str = field(repr=False)
     external_host: str | None = None
     ssl_mode: str | None = None
 
@@ -71,10 +78,7 @@ class PostgresConfig:
         ssl = f"?sslmode={self.ssl_mode}" if self.ssl_mode else ""
         user = quote_plus(self.user)
         password = quote_plus(self.password)
-        return (
-            f"postgresql://{user}:{password}@{host}:{self.port}/"
-            f"{self.database}{ssl}"
-        )
+        return f"postgresql://{user}:{password}@{host}:{self.port}/{self.database}{ssl}"
 
 
 @dataclass(frozen=True)
@@ -83,10 +87,10 @@ class MongoConfig:
     port: int
     database: str
     user: str | None = None
-    password: str | None = None
+    password: str | None = field(default=None, repr=False)
     auth_source: str | None = None
     tls: bool = False
-    uri: str | None = None
+    uri: str | None = field(default=None, repr=False)
     server_selection_timeout_ms: int = 2500
 
     def dsn(self) -> str:
@@ -110,9 +114,11 @@ def get_app_config() -> AppConfig:
     secret_key = _get_env("SECRET_KEY")
     if not secret_key:
         if local_mode:
-            secret_key = "local-dev-secret-key"
+            secret_key = _LOCAL_SECRET_KEY
         else:
-            raise RuntimeError("")
+            raise RuntimeError("SECRET_KEY must be configured in production.")
+    if not local_mode and len(secret_key) < 32:
+        raise RuntimeError("SECRET_KEY must contain at least 32 characters in production.")
 
     return AppConfig(
         env=env,
@@ -136,7 +142,7 @@ def get_postgres_config() -> PostgresConfig:
         user=_get_env("POSTGRES_USER", "postgres") or "postgres",
         password=_get_env("POSTGRES_PASSWORD", "") or "",
         external_host=_get_env("POSTGRES_EXTERNAL_HOST"),
-        ssl_mode=_get_env("POSTGRES_SSL_MODE"),
+        ssl_mode=_get_env("POSTGRES_SSL_MODE", "require" if _is_production() else None),
     )
 
 
@@ -144,10 +150,12 @@ def get_postgres_dsn() -> str:
     database_url = _get_clean_env("DATABASE_URL")
     if database_url:
         prefix = "DATABASE_URL="
-        if database_url.startswith(prefix):
-            database_url = database_url[len(prefix) :]
-        ssl_mode = _get_clean_env("POSTGRES_SSL_MODE")
-        if ssl_mode and "sslmode=" not in database_url:
+        database_url = database_url.removeprefix(prefix)
+        ssl_mode = _get_clean_env("POSTGRES_SSL_MODE", "require" if _is_production() else None)
+        configured_ssl_mode = _postgres_ssl_mode(database_url)
+        if _is_production() and configured_ssl_mode in {"allow", "disable", "prefer"}:
+            raise RuntimeError("DATABASE_URL must require TLS in production.")
+        if ssl_mode and configured_ssl_mode is None:
             separator = "&" if "?" in database_url else "?"
             database_url = f"{database_url}{separator}sslmode={quote_plus(ssl_mode)}"
         return os.path.expandvars(database_url)
@@ -161,7 +169,7 @@ def get_postgres_connect_timeout() -> int:
 
 
 def get_mongo_config() -> MongoConfig:
-    uri = _get_clean_env("MONGO_URI")
+    uri = _secure_mongo_uri(_get_clean_env("MONGO_URI"))
     host = _get_clean_env("MONGO_HOST")
     if _is_production() and not uri and not host:
         raise RuntimeError("MONGO_URI or MONGO_HOST must be set in production.")
@@ -174,7 +182,7 @@ def get_mongo_config() -> MongoConfig:
         user=_get_env("MONGO_USER"),
         password=_get_env("MONGO_PASSWORD"),
         auth_source=_get_env("MONGO_AUTH_SOURCE"),
-        tls=_get_bool("MONGO_TLS", False),
+        tls=_get_bool("MONGO_TLS", _is_production()),
         uri=uri,
         server_selection_timeout_ms=_get_int("MONGO_SERVER_SELECTION_TIMEOUT_MS", 2500),
     )
@@ -185,3 +193,23 @@ def _mongo_database_from_uri(uri: str | None) -> str | None:
         return None
     path = urlparse(uri).path.strip("/")
     return unquote(path.split("/", 1)[0]) if path else None
+
+
+def _postgres_ssl_mode(database_url: str) -> str | None:
+    values = parse_qs(urlsplit(database_url).query).get("sslmode", [])
+    return values[-1].casefold() if values else None
+
+
+def _secure_mongo_uri(uri: str | None) -> str | None:
+    if not uri or not _is_production():
+        return uri
+    parsed = urlsplit(uri)
+    query = parse_qs(parsed.query)
+    tls_values = [value.casefold() for key in ("tls", "ssl") for value in query.get(key, [])]
+    if any(value in {"0", "false", "no", "off"} for value in tls_values):
+        raise RuntimeError("MONGO_URI cannot disable TLS in production.")
+    if parsed.scheme == "mongodb" and not tls_values:
+        separator = "&" if parsed.query else ""
+        parsed = parsed._replace(query=f"{parsed.query}{separator}tls=true")
+        return urlunsplit(parsed)
+    return uri

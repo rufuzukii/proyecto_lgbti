@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from collections import defaultdict, deque
 import logging
 import os
 import time
+from collections import defaultdict, deque
+from threading import RLock
 from uuid import uuid4
 
 import redis
@@ -28,6 +29,7 @@ class InMemoryRateLimiter(RateLimiter):
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
         self._attempts: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = RLock()
 
     def _prune(self, key: str, now: float) -> None:
         attempts = self._attempts[key]
@@ -35,17 +37,49 @@ class InMemoryRateLimiter(RateLimiter):
             attempts.popleft()
 
     def is_blocked(self, key: str) -> bool:
-        now = time.time()
-        self._prune(key, now)
-        return len(self._attempts[key]) >= self.max_attempts
+        with self._lock:
+            now = time.time()
+            self._prune(key, now)
+            return len(self._attempts[key]) >= self.max_attempts
 
     def record_failure(self, key: str) -> None:
-        now = time.time()
-        self._prune(key, now)
-        self._attempts[key].append(now)
+        with self._lock:
+            now = time.time()
+            self._prune(key, now)
+            self._attempts[key].append(now)
 
     def reset(self, key: str) -> None:
-        self._attempts.pop(key, None)
+        with self._lock:
+            self._attempts.pop(key, None)
+
+
+class ResilientRateLimiter(RateLimiter):
+    """Use Redis when available and retain local protection during an outage."""
+
+    def __init__(self, primary: RateLimiter, fallback: RateLimiter) -> None:
+        self.primary = primary
+        self.fallback = fallback
+
+    def is_blocked(self, key: str) -> bool:
+        try:
+            return self.primary.is_blocked(key)
+        except RedisError:
+            logger.warning("rate_limiter_redis_operation_failed")
+            return self.fallback.is_blocked(key)
+
+    def record_failure(self, key: str) -> None:
+        try:
+            self.primary.record_failure(key)
+        except RedisError:
+            logger.warning("rate_limiter_redis_operation_failed")
+            self.fallback.record_failure(key)
+
+    def reset(self, key: str) -> None:
+        try:
+            self.primary.reset(key)
+        except RedisError:
+            logger.warning("rate_limiter_redis_operation_failed")
+        self.fallback.reset(key)
 
 
 class RedisRateLimiter(RateLimiter):
@@ -94,11 +128,7 @@ def create_rate_limiter(
     window_seconds: int,
     namespace: str = "auth",
 ) -> RateLimiter:
-    redis_url = (
-        os.getenv("RATE_LIMIT_REDIS_URL")
-        or os.getenv("REDIS_URL")
-        or ""
-    ).strip()
+    redis_url = (os.getenv("RATE_LIMIT_REDIS_URL") or os.getenv("REDIS_URL") or "").strip()
     if not redis_url:
         return InMemoryRateLimiter(max_attempts, window_seconds)
 
@@ -106,12 +136,15 @@ def create_rate_limiter(
     try:
         client.ping()
     except RedisError:
-        logger.exception("rate_limiter_redis_unavailable")
+        logger.warning("rate_limiter_redis_unavailable")
         return InMemoryRateLimiter(max_attempts, window_seconds)
 
-    return RedisRateLimiter(
-        client=client,
-        max_attempts=max_attempts,
-        window_seconds=window_seconds,
-        namespace=namespace,
+    return ResilientRateLimiter(
+        RedisRateLimiter(
+            client=client,
+            max_attempts=max_attempts,
+            window_seconds=window_seconds,
+            namespace=namespace,
+        ),
+        InMemoryRateLimiter(max_attempts, window_seconds),
     )
