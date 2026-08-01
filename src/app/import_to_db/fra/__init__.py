@@ -18,6 +18,12 @@ if TYPE_CHECKING:
         parse_fra_csv,
         parse_fra_csv_text,
     )
+    from .schema import (
+        FraCsvSchema,
+        detect_fra_csv_schema,
+        normalize_current_fra_csv,
+        normalize_legacy_fra_csv,
+    )
 
 
 _LAZY_EXPORTS = {
@@ -41,6 +47,16 @@ _LAZY_EXPORTS = {
     "parse_fra_csv_text": ("app.import_to_db.fra.payload", "parse_fra_csv_text"),
     "INDICATOR_FRA_COLLECTION": ("app.import_to_db.fra.mongo", "INDICATOR_FRA_COLLECTION"),
     "insert_indicator_fra_json": ("app.import_to_db.fra.mongo", "insert_indicator_fra_json"),
+    "FraCsvSchema": ("app.import_to_db.fra.schema", "FraCsvSchema"),
+    "detect_fra_csv_schema": ("app.import_to_db.fra.schema", "detect_fra_csv_schema"),
+    "normalize_current_fra_csv": (
+        "app.import_to_db.fra.schema",
+        "normalize_current_fra_csv",
+    ),
+    "normalize_legacy_fra_csv": (
+        "app.import_to_db.fra.schema",
+        "normalize_legacy_fra_csv",
+    ),
     "upsert_indicators_from_json": (
         "app.import_to_db.fra.indicators",
         "upsert_indicators_from_json",
@@ -67,12 +83,16 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "INDICATOR_FRA_COLLECTION",
+    "FraCsvSchema",
     "build_fra_questions_payload",
     "convert_fra_csv_files",
     "count_fra_questions",
+    "detect_fra_csv_schema",
     "generate_fra_json",
     "generate_fra_questions_json",
     "insert_indicator_fra_json",
+    "normalize_current_fra_csv",
+    "normalize_legacy_fra_csv",
     "parse_answer_survey_csv",
     "parse_answer_survey_csv_text",
     "parse_fra_csv",

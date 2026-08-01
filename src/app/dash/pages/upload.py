@@ -610,6 +610,48 @@ def _upload_validation_message(reason: str, filenames: Any) -> Component:
                 "The file type does not match the selected source.",
             )
         )
+    if reason in {"empty_fra_csv", "fra_csv_without_data_rows", "empty_payload"}:
+        return build_error_message(
+            (
+                "El CSV de FRA está vacío o no contiene filas de datos válidas.",
+                "The FRA CSV is empty or contains no valid data rows.",
+            )
+        )
+    if reason == "html_instead_of_fra_csv":
+        return build_error_message(
+            (
+                "El archivo recibido es HTML, no un CSV de FRA. Descárgalo de nuevo.",
+                "The received file is HTML, not a FRA CSV. Download it again.",
+            )
+        )
+    if reason.startswith(("unsupported_fra_csv_schema", "fra_current_schema_without_answer_columns")):
+        return build_error_message(
+            (
+                "No se reconoce el esquema del CSV de FRA ni sus columnas de respuesta.",
+                "The FRA CSV schema or its answer columns are not recognized.",
+            )
+        )
+    if reason.startswith(("fra_metadata_mismatch", "fra_answer_metadata_mismatch")):
+        return build_error_message(
+            (
+                "Los filtros o la respuesta indicados por el CSV de FRA no coinciden con el archivo.",
+                "The filters or answer declared by the FRA CSV do not match the file.",
+            )
+        )
+    if reason.startswith(("invalid_fra_percentage", "fra_percentage_out_of_range", "fra_proportion_out_of_range")):
+        return build_error_message(
+            (
+                "El CSV de FRA contiene un porcentaje no válido.",
+                "The FRA CSV contains an invalid percentage.",
+            )
+        )
+    if reason == "fra_conflicting_duplicate_rows":
+        return build_error_message(
+            (
+                "El CSV de FRA contiene duplicados incompatibles para la misma respuesta.",
+                "The FRA CSV contains conflicting duplicates for the same answer.",
+            )
+        )
     return build_error_message(
         (
             f"No se ha podido validar el archivo {display_name}.",
@@ -636,9 +678,13 @@ def parse_file_by_source(
 ) -> dict | list[dict]:
     if source == "FRA":
         from app.import_to_db import parse_fra_csv_text
+        from app.import_to_db.fra.schema import FraCsvError, decode_fra_csv_bytes
 
-        file_text = file_bytes.decode("utf-8", errors="replace")
-        return parse_fra_csv_text(file_text, file_name=file_name)
+        try:
+            file_text = decode_fra_csv_bytes(file_bytes)
+            return parse_fra_csv_text(file_text, file_name=file_name)
+        except FraCsvError as exc:
+            raise UploadValidationError(str(exc)) from exc
     if source == "ILGA":
         file_text = file_bytes.decode("utf-8", errors="replace")
         if Path(file_name).suffix.lower() == ".json":

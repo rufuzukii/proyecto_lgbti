@@ -10,6 +10,13 @@ from typing import Any, cast
 import pandas as pd
 from pandas.errors import EmptyDataError
 
+from app.import_to_db.fra.schema import (
+    FraCsvSchema,
+    filename_declares_all_all,
+    normalize_fra_csv,
+    read_fra_csv_text,
+    validate_fra_filter_scope,
+)
 from app.import_to_db.utils import normalize_header, parse_float
 
 FRA_SOURCE_NAME = "EU LGBTIQ+ Survey III (FRA 2023)"
@@ -305,7 +312,80 @@ def parse_answer_survey_csv_text(
     context = path_context or (
         build_path_context(Path(file_name), None) if file_name else FraPathContext()
     )
-    return _parse_answer_survey_rows(read_csv_rows(csv_text), path_context=context)
+    dataframe, schema = read_fra_csv_text(csv_text)
+    normalized = normalize_fra_csv(
+        dataframe,
+        schema,
+        path_filters=context.filters,
+    )
+    if filename_declares_all_all(file_name):
+        validate_fra_filter_scope(
+            normalized,
+            expected_filter_a_type="All",
+            expected_filter_a_value="All",
+            expected_filter_b_type="All",
+            expected_filter_b_value="All",
+        )
+    return _parse_normalized_fra_dataframe(normalized, schema=schema, context=context)
+
+
+def _parse_normalized_fra_dataframe(
+    dataframe: pd.DataFrame,
+    *,
+    schema: FraCsvSchema,
+    context: FraPathContext,
+) -> list[dict]:
+    documents: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
+    for row in dataframe.to_dict(orient="records"):
+        source = str(row.get("source") or FRA_SOURCE_NAME)
+        category = str(row.get("category") or context.category or "Uncategorized")
+        specific_category = str(row.get("specific_category") or category)
+        topic = category
+        question = str(row.get("question") or "")
+        external_code = str(row.get("indicator_id") or build_question_code(question))
+        key = (source, category, specific_category, topic, question, external_code)
+        if key not in documents:
+            documents[key] = {
+                "source": source,
+                "source_type": FRA_SOURCE_TYPE,
+                "category": category,
+                "specific_category": specific_category,
+                "topic": topic,
+                "question": question,
+                "code": external_code,
+                "external_code": external_code,
+                "question_path": [specific_category, question],
+                "metadata": {
+                    "schema_version": 2,
+                    "fra_csv_schema": schema.version,
+                    "file_name": context.file_name,
+                    "requires_review": False,
+                },
+                "answers": [],
+            }
+
+        filters = row.get("filters")
+        answer_entry = {
+            "country": str(row.get("country_name") or ""),
+            "country_code": str(row.get("country_code") or ""),
+            "country_scope": str(row.get("country_scope") or "country"),
+            "answer": str(row.get("response") or context.answer),
+            "percentage": row.get("percentage"),
+            "raw_percentage": str(row.get("raw_percentage") or ""),
+            "notes": str(row.get("notes") or ""),
+            "note_text": str(row.get("notes") or ""),
+            "date": str(row.get("date") or ""),
+            "filters": dict(filters) if isinstance(filters, Mapping) else {},
+        }
+        documents[key]["answers"].append(answer_entry)
+        hyperlink = str(row.get("hyperlink") or "")
+        if hyperlink and not documents[key]["metadata"].get("hyperlink"):
+            documents[key]["metadata"]["hyperlink"] = hyperlink
+
+    for document in documents.values():
+        document["validation"] = validate_fra_document(document)
+        document["hyperlink"] = document["metadata"].pop("hyperlink", "")
+    return list(documents.values())
 
 
 def read_csv_rows(csv_text: str) -> list[dict[str, str]]:

@@ -72,7 +72,6 @@ venv.bak/
 /site
 
 /output
-/tmp
 
 # mypy
 .mypy_cache/
