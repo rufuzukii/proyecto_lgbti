@@ -24,6 +24,7 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics_normalizers import normalize_country_code
 from app.auth.permissions import is_admin_user
+from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.dates import utc_today, utc_today_iso
@@ -150,10 +151,7 @@ def build_home_layout() -> Component:
                                 className="home-europe-map",
                                 config={
                                     "displayModeBar": True,
-                                    "displaylogo": False,
-                                    "responsive": True,
-                                    "scrollZoom": True,
-                                    "modeBarButtonsToRemove": ["lasso2d", "select2d"],
+                                    **fixed_europe_map_config(),
                                 },
                             ),
                             dcc.Store(id="home-country-status-refresh", data=0),
@@ -538,6 +536,7 @@ def register_home_callbacks(app: Dash) -> None:
 def _home_map_figure(figure: Any) -> Any:
     figure.update_layout(
         autosize=True,
+        dragmode=False,
         geo={
             "center": {"lon": 20, "lat": 54},
             "projection": {"scale": 1.18},

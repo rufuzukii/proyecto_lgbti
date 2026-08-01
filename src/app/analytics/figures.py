@@ -122,6 +122,7 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
 
     figure.update_layout(
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        dragmode=False,
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
@@ -413,6 +414,7 @@ def build_fra_choropleth(
 
     figure.update_layout(
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        dragmode=False,
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
@@ -503,6 +505,7 @@ def build_ilga_category_map(
 
     figure.update_layout(
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        dragmode=False,
         geo={
             "scope": "europe",
             "projection_type": "natural earth",

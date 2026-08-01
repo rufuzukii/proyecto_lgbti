@@ -89,4 +89,9 @@ def test_fra_category_selector_uses_a_covered_compound_index(monkeypatch) -> Non
         ("question", 1),
         ("code", 1),
     ]
+    docente_indexes = captured["didactica_docente_games"]
+    assert {index.document.get("name") for index in docente_indexes} == {
+        "docente_game_id_unique",
+        "docente_games_by_owner",
+    }
     mongo_indexes.initialize_mongo_indexes.cache_clear()

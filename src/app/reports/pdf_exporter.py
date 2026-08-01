@@ -198,7 +198,7 @@ class PDFExporter:
                     Paragraph(
                         _escape(
                             f"{section_number}. "
-                            f"{_t(language, 'Comparación entre países', 'Country comparison')}"
+                            f"{_t(language, 'Comparación de respuestas', 'Response comparison')}"
                         ),
                         styles["h1"],
                     ),

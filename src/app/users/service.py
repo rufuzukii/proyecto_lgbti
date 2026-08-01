@@ -47,8 +47,9 @@ def list_users() -> list[UserRead]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            select id::text, username, email, role, organization
-            from public.users
+            select id::text, username, email, role, organization,
+                   coalesce(to_jsonb(u)->>'user_type', role) as user_type
+            from public.users as u
             order by created_at desc nulls last, email asc
             """
         ).fetchall()
@@ -68,8 +69,9 @@ def get_user_record(user_id: str) -> UserRecord | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            select id::text, username, email, role, organization, password_hash
-            from public.users
+            select id::text, username, email, role, organization, password_hash,
+                   coalesce(to_jsonb(u)->>'user_type', role) as user_type
+            from public.users as u
             where id = %s::uuid
             """,
             (user_id,),
@@ -84,8 +86,9 @@ def get_user_record_by_email(email: str) -> UserRecord | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            select id::text, username, email, role, organization, password_hash
-            from public.users
+            select id::text, username, email, role, organization, password_hash,
+                   coalesce(to_jsonb(u)->>'user_type', role) as user_type
+            from public.users as u
             where lower(email) = %s
             """,
             (normalized,),
@@ -109,20 +112,39 @@ def create_user(payload: UserRegister, *, role: UserRole = UserRole.COMMON) -> U
 
     try:
         with _connect() as conn:
-            row = conn.execute(
-                """
-                insert into public.users (username, email, role, organization, password_hash)
-                values (%s, %s, %s, %s, %s)
-                returning id::text, username, email, role, organization
-                """,
-                (
-                    username,
-                    normalized_email,
-                    assigned_role.value,
-                    organization,
-                    password_hash,
-                ),
-            ).fetchone()
+            if _users_has_column(conn, "user_type"):
+                row = conn.execute(
+                    """
+                    insert into public.users
+                        (username, email, role, user_type, organization, password_hash)
+                    values (%s, %s, %s, %s, %s, %s)
+                    returning id::text, username, email, role, organization, user_type
+                    """,
+                    (
+                        username,
+                        normalized_email,
+                        assigned_role.value,
+                        None if assigned_role == UserRole.ADMIN else UserType.COMUN.value,
+                        organization,
+                        password_hash,
+                    ),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    insert into public.users (username, email, role, organization, password_hash)
+                    values (%s, %s, %s, %s, %s)
+                    returning id::text, username, email, role, organization,
+                              coalesce(to_jsonb(users)->>'user_type', role) as user_type
+                    """,
+                    (
+                        username,
+                        normalized_email,
+                        assigned_role.value,
+                        organization,
+                        password_hash,
+                    ),
+                ).fetchone()
             conn.commit()
     except UniqueViolation as exc:
         raise ValueError("email_exists") from exc
@@ -185,7 +207,8 @@ def update_user_profile(
                     email = %s,
                     password_hash = %s
                 where id = %s::uuid
-                returning id::text, username, email, role, organization, password_hash
+                returning id::text, username, email, role, organization, password_hash,
+                          coalesce(to_jsonb(users)->>'user_type', role) as user_type
                 """,
                 (clean_username, normalized_email, next_hash, user_id),
             ).fetchone()
@@ -220,24 +243,48 @@ def update_user_as_admin(
 
     try:
         with _connect() as conn:
-            row = conn.execute(
-                """
-                update public.users
-                set username = %s,
-                    email = %s,
-                    role = %s,
-                    organization = %s
-                where id = %s::uuid
-                returning id::text, username, email, role, organization, password_hash
-                """,
-                (
-                    clean_username,
-                    normalized_email,
-                    parsed_role.value,
-                    clean_organization,
-                    user_id,
-                ),
-            ).fetchone()
+            if _users_has_column(conn, "user_type"):
+                is_admin = parsed_role == UserRole.ADMIN
+                stored_type = None
+                if not is_admin:
+                    stored_type = (
+                        UserType.COMUN.value
+                        if parsed_role == UserRole.COMMON
+                        else parsed_role.value
+                    )
+                row = conn.execute(
+                    """
+                    update public.users
+                    set username = %s, email = %s, role = %s, user_type = %s, organization = %s
+                    where id = %s::uuid
+                    returning id::text, username, email, role, organization, password_hash, user_type
+                    """,
+                    (
+                        clean_username,
+                        normalized_email,
+                        UserRole.ADMIN.value if is_admin else UserRole.COMMON.value,
+                        stored_type,
+                        clean_organization,
+                        user_id,
+                    ),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    update public.users
+                    set username = %s, email = %s, role = %s, organization = %s
+                    where id = %s::uuid
+                    returning id::text, username, email, role, organization, password_hash,
+                              coalesce(to_jsonb(users)->>'user_type', role) as user_type
+                    """,
+                    (
+                        clean_username,
+                        normalized_email,
+                        parsed_role.value,
+                        clean_organization,
+                        user_id,
+                    ),
+                ).fetchone()
             conn.commit()
     except UniqueViolation as exc:
         raise ValueError("email_exists") from exc
@@ -259,12 +306,52 @@ def delete_user_as_admin(*, user_id: str) -> None:
         raise ValueError("user_not_found")
 
 
+def migrate_legacy_user_types() -> int:
+    """Rename the legacy educator profile in every users column that stores it."""
+    with _connect() as conn:
+        columns = {
+            str(row["column_name"])
+            for row in conn.execute(
+                """
+                select column_name
+                from information_schema.columns
+                where table_schema = 'public' and table_name = 'users'
+                """
+            ).fetchall()
+        }
+        updated = 0
+        if "role" in columns:
+            updated += conn.execute(
+                "update public.users set role = %s where lower(role) = %s",
+                (UserType.DOCENTE.value, "profesor"),
+            ).rowcount
+        if "user_type" in columns:
+            updated += conn.execute(
+                "update public.users set user_type = %s where lower(user_type) = %s",
+                (UserType.DOCENTE.value, "profesor"),
+            ).rowcount
+        conn.commit()
+    return updated
+
+
 def _connect() -> psycopg.Connection:
     return psycopg.connect(
         _postgres_dsn(),
         row_factory=cast(Any, dict_row),
         connect_timeout=get_postgres_connect_timeout(),
     )
+
+
+def _users_has_column(conn: psycopg.Connection, column_name: str) -> bool:
+    row = conn.execute(
+        """
+        select 1
+        from information_schema.columns
+        where table_schema = 'public' and table_name = 'users' and column_name = %s
+        """,
+        (column_name,),
+    ).fetchone()
+    return row is not None
 
 
 def _postgres_dsn() -> str:
@@ -308,6 +395,7 @@ def _row_to_user_record(row: Any) -> UserRecord:
         role=_parse_role(row.get("role")),
         organization=row.get("organization"),
         password_hash=row.get("password_hash"),
+        user_type=_parse_user_type(row.get("user_type")),
     )
 
 
@@ -321,7 +409,7 @@ def _row_to_user_read(row: Any) -> UserRead:
         email=row.get("email"),
         role=_parse_role(row.get("role")),
         organization=row.get("organization") or "No organization",
-        user_type=None,
+        user_type=_parse_user_type(row.get("user_type")),
     )
 
 
@@ -345,8 +433,23 @@ def _parse_role(value: str | None) -> UserRole:
     return UserRole.COMMON
 
 
-def _parse_admin_role(value: str | None) -> UserRole:
+def _parse_admin_role(value: str | None) -> UserRole | UserType:
     clean_value = str(value or "").strip().casefold()
-    if clean_value not in {UserRole.ADMIN.value, UserRole.COMMON.value}:
-        raise ValueError("invalid_role")
-    return UserRole(clean_value)
+    if clean_value in {UserRole.ADMIN.value, UserRole.COMMON.value}:
+        return UserRole(clean_value)
+    try:
+        return UserType(clean_value)
+    except ValueError as exc:
+        raise ValueError("invalid_role") from exc
+
+
+def _parse_user_type(value: str | None) -> UserType | None:
+    clean_value = str(value or "").strip().casefold()
+    if clean_value == "profesor":
+        clean_value = UserType.DOCENTE.value
+    if clean_value == UserRole.COMMON.value:
+        clean_value = UserType.COMUN.value
+    try:
+        return UserType(clean_value)
+    except ValueError:
+        return None

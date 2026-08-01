@@ -13,10 +13,12 @@ from app.analytics.statistics_charts import (
     NO_RESPONSE_COLOR,
     YES_RESPONSE_COLOR,
     _legal_hover_data,
+    build_comparative_ranking_chart,
     build_europe_choropleth,
     build_europe_distribution_chart,
     build_fra_response_comparison_chart,
     build_ilga_criteria_heatmap,
+    build_response_country_comparison_chart,
     normalize_percentage,
     summarize_response_comparison,
 )
@@ -58,6 +60,9 @@ from app.dash.pages.statistics import (
     _fra_segmentation_card_class,
     _has_valid_fra_selection,
     _methodology_text,
+    _ranking_graph_style,
+    _response_comparison_graph_style,
+    _response_detail_graph_style,
     _segmentation_catalog_options,
     build_statistics_layout,
 )
@@ -538,6 +543,7 @@ def test_europe_choropleth_uses_percentage_values_with_a_uniform_blue_scale() ->
     assert (
         trace.hovertemplate == "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
     )
+    assert figure.layout.dragmode is False
 
 
 def test_europe_choropleth_preserves_real_decimals_and_numeric_strings() -> None:
@@ -1004,6 +1010,78 @@ def test_response_details_compare_all_answers_when_no_is_selected(monkeypatch) -
     assert {trace.name for trace in _traces(figure)} == {"Yes", "No"}
 
 
+def test_response_details_uses_filtered_dynamic_country_universe_and_canonical_columns(
+    monkeypatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def answer(
+        country: str,
+        code: str,
+        response: str,
+        percentage: float | None,
+        filter_type: str,
+        filter_value: str,
+    ) -> dict[str, Any]:
+        return {
+            "country": country,
+            "country_code": code,
+            "answer": response,
+            "percentage": percentage,
+            "date": "2023",
+            "filters": [{"type": filter_type, "value": filter_value}],
+        }
+
+    document = {
+        "code": "FILTERED_EU",
+        "category": "Discrimination",
+        "question": "Filtered coverage",
+        "answers": [
+            answer("Spain", "ESP", "Yes", 60, "Age", "25-39"),
+            answer("Spain", "ES", "No", 40, "Age", "25-39"),
+            answer("Portugal", "PT", "Yes", None, "Age", "25-39"),
+            answer("Portugal", "PT", "No", 70, "Age", "25-39"),
+            answer("Germany", "DE", "Yes", 55, "All", "All"),
+        ],
+    }
+    monkeypatch.setattr(
+        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+    )
+    caplog.set_level("INFO")
+
+    result = get_fra_statistics(
+        FraStatisticsQuery(
+            question_code="FILTERED_EU",
+            answer="Yes",
+            year=2023,
+            filter_a_name="Age",
+            filter_a_value="25-39",
+            filter_b_name="All",
+            filter_b_value="All",
+        )
+    )
+
+    assert result["status"] == "ok"
+    assert {row["country_code"] for row in result["country_universe"]} == {"ES", "PT"}
+    assert all(
+        {
+            "country_code",
+            "country_name",
+            "response",
+            "percentage",
+            "year",
+            "indicator_id",
+        }.issubset(row)
+        for row in result["detail_data"]
+    )
+    assert result["response_details_diagnostics"]["countries_loaded"] == 2
+    assert result["response_details_diagnostics"]["countries_rendered"] == 1
+    assert result["response_details_diagnostics"]["countries_without_data"] == 1
+    assert (
+        "response_details countries_loaded=2 countries_rendered=1 countries_without_data=1"
+        in caplog.text
+    )
+
+
 def test_fra_controls_dataframe_and_query_results_are_reused_from_server_cache(monkeypatch) -> None:
     document = {
         "code": "CACHE_1",
@@ -1111,7 +1189,7 @@ def test_fra_response_comparison_rejects_out_of_range_values_without_zero_bars(
     missing_trace = next(
         trace for trace in _traces(figure) if trace.name == "No hay suficiente información"
     )
-    assert set(missing_trace.y) == {"Spain", "Portugal"}
+    assert set(missing_trace.y) == {"Espa\u00f1a", "Portugal"}
     assert all(
         "Spain" not in trace.y
         for trace in _traces(figure)
@@ -1230,14 +1308,10 @@ def test_fra_response_comparison_keeps_all_database_countries_when_map_selects_o
     ]
 
     figure = build_fra_response_comparison_chart(rows, selected_countries=["X00"])
-    rendered_countries = {
-        str(country)
-        for trace in _traces(figure)
-        for country in trace.y
-    }
+    rendered_countries = {str(country) for trace in _traces(figure) for country in trace.y}
 
     assert rendered_countries == {f"Country {index:02d}" for index in range(27)}
-    assert _layout(figure).height == 946
+    assert _layout(figure).height == 1069
     assert _layout(figure).paper_bgcolor == "rgba(0,0,0,0)"
 
 
@@ -1266,11 +1340,7 @@ def test_fra_response_comparison_adds_all_30_countries_from_indicator_universe()
         selected_countries=["X00"],
     )
     summary = summarize_response_comparison(rows, available_countries=universe)
-    rendered_countries = {
-        str(country)
-        for trace in _traces(figure)
-        for country in trace.y
-    }
+    rendered_countries = {str(country) for trace in _traces(figure) for country in trace.y}
     missing_trace = next(
         trace for trace in _traces(figure) if trace.name == "No hay suficiente información"
     )
@@ -1278,7 +1348,56 @@ def test_fra_response_comparison_adds_all_30_countries_from_indicator_universe()
     assert rendered_countries == {f"Country {index:02d}" for index in range(30)}
     assert set(missing_trace.y) == {f"Country {index:02d}" for index in range(24, 30)}
     assert summary["countries"] == 30
-    assert _layout(figure).height == 1030
+    assert _layout(figure).height == 1165
+
+
+def test_fra_response_comparison_keeps_46_countries_and_graph_height_in_sync() -> None:
+    rows = [
+        {
+            "country_name": f"Country {index:02d}",
+            "country_code": f"X{index:02d}",
+            "response": "Yes",
+            "percentage": float(index % 101),
+            "year": 2024,
+            "indicator_id": "FULL_EUROPE",
+            "question": "Full European coverage",
+            "source": "FRA",
+        }
+        for index in range(46)
+    ]
+
+    figure = build_fra_response_comparison_chart(rows, language="en")
+    rendered = {str(country) for trace in _traces(figure) for country in trace.y}
+    graph_style = _response_detail_graph_style(figure)
+
+    assert len(rendered) == 46
+    assert _layout(figure).height == 1677
+    assert graph_style["height"] == "1677px"
+    assert graph_style["width"] == "100%"
+    assert "Indicator" in _trace(figure).hovertemplate
+
+
+def test_fra_response_comparison_groups_country_variants_by_normalized_iso() -> None:
+    figure = build_fra_response_comparison_chart(
+        [
+            {
+                "country": " Czech Republic ",
+                "iso": "CZE",
+                "answer": "Yes",
+                "percentage": 60,
+            },
+            {
+                "country": "czechia",
+                "iso": "cz",
+                "answer": "No",
+                "percentage": 40,
+            },
+        ],
+        language="es",
+    )
+
+    assert {country for trace in _traces(figure) for country in trace.y} == {"Rep\u00fablica Checa"}
+    assert {trace.customdata[0][0] for trace in _traces(figure)} == {"CZ"}
 
 
 def test_fra_response_hover_includes_answer_percentage_year_and_source() -> None:
@@ -1315,7 +1434,7 @@ def test_fra_response_comparison_does_not_average_conflicting_duplicates(
 
     trace = _trace(figure)
     assert trace.name == "No hay suficiente información"
-    assert list(trace.y) == ["Spain"]
+    assert list(trace.y) == ["Espa\u00f1a"]
     assert "conflicting_percentage_values groups=1" in caplog.text
 
 
@@ -1532,6 +1651,49 @@ def test_statistics_control_group_omits_empty_id() -> None:
     assert "id" not in component.to_plotly_json()["props"]
 
 
+def test_fra_repository_merges_every_document_for_indicator_in_one_find(monkeypatch) -> None:
+    calls: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    class Collection:
+        def find(self, query, projection):
+            calls.append((query, projection))
+            return [
+                {
+                    "code": "DUPLICATED",
+                    "category": "Category",
+                    "question": "Question",
+                    "answers": [{"country_code": "ES"}],
+                },
+                {
+                    "code": "DUPLICATED",
+                    "category": "Category",
+                    "question": "Question",
+                    "answers": [{"country_code": "PT"}],
+                },
+            ]
+
+    monkeypatch.setattr(analytics_repository, "_mongo_collection", lambda _name: Collection())
+
+    document = analytics_repository.get_fra_indicator_answers.__wrapped__(
+        " DUPLICATED ", " Category "
+    )
+
+    assert calls == [
+        (
+            {"code": "DUPLICATED", "category": "Category"},
+            {
+                "_id": 0,
+                "code": 1,
+                "category": 1,
+                "specific_category": 1,
+                "question": 1,
+                "answers": 1,
+            },
+        )
+    ]
+    assert [row["country_code"] for row in document["answers"]] == ["ES", "PT"]
+
+
 def test_statistics_layout_keeps_response_details_without_duplicate_panels(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
@@ -1548,10 +1710,112 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
     response_classes = str(response_panel.to_plotly_json()["props"]["className"]).split()
     assert "stats-panel-wide" in response_classes
     assert "stats-response-panel" in response_classes
+    response_graph = cast(Any, _component_by_id(layout, "stats-response-detail-graph"))
+    graph_props = response_graph.to_plotly_json()["props"]
+    assert graph_props["responsive"] is True
+    assert graph_props["style"] == {
+        "width": "100%",
+        "height": "520px",
+        "minHeight": "520px",
+    }
     assert _component_by_id(layout, "stats-ranking-graph") is not None
-    assert _component_by_id(layout, "stats-country-comparison-graph") is not None
-    assert _component_by_id(layout, "stats-radar-graph") is not None
+    ranking_graph = cast(Any, _component_by_id(layout, "stats-ranking-graph"))
+    ranking_graph_props = ranking_graph.to_plotly_json()["props"]
+    assert ranking_graph_props["responsive"] is True
+    assert ranking_graph_props["style"] == {"width": "100%"}
+    assert ranking_graph_props["className"] == "stats-chart-graph"
+    ranking_panel = cast(Any, _component_by_id(layout, "stats-ranking-panel"))
+    assert "stats-panel-wide" in ranking_panel.className.split()
+    table = cast(Any, _component_by_id(layout, "stats-results-table"))
+    assert table.to_plotly_json()["props"]["style"] == {"width": "100%"}
+    assert table.to_plotly_json()["type"] == "AgGrid"
+    table_wrapper = cast(Any, _component_by_id(layout, "stats-results-table-wrapper"))
+    assert table_wrapper is not None
+    assert table_wrapper.className == "stats-results-table-scroll"
+    assert table_wrapper.to_plotly_json()["props"]["tabIndex"] == 0
+    assert _component_by_id(layout, "stats-response-comparison-graph") is not None
+    comparison_panel = cast(Any, _component_by_id(layout, "stats-response-comparison-panel"))
+    assert "stats-panel-wide" in comparison_panel.className.split()
+    table_download = cast(Any, _component_by_id(layout, "stats-table-download-button"))
+    assert table_download.disabled is True
+    assert _component_by_id(layout, "stats-summary-table-download") is not None
+    assert _component_by_id(layout, "stats-experience-legal-radar-graph") is not None
+    assert _component_by_id(layout, "stats-experience-legal-country-select") is not None
     assert _component_by_id(layout, "stats-filter-analysis-graph") is None
+
+
+def test_all_statistics_graphs_are_responsive_without_fixed_widths(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
+    )
+    monkeypatch.setattr("app.dash.pages.statistics._year_options", lambda _source: [])
+    monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _source, _year: [])
+    monkeypatch.setattr("app.dash.pages.statistics.build_navbar", lambda **_kwargs: "")
+
+    layout = build_statistics_layout()
+    graph_ids = (
+        "stats-map-graph",
+        "stats-temporal-graph",
+        "stats-ranking-graph",
+        "stats-distribution-graph",
+        "stats-average-graph",
+        "stats-response-comparison-graph",
+        "stats-experience-legal-radar-graph",
+        "stats-response-detail-graph",
+        "stats-gap-graph",
+        "stats-scatter-graph",
+        "stats-combined-heatmap",
+    )
+
+    for graph_id in graph_ids:
+        graph = cast(Any, _component_by_id(layout, graph_id))
+        props = graph.to_plotly_json()["props"]
+        assert props["responsive"] is True
+        assert props["config"]["responsive"] is True
+        assert props["style"]["width"] == "100%"
+
+    map_config = cast(Any, _component_by_id(layout, "stats-map-graph")).to_plotly_json()[
+        "props"
+    ]["config"]
+    assert map_config["scrollZoom"] is False
+    assert map_config["doubleClick"] is False
+    assert {"zoomInGeo", "zoomOutGeo", "resetGeo", "toImage"}.issubset(
+        map_config["modeBarButtonsToRemove"]
+    )
+
+
+def test_ranking_graph_style_tracks_plotly_dynamic_height() -> None:
+    figure = build_comparative_ranking_chart(
+        [{"country": f"Country {index}", "iso": f"X{index}", "value": index} for index in range(46)]
+    )
+
+    assert _ranking_graph_style(figure) == {
+        "width": "100%",
+        "height": "1500px",
+        "minHeight": "500px",
+    }
+
+
+def test_response_comparison_graph_style_tracks_local_horizontal_width() -> None:
+    figure = build_response_country_comparison_chart(
+        [
+            {
+                "country": f"Country {index}",
+                "iso": f"X{index}",
+                "answer": answer,
+                "percentage": index,
+            }
+            for index in range(46)
+            for answer in ("Yes", "No")
+        ],
+    )
+
+    assert _response_comparison_graph_style(figure) == {
+        "width": "100%",
+        "height": "610px",
+        "minHeight": "560px",
+        "minWidth": "2358px",
+    }
 
 
 def test_fra_methodology_uses_exact_localized_copy() -> None:

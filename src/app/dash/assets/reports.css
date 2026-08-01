@@ -151,8 +151,7 @@
 }
 
 .reports-primary-button,
-.reports-secondary-button,
-.stats-create-report-link {
+.reports-secondary-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -164,8 +163,7 @@
     cursor: pointer;
 }
 
-.reports-primary-button,
-.stats-create-report-link {
+.reports-primary-button {
     color: #fff;
     border: 1px solid #2f6bde;
     background: #2f6bde;
@@ -184,8 +182,7 @@
 }
 
 .reports-primary-button:focus-visible,
-.reports-secondary-button:focus-visible,
-.stats-create-report-link:focus-visible {
+.reports-secondary-button:focus-visible {
     outline: 3px solid rgba(47, 107, 222, 0.35);
     outline-offset: 3px;
 }

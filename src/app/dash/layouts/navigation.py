@@ -15,12 +15,14 @@ def build_navbar(active: str | None = None) -> Component:
         ("España", "Spain", "/spain", "spain"),
         ("Estadísticas", "Statistics", "/statistics", "statistics"),
         ("Informes", "Reports", "/informes", "reports"),
-        ("Didáctica", "Didactics", "/didactics", "didactics"),
+        ("Didáctica", "Learning", "/didactica", "didactica"),
         ("Acerca de", "About", "/about", "about"),
         ("Importar datos", "Import data", "/upload", "upload"),
     ]
     if not user_has_permission(current_user, Permission.UPLOAD_DATA):
         links = [link for link in links if link[3] != "upload"]
+    if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
+        links = [link for link in links if link[3] != "reports"]
     admin_link = _admin_link(active)
     navbar_class = "navbar navbar--admin" if admin_link is not None else "navbar"
 

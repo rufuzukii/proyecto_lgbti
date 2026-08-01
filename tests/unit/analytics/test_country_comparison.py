@@ -8,9 +8,9 @@ from dash import Dash, html
 from app.analytics.statistics_charts import (
     build_combined_heatmap,
     build_comparative_ranking_chart,
-    build_country_comparison_chart,
     build_eu_average_comparison_chart,
-    build_indicator_radar,
+    build_experience_legal_radar,
+    build_response_country_comparison_chart,
     country_color,
 )
 from app.analytics.statistics_models import FraStatisticsQuery, IlgaStatisticsQuery
@@ -24,6 +24,10 @@ def _trace(figure: Any, index: int = 0) -> Any:
 
 def _traces(figure: Any) -> list[Any]:
     return list(figure.data)
+
+
+def _layout(figure: Any) -> Any:
+    return figure.layout
 
 
 def test_country_palette_matches_the_approved_european_colours() -> None:
@@ -82,11 +86,33 @@ def test_ranking_uses_all_europe_without_selection_and_only_selected_with_select
     assert "Sin datos" in set(_trace(selected).text)
 
 
-def test_direct_fra_comparison_groups_binary_and_multiple_answers_by_country() -> None:
-    ranking = [
-        {"country": "Spain", "iso": "ES", "value": 60.0},
-        {"country": "France", "iso": "FR", "value": 50.0},
+def test_ranking_scales_for_all_countries_and_exposes_complete_hover_context() -> None:
+    rows = [
+        {"country": f"European country {index:02d}", "iso": f"X{index:02d}", "value": index}
+        for index in range(1, 47)
     ]
+
+    figure = build_comparative_ranking_chart(
+        rows,
+        language="en",
+        indicator="Equal treatment",
+        year=2024,
+    )
+    trace = _trace(figure)
+
+    assert len(trace.y) == 46
+    assert _layout(figure).height == 1500
+    assert _layout(figure).autosize is True
+    assert _layout(figure).xaxis.automargin is True
+    assert _layout(figure).yaxis.automargin is True
+    assert "Position" in trace.hovertemplate
+    assert "Year" in trace.hovertemplate
+    assert "Indicator" in trace.hovertemplate
+    assert set(row[3] for row in trace.customdata) == {"2024"}
+    assert set(row[4] for row in trace.customdata) == {"Equal treatment"}
+
+
+def test_response_comparison_groups_dynamic_answers_for_selected_countries() -> None:
     details = [
         {"country": country, "iso": iso, "answer": answer, "percentage": value}
         for country, iso, values in (
@@ -96,20 +122,52 @@ def test_direct_fra_comparison_groups_binary_and_multiple_answers_by_country() -
         for answer, value in zip(("Yes", "No", "Unknown"), values, strict=True)
     ]
 
-    figure = build_country_comparison_chart(
-        ranking,
-        ["ES", "FR"],
-        detail_rows=details,
-        source="FRA",
+    figure = build_response_country_comparison_chart(details, ["ES"])
+
+    assert _layout(figure).barmode == "group"
+    assert {trace.name for trace in _traces(figure)} == {"España"}
+    assert list(_trace(figure).x) == ["Yes", "No", "Unknown"]
+    assert list(_trace(figure).y) == [60.0, 30.0, 10.0]
+    assert _trace(figure).orientation in (None, "v")
+
+
+def test_response_comparison_keeps_all_46_countries_without_map_selection(
+    caplog,
+) -> None:
+    details = [
+        {
+            "country": f"Country {index:02d}",
+            "iso": f"X{index:02d}",
+            "answer": answer,
+            "percentage": None if index in {7, 19} and answer == "No" else float(index),
+            "question": "Equal treatment",
+            "year": 2024,
+            "source": "FRA",
+        }
+        for index in range(46)
+        for answer in ("Yes", "No")
+    ]
+    caplog.set_level("INFO")
+
+    figure = build_response_country_comparison_chart(
+        details,
+        [],
+        language="en",
+        indicator="Legal protection",
+        year=2024,
     )
 
-    assert figure.layout.barmode == "group"
-    assert {trace.name for trace in _traces(figure)} == {"Spain", "France"}
-    assert all(list(trace.x) == ["Yes", "No", "Unknown"] for trace in _traces(figure))
-    assert {trace.name: trace.marker.color for trace in _traces(figure)} == {
-        "Spain": country_color("ES", "Spain"),
-        "France": country_color("FR", "France"),
+    assert len(_traces(figure)) == 46
+    assert {trace.name for trace in _traces(figure)} == {
+        f"Country {index:02d}" for index in range(46)
     }
+    assert _layout(figure).height == 610
+    assert _layout(figure).autosize is True
+    assert _layout(figure).xaxis.automargin is True
+    assert _layout(figure).yaxis.automargin is True
+    assert "Indicator" in _trace(figure).hovertemplate
+    assert _layout(figure).meta["minimum_width"] > 2000
+    assert "countries_rendered=46 responses=2 missing_values=2" in caplog.text
 
 
 def test_combined_heatmap_renders_one_complete_percentage_matrix() -> None:
@@ -155,44 +213,68 @@ def test_average_chart_exposes_value_mean_absolute_and_percentage_differences() 
     assert trace.customdata[portugal].tolist() == ["Sin datos", "Sin datos", "Sin datos"]
 
 
-def test_radar_is_hidden_for_binary_fra_and_available_for_multidimensional_ilga() -> None:
-    binary = [
-        {"country": "Spain", "iso": "ES", "answer": "Yes", "percentage": 60.0},
-        {"country": "Spain", "iso": "ES", "answer": "No", "percentage": 40.0},
-    ]
-    binary_figure, binary_compatible = build_indicator_radar(
-        binary,
-        source="FRA",
-        selected_countries=["ES"],
-    )
-    legal = [
-        {
-            "country": country,
-            "iso": iso,
-            "category": category,
-            "criterion": f"{category} criterion",
-            "criterion_value": value,
-            "criterion_weight": 1.0,
-        }
-        for country, iso, value in (("Spain", "ES", 0.8), ("France", "FR", 0.6))
-        for category in ("Equality", "Family", "Asylum")
-    ]
-    legal_figure, legal_compatible = build_indicator_radar(
-        legal,
-        source="ILGA-Europe",
-        selected_countries=["ES", "FR"],
-    )
-    legal_default_figure, legal_default_compatible = build_indicator_radar(
-        legal,
-        source="ILGA-Europe",
-    )
+def test_experience_legal_radar_renders_country_and_european_means() -> None:
+    dimensions = ["equality", "education", "health"]
+    payload = {
+        "fra_year": 2024,
+        "ilga_year": 2026,
+        "dimensions": [
+            {"key": key, "label_es": key.title(), "label_en": key.title()} for key in dimensions
+        ],
+        "rows": [
+            {
+                "country": country,
+                "iso": iso,
+                "dimension": dimension,
+                "experience_score": experience,
+                "legal_score": legal,
+            }
+            for country, iso, experience, legal in (
+                ("Spain", "ES", 60.0, 80.0),
+                ("France", "FR", 55.0, 70.0),
+            )
+            for dimension in dimensions
+        ],
+    }
 
-    assert binary_compatible is False
-    assert not _traces(binary_figure)
-    assert legal_compatible is True
-    assert {trace.name for trace in _traces(legal_figure)} == {"Spain", "France"}
-    assert legal_default_compatible is True
-    assert {trace.name for trace in _traces(legal_default_figure)} == {"Spain", "France"}
+    figure, compatible, metadata, interpretation = build_experience_legal_radar(payload, "ES", "en")
+
+    assert compatible is True
+    assert len(_traces(figure)) == 4
+    assert {trace.name for trace in _traces(figure)} == {
+        "Real-life experience · Spain",
+        "Legal protection · Spain",
+        "European average · Real-life experience",
+        "European average · Legal protection",
+    }
+    assert "FRA 2024" in metadata
+    assert "ILGA-Europe 2026" in metadata
+    assert "causal" in interpretation
+
+
+def test_experience_legal_radar_hides_incomplete_country() -> None:
+    payload = {
+        "dimensions": [
+            {"key": "equality", "label_es": "Igualdad", "label_en": "Equality"},
+            {"key": "health", "label_es": "Salud", "label_en": "Health"},
+        ],
+        "rows": [
+            {
+                "country": "Spain",
+                "iso": "ES",
+                "dimension": dimension,
+                "experience_score": 60.0,
+                "legal_score": 70.0,
+            }
+            for dimension in ("equality", "health")
+        ],
+    }
+
+    figure, compatible, _metadata, message = build_experience_legal_radar(payload, "ES")
+
+    assert compatible is False
+    assert not _traces(figure)
+    assert "No hay suficientes datos comparables" in message
 
 
 def test_fra_result_keeps_country_without_selected_answer_as_missing(monkeypatch) -> None:
@@ -314,6 +396,9 @@ def test_comparison_table_uses_shared_selection_and_marks_missing_data() -> None
     assert [row["country"] for row in rows] == ["Portugal", "Spain"]
     assert rows[0]["status"] == "Sin datos"
     assert rows[0]["value"] is None
+    assert rows[0]["country_code"] == "PT"
+    assert rows[0]["response"] == "Yes"
+    assert rows[0]["source"] == "FRA"
     assert rows[1]["indicator"] == "Example question · Yes"
 
 
@@ -327,3 +412,48 @@ def test_country_selection_never_triggers_the_data_query_callback() -> None:
 
     assert "stats-selected-countries" not in input_ids
     assert "stats-map-graph" not in input_ids
+
+    download_callback = app.callback_map["stats-summary-table-download.data"]
+    assert download_callback["inputs"] == [
+        {"id": "stats-table-download-button", "property": "n_clicks"}
+    ]
+    download_state_ids = {item["id"] for item in download_callback["state"]}
+    assert {
+        "stats-results-table",
+        "stats-data-store",
+        "stats-selected-countries",
+        "app-language-store",
+    }.issubset(download_state_ids)
+
+
+def test_summary_table_callback_reuses_visible_rows_for_consecutive_downloads() -> None:
+    app = Dash(__name__, suppress_callback_exceptions=True)
+    app.layout = html.Div()
+    register_statistics_callbacks(app)
+    callback = app.callback_map["stats-summary-table-download.data"]["callback"].__wrapped__
+    visible_rows = [
+        {"country": "Portugal", "value": 48.0},
+        {"country": "Spain", "value": 63.0},
+    ]
+    raw_rows = list(reversed(visible_rows))
+    columns = [
+        {"field": "country", "headerName": "Country"},
+        {"field": "value", "headerName": "Value (%)"},
+    ]
+    result = {
+        "ranking": [
+            {"country": "Spain", "iso": "ES", "value": 63.0},
+            {"country": "Portugal", "iso": "PT", "value": 48.0},
+        ],
+        "indicator": "Discrimination",
+        "answer": "Yes",
+        "source": "FRA",
+        "year": 2024,
+    }
+
+    first = callback(1, visible_rows, raw_rows, columns, result, [], "en")
+    second = callback(2, visible_rows, raw_rows, columns, result, [], "en")
+
+    assert first == second
+    assert first["content"].index("Portugal;48.0") < first["content"].index("Spain;63.0")
+    assert first["filename"].endswith("_europa_2024.csv")

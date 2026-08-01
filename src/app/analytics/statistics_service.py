@@ -17,12 +17,14 @@ from app.analytics.percentage_display import (
 from app.analytics.repository import (
     ANALYTICS_CACHE_TIMEOUT_SECONDS,
     get_fra_indicator_answers,
+    get_fra_indicator_documents,
     get_ilga_document_by_year,
     get_ilga_history_documents,
 )
 from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_A,
     FRA_FILTER_GROUP_B,
+    ExperienceLegalRadarQuery,
     FraStatisticsQuery,
     IlgaStatisticsQuery,
     validate_fra_query,
@@ -32,6 +34,7 @@ from app.analytics.statistics_normalizers import (
     normalize_country_code,
     normalize_filter_type,
     normalize_filter_value,
+    normalize_text_key,
     repair_text_encoding,
 )
 from app.cache import cache
@@ -41,6 +44,55 @@ NO_DATA_MESSAGE = (
     "No hay datos disponibles para esta combinación de país, indicador y filtros. "
     "Prueba a seleccionar All en uno de los grupos o utiliza una segmentación menos específica."
 )
+
+RADAR_MAPPING_VERSION = "fra-ilga-v1"
+RADAR_DIMENSION_MAPPING: dict[str, dict[str, Any]] = {
+    "equal_treatment": {
+        "label_es": "Igualdad y no discriminación",
+        "label_en": "Equality and non-discrimination",
+        "fra": ({"code": "D1_1", "answer": "Yes", "invert": True},),
+        "ilga": {"category": "Equality & non-discrimination", "prefixes": ()},
+    },
+    "goods_services": {
+        "label_es": "Bienes y servicios",
+        "label_en": "Goods and services",
+        "fra": ({"code": "D1_2_f", "answer": "Yes", "invert": True},),
+        "ilga": {
+            "category": "Equality & non-discrimination",
+            "prefixes": ("Goods & services",),
+        },
+    },
+    "education": {
+        "label_es": "Educación",
+        "label_en": "Education",
+        "fra": (
+            {"code": "C9_E", "answer": "Never", "invert": False},
+            {"code": "C9_C", "answer": "Never", "invert": False},
+        ),
+        "ilga": {
+            "category": "Equality & non-discrimination",
+            "prefixes": ("Education",),
+        },
+    },
+    "health": {
+        "label_es": "Salud",
+        "label_en": "Health",
+        "fra": ({"code": "G16", "answer": "Very good", "invert": False},),
+        "ilga": {
+            "category": "Equality & non-discrimination",
+            "prefixes": ("Health",),
+        },
+    },
+    "equality_bodies": {
+        "label_es": "Acceso a organismos de igualdad",
+        "label_en": "Access to equality bodies",
+        "fra": ({"code": "C20_Any_EB", "answer": "Yes", "invert": False},),
+        "ilga": {
+            "category": "Equality & non-discrimination",
+            "prefixes": ("Equality body mandate",),
+        },
+    },
+}
 
 
 def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
@@ -407,7 +459,7 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
 
 def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     clean_code = str(query.question_code or "").strip()
-    dataframe = _fra_dataframe_for_code(clean_code)
+    dataframe = _fra_dataframe_for_code(clean_code, query.category)
 
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
@@ -428,8 +480,11 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
             )
     if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
-    detail_dataframe = filter_fra_comparison_dataframe(source_dataframe, query)
-    country_universe = _fra_country_universe(source_dataframe, query.year)
+    detail_dataframe, country_universe, detail_diagnostics = _prepare_fra_response_details(
+        source_dataframe,
+        query,
+        effective_answer=effective_answer,
+    )
 
     ranking = aggregate_fra_data(dataframe, ["country", "iso"], "percentage", "mean")
     ranking = ranking.rename(columns={"percentage": "value"})
@@ -458,6 +513,7 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         "data": dataframe.to_dict("records"),
         "detail_data": detail_dataframe.to_dict("records"),
         "country_universe": country_universe.to_dict("records"),
+        "response_details_diagnostics": detail_diagnostics,
         "available_countries": sorted(
             value for value in country_universe["iso"].dropna().astype(str).tolist() if value
         ),
@@ -471,8 +527,90 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     }
 
 
+def _prepare_fra_response_details(
+    source_dataframe: pd.DataFrame,
+    query: FraStatisticsQuery,
+    *,
+    effective_answer: str | None,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    """Build the single canonical dataframe used by response details.
+
+    The country universe is derived from the same year and sociodemographic
+    scope as the detail rows. It deliberately ignores map selection and keeps
+    rows with a missing percentage so absence is never converted to zero.
+    """
+    rows_loaded = len(source_dataframe)
+    countries_before = int(source_dataframe["iso"].replace("", pd.NA).nunique())
+    detail = filter_fra_comparison_dataframe(source_dataframe, query).copy()
+
+    detail["country_code"] = detail["iso"].fillna("").map(normalize_country_code)
+    detail["country_name"] = detail["country"].fillna("").astype(str).str.strip()
+    detail["response"] = detail["answer"].fillna("").astype(str).str.strip()
+    detail["indicator_id"] = detail["question_code"].fillna("").astype(str).str.strip()
+
+    missing_iso_mask = detail["country_code"].eq("")
+    missing_country_mask = detail["country_name"].eq("")
+    missing_response_mask = detail["response"].eq("")
+    aggregate_mask = detail["country_code"].eq("EU27") | detail["country_name"].str.upper().eq(
+        "EU27"
+    )
+    discarded_mask = (
+        missing_iso_mask | missing_country_mask | missing_response_mask | aggregate_mask
+    )
+    discarded_reasons = {
+        "missing_country_code": int(missing_iso_mask.sum()),
+        "missing_country_name": int(missing_country_mask.sum()),
+        "missing_response": int(missing_response_mask.sum()),
+        "non_country_aggregate": int(aggregate_mask.sum()),
+    }
+    detail = detail.loc[~discarded_mask].copy()
+    detail["iso"] = detail["country_code"]
+    detail["country"] = detail["country_name"]
+    detail["answer"] = detail["response"]
+    detail["question_code"] = detail["indicator_id"]
+
+    duplicate_mask = detail.duplicated(["country_code", "response"], keep=False)
+    duplicate_groups = int(
+        detail.loc[duplicate_mask, ["country_code", "response"]].drop_duplicates().shape[0]
+    )
+    country_universe = _fra_country_universe(detail, None)
+    country_codes = set(country_universe["country_code"].astype(str))
+    selected_answer_rows = detail[detail["response"].eq(str(effective_answer or ""))]
+    countries_with_data = set(
+        selected_answer_rows.loc[selected_answer_rows["percentage"].notna(), "country_code"].astype(
+            str
+        )
+    ).intersection(country_codes)
+    countries_without_data = country_codes.difference(countries_with_data)
+    diagnostics = {
+        "records_loaded": rows_loaded,
+        "records_after_filters": len(detail),
+        "countries_before_filters": countries_before,
+        "countries_loaded": len(country_codes),
+        "countries_rendered": len(countries_with_data),
+        "countries_without_data": len(countries_without_data),
+        "duplicate_country_response_groups": duplicate_groups,
+        "discarded": discarded_reasons,
+    }
+    logger.info(
+        "response_details countries_loaded=%d countries_rendered=%d countries_without_data=%d",
+        diagnostics["countries_loaded"],
+        diagnostics["countries_rendered"],
+        diagnostics["countries_without_data"],
+        extra={"question_code": query.question_code, **diagnostics},
+    )
+    if any(discarded_reasons.values()) or duplicate_groups:
+        logger.debug(
+            "response_details_quality discarded=%r duplicate_country_response_groups=%d",
+            discarded_reasons,
+            duplicate_groups,
+            extra={"question_code": query.question_code, **diagnostics},
+        )
+    return detail, country_universe, diagnostics
+
+
 def _fra_country_universe(dataframe: pd.DataFrame, year: int | None) -> pd.DataFrame:
-    """Countries represented by the indicator and year, regardless of segmentation."""
+    """Canonical country universe represented by the supplied filtered rows."""
     universe = dataframe.copy()
     if year is not None and "year" in universe:
         universe = universe[(universe["year"].isna()) | (universe["year"] == year)]
@@ -480,24 +618,37 @@ def _fra_country_universe(dataframe: pd.DataFrame, year: int | None) -> pd.DataF
         universe["iso"].astype(str).str.upper().ne("EU27")
         & universe["country"].astype(str).str.upper().ne("EU27")
     ]
+    optional_columns = [
+        column for column in ("question", "question_code", "indicator_id") if column in universe
+    ]
+    country_universe = universe[["country", "iso", "year", "source", *optional_columns]].copy()
+    country_universe["country_code"] = country_universe["iso"].map(normalize_country_code)
+    country_universe["country_name"] = country_universe["country"].astype(str).str.strip()
     return (
-        universe[["country", "iso", "year", "source"]]
-        .dropna(subset=["country"])
-        .sort_values(["country", "iso"])
-        .drop_duplicates(["iso", "country"])
+        country_universe[
+            country_universe["country_code"].ne("") & country_universe["country_name"].ne("")
+        ]
+        .sort_values(["country_name", "country_code"])
+        .drop_duplicates("country_code", keep="first")
         .reset_index(drop=True)
     )
 
 
-def _fra_dataframe_for_code(code: str) -> pd.DataFrame:
+def _fra_dataframe_for_code(code: str, category: str | None = None) -> pd.DataFrame:
     if not code:
         return _empty_fra_dataframe()
-    cache_key = f"fra-normalized-frame-v2:{code}"
+    clean_category = str(category or "").strip()
+    cache_key = f"fra-normalized-frame-v3:{code}:{clean_category}"
     cached = _server_cache_get(cache_key)
     if isinstance(cached, pd.DataFrame):
         return cached.copy(deep=True)
 
-    dataframe = fra_document_to_dataframe(get_fra_indicator_answers(code))
+    document = (
+        get_fra_indicator_answers(code, clean_category)
+        if clean_category
+        else get_fra_indicator_answers(code)
+    )
+    dataframe = fra_document_to_dataframe(document)
     if not dataframe.empty:
         _server_cache_set(cache_key, dataframe.copy(deep=True))
     return dataframe
@@ -518,7 +669,7 @@ def _fra_statistics_cache_key(query: FraStatisticsQuery) -> str:
         "mode": query.mode,
     }
     serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return f"fra-statistics-v4:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+    return f"fra-statistics-v5:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
 def _server_cache_get(key: str) -> Any:
@@ -538,6 +689,208 @@ def _server_cache_set(key: str, value: Any) -> None:
         cache.set(key, value, timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
     except Exception:
         logger.debug("statistics_cache_write_failed", extra={"cache_key": key}, exc_info=True)
+
+
+def get_experience_legal_radar(
+    query: ExperienceLegalRadarQuery,
+) -> dict[str, Any]:
+    """Build comparable FRA/ILGA dimensions without per-country queries.
+
+    FRA scores use the stored final percentages. Only indicators explicitly
+    marked ``invert`` are transformed as ``100 - percentage``. ILGA legal
+    scores are the awarded criterion points divided by their available maximum
+    weight, expressed on a 0-100 scale.
+    """
+    identity = {
+        "mapping_version": RADAR_MAPPING_VERSION,
+        "fra_year": query.fra_year,
+        "ilga_year": query.ilga_year,
+        "countries": sorted(query.countries),
+        "filter_a_name": query.filter_a_name,
+        "filter_a_value": query.filter_a_value,
+        "filter_b_name": query.filter_b_name,
+        "filter_b_value": query.filter_b_value,
+    }
+    serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    cache_key = f"experience-legal-radar:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+    cached = _server_cache_get(cache_key)
+    if isinstance(cached, dict):
+        return deepcopy(cached)
+
+    fra_rows = _experience_radar_rows(query)
+    legal_rows, effective_ilga_year = _legal_radar_rows(query)
+    if fra_rows.empty or legal_rows.empty:
+        result = {
+            "status": "empty",
+            "rows": [],
+            "dimensions": _radar_dimension_metadata(),
+            "mapping_version": RADAR_MAPPING_VERSION,
+            "fra_year": query.fra_year,
+            "ilga_year": effective_ilga_year,
+        }
+        _server_cache_set(cache_key, deepcopy(result))
+        return result
+
+    merged = fra_rows.rename(columns={"country": "experience_country"}).merge(
+        legal_rows.rename(columns={"country": "legal_country"}),
+        on=["iso", "dimension"],
+        how="outer",
+        validate="one_to_one",
+    )
+    merged["country"] = merged["experience_country"].combine_first(merged["legal_country"])
+    merged = merged.drop(columns=["experience_country", "legal_country"])
+    selected = {
+        normalize_country_code(country) or str(country).strip().upper()
+        for country in query.countries
+    }
+    if selected:
+        merged = merged[merged["iso"].isin(selected)]
+    merged = merged.sort_values(["country", "dimension"], kind="stable")
+    serialized_rows = merged.astype(object).where(pd.notna(merged), None).to_dict("records")
+    result = {
+        "status": "ok" if not merged.empty else "empty",
+        "rows": serialized_rows,
+        "dimensions": _radar_dimension_metadata(),
+        "mapping_version": RADAR_MAPPING_VERSION,
+        "fra_year": _effective_dataframe_year(fra_rows, query.fra_year),
+        "ilga_year": effective_ilga_year,
+        "sources": {"experience": "FRA", "legal": "ILGA-Europe"},
+        "methodology": (
+            "FRA percentages are used as published; only D1_1 and D1_2_f are explicitly "
+            "inverted because a higher discrimination percentage means a worse experience. "
+            "ILGA criterion points are normalized against their available weights."
+        ),
+    }
+    _server_cache_set(cache_key, deepcopy(result))
+    return result
+
+
+def _radar_dimension_metadata() -> list[dict[str, str]]:
+    return [
+        {
+            "key": key,
+            "label_es": str(mapping["label_es"]),
+            "label_en": str(mapping["label_en"]),
+        }
+        for key, mapping in RADAR_DIMENSION_MAPPING.items()
+    ]
+
+
+def _experience_radar_rows(query: ExperienceLegalRadarQuery) -> pd.DataFrame:
+    fra_configs = [
+        {"dimension": dimension, **indicator}
+        for dimension, mapping in RADAR_DIMENSION_MAPPING.items()
+        for indicator in mapping["fra"]
+    ]
+    codes = tuple(config["code"] for config in fra_configs)
+    documents = get_fra_indicator_documents(codes)
+    frames = [fra_document_to_dataframe(document) for document in documents]
+    frames = [frame for frame in frames if not frame.empty]
+    if not frames:
+        return pd.DataFrame(columns=["iso", "country", "dimension", "experience_score", "fra_year"])
+
+    dataframe = pd.concat(frames, ignore_index=True)
+    filter_query = FraStatisticsQuery(
+        year=query.fra_year,
+        filter_a_name=query.filter_a_name,
+        filter_a_value=query.filter_a_value,
+        filter_b_name=query.filter_b_name,
+        filter_b_value=query.filter_b_value,
+    )
+    dataframe = filter_fra_comparison_dataframe(dataframe, filter_query)
+    if dataframe.empty:
+        return pd.DataFrame(columns=["iso", "country", "dimension", "experience_score", "fra_year"])
+
+    config_frame = pd.DataFrame(fra_configs)
+    config_frame["answer_key"] = config_frame["answer"].map(normalize_text_key)
+    dataframe["answer_key"] = dataframe["answer"].map(normalize_text_key)
+    matched = dataframe.merge(
+        config_frame[["code", "answer_key", "dimension", "invert"]],
+        left_on=["question_code", "answer_key"],
+        right_on=["code", "answer_key"],
+        how="inner",
+        validate="many_to_one",
+    )
+    matched["percentage"] = pd.to_numeric(matched["percentage"], errors="coerce")
+    matched = matched[matched["percentage"].between(0, 100, inclusive="both")]
+    matched["experience_score"] = matched["percentage"].where(
+        ~matched["invert"], 100 - matched["percentage"]
+    )
+    matched = matched[
+        matched["iso"].astype(str).str.strip().ne("")
+        & matched["iso"].astype(str).str.upper().ne("EU27")
+    ]
+    if matched.empty:
+        return pd.DataFrame(columns=["iso", "country", "dimension", "experience_score", "fra_year"])
+    return matched.groupby(["iso", "dimension"], as_index=False, dropna=False).agg(
+        country=("country", "first"),
+        experience_score=("experience_score", "mean"),
+        fra_year=("year", "max"),
+    )
+
+
+def _legal_radar_rows(
+    query: ExperienceLegalRadarQuery,
+) -> tuple[pd.DataFrame, int | None]:
+    document = get_ilga_document_by_year(query.ilga_year)
+    dataframe = ilga_document_to_dataframe(document)
+    effective_year = (
+        _safe_int(document.get("year")) if isinstance(document, dict) else query.ilga_year
+    )
+    if dataframe.empty:
+        return (
+            pd.DataFrame(columns=["iso", "country", "dimension", "legal_score"]),
+            effective_year,
+        )
+
+    groups: list[pd.DataFrame] = []
+    for dimension, mapping in RADAR_DIMENSION_MAPPING.items():
+        legal_mapping = mapping["ilga"]
+        rows = dataframe[dataframe["category"].eq(legal_mapping["category"])].copy()
+        prefixes = tuple(normalize_text_key(prefix) for prefix in legal_mapping["prefixes"])
+        if prefixes:
+            criterion_keys = rows["criterion"].map(normalize_text_key)
+            rows = rows[criterion_keys.str.startswith(prefixes, na=False)]
+        if rows.empty:
+            continue
+        rows["dimension"] = dimension
+        groups.append(rows)
+    if not groups:
+        return (
+            pd.DataFrame(columns=["iso", "country", "dimension", "legal_score"]),
+            effective_year,
+        )
+
+    criteria = pd.concat(groups, ignore_index=True)
+    criteria["criterion_value"] = pd.to_numeric(criteria["criterion_value"], errors="coerce")
+    criteria["criterion_weight"] = pd.to_numeric(criteria["criterion_weight"], errors="coerce")
+    criteria = criteria[
+        criteria["criterion_value"].notna()
+        & criteria["criterion_weight"].gt(0)
+        & criteria["iso"].astype(str).str.strip().ne("")
+    ]
+    if criteria.empty:
+        return (
+            pd.DataFrame(columns=["iso", "country", "dimension", "legal_score"]),
+            effective_year,
+        )
+    criteria["weighted_value"] = criteria["criterion_value"] * criteria["criterion_weight"]
+    grouped = criteria.groupby(["iso", "dimension"], as_index=False, dropna=False).agg(
+        country=("country", "first"),
+        weighted_value=("weighted_value", "sum"),
+        available_weight=("criterion_weight", "sum"),
+    )
+    grouped["legal_score"] = (100 * grouped["weighted_value"] / grouped["available_weight"]).clip(
+        0, 100
+    )
+    return grouped[["iso", "country", "dimension", "legal_score"]], effective_year
+
+
+def _effective_dataframe_year(dataframe: pd.DataFrame, fallback: int | None) -> int | None:
+    years = pd.to_numeric(
+        dataframe.get("fra_year", pd.Series(dtype=float)), errors="coerce"
+    ).dropna()
+    return int(years.max()) if not years.empty else fallback
 
 
 def get_ilga_statistics(

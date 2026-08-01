@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
+
+from app.analytics.geography import ISO2_TO_ISO3
 
 MOJIBAKE_MARKERS = ("\u00c3", "\u00c2", "\u00e2\u20ac", "\ufeff", "\ufffd")
 
@@ -53,6 +56,7 @@ COUNTRY_CODE_ALIASES: dict[str, str] = {
     "EL": "GR",
     "XKX": "XK",
 }
+ISO3_TO_ISO2: dict[str, str] = {iso3: iso2 for iso2, iso3 in ISO2_TO_ISO3.items()}
 
 COUNTRY_NAME_ALIASES: dict[str, str] = {
     "bosnia & herzegovina": "BA",
@@ -89,7 +93,13 @@ def repair_text_encoding(value: Any) -> str:
 
 
 def normalize_text_key(value: Any) -> str:
-    return " ".join(repair_text_encoding(value).strip().lower().replace("_", " ").split())
+    text = repair_text_encoding(value).strip().casefold().replace("_", " ")
+    text = "".join(
+        character
+        for character in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(character)
+    )
+    return " ".join(text.split())
 
 
 def normalize_filter_type(value: Any) -> str:
@@ -109,7 +119,8 @@ def normalize_filter_value(value: Any) -> str:
 def normalize_country_code(code: Any, country_name: Any | None = None) -> str:
     clean_code = repair_text_encoding(code).strip().upper()
     if clean_code:
-        return COUNTRY_CODE_ALIASES.get(clean_code, clean_code)
+        clean_code = COUNTRY_CODE_ALIASES.get(clean_code, clean_code)
+        return ISO3_TO_ISO2.get(clean_code, clean_code)
     return COUNTRY_NAME_ALIASES.get(normalize_text_key(country_name), "")
 
 

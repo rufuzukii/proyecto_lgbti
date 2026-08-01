@@ -17,7 +17,7 @@ from app.auth.rate_limit import create_rate_limiter
 from app.config import get_app_config
 from app.http_security import configure_flask_security, rate_limit_key
 from app.logging_config import configure_secure_logging
-from app.users.schemas import UserRegister, UserRole
+from app.users.schemas import UserRegister, UserRole, UserType
 from app.users.service import UserStorageError, authenticate_user, create_user, get_user
 
 
@@ -26,6 +26,7 @@ class AuthUser(UserMixin):
     id: str
     email: str | None
     role: UserRole
+    user_type: UserType | None = None
 
 
 def create_auth_app() -> Flask:
@@ -62,7 +63,7 @@ def create_auth_app() -> Flask:
             return None
         if user is None:
             return None
-        return AuthUser(id=user.id, email=user.email, role=user.role)
+        return AuthUser(id=user.id, email=user.email, role=user.role, user_type=user.user_type)
 
     @app.post("/auth/register")
     def register_user():
@@ -118,7 +119,14 @@ def create_auth_app() -> Flask:
             rate_limiter.record_failure(rate_key)
             return jsonify({"status": "error", "message": "invalid_credentials"}), 401
         session.clear()
-        login_user(AuthUser(id=record.id, email=record.email, role=record.role))
+        login_user(
+            AuthUser(
+                id=record.id,
+                email=record.email,
+                role=record.role,
+                user_type=record.user_type,
+            )
+        )
         rate_limiter.reset(rate_key)
         return jsonify({"status": "ok"})
 
@@ -133,7 +141,14 @@ def create_auth_app() -> Flask:
     def me():
         if not current_user.is_authenticated:
             return jsonify({"role": UserRole.ANONYMOUS.value, "user": None})
-        return jsonify({"role": current_user.role.value, "user_id": current_user.id})
+        user_type = getattr(current_user, "user_type", None)
+        return jsonify(
+            {
+                "role": current_user.role.value,
+                "user_type": user_type.value if isinstance(user_type, UserType) else None,
+                "user_id": current_user.id,
+            }
+        )
 
     return app
 

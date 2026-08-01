@@ -294,25 +294,101 @@ def get_fra_mongo_indicators_by_category(category: str) -> list[FraIndicator]:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_fra_indicator_answers(code: str) -> dict[str, Any] | None:
+def get_fra_indicator_answers(code: str, category: str | None = None) -> dict[str, Any] | None:
     clean_code = str(code or "").strip()
     if not clean_code:
         return None
+    query: dict[str, Any] = {"code": clean_code}
+    clean_category = str(category or "").strip()
+    if clean_category:
+        query["category"] = clean_category
     try:
-        return _mongo_collection("Indicator_fra").find_one(
-            {"code": clean_code},
-            {
-                "_id": 0,
-                "code": 1,
-                "category": 1,
-                "specific_category": 1,
-                "question": 1,
-                "answers": 1,
-            },
+        documents = list(
+            _mongo_collection("Indicator_fra").find(
+                query,
+                {
+                    "_id": 0,
+                    "code": 1,
+                    "category": 1,
+                    "specific_category": 1,
+                    "question": 1,
+                    "answers": 1,
+                },
+            )
         )
+        if not documents:
+            return None
+
+        document = dict(documents[0])
+        document["answers"] = [
+            answer
+            for item in documents
+            for answer in (item.get("answers") or [])
+            if isinstance(answer, dict)
+        ]
+        if len(documents) > 1:
+            logger.info(
+                "fra_indicator_documents_merged code=%s documents=%d answers=%d",
+                clean_code,
+                len(documents),
+                len(document["answers"]),
+                extra={
+                    "indicator_code": clean_code,
+                    "document_count": len(documents),
+                    "answer_count": len(document["answers"]),
+                },
+            )
+        return document
     except Exception:
         logger.exception("fra_indicator_values_read_failed", extra={"code": clean_code})
         return None
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_fra_indicator_documents(codes: tuple[str, ...]) -> list[dict[str, Any]]:
+    """Load and merge several FRA indicators with one MongoDB query."""
+    clean_codes = tuple(
+        sorted({str(code or "").strip() for code in codes if str(code or "").strip()})
+    )
+    if not clean_codes:
+        return []
+    try:
+        documents = list(
+            _mongo_collection("Indicator_fra").find(
+                {"code": {"$in": list(clean_codes)}},
+                {
+                    "_id": 0,
+                    "code": 1,
+                    "category": 1,
+                    "specific_category": 1,
+                    "question": 1,
+                    "answers": 1,
+                },
+            )
+        )
+    except Exception:
+        logger.exception("fra_radar_indicators_read_failed", extra={"codes": clean_codes})
+        return []
+
+    merged: dict[str, dict[str, Any]] = {}
+    for document in documents:
+        code = str(document.get("code") or "").strip()
+        if not code:
+            continue
+        target = merged.setdefault(
+            code,
+            {
+                "code": code,
+                "category": document.get("category"),
+                "specific_category": document.get("specific_category"),
+                "question": document.get("question"),
+                "answers": [],
+            },
+        )
+        target["answers"].extend(
+            answer for answer in (document.get("answers") or []) if isinstance(answer, dict)
+        )
+    return [merged[code] for code in clean_codes if code in merged]
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)

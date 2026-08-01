@@ -576,7 +576,7 @@ body[data-theme="dark"] .user-role-badge {
 
 body[data-theme="dark"] .profile-detail,
 body[data-theme="dark"] .user-action-tile,
-body[data-theme="dark"] .user-permission-item {
+body[data-theme="dark"] .user-contact-upload {
   background: var(--panel-muted);
   border-color: var(--panel-border);
   color: var(--color-text);
@@ -603,8 +603,7 @@ body[data-theme="dark"] .home-map-metric span {
 }
 
 body[data-theme="dark"] .profile-detail-value,
-body[data-theme="dark"] .user-role-value,
-body[data-theme="dark"] .user-permission-title {
+body[data-theme="dark"] .user-role-value {
   color: var(--color-text);
 }
 
@@ -615,8 +614,7 @@ body[data-theme="dark"] .auth-eyebrow,
 body[data-theme="dark"] .upload-eyebrow,
 body[data-theme="dark"] .user-eyebrow,
 body[data-theme="dark"] .user-action-tile strong,
-body[data-theme="dark"] .user-link-button,
-body[data-theme="dark"] .user-permission-state {
+body[data-theme="dark"] .user-link-button {
   color: var(--link-green);
 }
 
@@ -624,6 +622,18 @@ body[data-theme="dark"] .auth-input {
   background-color: #0f1522 !important;
   border-color: var(--color-border);
   color: var(--color-text) !important;
+}
+
+body[data-theme="dark"] .user-contact-textarea {
+  background: #0f1522;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+body[data-theme="dark"] .user-contact-readonly {
+  background: #1a2232;
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
 }
 
 body[data-theme="dark"] .auth-input-disabled {

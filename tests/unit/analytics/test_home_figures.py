@@ -22,6 +22,7 @@ def test_home_ilga_choropleth_uses_iso3_locations() -> None:
     assert list(trace.locations) == ["ESP", "PRT"]
     assert list(trace.text) == ["Spain", "Portugal"]
     assert trace.customdata[0][0] == "ES"
+    assert figure.layout.dragmode is False
 
 
 def test_home_fra_choropleth_uses_iso3_locations() -> None:
@@ -41,3 +42,4 @@ def test_home_fra_choropleth_uses_iso3_locations() -> None:
     assert list(trace.z) == [52.0, 47.0]
     assert list(trace.text) == ["Spain", "Portugal"]
     assert trace.customdata[0][0] == "ES"
+    assert figure.layout.dragmode is False

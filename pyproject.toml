@@ -53,6 +53,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "app.dash" = ["assets/**/*.css", "assets/**/*.js", "assets/img/*"]
+"app.edu" = ["data/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

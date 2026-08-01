@@ -6,7 +6,7 @@ from dash.development.base_component import Component
 from app.auth.csrf import get_csrf_token
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
-from app.users.schemas import UserRead, UserRole
+from app.users.schemas import UserRead, UserRole, UserType
 
 STATUS_MESSAGES = {
     "user_updated": (
@@ -290,7 +290,7 @@ def _build_user_row(user: UserRead) -> Component:
             html.Div(
                 html.Select(
                     id=f"{form_id}-role",
-                    children=_admin_role_options(user.role),
+                    children=_admin_role_options(user.user_type or user.role),
                     name="role",
                     className="admin-input admin-role-select",
                 ),
@@ -378,19 +378,23 @@ def _delete_confirmation_dialog() -> Component:
     )
 
 
-def _role_value(role: UserRole | str) -> str:
-    value = role.value if isinstance(role, UserRole) else str(role)
+def _role_value(role: UserRole | UserType | str) -> str:
+    value = role.value if isinstance(role, (UserRole, UserType)) else str(role)
     if value in {"comun", "user"}:
-        return UserRole.COMMON.value
+        return UserType.COMUN.value
     if value == UserRole.ADMIN.value:
         return UserRole.ADMIN.value
     return UserRole.COMMON.value
 
 
-def _admin_role_options(role: UserRole | str) -> list[Component]:
+def _admin_role_options(role: UserRole | UserType | str) -> list[Component]:
     current = _role_value(role)
     definitions = [
-        (UserRole.COMMON.value, "Estándar", "Standard"),
+        (UserType.COMUN.value, "Usuario", "User"),
+        (UserType.DOCENTE.value, "Docente", "Educator"),
+        (UserType.RRHH.value, "RRHH", "HR"),
+        (UserType.POLITICO.value, "Político", "Policy maker"),
+        (UserType.ONG.value, "ONG", "NGO"),
         (UserRole.ADMIN.value, "Administración", "Administration"),
     ]
     ordered = sorted(definitions, key=lambda item: item[0] != current)

@@ -7,6 +7,7 @@ import dash_ag_grid as dag
 import pandas as pd
 from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
+from dash.exceptions import PreventUpdate
 
 from app.analytics.repository import (
     assert_analytics_databases_available,
@@ -21,14 +22,14 @@ from app.analytics.statistics_charts import (
     build_combined_heatmap,
     build_combined_scatter,
     build_comparative_ranking_chart,
-    build_country_comparison_chart,
     build_eu_average_comparison_chart,
     build_europe_choropleth,
     build_europe_distribution_chart,
+    build_experience_legal_radar,
     build_fra_response_comparison_chart,
     build_ilga_criteria_heatmap,
-    build_indicator_radar,
     build_legal_reality_gap_chart,
+    build_response_country_comparison_chart,
     build_temporal_evolution_chart,
     empty_figure,
     summarize_response_comparison,
@@ -39,11 +40,13 @@ from app.analytics.statistics_exports import (
     EXPORT_SCALE,
     EXPORT_WIDTH,
     chart_graph_config,
+    export_summary_table,
     prepare_figure_for_export,
 )
 from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_A,
     FRA_FILTER_GROUP_B,
+    ExperienceLegalRadarQuery,
     FraStatisticsQuery,
     IlgaStatisticsQuery,
 )
@@ -52,11 +55,13 @@ from app.analytics.statistics_normalizers import (
     normalize_text_key,
 )
 from app.analytics.statistics_service import (
+    get_experience_legal_radar,
     get_fra_control_payload,
     get_fra_statistics,
     get_ilga_statistics,
 )
-from app.dash.i18n import dash_attrs, text, text_attrs
+from app.dash.graph_config import fixed_europe_map_config
+from app.dash.i18n import attribute_attrs, country_labels, dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
 
 DATA_TYPE_OPTIONS = [
@@ -109,11 +114,17 @@ CHART_EXPORT_TITLES = {
     "ranking": ("Ranking comparativo", "Comparative ranking"),
     "distribution": ("Distribución europea", "European distribution"),
     "average": ("Comparación con la media de la UE", "EU average comparison"),
-    "countries": ("Comparación entre países", "Country comparison"),
-    "radar": ("Radar comparativo", "Comparative radar"),
+    "response_comparison": ("Comparación de respuestas", "Response comparison"),
+    "experience_legal_radar": (
+        "Experiencia real y protección legal",
+        "Real-life experience and legal protection",
+    ),
     "responses": ("Detalles de respuestas", "Response details"),
     "gap": ("Protección legal vs experiencia real", "Legal protection vs lived experience"),
-    "scatter": ("Scatter ILGA/FRA", "ILGA/FRA scatter"),
+    "scatter": (
+        "Relaci\u00f3n entre protecci\u00f3n legal y experiencia reportada",
+        "Legal protection and reported experience relationship",
+    ),
     "heatmap": ("Heatmap europeo", "European heatmap"),
 }
 
@@ -130,6 +141,7 @@ def build_statistics_layout() -> Component:
             dcc.Store(id="stats-data-store", storage_type="memory"),
             dcc.Store(id="stats-fra-control-store", storage_type="memory"),
             dcc.Store(id="stats-selected-countries", data=[], storage_type="session"),
+            dcc.Download(id="stats-summary-table-download"),
             html.Main(
                 [
                     _header(),
@@ -167,6 +179,10 @@ def build_statistics_layout() -> Component:
                                         "Comparative ranking",
                                         "stats-ranking-graph",
                                         placeholder,
+                                        panel_id="stats-ranking-panel",
+                                        panel_class_name=(
+                                            "stats-panel stats-panel-wide stats-ranking-panel"
+                                        ),
                                     ),
                                     _graph_panel(
                                         "Distribución europea",
@@ -180,21 +196,78 @@ def build_statistics_layout() -> Component:
                                         "stats-average-graph",
                                         placeholder,
                                     ),
-                                    _graph_panel(
-                                        "Comparación entre países",
-                                        "Country comparison",
-                                        "stats-country-comparison-graph",
-                                        placeholder,
+                                    html.Div(
+                                        [
+                                            _chart_panel_heading(
+                                                "Comparación de respuestas",
+                                                "Response comparison",
+                                                "stats-response-comparison-graph",
+                                            ),
+                                            html.Div(
+                                                dcc.Graph(
+                                                    id="stats-response-comparison-graph",
+                                                    figure=placeholder,
+                                                    responsive=True,
+                                                    config=chart_graph_config(),
+                                                    className="stats-chart-graph",
+                                                    style={"width": "100%"},
+                                                ),
+                                                className="stats-response-comparison-scroll",
+                                            ),
+                                        ],
+                                        id="stats-response-comparison-panel",
+                                        className=(
+                                            "stats-panel stats-panel-wide "
+                                            "stats-response-comparison-section is-hidden"
+                                        ),
                                     ),
                                     html.Div(
-                                        _graph_panel(
-                                            "Radar comparativo",
-                                            "Comparative radar",
-                                            "stats-radar-graph",
-                                            placeholder,
+                                        [
+                                            _chart_panel_heading(
+                                                "Experiencia real y protección legal",
+                                                "Real-life experience and legal protection",
+                                                "stats-experience-legal-radar-graph",
+                                            ),
+                                            _field(
+                                                ("País seleccionado", "Selected country"),
+                                                dcc.Dropdown(
+                                                    id="stats-experience-legal-country-select",
+                                                    options=[],
+                                                    value=None,
+                                                    clearable=False,
+                                                ),
+                                                class_name="stats-control-field stats-radar-country-field",
+                                            ),
+                                            html.P(
+                                                id="stats-experience-legal-metadata",
+                                                className="stats-radar-metadata",
+                                            ),
+                                            html.Div(
+                                                dcc.Graph(
+                                                    id="stats-experience-legal-radar-graph",
+                                                    figure=placeholder,
+                                                    responsive=True,
+                                                    config=chart_graph_config(),
+                                                    className="stats-chart-graph",
+                                                    style={"width": "100%", "height": "650px"},
+                                                ),
+                                                id="stats-experience-legal-radar-wrapper",
+                                                className="is-hidden",
+                                            ),
+                                            html.P(
+                                                id="stats-experience-legal-empty",
+                                                className="stats-radar-empty",
+                                            ),
+                                            html.P(
+                                                id="stats-experience-legal-interpretation",
+                                                className="stats-radar-interpretation",
+                                            ),
+                                        ],
+                                        id="stats-experience-legal-radar-panel",
+                                        className=(
+                                            "stats-panel stats-panel-wide "
+                                            "stats-experience-legal-radar-section"
                                         ),
-                                        id="stats-radar-panel",
-                                        className="stats-panel-wrapper is-hidden",
                                     ),
                                     html.Div(
                                         [
@@ -210,7 +283,9 @@ def build_statistics_layout() -> Component:
                                             dcc.Graph(
                                                 id="stats-response-detail-graph",
                                                 figure=placeholder,
+                                                responsive=True,
                                                 config=chart_graph_config(),
+                                                style=_response_detail_graph_style(placeholder),
                                             ),
                                         ],
                                         id="stats-response-panel",
@@ -239,8 +314,8 @@ def build_statistics_layout() -> Component:
                                                 placeholder,
                                             ),
                                             _graph_panel(
-                                                "Scatter ILGA/FRA",
-                                                "ILGA/FRA scatter",
+                                                "Relaci\u00f3n entre protecci\u00f3n legal y experiencia reportada",
+                                                "Legal protection and reported experience relationship",
                                                 "stats-scatter-graph",
                                                 placeholder,
                                             ),
@@ -259,36 +334,86 @@ def build_statistics_layout() -> Component:
                             ),
                             html.Div(
                                 [
-                                    html.H2(text("Tabla resumida", "Summary table")),
-                                    dag.AgGrid(
-                                        id="stats-results-table",
-                                        columnDefs=[],
-                                        rowData=[],
-                                        defaultColDef={
-                                            "sortable": True,
-                                            "filter": True,
-                                            "resizable": True,
-                                            "minWidth": 120,
-                                        },
-                                        dashGridOptions={
-                                            "pagination": True,
-                                            "paginationPageSize": 12,
-                                            "paginationPageSizeSelector": False,
-                                            "domLayout": "autoHeight",
-                                            "getRowStyle": {
-                                                "styleConditions": [
-                                                    {
-                                                        "condition": "params.data.status === 'Sin datos' || params.data.status === 'No data'",
-                                                        "style": {
-                                                            "color": "#6b7280",
-                                                            "fontStyle": "italic",
-                                                        },
-                                                    }
-                                                ]
+                                    html.Div(
+                                        [
+                                            html.H2(text("Tabla resumida", "Summary table")),
+                                            html.Div(
+                                                [
+                                                    html.Button(
+                                                        text(
+                                                            ui_text("download_table", "es"),
+                                                            ui_text("download_table", "en"),
+                                                        ),
+                                                        id="stats-table-download-button",
+                                                        type="button",
+                                                        n_clicks=0,
+                                                        disabled=True,
+                                                        className=(
+                                                            "stats-chart-export-button "
+                                                            "stats-table-export-button"
+                                                        ),
+                                                        title=ui_text("download_csv", "es"),
+                                                        **attribute_attrs(
+                                                            "title",
+                                                            ui_text("download_csv", "es"),
+                                                            ui_text("download_csv", "en"),
+                                                        ),
+                                                    ),
+                                                    html.Span(
+                                                        text(
+                                                            ui_text("no_export_data", "es"),
+                                                            ui_text("no_export_data", "en"),
+                                                        ),
+                                                        id="stats-table-export-status",
+                                                        className="stats-table-export-status",
+                                                        role="status",
+                                                    ),
+                                                ],
+                                                className=(
+                                                    "stats-panel-actions stats-table-export-actions"
+                                                ),
+                                            ),
+                                        ],
+                                        className="stats-panel-heading stats-table-heading",
+                                    ),
+                                    html.Div(
+                                        dag.AgGrid(
+                                            id="stats-results-table",
+                                            columnDefs=[],
+                                            rowData=[],
+                                            defaultColDef={
+                                                "sortable": True,
+                                                "filter": True,
+                                                "resizable": True,
+                                                "minWidth": 120,
                                             },
-                                        },
-                                        className="ag-theme-quartz stats-results-grid",
-                                        style={"width": "100%"},
+                                            dashGridOptions={
+                                                "pagination": True,
+                                                "paginationPageSize": 12,
+                                                "paginationPageSizeSelector": False,
+                                                "domLayout": "autoHeight",
+                                                "getRowStyle": {
+                                                    "styleConditions": [
+                                                        {
+                                                            "condition": "params.data.status === 'Sin datos' || params.data.status === 'No data'",
+                                                            "style": {
+                                                                "color": "#6b7280",
+                                                                "fontStyle": "italic",
+                                                            },
+                                                        }
+                                                    ]
+                                                },
+                                            },
+                                            className="ag-theme-quartz stats-results-grid",
+                                            style={"width": "100%"},
+                                        ),
+                                        id="stats-results-table-wrapper",
+                                        className="stats-results-table-scroll",
+                                        role="region",
+                                        tabIndex=0,
+                                        **dash_attrs(
+                                            {"aria-label": "Tabla resumida / Summary table"}
+                                        ),
                                     ),
                                 ],
                                 className="stats-panel stats-results-table-panel",
@@ -305,6 +430,52 @@ def build_statistics_layout() -> Component:
 
 
 def register_statistics_callbacks(app: Dash) -> None:
+    @app.callback(
+        Output("stats-summary-table-download", "data"),
+        Input("stats-table-download-button", "n_clicks"),
+        State("stats-results-table", "virtualRowData"),
+        State("stats-results-table", "rowData"),
+        State("stats-results-table", "columnDefs"),
+        State("stats-data-store", "data"),
+        State("stats-selected-countries", "data"),
+        State("app-language-store", "data"),
+        prevent_initial_call=True,
+    )
+    def download_summary_table(
+        _clicks: int | None,
+        visible_rows: list[dict[str, Any]] | None,
+        table_rows: list[dict[str, Any]] | None,
+        columns: list[dict[str, Any]] | None,
+        result: dict[str, Any] | None,
+        selected_countries: list[str] | None,
+        language: str | None,
+    ):
+        rows = visible_rows if visible_rows is not None else table_rows
+        if not rows or not columns:
+            raise PreventUpdate
+        clean_result = result or {}
+        clean_language = language or "es"
+        scope = _selection_scope(
+            list(clean_result.get("ranking") or []),
+            _normalize_selected_countries(selected_countries),
+            clean_language,
+        )
+        table_export = export_summary_table(
+            rows,
+            columns,
+            language=clean_language,
+            metadata={
+                "indicator": _table_indicator_label(clean_result),
+                "year": clean_result.get("year"),
+                "countries": scope["names"],
+            },
+        )
+        return dcc.send_string(
+            table_export.content,
+            table_export.filename,
+            type=table_export.mime_type,
+        )
+
     @app.callback(
         Output("stats-category-select", "placeholder"),
         Output("fra-indicator-select", "placeholder"),
@@ -572,14 +743,28 @@ def register_statistics_callbacks(app: Dash) -> None:
                 result["combined"] = _combine_rankings(
                     result.get("ranking") or [], legal.get("ranking") or []
                 )
+                result["experience_legal_radar"] = get_experience_legal_radar(
+                    ExperienceLegalRadarQuery(
+                        fra_year=_safe_int(year),
+                        filter_a_name=demographic_type or "All",
+                        filter_a_value=demographic_value or "All",
+                        filter_b_name=identity_type or "All",
+                        filter_b_value=identity_value or "All",
+                    )
+                )
             return result
         if not category:
             return _empty_data_result(
                 "Selecciona una categoría jurídica para cargar las estadísticas."
             )
-        return get_ilga_statistics(
+        result = get_ilga_statistics(
             IlgaStatisticsQuery(year=_safe_int(year), category=category, criterion=criterion)
         )
+        if result.get("status") == "ok":
+            result["experience_legal_radar"] = get_experience_legal_radar(
+                ExperienceLegalRadarQuery(ilga_year=_safe_int(year))
+            )
+        return result
 
     @app.callback(
         Output("stats-selected-countries", "data"),
@@ -626,20 +811,25 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-ranking-graph", "figure"),
         Output("stats-distribution-graph", "figure"),
         Output("stats-average-graph", "figure"),
-        Output("stats-country-comparison-graph", "figure"),
+        Output("stats-response-comparison-graph", "figure"),
+        Output("stats-response-comparison-panel", "className"),
         Output("stats-detail-summary", "children"),
         Output("stats-response-detail-graph", "figure"),
+        Output("stats-response-detail-graph", "style"),
         Output("stats-response-panel", "className"),
         Output("stats-combined-metric-row", "children"),
         Output("stats-gap-graph", "figure"),
         Output("stats-scatter-graph", "figure"),
         Output("stats-combined-heatmap", "figure"),
-        Output("stats-radar-graph", "figure"),
-        Output("stats-radar-panel", "className"),
         Output("stats-combined-block", "className"),
         Output("stats-results-table", "columnDefs"),
         Output("stats-results-table", "rowData"),
         Output("stats-methodology", "children"),
+        Output("stats-ranking-graph", "style"),
+        Output("stats-response-comparison-graph", "style"),
+        Output("stats-table-download-button", "disabled"),
+        Output("stats-table-export-status", "children"),
+        Output("stats-table-export-status", "className"),
         Input("stats-data-store", "data"),
         Input("stats-selected-countries", "data"),
         Input("app-language-store", "data"),
@@ -652,6 +842,84 @@ def register_statistics_callbacks(app: Dash) -> None:
         return _render_dashboard(
             result or {}, _normalize_selected_countries(countries), language or "es"
         )
+
+    @app.callback(
+        Output("stats-experience-legal-country-select", "options"),
+        Output("stats-experience-legal-country-select", "value"),
+        Input("stats-data-store", "data"),
+        Input("stats-selected-countries", "data"),
+        Input("app-language-store", "data"),
+        State("stats-experience-legal-country-select", "value"),
+    )
+    def update_experience_legal_country(
+        result: dict[str, Any] | None,
+        selected_countries: list[str] | None,
+        language: str | None,
+        current_country: str | None,
+    ) -> tuple[list[dict[str, str]], str | None]:
+        options = _radar_country_options(
+            (result or {}).get("experience_legal_radar") or {}, language or "es"
+        )
+        available = {option["value"] for option in options}
+        selected = [
+            country
+            for country in _normalize_selected_countries(selected_countries)
+            if country in available
+        ]
+        if selected:
+            value = selected[0]
+        elif current_country in available:
+            value = current_country
+        else:
+            value = options[0]["value"] if options else None
+        return options, value
+
+    @app.callback(
+        Output("stats-experience-legal-radar-graph", "figure"),
+        Output("stats-experience-legal-radar-wrapper", "className"),
+        Output("stats-experience-legal-empty", "children"),
+        Output("stats-experience-legal-metadata", "children"),
+        Output("stats-experience-legal-interpretation", "children"),
+        Input("stats-data-store", "data"),
+        Input("stats-experience-legal-country-select", "value"),
+        Input("app-language-store", "data"),
+    )
+    def render_experience_legal_radar(
+        result: dict[str, Any] | None,
+        country_iso: str | None,
+        language: str | None,
+    ) -> tuple[Any, str, str, str, str]:
+        language = language or "es"
+        payload = (result or {}).get("experience_legal_radar") or {}
+        figure, compatible, metadata, interpretation = build_experience_legal_radar(
+            payload, country_iso, language
+        )
+        if not compatible:
+            return figure, "is-hidden", interpretation, "", ""
+        country_name = next(
+            (
+                option["label"]
+                for option in _radar_country_options(payload, language)
+                if option["value"] == country_iso
+            ),
+            str(country_iso or ""),
+        )
+        prepare_figure_for_export(
+            figure,
+            chart_type="experience-legal-radar",
+            chart_title=(
+                "Real-life experience and legal protection"
+                if language == "en"
+                else "Experiencia real y protección legal"
+            ),
+            indicator=metadata,
+            countries=[country_name],
+            year=None,
+            source="FRA + ILGA-Europe",
+            filters=_export_filter_labels(result or {}, language),
+            language=language,
+        )
+        return figure, "", "", metadata, interpretation
 
 
 def _controls(
@@ -897,8 +1165,12 @@ def _map_panel(placeholder: Any) -> Component:
             dcc.Graph(
                 id="stats-map-graph",
                 figure=placeholder,
-                config=chart_graph_config(),
+                responsive=True,
+                config=fixed_europe_map_config(
+                    extra_mode_bar_buttons_to_remove=("toImage",)
+                ),
                 className="stats-mapbox-graph",
+                style={"width": "100%"},
             ),
         ],
         className="stats-panel stats-panel-wide stats-map-panel",
@@ -906,14 +1178,30 @@ def _map_panel(placeholder: Any) -> Component:
 
 
 def _graph_panel(
-    title_es: str, title_en: str, graph_id: str, figure: Any | None = None
+    title_es: str,
+    title_en: str,
+    graph_id: str,
+    figure: Any | None = None,
+    *,
+    panel_id: str | None = None,
+    panel_class_name: str = "stats-panel",
 ) -> Component:
+    panel_props: dict[str, Any] = {"className": panel_class_name}
+    if panel_id:
+        panel_props["id"] = panel_id
     return html.Div(
         [
             _chart_panel_heading(title_es, title_en, graph_id),
-            dcc.Graph(id=graph_id, figure=figure, config=chart_graph_config()),
+            dcc.Graph(
+                id=graph_id,
+                figure=figure,
+                responsive=True,
+                config=chart_graph_config(),
+                className="stats-chart-graph",
+                style={"width": "100%"},
+            ),
         ],
-        className="stats-panel",
+        **panel_props,
     )
 
 
@@ -925,6 +1213,36 @@ def _chart_panel_heading(title_es: str, title_en: str, graph_id: str) -> Compone
         ],
         className="stats-panel-heading",
     )
+
+
+def _response_detail_graph_style(figure: Any) -> dict[str, str]:
+    return _dynamic_graph_style(figure, min_height=520)
+
+
+def _ranking_graph_style(figure: Any) -> dict[str, str]:
+    return _dynamic_graph_style(figure, min_height=500)
+
+
+def _response_comparison_graph_style(figure: Any) -> dict[str, str]:
+    style = _dynamic_graph_style(figure, min_height=560)
+    meta = getattr(getattr(figure, "layout", None), "meta", None)
+    minimum_width = meta.get("minimum_width") if isinstance(meta, dict) else None
+    if isinstance(minimum_width, (int, float)) and minimum_width > 760:
+        style["minWidth"] = f"{int(minimum_width)}px"
+    return style
+
+
+def _dynamic_graph_style(figure: Any, *, min_height: int) -> dict[str, str]:
+    raw_height = getattr(getattr(figure, "layout", None), "height", None)
+    try:
+        height = max(min_height, int(raw_height or min_height))
+    except TypeError, ValueError:
+        height = min_height
+    return {
+        "width": "100%",
+        "height": f"{height}px",
+        "minHeight": f"{min_height}px",
+    }
 
 
 def _chart_export_control(graph_id: str) -> Component:
@@ -1113,19 +1431,24 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             empty,
             empty,
             empty,
+            "stats-panel stats-panel-wide stats-response-comparison-section is-hidden",
             "",
             empty,
+            _response_detail_graph_style(empty),
             "stats-panel stats-panel-wide stats-response-panel is-hidden",
             [],
             empty,
             empty,
             empty,
-            empty,
-            "stats-panel-wrapper is-hidden",
             "stats-analytics-block is-hidden",
             [],
             [],
             "",
+            _ranking_graph_style(empty),
+            _response_comparison_graph_style(empty),
+            True,
+            ui_text("no_export_data", language),
+            "stats-table-export-status",
         )
 
     source = str(result.get("source") or "")
@@ -1139,21 +1462,36 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
         ranking, source=source, selected_isos=selected, language=language
     )
     temporal = build_temporal_evolution_chart(history, selected, language)
-    comparative_ranking = build_comparative_ranking_chart(ranking, selected, language)
-    distribution = build_europe_distribution_chart(ranking, selected, language)
-    average = build_eu_average_comparison_chart(ranking, selected, language)
-    comparison = build_country_comparison_chart(
+    comparative_ranking = build_comparative_ranking_chart(
         ranking,
         selected,
         language,
-        detail_rows=detail,
-        source=source,
+        indicator=str(result.get("indicator") or ""),
+        year=result.get("year"),
+    )
+    distribution = build_europe_distribution_chart(ranking, selected, language)
+    average = build_eu_average_comparison_chart(ranking, selected, language)
+    comparison = (
+        build_response_country_comparison_chart(
+            detail,
+            selected,
+            language,
+            indicator=str(result.get("indicator") or ""),
+            year=result.get("year"),
+        )
+        if source == "FRA"
+        else empty_figure(
+            "Las fuentes jurídicas no contienen distribuciones de respuestas."
+            if language != "en"
+            else "Legal sources do not contain response distributions."
+        )
     )
     response = (
         build_fra_response_comparison_chart(
             detail,
             available_countries=list(result.get("country_universe") or []),
             selected_countries=selected,
+            selected_response=str(result.get("answer") or "") or None,
             language=language,
         )
         if source == "FRA"
@@ -1162,12 +1500,6 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             available_countries=list(result.get("country_universe") or []),
             language=language,
         )
-    )
-    radar, radar_compatible = build_indicator_radar(
-        detail if source == "FRA" else data,
-        source=source,
-        selected_countries=selected,
-        language=language,
     )
     gap = build_legal_reality_gap_chart(combined, selected, language)
     scatter = build_combined_scatter(combined, language, selected)
@@ -1179,9 +1511,8 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             "ranking": comparative_ranking,
             "distribution": distribution,
             "average": average,
-            "countries": comparison,
+            "response_comparison": comparison,
             "responses": response,
-            "radar": radar,
             "gap": gap,
             "scatter": scatter,
             "heatmap": heatmap,
@@ -1216,6 +1547,11 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
         distribution,
         average,
         comparison,
+        (
+            "stats-panel stats-panel-wide stats-response-comparison-section"
+            if source == "FRA"
+            else "stats-panel stats-panel-wide stats-response-comparison-section is-hidden"
+        ),
         _detail_summary(
             source,
             detail,
@@ -1223,17 +1559,21 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             available_countries=list(result.get("country_universe") or []),
         ),
         response,
+        _response_detail_graph_style(response),
         "stats-panel stats-panel-wide stats-response-panel",
         combined_metrics,
         gap,
         scatter,
         heatmap,
-        radar,
-        "stats-panel-wrapper" if radar_compatible else "stats-panel-wrapper is-hidden",
         "stats-analytics-block" if combined else "stats-analytics-block is-hidden",
         _table_columns(table_rows, language),
         table_rows,
         _methodology_text(result, source, language),
+        _ranking_graph_style(comparative_ranking),
+        _response_comparison_graph_style(comparison),
+        not bool(table_rows),
+        "",
+        "stats-table-export-status is-hidden",
     )
 
 
@@ -1259,7 +1599,7 @@ def _prepare_dashboard_exports(
             chart_type=chart_type,
             chart_title=title_en if language == "en" else title_es,
             indicator=indicator,
-            countries=selected_names,
+            countries=[] if chart_type == "responses" else selected_names,
             year=year,
             source=("combined" if chart_type in {"gap", "scatter", "heatmap"} else source),
             filters=filters,
@@ -1485,26 +1825,32 @@ def _table_rows(
             )
         )
 
-    source = str(result.get("source") or "")
-    indicator = str(result.get("indicator") or result.get("category") or "")
-    answer = str(result.get("answer") or "").strip()
-    if source == "FRA" and answer:
-        indicator = f"{indicator} · {answer}"
+    indicator = _table_indicator_label(result)
     available = "Available" if language == "en" else "Disponible"
     unavailable = "No data" if language == "en" else "Sin datos"
     return [
         {
             "country": row.get("country"),
+            "country_code": normalize_country_code(row.get("iso"), row.get("country")),
+            "response": str(result.get("answer") or ""),
             "value": _rounded_number(row.get("value")),
             "ranking": row.get("position"),
             "difference": _rounded_number(row.get("difference")),
             "difference_percentage": _rounded_number(row.get("percentage_difference")),
             "year": result.get("year"),
+            "source": str(result.get("source") or ""),
             "indicator": indicator,
             "status": available if row.get("value") is not None else unavailable,
         }
         for row in rows
     ]
+
+
+def _table_indicator_label(result: dict[str, Any]) -> str:
+    source = str(result.get("source") or "")
+    indicator = str(result.get("indicator") or result.get("category") or "")
+    answer = str(result.get("answer") or "").strip()
+    return f"{indicator} \u00b7 {answer}" if source == "FRA" and answer else indicator
 
 
 def _table_columns(
@@ -1521,6 +1867,13 @@ def _table_columns(
         "indicator": ("Indicador", "Indicator"),
         "status": ("Estado", "Status"),
     }
+    labels.update(
+        {
+            "country_code": ("C\u00f3digo del pa\u00eds", "Country code"),
+            "response": ("Respuesta", "Answer"),
+            "source": ("Fuente", "Source"),
+        }
+    )
     numeric = {
         "value",
         "ranking",
@@ -1606,6 +1959,28 @@ def _normalize_selected_countries(countries: list[str] | str | None) -> list[str
         if clean and clean not in result:
             result.append(clean)
     return result
+
+
+def _radar_country_options(payload: dict[str, Any], language: str) -> list[dict[str, str]]:
+    dataframe = pd.DataFrame(payload.get("rows") or [])
+    required = {"iso", "country", "dimension", "experience_score", "legal_score"}
+    if dataframe.empty or not required.issubset(dataframe.columns):
+        return []
+    dataframe["experience_score"] = pd.to_numeric(dataframe["experience_score"], errors="coerce")
+    dataframe["legal_score"] = pd.to_numeric(dataframe["legal_score"], errors="coerce")
+    comparable = dataframe.dropna(subset=["experience_score", "legal_score"])
+    coverage = comparable.groupby(["iso", "country"], as_index=False).agg(
+        comparable_dimensions=("dimension", "nunique")
+    )
+    coverage = coverage[coverage["comparable_dimensions"] >= 3]
+    options: list[dict[str, str]] = []
+    for row in coverage.itertuples(index=False):
+        iso = normalize_country_code(row.iso, row.country)
+        if not iso or iso == "EU27":
+            continue
+        labels = country_labels(iso, str(row.country))
+        options.append({"label": labels[1 if language == "en" else 0], "value": iso})
+    return sorted(options, key=lambda option: option["label"].casefold())
 
 
 def _effective_query_mode(_mode: str | None, selected_countries: list[str]) -> str:

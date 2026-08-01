@@ -3,7 +3,7 @@ services:
     name: proyecto-lgbti
     env: python
     buildCommand: pip install -e . -r requirements.txt && plotly_get_chrome -y
-    startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --access-logfile - --error-logfile -
+    startCommand: python -m app.users.migrate && gunicorn wsgi:server --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --access-logfile - --error-logfile -
     envVars:
       - key: APP_ENV
         value: production
@@ -83,3 +83,19 @@ services:
         value: "10"
       - key: REPORT_RATE_WINDOW_SECONDS
         value: "3600"
+      - key: CONTACT_MAX_ATTEMPTS
+        value: "5"
+      - key: CONTACT_WINDOW_SECONDS
+        value: "3600"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USE_SSL
+        value: "true"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false

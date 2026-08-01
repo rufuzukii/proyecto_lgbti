@@ -17,11 +17,16 @@ Esta carpeta contiene la presentación de RainbowLens. La composición y el enru
 
 - `/`: inicio con mapa ILGA.
 - `/statistics`: panel FRA/ILGA.
+- `/didactica` y sus subrutas: recursos educativos, juegos, lecciones y progreso.
 - `/upload`: importación de CSV.
 - `/login`, `/register`, `/user`: sesión y perfil.
 - `/admin`, `/admin/imports`: administración.
 
-Los enlaces `/report`, `/didactics` y `/about` aparecen en la barra, pero `dash_app.py` no tiene ramas para ellos: actualmente muestran el inicio.
+La ruta histórica `/didactics` redirige a `/didactica`. El espacio
+`/didactica/docentes` requiere el perfil interno `docente` o el rol `admin`, que
+hereda todos los permisos. El acceso se vuelve a validar en servicios, rutas,
+callbacks y descargas. `/upload` es exclusivo de administración; `/informes`
+requiere sesión y reserva su configuración avanzada para RRHH, Político y ONG.
 
 ## Ejecución
 

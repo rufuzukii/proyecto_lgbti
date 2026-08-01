@@ -8,11 +8,11 @@ import pandas as pd
 
 from app.analytics.statistics_charts import (
     build_comparative_ranking_chart,
-    build_country_comparison_chart,
     build_eu_average_comparison_chart,
+    build_experience_legal_radar,
     build_fra_response_comparison_chart,
     build_ilga_criteria_heatmap,
-    build_indicator_radar,
+    build_response_country_comparison_chart,
     build_temporal_evolution_chart,
 )
 from app.analytics.statistics_exports import prepare_figure_for_export
@@ -29,6 +29,19 @@ from app.reports.recommendations import (
     indicator_direction,
     is_hr_relevant_indicator,
 )
+
+
+def _first_comparable_radar_country(payload: dict[str, Any]) -> str | None:
+    dataframe = pd.DataFrame(payload.get("rows") or [])
+    required = {"iso", "dimension", "experience_score", "legal_score"}
+    if dataframe.empty or not required.issubset(dataframe.columns):
+        return None
+    dataframe["experience_score"] = pd.to_numeric(dataframe["experience_score"], errors="coerce")
+    dataframe["legal_score"] = pd.to_numeric(dataframe["legal_score"], errors="coerce")
+    comparable = dataframe.dropna(subset=["experience_score", "legal_score"])
+    coverage = comparable.groupby("iso")["dimension"].nunique().sort_values(ascending=False)
+    valid = coverage[coverage.ge(3)]
+    return str(valid.index[0]) if not valid.empty else None
 
 
 class HRReportBuilder:
@@ -262,29 +275,31 @@ def _charts(
             _t(language, "Comparación con la media europea", "European average comparison"),
             lambda: build_eu_average_comparison_chart(rows, selected, language),
         ),
-        (
-            "countries",
-            _t(language, "Comparación entre países", "Country comparison"),
-            lambda: build_country_comparison_chart(
-                rows,
-                selected,
-                language,
-                detail_rows=detail,
-                source=source,
-            ),
-        ),
     ]
     if source == "FRA":
-        builders.append(
-            (
-                "responses",
-                _t(language, "Detalle de respuestas", "Response detail"),
-                lambda: build_fra_response_comparison_chart(
-                    detail,
-                    selected_countries=selected,
-                    language=language,
+        builders.extend(
+            [
+                (
+                    "countries",
+                    _t(language, "Comparación de respuestas", "Response comparison"),
+                    lambda: build_response_country_comparison_chart(
+                        detail,
+                        selected,
+                        language,
+                        indicator=indicator,
+                        year=result.get("year"),
+                    ),
                 ),
-            )
+                (
+                    "responses",
+                    _t(language, "Detalle de respuestas", "Response detail"),
+                    lambda: build_fra_response_comparison_chart(
+                        detail,
+                        selected_countries=selected,
+                        language=language,
+                    ),
+                ),
+            ]
         )
     else:
         builders.extend(
@@ -309,17 +324,22 @@ def _charts(
             ]
         )
     if "radar" in config.charts:
-        radar, compatible = build_indicator_radar(
-            detail if source == "FRA" else list(result.get("data") or []),
-            source=source,
-            selected_countries=selected,
-            language=language,
+        radar_payload = result.get("experience_legal_radar") or {}
+        radar_country = selected[0] if selected else _first_comparable_radar_country(radar_payload)
+        radar, compatible, _metadata, _interpretation = build_experience_legal_radar(
+            radar_payload,
+            radar_country,
+            language,
         )
         if compatible:
             builders.append(
                 (
                     "radar",
-                    _t(language, "Radar comparativo", "Comparative radar"),
+                    _t(
+                        language,
+                        "Experiencia real y protección legal",
+                        "Real-life experience and legal protection",
+                    ),
                     lambda radar=radar: radar,
                 )
             )

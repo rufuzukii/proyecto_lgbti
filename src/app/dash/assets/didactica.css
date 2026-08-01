@@ -1,0 +1,436 @@
+.didactica-shell {
+  margin: 0 auto;
+  max-width: 1380px;
+  min-height: calc(100vh - 130px);
+  padding: clamp(1.2rem, 4vw, 3.2rem);
+  width: 100%;
+}
+
+.didactica-hero,
+.didactica-subpage-header {
+  margin-bottom: 2rem;
+  max-width: 850px;
+}
+
+.didactica-hero h1,
+.didactica-subpage-header h1 {
+  color: var(--color-text);
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.05;
+  margin: 0 0 0.75rem;
+}
+
+.didactica-hero p,
+.didactica-subpage-header p {
+  color: var(--color-text-muted);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.didactica-lesson-grid,
+.didactica-glossary-grid,
+.didactica-progress-grid {
+  display: grid;
+  gap: 1.1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+
+.didactica-resource-grid {
+  display: grid;
+  gap: 1.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+}
+
+.didactica-resource-card,
+.didactica-lesson-card,
+.didactica-glossary-card,
+.didactica-progress-card,
+.didactica-slide,
+.didactica-game-card,
+.didactica-teacher-detail,
+.didactica-progress-detail,
+.didactica-denied {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+}
+
+.didactica-resource-card {
+  display: grid;
+  gap: 0.85rem;
+  min-height: 275px;
+  padding: 1.8rem;
+  position: relative;
+  text-decoration: none;
+  transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+
+.didactica-resource-card:hover {
+  border-color: var(--link-green);
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-3px);
+}
+
+.didactica-resource-card:focus-visible,
+.didactica-button:focus-visible,
+.didactica-back-link:focus-visible,
+.didactica-glossary-card summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--link-green) 42%, transparent);
+  outline-offset: 3px;
+}
+
+.didactica-resource-card h2,
+.didactica-lesson-card h2,
+.didactica-glossary-card h2 {
+  color: var(--color-text);
+  margin: 0;
+}
+
+.didactica-resource-card h2 {
+  font-size: clamp(1.35rem, 2vw, 1.65rem);
+}
+
+.didactica-resource-card p {
+  font-size: 1.02rem;
+}
+
+.didactica-resource-card p,
+.didactica-lesson-card p,
+.didactica-glossary-card p,
+.didactica-teacher-detail p {
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+
+.didactica-card-icon {
+  align-items: center;
+  background: var(--color-accent);
+  border-radius: 14px;
+  color: var(--link-green);
+  display: inline-flex;
+  font-size: 1.5rem;
+  font-weight: 900;
+  height: 58px;
+  justify-content: center;
+  width: 58px;
+}
+
+.didactica-card-arrow {
+  bottom: 1.1rem;
+  color: var(--link-green);
+  font-size: 1.5rem;
+  position: absolute;
+  right: 1.25rem;
+}
+
+.didactica-back-link {
+  color: var(--link-green);
+  display: inline-block;
+  font-weight: 800;
+  margin-bottom: 1rem;
+  text-decoration: none;
+}
+
+.didactica-filters {
+  align-items: end;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  margin-bottom: 1rem;
+}
+
+.didactica-field {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.didactica-field label {
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.didactica-field input {
+  background: var(--color-surface);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font: inherit;
+  min-height: 46px;
+  padding: 0.7rem 0.85rem;
+  width: 100%;
+}
+
+.didactica-glossary-card,
+.didactica-lesson-card,
+.didactica-progress-card,
+.didactica-teacher-detail,
+.didactica-progress-detail {
+  padding: 1.25rem;
+}
+
+.didactica-card-heading {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.didactica-chip {
+  background: var(--color-accent);
+  border-radius: 999px;
+  color: var(--link-green);
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 0.35rem 0.65rem;
+  width: fit-content;
+}
+
+.didactica-glossary-card summary {
+  color: var(--link-green);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0.4rem 0;
+}
+
+.didactica-result-count {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.didactica-meta {
+  color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  gap: 0.65rem 1.2rem;
+  margin: 1rem 0;
+}
+
+.didactica-button {
+  align-items: center;
+  background: var(--link-green);
+  border: 2px solid var(--link-green);
+  border-radius: var(--radius-sm);
+  color: var(--color-surface);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0.65rem 1rem;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+
+:root[data-theme="dark"] .didactica-button {
+  color: #101722;
+}
+
+.didactica-button-secondary {
+  background: transparent;
+  color: var(--link-green);
+}
+
+.didactica-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.didactica-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.didactica-docente-section {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: clamp(1rem, 3vw, 1.75rem);
+}
+
+.didactica-game-editor {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.didactica-game-editor > .didactica-actions,
+.didactica-game-editor > .didactica-feedback,
+.didactica-game-editor > .didactica-field:first-child {
+  grid-column: 1 / -1;
+}
+
+.didactica-input,
+.didactica-textarea {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font: inherit;
+  padding: 0.7rem;
+  width: 100%;
+}
+
+.didactica-textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+@media (max-width: 720px) {
+  .didactica-game-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .didactica-game-editor > * {
+    grid-column: 1;
+  }
+}
+
+.didactica-viewer {
+  max-width: 900px;
+}
+
+.didactica-progress {
+  accent-color: var(--link-green);
+  height: 12px;
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+.didactica-slide,
+.didactica-game-card {
+  min-height: 280px;
+  padding: clamp(1.2rem, 4vw, 2.2rem);
+}
+
+.didactica-slide h2,
+.didactica-game-prompt {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  line-height: 1.3;
+}
+
+.didactica-slide p {
+  font-size: 1.1rem;
+  line-height: 1.7;
+}
+
+.didactica-slide-number {
+  color: var(--link-green);
+  font-weight: 900;
+}
+
+.didactica-activity {
+  background: var(--color-accent-sky);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  padding: clamp(1.2rem, 4vw, 2rem);
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+.didactica-radio-group label {
+  align-items: start;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex !important;
+  gap: 0.65rem;
+  margin: 0.55rem 0;
+  min-height: 46px;
+  padding: 0.75rem;
+}
+
+.didactica-radio-group input {
+  flex: 0 0 auto;
+  margin-top: 0.22rem;
+}
+
+.didactica-feedback {
+  border-left: 4px solid transparent;
+  line-height: 1.55;
+  min-height: 2rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.didactica-feedback.is-success {
+  background: color-mix(in srgb, #20835b 12%, transparent);
+  border-color: #20835b;
+}
+
+.didactica-feedback.is-error {
+  background: color-mix(in srgb, #b64a59 12%, transparent);
+  border-color: #b64a59;
+}
+
+.didactica-game-stats {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.didactica-hint {
+  color: var(--color-text-muted);
+  min-height: 1.5rem;
+}
+
+.didactica-progress-card {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.didactica-progress-card strong {
+  color: var(--link-green);
+  font-size: 2.1rem;
+}
+
+.didactica-progress-detail {
+  margin-top: 1.1rem;
+}
+
+.didactica-denied {
+  margin: 2rem auto;
+  max-width: 720px;
+  padding: clamp(1.3rem, 5vw, 2.8rem);
+}
+
+@media (max-width: 680px) {
+  .didactica-shell {
+    padding: 1rem;
+  }
+
+  .didactica-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .didactica-resource-grid,
+  .didactica-lesson-grid,
+  .didactica-glossary-grid,
+  .didactica-progress-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .didactica-actions .didactica-button {
+    flex: 1 1 140px;
+  }
+
+  .didactica-resource-card {
+    min-height: 225px;
+    padding: 1.4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .didactica-resource-card {
+    transition: none;
+  }
+}

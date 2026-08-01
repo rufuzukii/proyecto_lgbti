@@ -12,7 +12,7 @@ Expone la API pública: `FraIndicator`, consultas FRA/ILGA e invalidación de ca
 
 - `FraIndicator`: representación inmutable del catálogo relacional; `label` compone el texto mostrado en el selector.
 - `get_fra_indicators()`: consulta `public.indicators` y `public.categories` en PostgreSQL.
-- `get_fra_indicator_answers(code)`: busca en MongoDB un documento de `Indicator_fra`.
+- `get_fra_indicator_answers(code, category)`: recupera en una sola consulta y fusiona todos los documentos coincidentes de `Indicator_fra`.
 - `get_latest_ilga_document()`: recupera el documento `Indicator_ilga` con el año más reciente.
 - `invalidate_analytics_cache()`: limpia toda la caché configurada.
 
@@ -47,3 +47,17 @@ La pagina `/statistics` usa una capa modular nueva:
 El mapa mantiene Plotly `Choropleth` en vez de introducir Dash Leaflet porque la aplicación ya usaba Plotly para estos mapas, no necesita token privado de Mapbox, se integra con `clickData` y reduce el cambio de dependencias y callbacks. La unión GeoPandas queda preparada para incorporar geometría real europea cuando el proyecto incluya un GeoJSON o `GeoDataFrame` fuente.
 
 Los documentos FRA se esperan en `Indicator_fra` con `answers[]` que contengan `country`, `country_code`, `answer`, `percentage` y `filters[]` como pares `{type, value}`. Los documentos ILGA se esperan en `Indicator_ilga` con `countries[]`, `ranking` y `criteria[]`. Los criterios ILGA disponibles se extraen de los metadatos importados (`category`, `indicator`, `weight`); no se inventan descripciones jurídicas si el dataset no las trae.
+
+### Radar de experiencia real y protección legal
+
+El mapeo versionado `fra-ilga-v1` es explícito y solo incluye equivalencias presentes en ambas fuentes:
+
+| Dimensión común | FRA | Transformación FRA | ILGA-Europe |
+| --- | --- | --- | --- |
+| Igualdad y no discriminación | `D1_1`, respuesta `Yes` | `100 - porcentaje` | categoría `Equality & non-discrimination` |
+| Bienes y servicios | `D1_2_f`, respuesta `Yes` | `100 - porcentaje` | criterio con prefijo `Goods & services` |
+| Educación | `C9_E` y `C9_C`, respuesta `Never` | media de porcentajes publicados disponibles | criterio con prefijo `Education` |
+| Salud | `G16`, respuesta `Very good` | porcentaje publicado | criterio con prefijo `Health` |
+| Acceso a organismos de igualdad | `C20_Any_EB`, respuesta `Yes` | porcentaje publicado | criterio con prefijo `Equality body mandate` |
+
+Los valores FRA no se recalculan. Solo se invierten los dos indicadores negativos declarados en la tabla. Los criterios ILGA se expresan en escala 0–100 mediante `100 * suma(valor * peso) / suma(peso disponible)`. Un país necesita al menos tres dimensiones con valor en ambas fuentes; los ausentes permanecen como nulos. La comparación es descriptiva y no implica causalidad, especialmente cuando los años FRA e ILGA difieren.

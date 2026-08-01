@@ -14,7 +14,9 @@ class UserRole(StrEnum):
 
 class UserType(StrEnum):
     RRHH = "rrhh"
-    PROFESOR = "profesor"
+    DOCENTE = "docente"
+    POLITICO = "politico"
+    ONG = "ong"
     COMUN = "comun"
 
 

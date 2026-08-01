@@ -1,13 +1,24 @@
 from __future__ import annotations
 
-from dash import dcc, html
+import os
+
+from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.development.base_component import Component
 from flask_login import current_user
 
 from app.auth.csrf import get_csrf_token
-from app.dash.i18n import text_attrs
+from app.auth.permissions import Permission, user_has_permission
+from app.auth.rate_limit import create_rate_limiter
+from app.dash.i18n import text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
-from app.users.schemas import UserRole
+from app.http_security import rate_limit_key
+from app.users.contact_service import (
+    ContactDeliveryError,
+    ContactValidationError,
+    decode_contact_attachments,
+    send_role_contact_email,
+)
+from app.users.schemas import UserRole, UserType
 
 STATUS_MESSAGES = {
     "profile_updated": ("Tu perfil se ha actualizado.", "Your profile was updated."),
@@ -62,6 +73,7 @@ def build_user_page_layout(
     email = getattr(current_user, "email", None) or ""
     organization = getattr(current_user, "organization", None) or "Sin organización"
     role = getattr(current_user, "role", UserRole.COMMON)
+    user_type = getattr(current_user, "user_type", UserType.COMUN) or UserType.COMUN
     display_name = username or email or "Usuario"
 
     return html.Div(
@@ -71,13 +83,19 @@ def build_user_page_layout(
                 [
                     html.Section(
                         [
-                            _dashboard_header(display_name, role),
+                            _dashboard_header(display_name, role, user_type),
                             _message(status, is_error=False),
                             _message(error, is_error=True),
                             (
                                 _build_edit_panel(username, email, organization)
                                 if is_editing
-                                else _build_dashboard(username, email, organization, role)
+                                else _build_dashboard(
+                                    username,
+                                    email,
+                                    organization,
+                                    role,
+                                    user_type,
+                                )
                             ),
                         ],
                         className="user-dashboard-shell",
@@ -89,8 +107,13 @@ def build_user_page_layout(
     )
 
 
-def _dashboard_header(display_name: str, role: UserRole | str) -> Component:
-    role_value = _role_label(role)
+def _dashboard_header(
+    display_name: str,
+    role: UserRole | str,
+    user_type: UserType | str | None,
+) -> Component:
+    role_value = _role_label(role, user_type)
+    role_value_en = _role_label(role, user_type, language="en")
     return html.Header(
         [
             html.Div(
@@ -105,11 +128,11 @@ def _dashboard_header(display_name: str, role: UserRole | str) -> Component:
                         **text_attrs(f"Hola, {display_name}", f"Hi, {display_name}"),
                     ),
                     html.P(
-                        "Gestiona tu perfil, revisa tus permisos y vuelve rápido a las áreas principales.",
+                        "Gestiona tu perfil, utiliza tus herramientas y vuelve rápido a las áreas principales.",
                         className="user-lead",
                         **text_attrs(
-                            "Gestiona tu perfil, revisa tus permisos y vuelve rápido a las áreas principales.",
-                            "Manage your profile, review your permissions, and jump back into the main work areas.",
+                            "Gestiona tu perfil, utiliza tus herramientas y vuelve rápido a las áreas principales.",
+                            "Manage your profile, use your tools, and jump back into the main work areas.",
                         ),
                     ),
                 ],
@@ -122,7 +145,11 @@ def _dashboard_header(display_name: str, role: UserRole | str) -> Component:
                         className="user-role-label",
                         **text_attrs("Rol", "Role"),
                     ),
-                    html.Strong(role_value, className="user-role-value"),
+                    html.Strong(
+                        role_value,
+                        className="user-role-value",
+                        **text_attrs(role_value, role_value_en),
+                    ),
                 ],
                 className="user-role-badge",
             ),
@@ -136,19 +163,20 @@ def _build_dashboard(
     email: str,
     organization: str,
     role: UserRole | str,
+    user_type: UserType | str | None,
 ) -> Component:
     return html.Div(
         [
             html.Section(
                 [
-                    _profile_card(username, email, organization, role),
-                    _quick_actions(role),
+                    _profile_card(username, email, organization, role, user_type),
+                    _quick_actions(role, user_type),
                 ],
                 className="user-dashboard-main",
             ),
             html.Section(
                 [
-                    _permission_panel(role),
+                    _contact_panel(username, email, role, user_type),
                 ],
                 className="user-dashboard-side",
             ),
@@ -162,6 +190,7 @@ def _profile_card(
     email: str,
     organization: str,
     role: UserRole | str,
+    user_type: UserType | str | None,
 ) -> Component:
     organization_es = organization or "Sin organización"
     organization_en = organization or "No organization"
@@ -189,7 +218,12 @@ def _profile_card(
                     ),
                     _detail_row("Email", "Email", email or "No definido", "Not set"),
                     _detail_row("Organización", "Organization", organization_es, organization_en),
-                    _detail_row("Rol", "Role", _role_label(role), _role_label(role)),
+                    _detail_row(
+                        "Perfil",
+                        "Profile",
+                        _role_label(role, user_type),
+                        _role_label(role, user_type, language="en"),
+                    ),
                 ],
                 className="profile-details user-detail-grid",
             ),
@@ -199,7 +233,10 @@ def _profile_card(
     )
 
 
-def _quick_actions(role: UserRole | str) -> Component:
+def _quick_actions(
+    role: UserRole | str,
+    user_type: UserType | str | None,
+) -> Component:
     actions = [
         (
             "Ver estadísticas",
@@ -208,15 +245,38 @@ def _quick_actions(role: UserRole | str) -> Component:
             "Comparar indicadores FRA e ILGA.",
             "Compare FRA and ILGA indicators.",
         ),
-        (
-            "Importar CSV",
-            "Import CSV",
-            "/upload",
-            "Enviar datos para revisión.",
-            "Submit data for review.",
-        ),
     ]
+    profile = _user_type_value(user_type)
+    if profile in {UserType.RRHH.value, UserType.POLITICO.value, UserType.ONG.value} or _is_admin_role(role):
+        actions.append(
+            (
+                "Informes",
+                "Reports",
+                "/informes",
+                "Crear informes con opciones adaptadas a tu perfil.",
+                "Create reports with options adapted to your profile.",
+            )
+        )
+    if profile == UserType.DOCENTE.value or _is_admin_role(role):
+        actions.append(
+            (
+                "Espacio Docente",
+                "Educator space",
+                "/didactica/docentes",
+                "Crear juegos y utilizar recursos para el aula.",
+                "Create games and use classroom resources.",
+            )
+        )
     if _is_admin_role(role):
+        actions.append(
+            (
+                "Importar datos",
+                "Import data",
+                "/upload",
+                "Validar e importar nuevas fuentes.",
+                "Validate and import new sources.",
+            )
+        )
         actions.append(
             (
                 "Administración",
@@ -249,44 +309,147 @@ def _quick_actions(role: UserRole | str) -> Component:
     )
 
 
-def _permission_panel(role: UserRole | str) -> Component:
-    can_admin = _is_admin_role(role)
-    permissions = [
-        (
-            "Analítica",
-            "Analytics",
-            "Disponible",
-            "Available",
-            True,
-        ),
-        (
-            "Importación",
-            "Import",
-            "Disponible",
-            "Available",
-            True,
-        ),
-        (
-            "Gestión de usuarios",
-            "User management",
-            "Disponible",
-            "Available",
-            can_admin,
-        ),
+def _contact_panel(
+    username: str,
+    email: str,
+    role: UserRole | str,
+    user_type: UserType | str | None,
+) -> Component:
+    requested_role_options = [
+        {"label": text("Docente", "Educator"), "value": UserType.DOCENTE.value},
+        {"label": text("RRHH", "HR"), "value": UserType.RRHH.value},
+        {"label": text("Político", "Policy maker"), "value": UserType.POLITICO.value},
+        {"label": text("ONG", "NGO"), "value": UserType.ONG.value},
+        {"label": text("Usuario", "User"), "value": UserType.COMUN.value},
     ]
     return html.Section(
         [
-            html.H2("Permisos", **text_attrs("Permisos", "Permissions")),
+            html.H2("¡Contáctanos!", **text_attrs("¡Contáctanos!", "Contact us!")),
+            html.P(
+                "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens.",
+                **text_attrs(
+                    "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens.",
+                    "Request a new profile or send us any suggestion about RainbowLens.",
+                ),
+            ),
             html.Div(
                 [
-                    _permission_item(title_es, title_en, value_es, value_en)
-                    for title_es, title_en, value_es, value_en, enabled in permissions
-                    if enabled
+                    _contact_field(
+                        "Nombre",
+                        "Name",
+                        dcc.Input(
+                            id="user-contact-name",
+                            type="text",
+                            value=username,
+                            maxLength=80,
+                            autoComplete="name",
+                            readOnly=True,
+                            className="auth-input user-contact-readonly",
+                        ),
+                    ),
+                    _contact_field(
+                        "Correo electrónico",
+                        "Email address",
+                        dcc.Input(
+                            id="user-contact-email",
+                            type="email",
+                            value=email,
+                            maxLength=254,
+                            autoComplete="email",
+                            readOnly=True,
+                            className="auth-input user-contact-readonly",
+                        ),
+                    ),
+                    _contact_field(
+                        "Perfil solicitado (opcional)",
+                        "Requested profile (optional)",
+                        dcc.Dropdown(
+                            id="user-contact-role",
+                            options=requested_role_options,
+                            value=None,
+                            clearable=True,
+                            className="user-contact-dropdown",
+                        ),
+                    ),
+                    _contact_field(
+                        "Asunto",
+                        "Subject",
+                        dcc.Input(
+                            id="user-contact-subject",
+                            type="text",
+                            maxLength=160,
+                            className="auth-input",
+                        ),
+                    ),
+                    _contact_field(
+                        "Mensaje",
+                        "Message",
+                        dcc.Textarea(
+                            id="user-contact-message",
+                            maxLength=4000,
+                            className="user-contact-textarea",
+                        ),
+                    ),
+                    html.Div(
+                        [
+                            html.Label(
+                                "Documentación acreditativa",
+                                htmlFor="user-contact-files",
+                                **text_attrs(
+                                    "Documentación acreditativa",
+                                    "Supporting documentation",
+                                ),
+                            ),
+                            dcc.Upload(
+                                id="user-contact-files",
+                                children=html.Div(
+                                    text(
+                                        "Adjunta hasta 3 archivos PDF, PNG, JPG, DOC o DOCX (5 MB por archivo).",
+                                        "Attach up to 3 PDF, PNG, JPG, DOC or DOCX files (5 MB each).",
+                                    )
+                                ),
+                                multiple=True,
+                                className="user-contact-upload",
+                            ),
+                            html.P(
+                                id="user-contact-file-summary",
+                                className="auth-help",
+                                **{"aria-live": "polite"},
+                            ),
+                        ],
+                        className="user-contact-field",
+                    ),
+                    html.Button(
+                        "Enviar",
+                        id="user-contact-submit",
+                        type="button",
+                        className="auth-button",
+                        **text_attrs("Enviar", "Send"),
+                    ),
+                    html.P(
+                        id="user-contact-status",
+                        className="auth-message is-hidden",
+                        role="status",
+                        **{"aria-live": "polite"},
+                    ),
+                    html.Span(
+                        _role_label(role, user_type),
+                        id="user-contact-current-role",
+                        hidden=True,
+                    ),
                 ],
-                className="user-permission-list",
+                className="user-contact-form",
             ),
         ],
-        className="user-card",
+        className="user-card user-contact-card",
+    )
+
+
+def _contact_field(label_es: str, label_en: str, control: Component) -> Component:
+    control_id = getattr(control, "id", None)
+    return html.Div(
+        [html.Label(label_es, htmlFor=control_id, **text_attrs(label_es, label_en)), control],
+        className="user-contact-field",
     )
 
 
@@ -467,36 +630,141 @@ def _detail_row(label_es: str, label_en: str, value_es: str, value_en: str) -> C
     )
 
 
-def _permission_item(
-    title_es: str,
-    title_en: str,
-    value_es: str,
-    value_en: str,
-) -> Component:
-    return html.Div(
-        [
-            html.Span(
-                title_es,
-                className="user-permission-title",
-                **text_attrs(title_es, title_en),
-            ),
-            html.Strong(
-                value_es,
-                className="user-permission-state",
-                **text_attrs(value_es, value_en),
-            ),
-        ],
-        className="user-permission-item",
+def register_user_page_callbacks(app: Dash) -> None:
+    limiter = create_rate_limiter(
+        max_attempts=max(1, int(os.getenv("CONTACT_MAX_ATTEMPTS", "5"))),
+        window_seconds=max(60, int(os.getenv("CONTACT_WINDOW_SECONDS", "3600"))),
+        namespace="user-contact",
     )
 
+    @app.callback(
+        Output("user-contact-file-summary", "children"),
+        Input("user-contact-files", "filename"),
+    )
+    def summarize_contact_files(filenames: list[str] | str | None):
+        if not filenames:
+            return ""
+        names = filenames if isinstance(filenames, list) else [filenames]
+        return ", ".join(str(name) for name in names[:3])
 
-def _role_label(role: UserRole | str) -> str:
+    @app.callback(
+        Output("user-contact-status", "children"),
+        Output("user-contact-status", "className"),
+        Output("user-contact-role", "value"),
+        Output("user-contact-subject", "value"),
+        Output("user-contact-message", "value"),
+        Output("user-contact-files", "contents"),
+        Output("user-contact-files", "filename"),
+        Input("user-contact-submit", "n_clicks"),
+        State("user-contact-name", "value"),
+        State("user-contact-email", "value"),
+        State("user-contact-role", "value"),
+        State("user-contact-subject", "value"),
+        State("user-contact-message", "value"),
+        State("user-contact-files", "contents"),
+        State("user-contact-files", "filename"),
+        State("app-language-store", "data"),
+        prevent_initial_call=True,
+        running=[(Output("user-contact-submit", "disabled"), True, False)],
+    )
+    def submit_contact_request(
+        clicks: int | None,
+        name: str | None,
+        email: str | None,
+        requested_role: str | None,
+        subject: str | None,
+        message: str | None,
+        contents: list[str] | str | None,
+        filenames: list[str] | str | None,
+        language: str | None,
+    ):
+        if not clicks or not user_has_permission(current_user, Permission.VIEW_DASHBOARD):
+            return (no_update,) * 7
+        clean_language = "en" if language == "en" else "es"
+        limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="contact")
+        if limiter.is_blocked(limiter_key):
+            return (
+                ui_text("contact_rate_limited", clean_language),
+                "auth-message auth-message-error",
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+            )
+        try:
+            attachments = decode_contact_attachments(contents, filenames)
+            send_role_contact_email(
+                user_id=current_user.get_id() or "",
+                name=getattr(current_user, "username", None) or name or "",
+                email=getattr(current_user, "email", None) or email or "",
+                current_role=_role_label(
+                    getattr(current_user, "role", UserRole.COMMON),
+                    getattr(current_user, "user_type", None),
+                ),
+                requested_role=requested_role or "",
+                subject=subject or "",
+                message=message or "",
+                attachments=attachments,
+            )
+        except ContactValidationError:
+            limiter.record_failure(limiter_key)
+            return (
+                ui_text("contact_validation_error", clean_language),
+                "auth-message auth-message-error",
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+            )
+        except ContactDeliveryError:
+            limiter.record_failure(limiter_key)
+            return (
+                ui_text("contact_delivery_error", clean_language),
+                "auth-message auth-message-error",
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+            )
+        limiter.reset(limiter_key)
+        return (
+            ui_text("contact_success", clean_language),
+            "auth-message auth-message-success",
+            None,
+            "",
+            "",
+            None,
+            None,
+        )
+
+
+def _role_label(
+    role: UserRole | str,
+    user_type: UserType | str | None = None,
+    *,
+    language: str = "es",
+) -> str:
     value = role.value if isinstance(role, UserRole) else str(role)
-    if value in {"comun", "common"}:
-        return "common"
     if value == "admin":
-        return "admin"
-    return value
+        return "Administrator" if language == "en" else "Administrador"
+    profile = _user_type_value(user_type)
+    labels = {
+        UserType.COMUN.value: ("Usuario", "User"),
+        UserType.DOCENTE.value: ("Docente", "Educator"),
+        UserType.RRHH.value: ("RRHH", "HR"),
+        UserType.POLITICO.value: ("Político", "Policy maker"),
+        UserType.ONG.value: ("ONG", "NGO"),
+    }
+    selected = labels.get(profile, labels[UserType.COMUN.value])
+    return selected[1] if language == "en" else selected[0]
+
+
+def _user_type_value(user_type: UserType | str | None) -> str:
+    value = user_type.value if isinstance(user_type, UserType) else str(user_type or "")
+    return UserType.DOCENTE.value if value == "profesor" else value
 
 
 def _is_admin_role(role: UserRole | str) -> bool:

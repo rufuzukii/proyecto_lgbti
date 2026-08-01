@@ -3,18 +3,24 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from dash import Dash, Input, Output, dcc, html
-from flask import redirect, request, session
+from flask import abort, redirect, request, send_file, session
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
 from pydantic import ValidationError
 
 from app.analytics import invalidate_analytics_cache
 from app.analytics.repository import assert_analytics_databases_available
 from app.auth.csrf import rotate_csrf_token, validate_csrf_token
-from app.auth.permissions import Permission, is_admin_user, user_has_permission
+from app.auth.permissions import (
+    Permission,
+    can_access_docente_material,
+    is_admin_user,
+    user_has_permission,
+)
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
@@ -25,11 +31,23 @@ from app.dash.layouts.error_page import (
     render_database_unavailable_response,
 )
 from app.dash.layouts.home import build_home_layout, register_home_callbacks
-from app.dash.layouts.user_page import build_user_page_layout
+from app.dash.layouts.user_page import build_user_page_layout, register_user_page_callbacks
 from app.dash.pages.admin.imports import build_admin_imports_layout
 from app.dash.pages.admin.users import (
     build_access_denied_layout,
     build_admin_users_layout,
+)
+from app.dash.pages.didactica import (
+    build_access_denied_layout as build_didactica_access_denied_layout,
+)
+from app.dash.pages.didactica import (
+    build_dictionary_layout,
+    build_didactica_layout,
+    build_docente_layout,
+    build_games_layout,
+    build_presentations_layout,
+    build_progress_layout,
+    register_didactica_callbacks,
 )
 from app.dash.pages.reports import (
     build_reports_access_denied_layout,
@@ -48,6 +66,7 @@ from app.dash.pages.upload import (
     build_upload_layout,
     register_upload_callbacks,
 )
+from app.edu.teacher_service import generate_teacher_resource_pdf
 from app.errors import DatabaseUnavailableError
 from app.http_security import configure_flask_security, rate_limit_key
 from app.import_to_db.import_log import (
@@ -57,7 +76,7 @@ from app.import_to_db.import_log import (
 )
 from app.logging_config import configure_secure_logging
 from app.mongo_indexes import initialize_mongo_indexes
-from app.users.schemas import UserRegister, UserRole
+from app.users.schemas import UserRegister, UserRole, UserType
 from app.users.service import (
     UserRecord,
     UserStorageError,
@@ -82,6 +101,12 @@ SAFE_NEXT_PATHS = {
     "/statistics",
     "/upload",
     "/user",
+    "/didactica",
+    "/didactica/diccionario",
+    "/didactica/presentaciones",
+    "/didactica/juegos",
+    "/didactica/docentes",
+    "/didactica/progreso",
 }
 
 DASH_INDEX_STRING = """
@@ -130,6 +155,7 @@ class SessionUser(UserMixin):
     email: str
     role: UserRole
     organization: str | None
+    user_type: UserType | None = None
 
 
 def create_dash_app() -> Dash:
@@ -165,6 +191,7 @@ def create_dash_app() -> Dash:
     login_manager.init_app(app.server)
     _register_user_loader(login_manager)
     _register_auth_routes(app)
+    _register_docente_routes(app)
 
     app.layout = html.Div(
         [
@@ -207,6 +234,32 @@ def create_dash_app() -> Dash:
         try:
             if pathname == "/statistics":
                 return build_statistics_layout()
+            if pathname == "/didactics":
+                return dcc.Location(href="/didactica", id="legacy-didactica-redirect")
+            if pathname == "/didactica":
+                return build_didactica_layout()
+            if pathname == "/didactica/diccionario":
+                return build_dictionary_layout()
+            if pathname == "/didactica/presentaciones":
+                return build_presentations_layout(_first_param(params, "lesson"))
+            if pathname == "/didactica/juegos":
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path="/didactica/juegos")
+                if not user_has_permission(current_user, Permission.PLAY_EDU_GAMES):
+                    return build_didactica_access_denied_layout()
+                return build_games_layout(_first_param(params, "game"))
+            if pathname == "/didactica/profesores":
+                return dcc.Location(href="/didactica/docentes", id="legacy-docente-redirect")
+            if pathname == "/didactica/docentes":
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path="/didactica/docentes")
+                if not can_access_docente_material(current_user):
+                    return build_didactica_access_denied_layout()
+                return build_docente_layout()
+            if pathname == "/didactica/progreso":
+                if not current_user.is_authenticated:
+                    return build_login_layout(next_path="/didactica/progreso")
+                return build_progress_layout()
             if pathname in {"/informes", "/reports"}:
                 if not current_user.is_authenticated:
                     return build_login_layout(next_path=pathname)
@@ -303,6 +356,8 @@ def create_dash_app() -> Dash:
     register_spain_callbacks(app)
     register_home_callbacks(app)
     register_about_callbacks(app)
+    register_didactica_callbacks(app)
+    register_user_page_callbacks(app)
     return app
 
 
@@ -597,6 +652,27 @@ def _register_auth_routes(app: Dash) -> None:
         return _redirect("/admin/imports", error="storage")
 
 
+def _register_docente_routes(app: Dash) -> None:
+    @app.server.get("/didactica/docentes/descargar/<resource_id>")
+    def download_docente_resource_direct(resource_id: str):
+        if not current_user.is_authenticated:
+            return redirect(f"/login?{urlencode({'next': '/didactica/docentes'})}")
+        if not can_access_docente_material(current_user):
+            abort(403)
+        language = "en" if request.args.get("lang") == "en" else "es"
+        try:
+            payload, filename = generate_teacher_resource_pdf(resource_id, language)
+        except ValueError:
+            abort(404)
+        return send_file(
+            BytesIO(payload),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=filename,
+            max_age=0,
+        )
+
+
 def _session_user_from_record(record: UserRecord) -> SessionUser:
     return SessionUser(
         id=record.id,
@@ -604,6 +680,7 @@ def _session_user_from_record(record: UserRecord) -> SessionUser:
         email=record.email,
         role=record.role,
         organization=record.organization,
+        user_type=record.user_type,
     )
 
 

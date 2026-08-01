@@ -25,7 +25,7 @@ from app.reports.models import (
     sanitize_report_text,
 )
 from app.reports.pdf_exporter import PDFExporter
-from app.users.schemas import UserRole
+from app.users.schemas import UserRole, UserType
 
 
 def _fra_result() -> dict[str, Any]:
@@ -364,6 +364,69 @@ def test_report_permissions_are_server_side() -> None:
         SimpleNamespace(is_authenticated=False, role=UserRole.ANONYMOUS),
         Permission.GENERATE_REPORTS,
     )
+
+
+def test_advanced_report_configuration_is_profile_and_server_protected(monkeypatch) -> None:
+    custom = {
+        **_configuration().to_dict(),
+        "mode": "custom",
+        "detail_level": "detailed",
+        "sections": ["executive"],
+        "charts": ["ranking"],
+    }
+    monkeypatch.setattr(
+        reports_page,
+        "current_user",
+        SimpleNamespace(
+            is_authenticated=True,
+            role=UserRole.COMMON,
+            user_type=UserType.COMUN,
+        ),
+    )
+    basic = reports_page._report_configuration_for_user(custom)
+    assert basic.mode == "automatic"
+    assert basic.detail_level == "standard"
+
+    for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG):
+        monkeypatch.setattr(
+            reports_page,
+            "current_user",
+            SimpleNamespace(
+                is_authenticated=True,
+                role=UserRole.COMMON,
+                user_type=profile,
+            ),
+        )
+        advanced = reports_page._report_configuration_for_user(custom)
+        assert advanced.mode == "custom"
+        assert advanced.detail_level == "detailed"
+        assert advanced.sections == ("executive",)
+
+
+def test_advanced_content_controls_are_disabled_for_common_profile() -> None:
+    panel = reports_page._content_panel(_configuration(), advanced_enabled=False)
+    for identifier in (
+        "report-mode-select",
+        "report-detail-select",
+        "report-sections-select",
+        "report-charts-select",
+    ):
+        control = _component_by_id(panel, identifier)
+        assert all(option["disabled"] is True for option in control.options)
+
+
+def _component_by_id(component: Any, identifier: str):
+    if getattr(component, "id", None) == identifier:
+        return component
+    children = getattr(component, "children", None)
+    values = children if isinstance(children, (list, tuple)) else [children]
+    for child in values:
+        if hasattr(child, "to_plotly_json"):
+            try:
+                return _component_by_id(child, identifier)
+            except LookupError:
+                pass
+    raise LookupError(identifier)
 
 
 def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypatch) -> None:

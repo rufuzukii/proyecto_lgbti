@@ -172,7 +172,7 @@ def test_admin_navbar_groups_user_and_admin_without_duplicating_link(monkeypatch
     assert _props(_props(mobile_account_slot)["children"])["className"] == "nav-link nav-account"
 
 
-def test_non_admin_navbar_omits_admin_link_and_keeps_upload_with_preferences(monkeypatch) -> None:
+def test_non_admin_navbar_omits_admin_and_upload_links_with_preferences(monkeypatch) -> None:
     monkeypatch.setattr(
         navigation,
         "current_user",
@@ -191,10 +191,6 @@ def test_non_admin_navbar_omits_admin_link_and_keeps_upload_with_preferences(mon
         for component in components
         if getattr(component, "className", "") == "nav-header-actions"
     )
-    upload_link = next(
-        component for component in components if getattr(component, "href", None) == "/upload"
-    )
-
     header_children = cast(list[Any], _props(header_actions)["children"])
     assert _props(navbar)["className"] == "navbar"
     assert not any(
@@ -202,7 +198,7 @@ def test_non_admin_navbar_omits_admin_link_and_keeps_upload_with_preferences(mon
     )
     assert len(header_children) == 3
     assert "nav-account-slot-desktop" in _props(header_children[-1])["className"]
-    assert _props(upload_link)["className"] == "nav-link is-active nav-cta"
+    assert not any(getattr(component, "href", None) == "/upload" for component in components)
 
 
 def test_anonymous_navbar_does_not_expose_upload_action(monkeypatch) -> None:

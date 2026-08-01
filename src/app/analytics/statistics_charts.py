@@ -28,7 +28,7 @@ from app.analytics.statistics_normalizers import (
     normalize_country_code,
     normalize_text_key,
 )
-from app.dash.i18n import ui_text
+from app.dash.i18n import country_labels, ui_text
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +320,7 @@ def build_europe_choropleth(
             )
         )
     figure.update_layout(
+        dragmode=False,
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
@@ -383,6 +384,7 @@ def build_fra_response_comparison_chart(
     *,
     available_countries: list[dict[str, Any]] | None = None,
     selected_countries: list[str] | None = None,
+    selected_response: str | None = None,
     language: str = "es",
 ) -> go.Figure:
     dataframe = _response_comparison_dataframe(
@@ -390,7 +392,9 @@ def build_fra_response_comparison_chart(
             data_rows,
             available_countries,
             language=language,
-        )
+        ),
+        language=language,
+        localize_countries=True,
     )
     if dataframe.empty:
         return empty_figure("No hay respuestas comparables para esta pregunta y filtros.")
@@ -398,14 +402,38 @@ def build_fra_response_comparison_chart(
     mode = _response_comparison_mode(dataframe)
     selected_keys = _selected_country_keys(selected_countries)
     if mode == "stacked_percentage":
-        figure = _build_stacked_response_chart(dataframe, selected_keys, language=language)
+        figure = _build_stacked_response_chart(
+            dataframe,
+            selected_keys,
+            selected_response=selected_response,
+            language=language,
+        )
     elif mode == "missing_numeric":
         figure = _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
     elif mode == "categorical":
         figure = _build_categorical_response_chart(dataframe, selected_keys, language=language)
     else:
         figure = _build_numeric_response_chart(dataframe, selected_keys, language=language)
-    _apply_comparison_height(figure, dataframe["country_key"].nunique())
+    country_count = int(dataframe["country_key"].nunique())
+    _apply_response_details_height(
+        figure,
+        country_count,
+        response_count=int(dataframe["response_key"].nunique()),
+    )
+    countries_without_data = int(_incomplete_numeric_countries(dataframe).shape[0])
+    countries_with_data = country_count - countries_without_data
+    logger.info(
+        "response_details_chart countries_loaded=%d countries_rendered=%d "
+        "countries_without_data=%d",
+        country_count,
+        countries_with_data,
+        countries_without_data,
+        extra={
+            "countries_loaded": country_count,
+            "countries_rendered": countries_with_data,
+            "countries_without_data": countries_without_data,
+        },
+    )
     return figure
 
 
@@ -420,7 +448,9 @@ def summarize_response_comparison(
             data_rows,
             available_countries,
             language=language,
-        )
+        ),
+        language=language,
+        localize_countries=True,
     )
     if dataframe.empty:
         return {"countries": 0, "responses": 0, "distribution": [], "mode": "empty"}
@@ -523,14 +553,28 @@ def build_comparison_chart(
     return figure
 
 
-def _response_comparison_dataframe(data_rows: list[dict[str, Any]]) -> pd.DataFrame:
+def _response_comparison_dataframe(
+    data_rows: list[dict[str, Any]],
+    *,
+    language: str = "es",
+    localize_countries: bool = False,
+) -> pd.DataFrame:
     dataframe = pd.DataFrame(data_rows)
-    if dataframe.empty or "country" not in dataframe:
+    if dataframe.empty:
         return pd.DataFrame()
     dataframe = dataframe.copy()
+    if "country" not in dataframe and "country_name" in dataframe:
+        dataframe["country"] = dataframe["country_name"]
+    if "country" not in dataframe:
+        return pd.DataFrame()
     dataframe["country"] = dataframe["country"].astype(str).str.strip()
+    if "iso" not in dataframe and "country_code" in dataframe:
+        dataframe["iso"] = dataframe["country_code"]
     if "iso" in dataframe:
-        dataframe["iso"] = dataframe["iso"].fillna("").astype(str).str.strip().str.upper()
+        dataframe["iso"] = [
+            normalize_country_code(iso, country)
+            for iso, country in zip(dataframe["iso"], dataframe["country"], strict=True)
+        ]
     else:
         dataframe["iso"] = ""
     dataframe = dataframe[
@@ -542,7 +586,7 @@ def _response_comparison_dataframe(data_rows: list[dict[str, Any]]) -> pd.DataFr
         return pd.DataFrame()
 
     answer_source = (
-        "answer" if "answer" in dataframe else "response" if "response" in dataframe else None
+        "response" if "response" in dataframe else "answer" if "answer" in dataframe else None
     )
     if answer_source:
         dataframe["response_raw"] = dataframe[answer_source].astype(str)
@@ -583,12 +627,21 @@ def _response_comparison_dataframe(data_rows: list[dict[str, Any]]) -> pd.DataFr
     else:
         dataframe["numeric_value"] = None
     dataframe["numeric_measure_present"] = numeric_source is not None
-    dataframe["country_key"] = dataframe.apply(
-        lambda row: _country_key(row.get("iso"), row.get("country")),
-        axis=1,
-    )
+    dataframe["country_key"] = [
+        _country_key(iso, country)
+        for iso, country in zip(dataframe["iso"], dataframe["country"], strict=True)
+    ]
     dataframe = dataframe[dataframe["country_key"].ne("")]
-    return _consolidate_response_rows(dataframe)
+    consolidated = _consolidate_response_rows(dataframe)
+    if localize_countries:
+        label_by_key = {
+            key: country_labels(iso, fallback)[1 if language == "en" else 0]
+            for key, iso, fallback in consolidated[["country_key", "iso", "country"]]
+            .drop_duplicates("country_key")
+            .itertuples(index=False, name=None)
+        }
+        consolidated["country"] = consolidated["country_key"].map(label_by_key)
+    return consolidated
 
 
 def _consolidate_response_rows(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -596,7 +649,9 @@ def _consolidate_response_rows(dataframe: pd.DataFrame) -> pd.DataFrame:
     if dataframe.empty:
         return dataframe
     dataframe = dataframe.copy()
-    for column in ("year", "source", "question", "question_code"):
+    if "question_code" not in dataframe and "indicator_id" in dataframe:
+        dataframe["question_code"] = dataframe["indicator_id"]
+    for column in ("year", "source", "question", "question_code", "filter_a", "filter_b"):
         if column not in dataframe:
             dataframe[column] = None
 
@@ -616,6 +671,8 @@ def _consolidate_response_rows(dataframe: pd.DataFrame) -> pd.DataFrame:
             source=("source", "first"),
             question=("question", "first"),
             question_code=("question_code", "first"),
+            filter_a=("filter_a", "first"),
+            filter_b=("filter_b", "first"),
         )
         .reset_index(drop=True)
     )
@@ -638,9 +695,7 @@ def _consolidate_response_rows(dataframe: pd.DataFrame) -> pd.DataFrame:
             },
         )
         grouped.loc[ambiguous, "numeric_value"] = None
-    return grouped.drop(
-        columns=["valid_value_count", "distinct_value_count", "source_row_count"]
-    )
+    return grouped.drop(columns=["valid_value_count", "distinct_value_count", "source_row_count"])
 
 
 def _response_comparison_mode(dataframe: pd.DataFrame) -> str:
@@ -660,6 +715,7 @@ def _build_stacked_response_chart(
     dataframe: pd.DataFrame,
     selected_keys: set[str],
     *,
+    selected_response: str | None = None,
     language: str = "es",
 ) -> go.Figure:
     missing = _incomplete_numeric_countries(dataframe)
@@ -671,7 +727,7 @@ def _build_stacked_response_chart(
     labels = _response_labels(dataframe)
     normalized = _normalize_percentage_pivot(pivot)
 
-    order = _stacked_country_order(normalized)
+    order = _stacked_country_order(normalized, selected_response=selected_response)
     pivot = pivot.loc[order]
     normalized = normalized.loc[order]
     countries = [country for country, _iso in normalized.index]
@@ -687,6 +743,7 @@ def _build_stacked_response_chart(
     ]
 
     figure = go.Figure()
+    indicator_label = _response_indicator_label(dataframe)
     response_keys = sorted(
         normalized.columns,
         key=lambda key: labels.get(str(key), str(key)).casefold(),
@@ -717,8 +774,10 @@ def _build_stacked_response_chart(
                         isos, formatted_values, metadata_rows, strict=True
                     )
                 ],
+                meta=indicator_label,
                 hovertemplate=(
                     f"<b>%{{y}}</b><br>"
+                    f"{_chart_text(language, 'Indicador', 'Indicator')}: %{{meta}}<br>"
                     f"{_chart_text(language, 'Respuesta', 'Answer')}: %{{customdata[1]}}<br>"
                     f"{_chart_text(language, 'Porcentaje', 'Percentage')}: "
                     "%{customdata[2]}<br>"
@@ -734,15 +793,17 @@ def _build_stacked_response_chart(
         selected_keys,
         language=language,
     )
-    _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 95})
+    _apply_base_layout(
+        figure,
+        margin=_response_chart_margin(dataframe, response_count=len(response_keys)),
+    )
     figure.update_layout(
         barmode="stack",
         xaxis={
-            "title": _chart_text(
-                language, "Distribución de respuestas", "Response distribution"
-            ),
+            "title": _chart_text(language, "Distribución de respuestas", "Response distribution"),
             "range": [0, 100],
             "ticksuffix": "%",
+            "automargin": True,
         },
         yaxis={
             "title": "",
@@ -753,7 +814,8 @@ def _build_stacked_response_chart(
         legend={
             "title": {"text": _chart_text(language, "Respuesta", "Answer")},
             "orientation": "h",
-            "y": -0.18,
+            "y": -0.12,
+            "yanchor": "top",
         },
         showlegend=True,
     )
@@ -787,9 +849,7 @@ def _build_numeric_response_chart(
             "year",
             "source",
         ],
-    ].rename(
-        columns={"numeric_value": "value"}
-    )
+    ].rename(columns={"numeric_value": "value"})
     grouped = grouped.sort_values(["value", "country"], ascending=[True, False])
     if grouped.empty and not missing.empty:
         return _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
@@ -808,6 +868,7 @@ def _build_numeric_response_chart(
         if not grouped["response_key"].dropna().empty
         else ""
     )
+    indicator_label = _response_indicator_label(dataframe)
     figure = go.Figure(
         go.Bar(
             x=grouped["value"],
@@ -818,13 +879,13 @@ def _build_numeric_response_chart(
                 "color": _response_color(response_key),
                 "line": _selected_marker_line(selected),
             },
-            customdata=grouped[
-                ["iso", "response_label", "value_text", "year", "source"]
-            ]
+            customdata=grouped[["iso", "response_label", "value_text", "year", "source"]]
             .fillna("")
             .to_numpy(),
+            meta=indicator_label,
             hovertemplate=(
                 f"<b>%{{y}}</b><br>"
+                f"{_chart_text(language, 'Indicador', 'Indicator')}: %{{meta}}<br>"
                 f"{_chart_text(language, 'Respuesta', 'Answer')}: %{{customdata[1]}}<br>"
                 f"{_chart_text(language, 'Porcentaje', 'Percentage')}: %{{customdata[2]}}<br>"
                 f"{_chart_text(language, 'Año', 'Year')}: %{{customdata[3]}}<br>"
@@ -840,12 +901,13 @@ def _build_numeric_response_chart(
         selected_keys,
         language=language,
     )
-    _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 55})
+    _apply_base_layout(figure, margin=_response_chart_margin(dataframe, response_count=1))
     figure.update_layout(
         xaxis={
             "title": _chart_text(language, "Porcentaje", "Percentage"),
             "range": [0, 100],
             "ticksuffix": "%",
+            "automargin": True,
         },
         yaxis={
             "title": "",
@@ -856,7 +918,8 @@ def _build_numeric_response_chart(
         legend={
             "title": {"text": _chart_text(language, "Respuesta", "Answer")},
             "orientation": "h",
-            "y": -0.12,
+            "y": -0.1,
+            "yanchor": "top",
         },
         showlegend=True,
     )
@@ -886,9 +949,13 @@ def _build_missing_numeric_response_chart(
         selected_keys,
         language=language,
     )
-    _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 55})
+    _apply_base_layout(figure, margin=_response_chart_margin(dataframe, response_count=1))
     figure.update_layout(
-        xaxis={"title": _chart_text(language, "Valor", "Value"), "range": [0, 100]},
+        xaxis={
+            "title": _chart_text(language, "Valor", "Value"),
+            "range": [0, 100],
+            "automargin": True,
+        },
         yaxis={"title": "", "automargin": True},
         legend={"title": {"text": _chart_text(language, "Respuesta", "Answer")}},
         showlegend=True,
@@ -904,7 +971,15 @@ def _build_missing_numeric_response_chart(
 
 
 def _incomplete_numeric_countries(dataframe: pd.DataFrame) -> pd.DataFrame:
-    columns = ["country", "iso", "country_key", "year", "source"]
+    columns = [
+        "country",
+        "iso",
+        "country_key",
+        "year",
+        "source",
+        "question",
+        "question_code",
+    ]
     if (
         dataframe.empty
         or "numeric_value" not in dataframe
@@ -934,16 +1009,14 @@ def _incomplete_numeric_countries(dataframe: pd.DataFrame) -> pd.DataFrame:
     )
     non_positive_distribution: set[str] = set()
     if len(expected_responses) > 1:
-        country_totals = dataframe[normal_response_mask].groupby("country_key")[
-            "numeric_value"
-        ].sum(min_count=1)
+        country_totals = (
+            dataframe[normal_response_mask].groupby("country_key")["numeric_value"].sum(min_count=1)
+        )
         non_positive_distribution = set(
             country_totals[country_totals.notna() & country_totals.le(0)].index
         )
     missing_keys = (
-        set(incomplete[incomplete].index)
-        .union(explicitly_missing)
-        .union(non_positive_distribution)
+        set(incomplete[incomplete].index).union(explicitly_missing).union(non_positive_distribution)
     )
     return (
         dataframe[dataframe["country_key"].isin(missing_keys)]
@@ -964,6 +1037,7 @@ def _add_missing_country_bars(
         return
     message = ui_text("chart_not_enough_information", language)
     selected = missing["country_key"].isin(selected_keys).tolist()
+    indicator_label = _response_indicator_label(missing)
     figure.add_trace(
         go.Bar(
             x=[100] * len(missing),
@@ -980,8 +1054,11 @@ def _add_missing_country_bars(
                     missing["iso"], missing["year"], missing["source"], strict=True
                 )
             ],
+            meta=indicator_label,
             hovertemplate=(
-                f"<b>%{{y}}</b><br>%{{customdata[1]}}<br>"
+                f"<b>%{{y}}</b><br>"
+                f"{_chart_text(language, 'Indicador', 'Indicator')}: %{{meta}}<br>"
+                "%{customdata[1]}<br>"
                 f"{_chart_text(language, 'Año', 'Year')}: %{{customdata[2]}}<br>"
                 f"{_chart_text(language, 'Fuente', 'Source')}: "
                 "%{customdata[3]}<extra></extra>"
@@ -1008,6 +1085,7 @@ def _build_categorical_response_chart(
         ]
     ]
     figure = go.Figure()
+    indicator_label = _response_indicator_label(dataframe)
     for response_index, (response_key, rows) in enumerate(
         country_answers.groupby("response_key", sort=False)
     ):
@@ -1028,11 +1106,11 @@ def _build_categorical_response_chart(
                     ),
                     "line": _selected_marker_line(selected),
                 },
-                customdata=rows[["iso", "response_label", "year", "source"]]
-                .fillna("")
-                .to_numpy(),
+                customdata=rows[["iso", "response_label", "year", "source"]].fillna("").to_numpy(),
+                meta=indicator_label,
                 hovertemplate=(
                     f"<b>%{{y}}</b><br>ISO: %{{customdata[0]}}<br>"
+                    f"{_chart_text(language, 'Indicador', 'Indicator')}: %{{meta}}<br>"
                     f"{_chart_text(language, 'Respuesta', 'Answer')}: "
                     "%{customdata[1]}<br>"
                     f"{_chart_text(language, 'Año', 'Year')}: %{{customdata[2]}}<br>"
@@ -1041,19 +1119,24 @@ def _build_categorical_response_chart(
                 ),
             )
         )
-    _apply_base_layout(figure, margin={"l": 120, "r": 28, "t": 20, "b": 95})
+    _apply_base_layout(
+        figure,
+        margin=_response_chart_margin(dataframe, response_count=len(tuple(figure.data))),
+    )
     figure.update_layout(
         barmode="stack",
         xaxis={
             "title": _chart_text(language, "Respuesta categórica", "Categorical answer"),
             "showticklabels": False,
             "range": [0, 1],
+            "automargin": True,
         },
         yaxis={"title": "", "automargin": True},
         legend={
             "title": {"text": _chart_text(language, "Respuesta", "Answer")},
             "orientation": "h",
-            "y": -0.18,
+            "y": -0.12,
+            "yanchor": "top",
         },
         showlegend=True,
     )
@@ -1083,34 +1166,39 @@ def _normalize_percentage_pivot(pivot: pd.DataFrame) -> pd.DataFrame:
     if pivot.empty:
         return pivot
     clean = pivot.apply(pd.to_numeric, errors="coerce")
-    normalized = pd.DataFrame(index=clean.index, columns=clean.columns, dtype=float)
-    for index, row in clean.iterrows():
-        display_values, was_normalized = prepare_percentage_display_values(
-            row.tolist(),
-            normalize_when_total_is_not_100=True,
-            logger=logger,
-            context={
-                "chart": "fra_response_comparison",
-                "country": index[0] if isinstance(index, tuple) else index,
-            },
+    totals = clean.sum(axis=1, min_count=1)
+    should_normalize = totals.notna() & totals.gt(0) & ~totals.sub(100.0).abs().le(1e-9)
+    normalized = clean.copy()
+    normalized.loc[should_normalize] = (
+        clean.loc[should_normalize].div(totals.loc[should_normalize], axis=0).mul(100.0)
+    )
+    if should_normalize.any():
+        logger.debug(
+            "fra_response_comparison_percentages_normalized countries=%d",
+            int(should_normalize.sum()),
+            extra={"country_count": int(should_normalize.sum())},
         )
-        normalized.loc[index] = [0 if value is None else value for value in display_values]
-        if was_normalized:
-            logger.debug(
-                "fra_response_comparison_percentages_normalized",
-                extra={"country": index[0] if isinstance(index, tuple) else index},
-            )
     return normalized
 
 
-def _stacked_country_order(normalized: pd.DataFrame) -> list[tuple[str, str]]:
+def _stacked_country_order(
+    normalized: pd.DataFrame, *, selected_response: str | None
+) -> list[tuple[str, str]]:
     order = pd.DataFrame(index=normalized.index)
-    order["dominant_response"] = normalized.idxmax(axis=1)
-    order["dominant_value"] = normalized.max(axis=1)
+    selected_key = _response_key(selected_response)
+    matching_key = next(
+        (column for column in normalized.columns if _response_key(column) == selected_key),
+        None,
+    )
+    order["comparison_value"] = (
+        normalized[matching_key] if matching_key is not None else normalized.max(axis=1)
+    )
     order["country_name"] = [country for country, _iso in normalized.index]
+    # Plotly's category array runs from bottom to top. Ascending values here
+    # therefore render the highest percentage first at the top of the chart.
     return order.sort_values(
-        ["dominant_value", "country_name"],
-        ascending=[False, True],
+        ["comparison_value", "country_name"],
+        ascending=[True, False],
     ).index.tolist()
 
 
@@ -1185,6 +1273,27 @@ def _selected_marker_line(selected: list[bool]) -> dict[str, Any]:
     }
 
 
+def _response_indicator_label(dataframe: pd.DataFrame) -> str:
+    for column in ("question", "indicator_id", "question_code"):
+        if column not in dataframe:
+            continue
+        values = dataframe[column].dropna().astype(str).str.strip()
+        values = values[values.ne("")]
+        if not values.empty:
+            return str(values.iloc[0])
+    return ""
+
+
+def _response_chart_margin(dataframe: pd.DataFrame, *, response_count: int) -> dict[str, int]:
+    longest_country = max(
+        (len(str(country)) for country in dataframe.get("country", pd.Series(dtype=str))),
+        default=0,
+    )
+    left = min(250, max(140, longest_country * 7 + 24))
+    legend_rows = max(1, (max(1, response_count) + 3) // 4)
+    return {"l": left, "r": 96, "t": 84, "b": 78 + legend_rows * 24}
+
+
 def _add_selected_country_annotations(
     figure: go.Figure,
     countries: list[str],
@@ -1213,6 +1322,16 @@ def _add_selected_country_annotations(
 
 def _apply_comparison_height(figure: go.Figure, country_count: int) -> None:
     figure.update_layout(height=min(1280, max(500, country_count * 28 + 190)))
+
+
+def _apply_response_details_height(
+    figure: go.Figure, country_count: int, *, response_count: int = 1
+) -> None:
+    legend_rows = max(1, (max(1, response_count) + 3) // 4)
+    figure.update_layout(
+        autosize=True,
+        height=max(520, country_count * 32 + 205 + (legend_rows - 1) * 24),
+    )
 
 
 def build_ilga_criteria_heatmap(
@@ -1380,9 +1499,7 @@ def _consolidate_legal_criteria(dataframe: pd.DataFrame) -> pd.DataFrame:
     )
     conflicting = (grouped["value_variants"] > 1) | (grouped["weight_variants"] > 1)
     if conflicting.any():
-        affected = grouped.loc[
-            conflicting, ["country", "iso", "criterion"]
-        ].to_dict("records")
+        affected = grouped.loc[conflicting, ["country", "iso", "criterion"]].to_dict("records")
         logger.warning(
             "conflicting_legal_criterion_values groups=%d affected=%r",
             int(conflicting.sum()),
@@ -1421,10 +1538,7 @@ def _legal_country_universe(
             axis=1,
         )
     )
-    scores = (
-        scores.groupby("country_key", as_index=False, dropna=False)["comparison_value"]
-        .mean()
-    )
+    scores = scores.groupby("country_key", as_index=False, dropna=False)["comparison_value"].mean()
     combined = combined.merge(scores, on="country_key", how="left")
     return (
         combined[combined["country_key"].ne("")]
@@ -1605,6 +1719,9 @@ def build_comparative_ranking_chart(
     ranking_rows: list[dict[str, Any]],
     selected_countries: list[str] | None = None,
     language: str = "es",
+    *,
+    indicator: str | None = None,
+    year: int | str | None = None,
 ) -> go.Figure:
     dataframe = _ranking_dataframe_with_missing(ranking_rows)
     if dataframe.empty:
@@ -1633,6 +1750,7 @@ def build_comparative_ranking_chart(
             )
         )
 
+    dataframe["position"] = dataframe["value"].rank(method="min", ascending=False)
     dataframe = dataframe.sort_values(
         ["value", "country"],
         ascending=[True, False],
@@ -1643,6 +1761,11 @@ def build_comparative_ranking_chart(
     dataframe["value_text"] = dataframe["value"].map(
         lambda value: f"{value:.2f}%" if pd.notna(value) else missing_label
     )
+    dataframe["position_text"] = dataframe["position"].map(
+        lambda position: str(int(position)) if pd.notna(position) else missing_label
+    )
+    dataframe["year_text"] = str(year) if year not in (None, "") else missing_label
+    dataframe["indicator_text"] = str(indicator or missing_label)
     colors = [
         country_color(row.iso, row.country) if pd.notna(row.value) else MISSING_PERCENTAGE_COLOR
         for row in dataframe.itertuples()
@@ -1655,20 +1778,38 @@ def build_comparative_ranking_chart(
             marker={"color": colors},
             text=dataframe["value_text"],
             textposition="outside",
-            customdata=dataframe[["iso", "value_text"]].to_numpy(),
-            hovertemplate="<b>%{y}</b><br>%{customdata[1]}<extra></extra>",
+            customdata=dataframe[
+                ["iso", "position_text", "value_text", "year_text", "indicator_text"]
+            ].to_numpy(),
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                + _chart_text(language, "Posici\u00f3n", "Position")
+                + ": %{customdata[1]}<br>"
+                + _chart_text(language, "Valor", "Value")
+                + ": %{customdata[2]}<br>"
+                + _chart_text(language, "A\u00f1o", "Year")
+                + ": %{customdata[3]}<br>"
+                + _chart_text(language, "Indicador", "Indicator")
+                + ": %{customdata[4]}<extra></extra>"
+            ),
         )
     )
     maximum = dataframe["value"].max()
+    country_count = len(dataframe)
+    chart_height = min(1500, max(500, country_count * 30 + 150))
+    longest_country = max((len(str(country)) for country in dataframe["country"]), default=0)
+    left_margin = min(260, max(125, longest_country * 7 + 28))
     figure.update_layout(
         xaxis={
             "title": _chart_text(language, "Valor (%)", "Value (%)"),
             "range": [0, max(105, float(maximum) + 12) if pd.notna(maximum) else 105],
+            "automargin": True,
         },
-        yaxis={"title": ""},
-        height=max(360, min(1150, 34 * len(dataframe) + 110)),
+        yaxis={"title": "", "automargin": True},
+        height=chart_height,
+        autosize=True,
     )
-    _apply_base_layout(figure, margin={"l": 125, "r": 65, "t": 20, "b": 55})
+    _apply_base_layout(figure, margin={"l": left_margin, "r": 65, "t": 30, "b": 70})
     return figure
 
 
@@ -1765,179 +1906,150 @@ def build_eu_average_comparison_chart(
     return figure
 
 
-def build_country_comparison_chart(
-    ranking_rows: list[dict[str, Any]],
+def build_response_country_comparison_chart(
+    detail_rows: list[dict[str, Any]],
     selected_countries: list[str] | None = None,
     language: str = "es",
     *,
-    detail_rows: list[dict[str, Any]] | None = None,
-    source: str | None = None,
+    indicator: str | None = None,
+    year: int | str | None = None,
 ) -> go.Figure:
-    if source == "FRA" and detail_rows:
-        return _build_fra_grouped_country_chart(
-            ranking_rows,
-            detail_rows,
-            selected_countries,
-            language,
-        )
-
-    dataframe = _ranking_dataframe_with_missing(ranking_rows)
-    if dataframe.empty:
-        return empty_figure(
-            _chart_text(
-                language, "No hay países comparables.", "There are no comparable countries."
-            )
-        )
-    selected = _selected_country_keys(selected_countries)
-    if selected:
-        dataframe = dataframe[
-            dataframe.apply(
-                lambda row: _country_key(row.get("iso"), row.get("country")) in selected, axis=1
-            )
-        ]
-    else:
-        dataframe = dataframe.dropna(subset=["value"]).head(10)
-    dataframe = dataframe.sort_values("value", na_position="first")
+    """Render dynamic responses on X and one vertical bar per country."""
+    dataframe = _response_comparison_dataframe(
+        detail_rows, language=language, localize_countries=True
+    )
+    selected_keys = _selected_country_keys(selected_countries)
+    if selected_keys and not dataframe.empty:
+        dataframe = dataframe[dataframe["country_key"].isin(selected_keys)]
     if dataframe.empty:
         return empty_figure(
             _chart_text(
                 language,
-                "Los países seleccionados no tienen datos para este indicador.",
-                "The selected countries have no data for this indicator.",
-            )
-        )
-    missing_label = _chart_text(language, "Sin datos", "No data")
-    dataframe["plot_value"] = dataframe["value"].fillna(0.0)
-    dataframe["value_text"] = dataframe["value"].map(
-        lambda value: f"{value:.2f}%" if pd.notna(value) else missing_label
-    )
-    figure = go.Figure(
-        go.Bar(
-            x=dataframe["plot_value"],
-            y=dataframe["country"],
-            orientation="h",
-            marker={
-                "color": [
-                    country_color(row.iso, row.country)
-                    if pd.notna(row.value)
-                    else MISSING_PERCENTAGE_COLOR
-                    for row in dataframe.itertuples()
-                ]
-            },
-            text=dataframe["value_text"],
-            textposition="outside",
-            customdata=dataframe[["value_text"]].to_numpy(),
-            hovertemplate="<b>%{y}</b><br>%{customdata[0]}<extra></extra>",
-        )
-    )
-    figure.update_layout(
-        xaxis={"title": _chart_text(language, "Valor (%)", "Value (%)"), "range": [0, 105]},
-        yaxis={"title": ""},
-    )
-    _apply_base_layout(figure, margin={"l": 110, "r": 45, "t": 20, "b": 55})
-    return figure
-
-
-def _build_fra_grouped_country_chart(
-    ranking_rows: list[dict[str, Any]],
-    detail_rows: list[dict[str, Any]],
-    selected_countries: list[str] | None,
-    language: str,
-) -> go.Figure:
-    dataframe = _response_comparison_dataframe(detail_rows)
-    if dataframe.empty or not dataframe.get(
-        "numeric_measure_present", pd.Series(dtype=bool)
-    ).any():
-        return empty_figure(
-            _chart_text(
-                language,
-                "No hay respuestas comparables para los países seleccionados.",
-                "There are no comparable answers for the selected countries.",
-            )
-        )
-    selected = _selected_country_keys(selected_countries)
-    missing_selected_names: list[str] = []
-    if selected:
-        available_detail_keys = set(dataframe["country_key"].astype(str))
-        ranking = _ranking_dataframe_with_missing(ranking_rows)
-        missing_selected_names = [
-            str(row.country)
-            for row in ranking.itertuples()
-            if _country_key(row.iso, row.country) in selected
-            and (
-                pd.isna(row.value)
-                or _country_key(row.iso, row.country) not in available_detail_keys
-            )
-        ]
-        dataframe = dataframe[dataframe["country_key"].isin(selected)]
-    else:
-        leading = _numeric_ranking_dataframe(ranking_rows).head(8)
-        leading_keys = {_country_key(row.iso, row.country) for row in leading.itertuples()}
-        dataframe = dataframe[dataframe["country_key"].isin(leading_keys)]
-    if dataframe.empty:
-        return empty_figure(
-            _chart_text(
-                language,
-                "Los países seleccionados no tienen respuestas para esta consulta.",
-                "The selected countries have no responses for this query.",
+                "No hay distribuciones de respuestas para esta selección.",
+                "There are no response distributions for this selection.",
             )
         )
 
-    dataframe = dataframe.copy()
+    response_order = dataframe["response_key"].drop_duplicates().tolist()
     labels = _response_labels(dataframe)
-    answer_order = list(dict.fromkeys(dataframe["response_key"].astype(str).tolist()))
+    x_labels = [labels.get(str(key), str(key)) for key in response_order]
+    countries = (
+        dataframe[["country_key", "country", "iso"]]
+        .drop_duplicates("country_key")
+        .sort_values("country", key=lambda values: values.str.casefold(), kind="stable")
+    )
+    missing_label = _chart_text(language, "Sin datos", "No data")
     figure = go.Figure()
-    for (_country_key_value, country, iso), rows in dataframe.groupby(
-        ["country_key", "country", "iso"],
-        sort=True,
-        dropna=False,
-    ):
-        values_by_answer = rows.set_index("response_key")["numeric_value"].to_dict()
-        values = [values_by_answer.get(answer) for answer in answer_order]
+    missing_values = 0
+    for country_row in countries.itertuples(index=False):
+        country_data = dataframe[dataframe["country_key"].eq(country_row.country_key)].set_index(
+            "response_key"
+        )
+        values: list[float | None] = []
+        hover_rows: list[list[str]] = []
+        for response_key in response_order:
+            response_row = (
+                country_data.loc[response_key] if response_key in country_data.index else None
+            )
+            if isinstance(response_row, pd.DataFrame):
+                response_row = response_row.iloc[0]
+            raw_value = response_row.get("numeric_value") if response_row is not None else None
+            value = float(raw_value) if pd.notna(raw_value) else None
+            missing_values += int(value is None)
+            values.append(value)
+            hover_rows.append(
+                [
+                    str(country_row.country),
+                    labels.get(str(response_key), str(response_key)),
+                    format_percentage(value) or missing_label,
+                    str(response_row.get("year") or year or missing_label)
+                    if response_row is not None
+                    else str(year or missing_label),
+                    str(response_row.get("source") or "FRA") if response_row is not None else "FRA",
+                    str(response_row.get("question") or indicator or missing_label)
+                    if response_row is not None
+                    else str(indicator or missing_label),
+                    str(response_row.get("filter_a") or "All")
+                    if response_row is not None
+                    else "All",
+                    str(response_row.get("filter_b") or "All")
+                    if response_row is not None
+                    else "All",
+                ]
+            )
         figure.add_trace(
             go.Bar(
-                name=str(country),
-                x=[labels.get(answer, answer) for answer in answer_order],
+                x=x_labels,
                 y=values,
-                marker={"color": country_color(iso, country)},
-                customdata=[
-                    [
-                        str(iso),
-                        (
-                            f"{value:.2f}%"
-                            if pd.notna(value)
-                            else _chart_text(language, "Sin datos", "No data")
-                        ),
-                    ]
-                    for value in values
-                ],
-                hovertemplate="<b>%{fullData.name}</b><br>%{x}: %{customdata[1]}<extra></extra>",
+                name=str(country_row.country),
+                marker={"color": country_color(country_row.iso, country_row.country)},
+                customdata=hover_rows,
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    + _chart_text(language, "Respuesta", "Answer")
+                    + ": %{customdata[1]}<br>"
+                    + _chart_text(language, "Porcentaje", "Percentage")
+                    + ": %{customdata[2]}<br>"
+                    + _chart_text(language, "Año", "Year")
+                    + ": %{customdata[3]}<br>"
+                    + _chart_text(language, "Indicador", "Indicator")
+                    + ": %{customdata[5]}<br>"
+                    + _chart_text(language, "Fuente", "Source")
+                    + ": %{customdata[4]}<br>"
+                    + _chart_text(language, "Filtros", "Filters")
+                    + ": %{customdata[6]} · %{customdata[7]}<extra></extra>"
+                ),
             )
         )
+
+    country_count = len(countries)
+    minimum_width = max(760, 150 + len(response_order) * max(150, country_count * 24))
+    _apply_base_layout(figure, margin={"l": 72, "r": 28, "t": 58, "b": 155})
     figure.update_layout(
+        autosize=True,
         barmode="group",
-        xaxis={"title": _chart_text(language, "Respuesta", "Answer")},
-        yaxis={"title": _chart_text(language, "Valor (%)", "Value (%)"), "range": [0, 105]},
+        bargap=0.2,
+        bargroupgap=0.06,
+        height=610 if country_count > 12 else 560,
+        meta={"minimum_width": minimum_width},
+        xaxis={
+            "title": _chart_text(language, "Respuesta", "Answer"),
+            "categoryorder": "array",
+            "categoryarray": x_labels,
+            "automargin": True,
+        },
+        yaxis={
+            "title": _chart_text(language, "Porcentaje", "Percentage"),
+            "range": [0, 100],
+            "ticksuffix": "%",
+            "automargin": True,
+        },
+        legend={
+            "title": {"text": _chart_text(language, "País", "Country")},
+            "orientation": "h",
+            "y": -0.2,
+            "yanchor": "top",
+        },
         showlegend=True,
-        legend={"orientation": "h", "y": -0.24},
-        height=max(380, min(700, 340 + 24 * len(tuple(figure.data)))),
     )
-    _apply_base_layout(figure, margin={"l": 55, "r": 25, "t": 20, "b": 95})
-    figure.update_layout(showlegend=True)
-    if missing_selected_names:
+    if missing_values:
         figure.add_annotation(
             text=(
-                f"{_chart_text(language, 'Sin datos', 'No data')}: "
-                f"{', '.join(missing_selected_names)}"
+                f"{_chart_text(language, 'Valores ausentes', 'Missing values')}: {missing_values}"
             ),
-            x=0,
+            x=1,
             y=1.08,
             xref="paper",
             yref="paper",
             showarrow=False,
-            xanchor="left",
-            font={"color": MISSING_PERCENTAGE_COLOR, "size": 12},
+            xanchor="right",
         )
+    logger.info(
+        "response_country_comparison countries_rendered=%d responses=%d missing_values=%d",
+        country_count,
+        len(response_order),
+        missing_values,
+    )
     return figure
 
 
@@ -2155,204 +2267,136 @@ def build_combined_heatmap(
     return figure
 
 
-def build_indicator_radar(
-    data_rows: list[dict[str, Any]],
-    *,
-    source: str,
-    selected_countries: list[str] | None = None,
+def build_experience_legal_radar(
+    payload: dict[str, Any],
+    country_iso: str | None,
     language: str = "es",
-) -> tuple[go.Figure, bool]:
-    dataframe = pd.DataFrame(data_rows)
-    incompatible_message = _chart_text(
+) -> tuple[go.Figure, bool, str, str]:
+    """Compare explicitly mapped lived-experience and legal-protection dimensions."""
+    rows = pd.DataFrame(payload.get("rows") or [])
+    empty_message = _chart_text(
         language,
-        "Este indicador no dispone de tres dimensiones comparables.",
-        "This indicator does not provide three comparable dimensions.",
+        "No hay suficientes datos comparables para generar este radar.",
+        "There is not enough comparable data to generate this radar.",
     )
-    if dataframe.empty:
-        return empty_figure(incompatible_message), False
+    if rows.empty or not country_iso:
+        return empty_figure(empty_message), False, "", empty_message
 
-    radar_data: pd.DataFrame
-    if source == "FRA":
-        response_data = _response_comparison_dataframe(data_rows)
-        if response_data.empty or not response_data.get(
-            "numeric_measure_present", pd.Series(dtype=bool)
-        ).any():
-            return empty_figure(incompatible_message), False
-        response_data["dimension"] = response_data["response_label"].astype(str)
-        radar_data = response_data[
-            ["country", "iso", "country_key", "dimension", "numeric_value"]
-        ].rename(columns={"numeric_value": "radar_value"})
-    else:
-        legal = dataframe.copy()
-        required = {
-            "country",
-            "iso",
-            "category",
-            "criterion",
-            "criterion_value",
-            "criterion_weight",
-        }
-        if not required.issubset(legal.columns):
-            return empty_figure(incompatible_message), False
-        legal = legal[
-            legal["category"].astype(str).ne("Ranking total")
-            & legal["criterion"].astype(str).str.strip().ne("")
-        ]
-        if legal.empty:
-            return empty_figure(incompatible_message), False
-        legal["normalized_value"] = [
-            _normalized_criterion_value(
-                _safe_chart_float(value),
-                _safe_chart_float(weight),
-            )
-            for value, weight in zip(
-                legal["criterion_value"],
-                legal["criterion_weight"],
-                strict=True,
-            )
-        ]
-        legal["radar_value"] = pd.to_numeric(legal["normalized_value"], errors="coerce") * 100
-        category_count = legal["category"].dropna().astype(str).nunique()
-        if category_count >= 3:
-            legal["dimension"] = legal["category"].astype(str)
-            radar_data = legal.groupby(
-                ["country", "iso", "dimension"],
-                dropna=False,
-                as_index=False,
-            ).agg(radar_value=("radar_value", "mean"))
-        else:
-            legal["dimension"] = [
-                get_criterion_metadata(
-                    {
-                        "category": row.category,
-                        "indicator": row.criterion,
-                    },
-                    language,
-                )["display_title"]
-                for row in legal.itertuples()
-            ]
-            radar_data = legal[["country", "iso", "dimension", "radar_value"]]
-        radar_data["country_key"] = [
-            _country_key(iso, country)
-            for iso, country in zip(radar_data["iso"], radar_data["country"], strict=True)
-        ]
+    iso = normalize_country_code(country_iso) or str(country_iso).strip().upper()
+    focus = rows[rows["iso"].astype(str).str.upper().eq(iso)].copy()
+    focus["experience_score"] = pd.to_numeric(focus["experience_score"], errors="coerce")
+    focus["legal_score"] = pd.to_numeric(focus["legal_score"], errors="coerce")
+    focus = focus.dropna(subset=["experience_score", "legal_score"])
+    if focus["dimension"].nunique() < 3:
+        return empty_figure(empty_message), False, "", empty_message
 
-    coverage = (
-        radar_data.dropna(subset=["radar_value"])
-        .groupby("dimension")["country_key"]
-        .nunique()
-        .sort_values(ascending=False)
+    dimension_metadata = payload.get("dimensions") or []
+    dimension_order = [
+        str(item.get("key"))
+        for item in dimension_metadata
+        if isinstance(item, dict) and item.get("key") in set(focus["dimension"])
+    ]
+    label_by_key = {
+        str(item.get("key")): str(
+            item.get("label_en") if language == "en" else item.get("label_es")
+        )
+        for item in dimension_metadata
+        if isinstance(item, dict)
+    }
+    focus = focus.set_index("dimension").reindex(dimension_order)
+    labels = [label_by_key.get(key, key) for key in dimension_order]
+    all_rows = rows[rows["dimension"].isin(dimension_order)].copy()
+    all_rows["experience_score"] = pd.to_numeric(all_rows["experience_score"], errors="coerce")
+    all_rows["legal_score"] = pd.to_numeric(all_rows["legal_score"], errors="coerce")
+    means = (
+        all_rows.groupby("dimension", dropna=False)[["experience_score", "legal_score"]]
+        .mean()
+        .reindex(dimension_order)
     )
-    dimensions = coverage.index.astype(str).tolist()[:10]
-    if len(dimensions) < 3:
-        return empty_figure(incompatible_message), False
-    radar_data = radar_data[radar_data["dimension"].astype(str).isin(dimensions)]
 
-    selected = _selected_country_keys(selected_countries)
-    if selected:
-        radar_data = radar_data[radar_data["country_key"].isin(selected)]
-    else:
-        leading = (
-            radar_data.groupby(
-                ["country_key", "country", "iso"],
-                as_index=False,
-            )
-            .agg(radar_value=("radar_value", "mean"))
-            .nlargest(4, columns="radar_value")
-        )
-        radar_data = radar_data[radar_data["country_key"].isin(leading["country_key"])]
-    if radar_data.empty:
-        return (
-            empty_figure(
-                _chart_text(
-                    language,
-                    "Los países seleccionados no tienen dimensiones para este radar.",
-                    "The selected countries have no dimensions for this radar chart.",
-                )
-            ),
-            True,
-        )
-
-    pivot = radar_data.pivot_table(
-        index=["country_key", "country", "iso"],
-        columns="dimension",
-        values="radar_value",
-        aggfunc="mean",
-    ).reindex(columns=dimensions)
+    fallback_name = (
+        str(focus["country"].dropna().iloc[0]) if focus["country"].notna().any() else iso
+    )
+    country_name = country_labels(iso, fallback_name)[1 if language == "en" else 0]
+    experience_label = _chart_text(language, "Experiencia real", "Real-life experience")
+    legal_label = _chart_text(language, "Protección legal", "Legal protection")
+    eu_label = _chart_text(language, "Media europea", "European average")
     figure = go.Figure()
-    for raw_index, values in pivot.iterrows():
-        _key, country, iso = cast(tuple[Any, Any, Any], raw_index)
-        numeric_values = [float(value) if pd.notna(value) else None for value in values.tolist()]
-        color = country_color(iso, country)
+    series = (
+        (
+            f"{experience_label} · {country_name}",
+            focus["experience_score"].tolist(),
+            "#C62828",
+            "solid",
+            0.2,
+        ),
+        (f"{legal_label} · {country_name}", focus["legal_score"].tolist(), "#2F6BDE", "solid", 0.2),
+        (
+            f"{eu_label} · {experience_label}",
+            means["experience_score"].tolist(),
+            "#C62828",
+            "dot",
+            0.0,
+        ),
+        (f"{eu_label} · {legal_label}", means["legal_score"].tolist(), "#2F6BDE", "dot", 0.0),
+    )
+    for name, values, color, dash, opacity in series:
+        numeric_values = [float(value) if pd.notna(value) else None for value in values]
         figure.add_trace(
             go.Scatterpolar(
                 r=[*numeric_values, numeric_values[0]],
-                theta=[*dimensions, dimensions[0]],
-                fill="toself",
-                name=str(country),
-                line={"color": color, "width": 2},
-                marker={"color": color},
-                opacity=0.72,
-                hovertemplate="<b>%{fullData.name}</b><br>%{theta}: %{r:.2f}%<extra></extra>",
+                theta=[*labels, labels[0]],
+                name=name,
+                mode="lines+markers",
+                fill="toself" if opacity else "none",
+                fillcolor=f"rgba({','.join(str(int(color[index : index + 2], 16)) for index in (1, 3, 5))},{opacity})"
+                if opacity
+                else None,
+                line={"color": color, "width": 2.4, "dash": dash},
+                marker={"color": color, "size": 7},
+                hovertemplate="<b>%{fullData.name}</b><br>%{theta}: %{r:.1f}%<extra></extra>",
             )
         )
+    _apply_base_layout(figure, margin={"l": 70, "r": 70, "t": 55, "b": 115})
     figure.update_layout(
-        polar={"radialaxis": {"visible": True, "range": [0, 100], "ticksuffix": "%"}},
+        autosize=True,
+        height=650,
+        polar={
+            "radialaxis": {"visible": True, "range": [0, 100], "ticksuffix": "%"},
+        },
+        legend={"orientation": "h", "y": -0.12, "yanchor": "top", "x": 0.5, "xanchor": "center"},
         showlegend=True,
-        legend={"orientation": "h", "y": -0.18},
     )
-    _apply_base_layout(figure, margin={"l": 55, "r": 55, "t": 45, "b": 80})
-    figure.update_layout(showlegend=True)
-    return figure, True
-
-
-def build_combined_radar(
-    combined_rows: list[dict[str, Any]],
-    selected_countries: list[str] | None = None,
-    language: str = "es",
-) -> go.Figure:
-    dataframe = pd.DataFrame(combined_rows)
-    if dataframe.empty:
-        return empty_figure(
-            _chart_text(
-                language,
-                "No hay países para comparar en radar.",
-                "There are no countries to compare in the radar chart.",
-            )
+    fra_year = payload.get("fra_year") or _chart_text(language, "sin año", "year unavailable")
+    ilga_year = payload.get("ilga_year") or _chart_text(language, "sin año", "year unavailable")
+    metadata = _chart_text(
+        language,
+        f"Experiencia real: FRA {fra_year} · Protección legal: ILGA-Europe {ilga_year}",
+        f"Real-life experience: FRA {fra_year} · Legal protection: ILGA-Europe {ilga_year}",
+    )
+    differences = focus["legal_score"] - focus["experience_score"]
+    largest_key = str(differences.abs().idxmax())
+    largest_label = label_by_key.get(largest_key, largest_key)
+    average_gap = float(differences.mean())
+    if average_gap >= 4:
+        interpretation = _chart_text(
+            language,
+            f"La protección legal se sitúa descriptivamente por encima de la experiencia real, con la mayor diferencia en {largest_label}. Las fuentes no permiten inferir causalidad.",
+            f"Legal protection is descriptively above real-life experience, with the largest gap in {largest_label}. These sources do not support causal inference.",
         )
-    selected = _selected_country_keys(selected_countries)
-    if selected:
-        dataframe = dataframe[dataframe["iso"].astype(str).str.upper().isin(selected)]
+    elif average_gap <= -4:
+        interpretation = _chart_text(
+            language,
+            f"La experiencia real se sitúa descriptivamente por encima de la protección legal, con la mayor diferencia en {largest_label}. Las fuentes no permiten inferir causalidad.",
+            f"Real-life experience is descriptively above legal protection, with the largest gap in {largest_label}. These sources do not support causal inference.",
+        )
     else:
-        dataframe = dataframe.head(4)
-    figure = go.Figure()
-    dimensions = [
-        _chart_text(language, "Protección legal", "Legal protection"),
-        _chart_text(language, "Experiencia real", "Lived experience"),
-        _chart_text(language, "Equilibrio", "Balance"),
-    ]
-    for row in dataframe.head(6).itertuples():
-        ilga_value = float(str(row.ilga_value))
-        fra_value = float(str(row.fra_value))
-        balance = max(0.0, 100 - abs(ilga_value - fra_value))
-        values = [ilga_value, fra_value, balance]
-        color = country_color(getattr(row, "iso", None), row.country)
-        figure.add_trace(
-            go.Scatterpolar(
-                r=[*values, values[0]],
-                theta=[*dimensions, dimensions[0]],
-                fill="toself",
-                name=str(row.country),
-                line={"color": color},
-                marker={"color": color},
-            )
+        interpretation = _chart_text(
+            language,
+            f"Las dos series presentan un nivel medio similar; la mayor diferencia descriptiva aparece en {largest_label}. Las fuentes no permiten inferir causalidad.",
+            f"The two series have a similar average level; the largest descriptive gap is in {largest_label}. These sources do not support causal inference.",
         )
-    figure.update_layout(
-        polar={"radialaxis": {"visible": True, "range": [0, 100]}}, showlegend=True
-    )
-    _apply_base_layout(figure, margin={"l": 45, "r": 45, "t": 35, "b": 45})
-    figure.update_layout(showlegend=True)
-    return figure
+    return figure, True, metadata, interpretation
 
 
 def _numeric_ranking_dataframe(ranking_rows: list[dict[str, Any]]) -> pd.DataFrame:

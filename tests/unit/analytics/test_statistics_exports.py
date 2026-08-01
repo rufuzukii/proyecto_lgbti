@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import shutil
 import subprocess
@@ -17,6 +19,7 @@ from app.analytics.statistics_exports import (
     EXPORT_WIDTH,
     build_export_filename,
     chart_graph_config,
+    export_summary_table,
     prepare_figure_for_export,
 )
 from app.dash.pages.statistics import _render_dashboard, build_statistics_layout
@@ -47,6 +50,109 @@ def test_export_filename_is_descriptive_safe_and_bounded() -> None:
     assert "<" not in malicious
     assert "/" not in malicious
     assert len(malicious) <= EXPORT_FILENAME_MAX_LENGTH
+
+
+def test_statistics_css_allows_dynamic_graphs_to_grow_before_footer() -> None:
+    css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+
+    assert ".stats-response-panel {" in css
+    assert "min-height: 520px;" in css
+    assert ".stats-response-panel .dash-graph" in css
+    assert ".stats-panel-wrapper > .stats-panel {\n  height: auto;" in css
+    assert ".stats-results-table-panel {\n  overflow: hidden;" in css
+
+
+def test_statistics_css_has_full_width_ranking_and_mobile_boundaries() -> None:
+    css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+
+    assert ".stats-ranking-panel,\n.stats-response-comparison-section," in css
+    assert ".stats-response-comparison-scroll {" in css
+    assert "  grid-column: 1 / -1;" in css
+    assert "@media (min-width: 768px) and (max-width: 1199px)" in css
+    assert "@media (max-width: 767px)" in css
+    assert "@media (max-width: 480px)" in css
+    assert ".stats-grid {\n    gap: 0.85rem;\n    grid-template-columns: minmax(0, 1fr);" in css
+    assert ".stats-results-table-scroll {\n  max-width: 100%;" in css
+    assert "overflow-x: auto;" in css
+    assert ".stats-results-grid {\n    min-width: 680px;" in css
+    assert ".stats-mapbox-graph {\n    height: 400px;\n    min-height: 360px;" in css
+    assert "overflow-x: hidden" not in css
+
+
+def test_create_report_button_uses_theme_specific_text_colours() -> None:
+    css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    reports_css = (ROOT / "src/app/dash/assets/reports.css").read_text(encoding="utf-8")
+
+    assert ".stats-create-report-link {" in css
+    assert "  color: #000;" in css
+    assert 'body[data-theme="dark"] .stats-create-report-link,' in css
+    assert "  color: #fff;" in css
+    assert ".stats-create-report-link:active" in css
+    assert '.stats-create-report-link[aria-disabled="true"]' in css
+    assert ".stats-create-report-link" not in reports_css
+
+
+def test_summary_table_csv_uses_visible_columns_order_bom_and_safe_values() -> None:
+    table_export = export_summary_table(
+        [
+            {
+                "country": "Espa\u00f1a",
+                "value": 63.5,
+                "year": 2024,
+                "indicator": "Discriminaci\u00f3n",
+                "status": "Disponible",
+                "_id": "secret",
+            },
+            {
+                "country": '=HYPERLINK("https://invalid")',
+                "value": -2.5,
+                "year": 2024,
+                "indicator": "Seguridad",
+                "status": "Sin datos",
+            },
+        ],
+        [
+            {"field": "country", "headerName": "Pa\u00eds"},
+            {"field": "value", "headerName": "Valor (%)"},
+            {"field": "year", "headerName": "A\u00f1o"},
+            {"field": "indicator", "headerName": "Indicador"},
+            {"field": "status", "headerName": "Estado"},
+            {"field": "_id", "headerName": "Internal"},
+        ],
+        language="es",
+        metadata={
+            "indicator": "Discriminaci\u00f3n",
+            "year": 2024,
+            "countries": [],
+        },
+    )
+
+    assert table_export.content.startswith("\ufeff")
+    parsed = list(csv.reader(io.StringIO(table_export.content.lstrip("\ufeff")), delimiter=";"))
+    assert parsed[0] == ["Pa\u00eds", "Valor (%)", "A\u00f1o", "Indicador", "Estado"]
+    assert parsed[1] == ["Espa\u00f1a", "63.5", "2024", "Discriminaci\u00f3n", "Disponible"]
+    assert parsed[2][0].startswith("'=")
+    assert parsed[2][1] == "-2.5"
+    assert all("secret" not in row for row in parsed)
+    assert table_export.filename == ("rainbow-lens_tabla-resumida_discriminacion_europa_2024.csv")
+    assert table_export.mime_type == "text/csv;charset=utf-8"
+
+
+def test_summary_table_csv_preserves_english_headers_and_rejects_empty_data() -> None:
+    table_export = export_summary_table(
+        [{"country": "Spain", "value": 63.5}],
+        [
+            {"field": "country", "headerName": "Country"},
+            {"field": "value", "headerName": "Value (%)"},
+        ],
+        language="en",
+        metadata={"indicator": "Discrimination", "year": 2024, "countries": ["Spain"]},
+    )
+
+    assert "Country;Value (%)" in table_export.content
+    assert table_export.filename.endswith("_spain_2024.csv")
+    with pytest.raises(ValueError, match="rows are required"):
+        export_summary_table([], [], language="en", metadata={})
 
 
 def test_export_metadata_keeps_current_context_and_document_resolution() -> None:
@@ -124,8 +230,8 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
         "stats-ranking-graph",
         "stats-distribution-graph",
         "stats-average-graph",
-        "stats-country-comparison-graph",
-        "stats-radar-graph",
+        "stats-response-comparison-graph",
+        "stats-experience-legal-radar-graph",
         "stats-response-detail-graph",
         "stats-gap-graph",
         "stats-scatter-graph",
@@ -267,6 +373,12 @@ def test_rendered_export_metadata_tracks_visible_filters_and_country_selection()
     assert "Respuesta: Yes" in selected_title
     assert "Age: 25-39" in selected_title
     assert "Fuente: FRA EU LGBTIQ Survey III" in selected_title
+    assert selected[-3] is False
+    assert selected[-2] == ""
+    assert selected[-1] == "stats-table-export-status is-hidden"
+    empty = _render_dashboard({}, [], "en")
+    assert empty[-3] is True
+    assert empty[-2] == "No data available to export"
 
 
 def _walk(component):

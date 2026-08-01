@@ -26,7 +26,9 @@ Genera un token aleatorio por sesión y lo valida mediante comparación constant
 
 ### `permissions.py`
 
-Declara permisos por rol y una regla de acceso por `UserType`. La interfaz actual usa comprobaciones directas de rol para administración; esta matriz todavía no gobierna todas las rutas.
+Declara la matriz central por rol técnico y perfil funcional. `ADMIN` funciona como
+comodín y hereda automáticamente cualquier permiso nuevo. Importación, informes
+avanzados, juegos y herramientas docentes reutilizan esta matriz en rutas y callbacks.
 
 ### `__init__.py`
 

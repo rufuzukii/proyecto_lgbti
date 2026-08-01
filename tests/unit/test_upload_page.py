@@ -34,7 +34,7 @@ def test_upload_callback_does_not_write_to_its_own_input_properties(monkeypatch)
         "current_user",
         SimpleNamespace(
             is_authenticated=True,
-            role="common",
+            role="admin",
             get_id=lambda: "user-1",
         ),
     )
@@ -105,6 +105,34 @@ def test_upload_callback_rejects_anonymous_users(monkeypatch) -> None:
     )
 
     assert process_calls == []
+    assert result.to_plotly_json()["props"]["className"] == "upload-message upload-message-error"
+
+
+def test_upload_callback_rejects_authenticated_non_admin_users(monkeypatch) -> None:
+    monkeypatch.setattr(
+        upload_page,
+        "current_user",
+        SimpleNamespace(is_authenticated=True, role="common", user_type="rrhh"),
+    )
+    app = Dash("upload-profile-auth-test", suppress_callback_exceptions=True)
+    app.layout = html.Div(
+        [
+            dcc.Upload(id="upload-csv"),
+            html.Div(id="upload-control-container"),
+            dcc.Dropdown(id="data-source"),
+            html.Div(id="upload-output"),
+            html.Div(id="upload-loading-modal"),
+        ]
+    )
+    upload_page.register_upload_callbacks(app)
+    callback = next(
+        metadata["callback"].__wrapped__
+        for metadata in app.callback_map.values()
+        if metadata["inputs"] == [{"id": "upload-csv", "property": "contents"}]
+    )
+
+    result, _reset = callback(_data_uri(b"%PDF-1.4\n%%EOF"), "report.pdf", "FELGTB")
+
     assert result.to_plotly_json()["props"]["className"] == "upload-message upload-message-error"
 
 
@@ -244,7 +272,7 @@ def test_concurrent_upload_is_rejected_without_starting_a_second_import(monkeypa
         "current_user",
         SimpleNamespace(
             is_authenticated=True,
-            role="common",
+            role="admin",
             get_id=lambda: "user-1",
         ),
     )

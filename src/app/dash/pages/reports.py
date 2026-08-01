@@ -20,7 +20,11 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics_exports import chart_graph_config
 from app.analytics.statistics_normalizers import normalize_text_key
-from app.auth.permissions import Permission, user_has_permission
+from app.auth.permissions import (
+    Permission,
+    can_configure_advanced_reports,
+    user_has_permission,
+)
 from app.auth.rate_limit import create_rate_limiter
 from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
@@ -95,10 +99,13 @@ SECTION_LABELS = {
 CHART_LABELS = {
     "ranking": ("Ranking europeo", "European ranking"),
     "average": ("Comparación con la media", "Average comparison"),
-    "countries": ("Comparación entre países", "Country comparison"),
+    "countries": ("Comparación de respuestas", "Response comparison"),
     "responses": ("Detalle de respuestas o criterios", "Response or criteria detail"),
     "temporal": ("Evolución temporal", "Temporal evolution"),
-    "radar": ("Radar comparativo", "Comparative radar"),
+    "radar": (
+        "Experiencia real y protección legal",
+        "Real-life experience and legal protection",
+    ),
 }
 
 
@@ -113,7 +120,7 @@ def build_reports_layout(
     if current_user.is_authenticated:
         values.setdefault("organization", getattr(current_user, "organization", "") or "")
         values.setdefault("author", getattr(current_user, "username", "") or "")
-    config = ReportConfiguration.from_mapping(values)
+    config = _report_configuration_for_user(values)
     years = _year_options(config.source)
     year = config.year or (years[0]["value"] if years else None)
     categories = _category_options(config.source, year)
@@ -144,9 +151,9 @@ def build_reports_layout(
                     html.Header(
                         [
                             html.P(
-                                "Informes para RRHH",
+                                "Informes personalizados",
                                 className="stats-eyebrow",
-                                **text_attrs("Informes para RRHH", "HR reports"),
+                                **text_attrs("Informes personalizados", "Custom reports"),
                             ),
                             html.H1(
                                 text(
@@ -175,7 +182,10 @@ def build_reports_layout(
                                 indicators,
                                 country_options,
                             ),
-                            _content_panel(config),
+                            _content_panel(
+                                config,
+                                advanced_enabled=can_configure_advanced_reports(current_user),
+                            ),
                         ],
                         className="reports-config-grid",
                     ),
@@ -417,6 +427,11 @@ def register_reports_callbacks(app: Dash) -> None:
                 True,
             )
         preview_rate_limiter.record_failure(limiter_key)
+        if not can_configure_advanced_reports(current_user):
+            mode = "automatic"
+            detail_level = "standard"
+            sections = list(DEFAULT_REPORT_SECTIONS)
+            charts = list(DEFAULT_REPORT_CHARTS)
         config = _configuration_from_controls(
             title=title,
             organization=organization,
@@ -511,7 +526,7 @@ def register_reports_callbacks(app: Dash) -> None:
             )
         download_rate_limiter.record_failure(limiter_key)
         try:
-            generated = generate_report_pdf(ReportConfiguration.from_mapping(stored_configuration))
+            generated = generate_report_pdf(_report_configuration_for_user(stored_configuration))
         except ReportGenerationError:
             return (
                 no_update,
@@ -531,6 +546,20 @@ def register_reports_callbacks(app: Dash) -> None:
             _t(language, "Informe generado correctamente.", "Report generated successfully."),
             "reports-status reports-status-ok",
         )
+
+
+def _report_configuration_for_user(values: dict[str, Any] | None) -> ReportConfiguration:
+    payload = dict(values or {})
+    if not can_configure_advanced_reports(current_user):
+        payload.update(
+            {
+                "mode": "automatic",
+                "detail_level": "standard",
+                "sections": list(DEFAULT_REPORT_SECTIONS),
+                "charts": list(DEFAULT_REPORT_CHARTS),
+            }
+        )
+    return ReportConfiguration.from_mapping(payload)
 
 
 def _configuration_panel(
@@ -682,10 +711,21 @@ def _configuration_panel(
     )
 
 
-def _content_panel(config: ReportConfiguration) -> Component:
+def _content_panel(
+    config: ReportConfiguration,
+    *,
+    advanced_enabled: bool,
+) -> Component:
     return html.Section(
         [
             html.H2(text("2. Selección de contenido", "2. Content selection")),
+            html.P(
+                text(
+                    "Las opciones avanzadas están disponibles para perfiles RRHH, Político y ONG.",
+                    "Advanced options are available to HR, Policy maker and NGO profiles.",
+                ),
+                className="reports-advanced-notice" if not advanced_enabled else "is-hidden",
+            ),
             _field(
                 "Modo",
                 "Mode",
@@ -695,10 +735,12 @@ def _content_panel(config: ReportConfiguration) -> Component:
                         {
                             "label": text("Automático", "Automatic"),
                             "value": "automatic",
+                            "disabled": not advanced_enabled,
                         },
                         {
                             "label": text("Personalizado", "Custom"),
                             "value": "custom",
+                            "disabled": not advanced_enabled,
                         },
                     ],
                     value=config.mode,
@@ -713,10 +755,12 @@ def _content_panel(config: ReportConfiguration) -> Component:
                         {
                             "label": text("Estándar", "Standard"),
                             "value": "standard",
+                            "disabled": not advanced_enabled,
                         },
                         {
                             "label": text("Detallado", "Detailed"),
                             "value": "detailed",
+                            "disabled": not advanced_enabled,
                         },
                     ],
                     value=config.detail_level,
@@ -732,6 +776,7 @@ def _content_panel(config: ReportConfiguration) -> Component:
                         {
                             "label": text(*SECTION_LABELS[key]),
                             "value": key,
+                            "disabled": not advanced_enabled,
                         }
                         for key in DEFAULT_REPORT_SECTIONS
                     ],
@@ -748,6 +793,7 @@ def _content_panel(config: ReportConfiguration) -> Component:
                         {
                             "label": text(*CHART_LABELS[key]),
                             "value": key,
+                            "disabled": not advanced_enabled,
                         }
                         for key in DEFAULT_REPORT_CHARTS
                     ],

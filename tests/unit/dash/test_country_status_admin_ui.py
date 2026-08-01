@@ -138,12 +138,20 @@ def test_home_map_contains_only_legal_controls(monkeypatch) -> None:
 
     layout = build_home_layout()
     layout_ids = _component_ids(layout)
+    map_graph = _find_component_by_id(layout, "home-main-map")
+    map_props = map_graph.to_plotly_json()["props"]
 
     assert "home-ilga-year" in layout_ids
     assert "home-country-select" in layout_ids
     assert "home-map-mode" not in layout_ids
     assert "home-fra-category" not in layout_ids
     assert "home-fra-indicator" not in layout_ids
+    assert map_props["config"]["scrollZoom"] is False
+    assert map_props["config"]["doubleClick"] is False
+    assert {"zoomInGeo", "zoomOutGeo", "resetGeo"}.issubset(
+        map_props["config"]["modeBarButtonsToRemove"]
+    )
+    assert map_props["figure"].layout.dragmode is False
     assert not _contains_text(layout, "Discriminación y datos sociales")
 
 

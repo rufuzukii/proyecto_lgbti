@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import csv
 import html
+import io
 import logging
 import re
 import unicodedata
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,12 +22,32 @@ EXPORT_FILENAME_MAX_LENGTH = 160
 REPORT_EXPORT_WIDTH = 1400
 REPORT_EXPORT_HEIGHT = 780
 REPORT_EXPORT_SCALE = 1.25
+SUMMARY_TABLE_EXPORT_FIELDS = (
+    "country",
+    "country_code",
+    "response",
+    "value",
+    "ranking",
+    "difference",
+    "difference_percentage",
+    "year",
+    "source",
+    "indicator",
+    "status",
+)
 
 logger = logging.getLogger(__name__)
 
 
 class ChartExportError(RuntimeError):
     """Raised when Plotly cannot render a report chart."""
+
+
+@dataclass(frozen=True)
+class SummaryTableExport:
+    content: str
+    filename: str
+    mime_type: str
 
 
 def chart_graph_config() -> Any:
@@ -41,8 +64,10 @@ def build_export_filename(
     indicator: str,
     countries: Iterable[str] | None,
     year: int | str | None,
+    *,
+    file_format: str = EXPORT_FORMAT,
 ) -> str:
-    """Build a safe, descriptive PNG filename with a bounded length."""
+    """Build a safe, descriptive export filename with a bounded length."""
     country_values = [str(country).strip() for country in countries or [] if str(country).strip()]
     parts = [
         "rainbow-lens",
@@ -53,8 +78,64 @@ def build_export_filename(
     if year is not None and str(year).strip():
         parts.append(_slug(str(year), fallback="periodo", limit=12))
     stem = "_".join(parts)
-    suffix = f".{EXPORT_FORMAT}"
+    clean_format = re.sub(r"[^a-z0-9]", "", str(file_format).lower()) or EXPORT_FORMAT
+    suffix = f".{clean_format}"
     return f"{stem[: EXPORT_FILENAME_MAX_LENGTH - len(suffix)].rstrip('_-')}{suffix}"
+
+
+def export_summary_table(
+    rows: list[dict[str, Any]],
+    columns: list[dict[str, Any]],
+    *,
+    language: str,
+    metadata: dict[str, Any],
+) -> SummaryTableExport:
+    """Serialize the current AG Grid rows without exposing internal fields."""
+    if not rows:
+        raise ValueError("Summary table rows are required for export.")
+
+    allowed_fields = set(SUMMARY_TABLE_EXPORT_FIELDS)
+    visible_columns = [
+        (str(column.get("field") or ""), str(column.get("headerName") or ""))
+        for column in columns
+        if str(column.get("field") or "") in allowed_fields
+    ]
+    if not visible_columns:
+        raise ValueError("Summary table columns are required for export.")
+
+    output = io.StringIO(newline="")
+    output.write("\ufeff")
+    writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
+    writer.writerow([header or field for field, header in visible_columns])
+    writer.writerows(
+        [_csv_safe_value(row.get(field)) for field, _header in visible_columns] for row in rows
+    )
+
+    countries = metadata.get("countries")
+    country_values = countries if isinstance(countries, list) else []
+    table_label = "summary-table" if language == "en" else "tabla-resumida"
+    filename = build_export_filename(
+        table_label,
+        str(metadata.get("indicator") or ""),
+        country_values,
+        metadata.get("year"),
+        file_format="csv",
+    )
+    return SummaryTableExport(
+        content=output.getvalue(),
+        filename=filename,
+        mime_type="text/csv;charset=utf-8",
+    )
+
+
+def _csv_safe_value(value: Any) -> Any:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        return value
+    if value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+        return f"'{value}"
+    return value
 
 
 def prepare_figure_for_export(
@@ -93,6 +174,8 @@ def prepare_figure_for_export(
     )
 
     margin = cast(Any, figure).layout.margin
+    existing_meta = cast(Any, figure).layout.meta
+    preserved_meta = dict(existing_meta) if isinstance(existing_meta, dict) else {}
     figure.update_layout(
         title={
             "text": title_text,
@@ -107,6 +190,7 @@ def prepare_figure_for_export(
             "b": margin.b if margin.b is not None else 55,
         },
         meta={
+            **preserved_meta,
             "export_filename": build_export_filename(
                 chart_type,
                 indicator,

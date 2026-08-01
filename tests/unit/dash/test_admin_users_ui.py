@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import app.dash.pages.admin.users as admin_users
-from app.users.schemas import UserRead, UserRole
+from app.users.schemas import UserRead, UserRole, UserType
 
 
 def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
@@ -40,14 +40,28 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     assert all("disabled" not in _props(field) for field in editable_fields)
     assert "disabled" not in _props(role)
     role_options = _props(role)["children"]
-    assert [_props(option)["value"] for option in role_options] == ["common", "admin"]
+    assert [_props(option)["value"] for option in role_options] == [
+        "comun",
+        "docente",
+        "rrhh",
+        "politico",
+        "ong",
+        "admin",
+    ]
     assert all("selected" not in _props(option) for option in role_options)
 
 
 def test_admin_role_is_selected_natively_without_react_selected_prop() -> None:
     options = admin_users._admin_role_options(UserRole.ADMIN)
 
-    assert [_props(option)["value"] for option in options] == ["admin", "common"]
+    assert [_props(option)["value"] for option in options] == [
+        "admin",
+        UserType.COMUN.value,
+        UserType.DOCENTE.value,
+        UserType.RRHH.value,
+        UserType.POLITICO.value,
+        UserType.ONG.value,
+    ]
     assert all("selected" not in _props(option) for option in options)
 
 

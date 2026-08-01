@@ -57,6 +57,17 @@ class IlgaStatisticsQuery:
 
 
 @dataclass(frozen=True)
+class ExperienceLegalRadarQuery:
+    fra_year: int | None = None
+    ilga_year: int | None = None
+    countries: tuple[str, ...] = ()
+    filter_a_name: str | None = "All"
+    filter_a_value: str | None = "All"
+    filter_b_name: str | None = "All"
+    filter_b_value: str | None = "All"
+
+
+@dataclass(frozen=True)
 class ValidationResult:
     ok: bool
     message: str = ""

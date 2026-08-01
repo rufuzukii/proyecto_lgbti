@@ -59,6 +59,26 @@ COUNTRY_NAMES: dict[str, tuple[str, str]] = {
     "XK": ("Kosovo", "Kosovo"),
 }
 UI_TEXT = {
+    "download_table": {
+        "es": "Descargar tabla",
+        "en": "Download table",
+    },
+    "download_csv": {
+        "es": "Descargar CSV",
+        "en": "Download CSV",
+    },
+    "download_excel": {
+        "es": "Descargar Excel",
+        "en": "Download Excel",
+    },
+    "no_export_data": {
+        "es": "No hay datos para exportar",
+        "en": "No data available to export",
+    },
+    "no_data": {
+        "es": "Sin datos",
+        "en": "No data",
+    },
     "chart_value": {
         "es": "Valor",
         "en": "Value",
@@ -74,6 +94,22 @@ UI_TEXT = {
     "chart_no_data_grey": {
         "es": "Sin datos: gris",
         "en": "No data: grey",
+    },
+    "contact_success": {
+        "es": "Tu mensaje se ha enviado correctamente.",
+        "en": "Your message was sent successfully.",
+    },
+    "contact_validation_error": {
+        "es": "Revisa los campos y los archivos adjuntos antes de volver a intentarlo.",
+        "en": "Review the fields and attachments before trying again.",
+    },
+    "contact_delivery_error": {
+        "es": "No se ha podido enviar el mensaje. Inténtalo de nuevo más tarde.",
+        "en": "The message could not be sent. Try again later.",
+    },
+    "contact_rate_limited": {
+        "es": "Has alcanzado el límite temporal de envíos. Inténtalo más tarde.",
+        "en": "You have reached the temporary submission limit. Try again later.",
     },
 }
 

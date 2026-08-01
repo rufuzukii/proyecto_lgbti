@@ -101,6 +101,20 @@ def initialize_mongo_indexes() -> None:
             ),
         ],
     )
+    _ensure_collection_indexes(
+        "didactica_progress",
+        [IndexModel([("user_id", ASCENDING)], unique=True, name="didactica_user_unique")],
+    )
+    _ensure_collection_indexes(
+        "didactica_docente_games",
+        [
+            IndexModel([("id", ASCENDING)], unique=True, name="docente_game_id_unique"),
+            IndexModel(
+                [("owner_id", ASCENDING), ("updated_at", DESCENDING)],
+                name="docente_games_by_owner",
+            ),
+        ],
+    )
 
 
 def _ensure_collection_indexes(
