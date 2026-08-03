@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import logging
 import math
 import re
 import unicodedata
@@ -12,9 +13,15 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import pandas as pd
-from pandas.errors import EmptyDataError, ParserError
 
+from app.import_to_db.fra.validation import (
+    fra_metadata_key,
+    is_fra_footnote_symbol,
+    is_valid_fra_category,
+)
 from app.import_to_db.utils import normalize_header
+
+logger = logging.getLogger(__name__)
 
 FRA_SOURCE_NAME = "EU LGBTIQ+ Survey III (FRA 2023)"
 FRA_SOURCE_TYPE = "EU_SURVEY"
@@ -23,9 +30,7 @@ FRA_DEFAULT_SURVEY_YEAR = 2023
 FraCsvVersion = Literal["legacy_long", "current_wide"]
 PercentageScale = Literal["percentage_points", "proportion"]
 
-MISSING_PERCENTAGE_VALUES = frozenset(
-    {"", "null", "none", "n/a", "na", ":", "-", "..", "‡", "¹"}
-)
+MISSING_PERCENTAGE_VALUES = frozenset({"", "null", "none", "n/a", "na", ":", "-", "..", "‡", "¹"})
 HTML_PREFIXES = ("<html", "<!doctype html", "<?xml")
 
 NORMALIZED_FRA_COLUMNS = (
@@ -109,9 +114,7 @@ FILTER_GROUP_A_KEYS = frozenset(
         "making_ends_meet",
     }
 )
-FILTER_GROUP_B_KEYS = frozenset(
-    {"sexual_orientation", "gender_expression", "sex_characteristics"}
-)
+FILTER_GROUP_B_KEYS = frozenset({"sexual_orientation", "gender_expression", "sex_characteristics"})
 
 COLUMN_ALIASES = {
     "country": "country",
@@ -274,6 +277,7 @@ class FraCsvSchema:
     year_column: str | None
     percentage_scale: PercentageScale
     metadata_layout: str
+    header_row: int = 0
 
 
 @dataclass(frozen=True)
@@ -286,7 +290,21 @@ class FraCsvMetadata:
     response: str = ""
     filters: dict[str, str] = field(default_factory=dict)
     note: str = ""
+    disclaimer: str = ""
     footnotes: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "date": self.downloaded_at,
+            "filters": dict(self.filters),
+            "question_code": self.indicator_id,
+            "source": self.source,
+            "hyperlink": self.hyperlink,
+            "note": self.note,
+            "disclaimer": self.disclaimer,
+            "footnotes": dict(self.footnotes),
+            "survey_year": self.survey_year,
+        }
 
 
 def decode_fra_csv_bytes(payload: bytes) -> str:
@@ -312,21 +330,37 @@ def read_fra_csv_text(csv_text: str) -> tuple[pd.DataFrame, FraCsvSchema]:
     ensure_fra_csv_text(csv_text)
     delimiter = _detect_delimiter(csv_text)
     try:
-        dataframe = pd.read_csv(
-            StringIO(csv_text),
-            sep=delimiter,
-            engine="python",
-            dtype=str,
-            keep_default_na=False,
-            na_filter=False,
-        )
-    except EmptyDataError as exc:
-        raise InvalidFraCsvError("empty_fra_csv") from exc
-    except (ParserError, csv.Error) as exc:
+        rows = list(csv.reader(StringIO(csv_text), delimiter=delimiter))
+    except csv.Error as exc:
         raise InvalidFraCsvError("malformed_fra_csv") from exc
-    if dataframe.empty and len(dataframe.columns) == 0:
-        raise InvalidFraCsvError("empty_fra_csv")
-    return dataframe, detect_fra_csv_schema(dataframe, delimiter=delimiter)
+    header_row = find_fra_header_row(rows)
+    dataframe = _dataframe_from_fra_rows(rows, header_row=header_row)
+    dataframe.attrs["fra_preamble_rows"] = rows[:header_row]
+    dataframe.attrs["fra_header_row"] = header_row
+    schema = detect_fra_csv_schema(dataframe, delimiter=delimiter)
+    logger.info(
+        "fra_header_row_detected",
+        extra={
+            "header_row": header_row,
+            "delimiter": delimiter,
+            "columns": list(schema.original_columns),
+            "schema_version": schema.version,
+        },
+    )
+    return dataframe, schema
+
+
+def find_fra_header_row(rows: list[list[str]]) -> int:
+    best_index: int | None = None
+    best_score = 0
+    for index, row in enumerate(rows):
+        score = _fra_header_score(row)
+        if score > best_score:
+            best_index = index
+            best_score = score
+    if best_index is None:
+        raise UnsupportedFraCsvSchemaError("fra_csv_header_not_detected")
+    return best_index
 
 
 def detect_fra_csv_schema(
@@ -337,9 +371,7 @@ def detect_fra_csv_schema(
     if dataframe is None or len(dataframe.columns) == 0:
         raise InvalidFraCsvError("empty_fra_csv")
     original_columns = tuple(str(column) for column in dataframe.columns)
-    normalized_to_original = {
-        normalize_header(column): column for column in original_columns
-    }
+    normalized_to_original = {normalize_header(column): column for column in original_columns}
     normalized = set(normalized_to_original)
     current_required = {"topic", "question", "question_code", "location", "country"}
     if current_required.issubset(normalized):
@@ -360,6 +392,7 @@ def detect_fra_csv_schema(
             year_column=normalized_to_original.get("year"),
             percentage_scale="percentage_points",
             metadata_layout="fra_footer_rows",
+            header_row=int(dataframe.attrs.get("fra_header_row") or 0),
         )
 
     canonical = {
@@ -367,8 +400,7 @@ def detect_fra_csv_schema(
         for normalized_name, original in normalized_to_original.items()
     }
     if {"country", "question"}.issubset(canonical) and (
-        {"answer", "percentage"}.issubset(canonical)
-        or {"answer", "proportion"}.issubset(canonical)
+        {"answer", "percentage"}.issubset(canonical) or {"answer", "proportion"}.issubset(canonical)
     ):
         percentage_key = "proportion" if "proportion" in canonical else "percentage"
         return FraCsvSchema(
@@ -383,12 +415,13 @@ def detect_fra_csv_schema(
             response_column=canonical["answer"],
             percentage_columns=(canonical[percentage_key],),
             year_column=canonical.get("year"),
-            percentage_scale=("proportion" if percentage_key == "proportion" else "percentage_points"),
+            percentage_scale=(
+                "proportion" if percentage_key == "proportion" else "percentage_points"
+            ),
             metadata_layout="rows",
+            header_row=int(dataframe.attrs.get("fra_header_row") or 0),
         )
-    raise UnsupportedFraCsvSchemaError(
-        "unsupported_fra_csv_schema:" + ",".join(original_columns)
-    )
+    raise UnsupportedFraCsvSchemaError("unsupported_fra_csv_schema:" + ",".join(original_columns))
 
 
 def normalize_fra_csv(
@@ -398,16 +431,16 @@ def normalize_fra_csv(
     path_filters: Mapping[str, str] | None = None,
 ) -> pd.DataFrame:
     if schema.version == "current_wide":
-        normalized = normalize_current_fra_csv(
-            dataframe, schema=schema, path_filters=path_filters
-        )
+        normalized = normalize_current_fra_csv(dataframe, schema=schema, path_filters=path_filters)
     elif schema.version == "legacy_long":
-        normalized = normalize_legacy_fra_csv(
-            dataframe, schema=schema, path_filters=path_filters
-        )
+        normalized = normalize_legacy_fra_csv(dataframe, schema=schema, path_filters=path_filters)
     else:
         raise UnsupportedFraCsvSchemaError(f"unsupported_fra_csv_schema:{schema.version}")
-    return validate_normalized_fra(normalized)
+    metadata = dict(normalized.attrs.get("fra_metadata") or {})
+    validated = validate_normalized_fra(normalized)
+    validated.attrs["fra_metadata"] = metadata
+    _log_fra_import_summary(dataframe, schema, validated)
+    return validated
 
 
 def normalize_current_fra_csv(
@@ -424,6 +457,9 @@ def normalize_current_fra_csv(
     filter_scope = _split_filter_scope(filters)
     rows: list[dict[str, Any]] = []
     for record in dataframe.to_dict(orient="records"):
+        label = _clean(record.get(current_schema.topic_column or ""))
+        if fra_metadata_key(label) or is_fra_footnote_symbol(label):
+            continue
         indicator_id = _clean(record.get(current_schema.indicator_column or ""))
         country_name = _clean(record.get(current_schema.country_name_column))
         question_text = _clean(record.get(current_schema.question_column))
@@ -433,9 +469,9 @@ def normalize_current_fra_csv(
             record.get(current_schema.country_code_column or ""), country_name
         )
         topic = _clean(record.get(current_schema.topic_column or "")) or "Uncategorized"
-        specific_category, question = split_fra_question(
-            question_text, fallback_category=topic
-        )
+        if not is_valid_fra_category(topic):
+            continue
+        specific_category, question = split_fra_question(question_text, fallback_category=topic)
         for percentage_column in current_schema.percentage_columns:
             response = _clean(percentage_column)
             if (
@@ -447,9 +483,9 @@ def normalize_current_fra_csv(
                     f"fra_answer_metadata_mismatch:header={response}:metadata={metadata.response}"
                 )
             raw_percentage = _clean(record.get(percentage_column))
-            percentage = parse_fra_percentage(
-                raw_percentage, scale=current_schema.percentage_scale
-            )
+            percentage = parse_fra_percentage(raw_percentage, scale=current_schema.percentage_scale)
+            if percentage is None or is_fra_footnote_symbol(response):
+                continue
             rows.append(
                 _normalized_row(
                     source=metadata.source,
@@ -471,7 +507,9 @@ def normalize_current_fra_csv(
                     schema_version=current_schema.version,
                 )
             )
-    return _normalized_dataframe(rows)
+    normalized = _normalized_dataframe(rows)
+    normalized.attrs["fra_metadata"] = metadata.to_dict()
+    return normalized
 
 
 def normalize_legacy_fra_csv(
@@ -506,15 +544,18 @@ def normalize_legacy_fra_csv(
         filters.update(_legacy_record_filters(record, raw_record, original_to_canonical))
         filter_scope = _split_filter_scope(filters)
         topic = record.get("topic") or record.get("category") or "Uncategorized"
+        if not is_valid_fra_category(topic):
+            continue
         specific_category, question = split_fra_question(
             question_text, fallback_category=record.get("category") or topic
         )
         indicator_id = (
-            record.get("indicator_id")
-            or metadata.indicator_id
-            or build_fra_question_code(question)
+            record.get("indicator_id") or metadata.indicator_id or build_fra_question_code(question)
         )
         raw_percentage = record.get("proportion") or record.get("percentage", "")
+        percentage = parse_fra_percentage(raw_percentage, scale=legacy_schema.percentage_scale)
+        if percentage is None or is_fra_footnote_symbol(response):
+            continue
         rows.append(
             _normalized_row(
                 source=record.get("source") or metadata.source,
@@ -525,12 +566,9 @@ def normalize_legacy_fra_csv(
                 country_name=country_name,
                 country_code=normalize_country_code(record.get("country_code"), country_name),
                 response=response,
-                percentage=parse_fra_percentage(
-                    raw_percentage, scale=legacy_schema.percentage_scale
-                ),
+                percentage=percentage,
                 raw_percentage=raw_percentage,
-                year=_parse_year(record.get("year") or record.get("date"))
-                or metadata.survey_year,
+                year=_parse_year(record.get("year") or record.get("date")) or metadata.survey_year,
                 date=record.get("date") or metadata.downloaded_at,
                 filters=filters,
                 filter_scope=filter_scope,
@@ -539,7 +577,9 @@ def normalize_legacy_fra_csv(
                 schema_version=legacy_schema.version,
             )
         )
-    return _normalized_dataframe(rows)
+    normalized = _normalized_dataframe(rows)
+    normalized.attrs["fra_metadata"] = metadata.to_dict()
+    return normalized
 
 
 def extract_fra_csv_metadata(
@@ -554,6 +594,7 @@ def extract_fra_csv_metadata(
     response = ""
     filters: dict[str, str] = {}
     note = ""
+    disclaimer = ""
     footnotes: dict[str, str] = {}
     if dataframe.empty and len(dataframe.columns) == 0:
         return FraCsvMetadata()
@@ -565,9 +606,19 @@ def extract_fra_csv_metadata(
         label_column = schema.country_name_column
         value_column = schema.topic_column or schema.question_column
 
-    for record in dataframe.to_dict(orient="records"):
-        raw_label = _clean(record.get(label_column))
-        raw_value = _clean(record.get(value_column))
+    metadata_pairs = [
+        (_clean(row[0]) if row else "", _clean(row[1]) if len(row) > 1 else "")
+        for row in dataframe.attrs.get("fra_preamble_rows", [])
+    ]
+    metadata_pairs.extend(
+        (
+            _clean(record.get(label_column)),
+            _clean(record.get(value_column)),
+        )
+        for record in dataframe.to_dict(orient="records")
+    )
+
+    for raw_label, raw_value in metadata_pairs:
         label = normalize_header(raw_label.rstrip(":"))
         if not raw_label:
             continue
@@ -584,6 +635,8 @@ def extract_fra_csv_metadata(
             hyperlink = raw_value
         elif label in {"note", "nota"}:
             note = raw_value
+        elif label == "general_disclaimer_of_the_fra_website":
+            disclaimer = raw_value
         elif _looks_like_footnote_label(raw_label) and raw_value:
             footnotes[raw_label.strip()] = raw_value
     return FraCsvMetadata(
@@ -595,6 +648,7 @@ def extract_fra_csv_metadata(
         response=response,
         filters=filters,
         note=note,
+        disclaimer=disclaimer,
         footnotes=footnotes,
     )
 
@@ -658,12 +712,12 @@ def validate_normalized_fra(dataframe: pd.DataFrame) -> pd.DataFrame:
         column for column in NORMALIZED_FRA_COLUMNS if column not in dataframe.columns
     ]
     if missing_columns:
-        raise InvalidFraCsvError(
-            "fra_normalization_missing_columns:" + ",".join(missing_columns)
-        )
+        raise InvalidFraCsvError("fra_normalization_missing_columns:" + ",".join(missing_columns))
     for column in ("category", "question", "indicator_id", "country_name", "response"):
         if dataframe[column].astype(str).str.strip().eq("").any():
             raise InvalidFraCsvError(f"fra_normalization_missing_value:{column}")
+    if not dataframe["category"].map(is_valid_fra_category).all():
+        raise InvalidFraCsvError("fra_normalization_invalid_category")
     numeric = dataframe["percentage"].dropna().map(float)
     if ((numeric < 0) | (numeric > 100)).any():
         raise InvalidFraCsvError("fra_percentage_out_of_range")
@@ -681,9 +735,7 @@ def validate_normalized_fra(dataframe: pd.DataFrame) -> pd.DataFrame:
         "filter_b_type",
         "filter_b_value",
     ]
-    conflict_groups = dataframe.groupby(identity, dropna=False)["percentage"].nunique(
-        dropna=False
-    )
+    conflict_groups = dataframe.groupby(identity, dropna=False)["percentage"].nunique(dropna=False)
     if (conflict_groups > 1).any():
         raise FraDuplicateConflictError("fra_conflicting_duplicate_rows")
     return dataframe.drop_duplicates(subset=identity, keep="first").reset_index(drop=True)
@@ -715,9 +767,9 @@ def validate_fra_filter_scope(
                 row.filter_b_value,
             )
         )
-        for row in dataframe[
-            ["filter_a_type", "filter_a_value", "filter_b_type", "filter_b_value"]
-        ].drop_duplicates().itertuples(index=False)
+        for row in dataframe[["filter_a_type", "filter_a_value", "filter_b_type", "filter_b_value"]]
+        .drop_duplicates()
+        .itertuples(index=False)
     }
     if {tuple(map(str.casefold, item)) for item in detected} != {
         tuple(map(str.casefold, expected_scope))
@@ -835,7 +887,12 @@ def _split_filter_scope(filters: Mapping[str, str]) -> tuple[str, str, str, str]
 def _display_filter(filter_type: Any, filter_value: Any) -> tuple[str, str]:
     clean_type = _clean(filter_type)
     clean_value = _clean(filter_value)
-    if not clean_type or not clean_value or clean_type.casefold() == "all" or clean_value.casefold() == "all":
+    if (
+        not clean_type
+        or not clean_value
+        or clean_type.casefold() == "all"
+        or clean_value.casefold() == "all"
+    ):
         return "All", "All"
     return clean_type, clean_value
 
@@ -864,11 +921,40 @@ def _legacy_record_filters(
             continue
         normalized_original = normalize_header(str(original))
         canonical = original_to_canonical.get(str(original), normalized_original)
-        if normalized_original in {"filter", "filters", "filter1", "filter2", "filter3", "filter_1", "filter_2", "filter_3", "filtro", "filtros", "filtro1", "filtro2", "filtro3"}:
+        if normalized_original in {
+            "filter",
+            "filters",
+            "filter1",
+            "filter2",
+            "filter3",
+            "filter_1",
+            "filter_2",
+            "filter_3",
+            "filtro",
+            "filtros",
+            "filtro1",
+            "filtro2",
+            "filtro3",
+        }:
             _response, parsed = parse_fra_filter_metadata(value)
             filters.update(parsed)
             continue
-        if canonical in {"country", "country_code", "topic", "category", "question", "answer", "percentage", "proportion", "notes", "source", "indicator_id", "date", "year", "hyperlink"}:
+        if canonical in {
+            "country",
+            "country_code",
+            "topic",
+            "category",
+            "question",
+            "answer",
+            "percentage",
+            "proportion",
+            "notes",
+            "source",
+            "indicator_id",
+            "date",
+            "year",
+            "hyperlink",
+        }:
             continue
         filter_key = FILTER_TYPE_TO_KEY.get(_filter_type_key(original))
         if filter_key:
@@ -877,22 +963,8 @@ def _legacy_record_filters(
 
 
 def _is_metadata_record(record: Mapping[str, str]) -> bool:
-    return normalize_header(record.get("country", "").rstrip(":")) in {
-        "source",
-        "fuente",
-        "date",
-        "fecha",
-        "question_code",
-        "codigo_pregunta",
-        "indicator_code",
-        "hyperlink",
-        "link",
-        "url",
-        "note",
-        "nota",
-        "filters",
-        "filtros",
-    }
+    labels = (record.get("country", ""), record.get("topic", ""), record.get("category", ""))
+    return any(fra_metadata_key(label) for label in labels)
 
 
 def _is_footnote_record(record: Mapping[str, str]) -> bool:
@@ -917,8 +989,7 @@ def _parse_year(value: Any) -> int | None:
 
 
 def _looks_like_footnote_label(value: str) -> bool:
-    clean = value.strip()
-    return bool(clean and len(clean) <= 4 and not clean.isalnum())
+    return is_fra_footnote_symbol(value)
 
 
 def _filter_type_key(value: Any) -> str:
@@ -945,13 +1016,15 @@ def _detect_current_answer_columns(
     for normalized, original in normalized_to_original.items():
         if normalized in RESERVED_CURRENT_COLUMNS:
             continue
-        values = dataframe.loc[
-            ~dataframe[topic_column].astype(str).str.strip().str.endswith(":"), original
-        ].astype(str).str.strip()
+        values = (
+            dataframe.loc[
+                ~dataframe[topic_column].astype(str).str.strip().str.endswith(":"), original
+            ]
+            .astype(str)
+            .str.strip()
+        )
         meaningful = [
-            value
-            for value in values
-            if value.casefold() not in MISSING_PERCENTAGE_VALUES
+            value for value in values if value.casefold() not in MISSING_PERCENTAGE_VALUES
         ]
         if meaningful and all(
             _percentage_looks_valid(value, scale="percentage_points") for value in meaningful
@@ -969,6 +1042,23 @@ def _percentage_looks_valid(value: Any, *, scale: PercentageScale) -> bool:
 
 
 def _detect_delimiter(csv_text: str) -> str:
+    candidates: list[tuple[int, int, str]] = []
+    for delimiter in (",", ";", "\t", "|"):
+        try:
+            rows = list(csv.reader(StringIO(csv_text), delimiter=delimiter))
+            header_row = find_fra_header_row(rows)
+        except csv.Error, UnsupportedFraCsvSchemaError:
+            continue
+        candidates.append(
+            (
+                _fra_header_score(rows[header_row]),
+                len(rows[header_row]),
+                delimiter,
+            )
+        )
+    if candidates:
+        return max(candidates, key=lambda item: (item[0], item[1]))[2]
+
     sample = "\n".join(csv_text.splitlines()[:25])
     try:
         return csv.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
@@ -978,3 +1068,118 @@ def _detect_delimiter(csv_text: str) -> str:
         if count:
             return delimiter
         raise UnsupportedFraCsvSchemaError("fra_csv_delimiter_not_detected") from exc
+
+
+def _fra_header_score(row: list[str]) -> int:
+    normalized = {normalize_header(value) for value in row if str(value).strip()}
+    current_required = {"topic", "question", "question_code", "location", "country"}
+    if current_required.issubset(normalized):
+        return 100 + len(normalized)
+
+    canonical = {COLUMN_ALIASES.get(value, value) for value in normalized}
+    if {"country", "question", "answer"}.issubset(canonical) and (
+        "percentage" in canonical or "proportion" in canonical
+    ):
+        return 80 + len(canonical)
+    return 0
+
+
+def _dataframe_from_fra_rows(rows: list[list[str]], *, header_row: int) -> pd.DataFrame:
+    if header_row >= len(rows):
+        raise InvalidFraCsvError("fra_csv_header_out_of_range")
+    columns = [str(value).lstrip("\ufeff").strip() for value in rows[header_row]]
+    if not columns or any(not column for column in columns):
+        raise UnsupportedFraCsvSchemaError("fra_csv_header_contains_empty_columns")
+    normalized_columns = [normalize_header(column) for column in columns]
+    if len(set(normalized_columns)) != len(normalized_columns):
+        raise UnsupportedFraCsvSchemaError("fra_csv_header_contains_duplicate_columns")
+
+    records: list[list[str]] = []
+    for row in rows[header_row + 1 :]:
+        values = [str(value) for value in row]
+        if len(values) > len(columns):
+            if any(value.strip() for value in values[len(columns) :]):
+                raise InvalidFraCsvError("fra_csv_row_has_extra_columns")
+            values = values[: len(columns)]
+        records.append(values + [""] * (len(columns) - len(values)))
+    return pd.DataFrame(records, columns=columns, dtype=str)
+
+
+def _log_fra_import_summary(
+    dataframe: pd.DataFrame,
+    schema: FraCsvSchema,
+    normalized: pd.DataFrame,
+) -> None:
+    preamble = list(dataframe.attrs.get("fra_preamble_rows") or [])
+    metadata_rows = 0
+    footnote_rows = 0
+    valid_source_rows = 0
+    metadata_keys: set[str] = set()
+    footnote_symbols: set[str] = set()
+
+    for row in preamble:
+        label = _clean(row[0]) if row else ""
+        key = fra_metadata_key(label)
+        if key:
+            metadata_rows += 1
+            metadata_keys.add(key)
+        elif is_fra_footnote_symbol(label):
+            footnote_rows += 1
+            footnote_symbols.add(label)
+
+    label_column = schema.topic_column or schema.country_name_column
+    for record in dataframe.to_dict(orient="records"):
+        label = _clean(record.get(label_column))
+        key = fra_metadata_key(label)
+        if key:
+            metadata_rows += 1
+            metadata_keys.add(key)
+            continue
+        if is_fra_footnote_symbol(label):
+            footnote_rows += 1
+            footnote_symbols.add(label)
+            continue
+        if _fra_record_has_statistic_shape(cast(Mapping[str, Any], record), schema):
+            valid_source_rows += 1
+
+    rows_read = len(preamble) + len(dataframe)
+    skipped_rows = max(0, rows_read - metadata_rows - footnote_rows - valid_source_rows)
+    logger.debug(
+        "fra_auxiliary_rows_detected",
+        extra={
+            "metadata_keys": sorted(metadata_keys),
+            "footnote_symbols": sorted(footnote_symbols),
+        },
+    )
+    logger.info(
+        "fra_import_summary",
+        extra={
+            "rows_read": rows_read,
+            "rows_valid": len(normalized),
+            "source_data_rows": valid_source_rows,
+            "metadata_rows": metadata_rows,
+            "footnote_rows": footnote_rows,
+            "skipped_rows": skipped_rows,
+            "header_row": schema.header_row,
+            "schema_version": schema.version,
+        },
+    )
+
+
+def _fra_record_has_statistic_shape(
+    record: Mapping[str, Any],
+    schema: FraCsvSchema,
+) -> bool:
+    category = _clean(record.get(schema.topic_column or "")) or _clean(record.get("category"))
+    country = _clean(record.get(schema.country_name_column))
+    question = _clean(record.get(schema.question_column))
+    indicator = _clean(record.get(schema.indicator_column or ""))
+    if not country or not question or not is_valid_fra_category(category):
+        return False
+    if schema.version == "current_wide" and not indicator:
+        return False
+    return any(
+        _percentage_looks_valid(record.get(column), scale=schema.percentage_scale)
+        and parse_fra_percentage(record.get(column), scale=schema.percentage_scale) is not None
+        for column in schema.percentage_columns
+    )

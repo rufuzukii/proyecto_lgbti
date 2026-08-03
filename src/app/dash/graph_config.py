@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
+
+from dash import dcc
 
 _FIXED_MAP_MODE_BAR_BUTTONS = (
     "zoomInGeo",
@@ -19,7 +20,7 @@ _FIXED_MAP_MODE_BAR_BUTTONS = (
 def fixed_europe_map_config(
     *,
     extra_mode_bar_buttons_to_remove: Iterable[str] = (),
-) -> dict[str, Any]:
+) -> dcc.Graph.Config:
     """Return a non-navigable map config that keeps hover and click events active."""
     buttons = list(
         dict.fromkeys((*_FIXED_MAP_MODE_BAR_BUTTONS, *extra_mode_bar_buttons_to_remove))

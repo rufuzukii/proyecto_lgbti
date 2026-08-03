@@ -55,7 +55,7 @@ def render_database_unavailable_response(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Servicio no disponible</title>
+  <title>RainbowLens Datahub · Servicio no disponible</title>
   <link rel="stylesheet" href="/assets/styles.css">
   <link rel="icon" href="/assets/img/rainbow_lens_icono.ico">
 </head>

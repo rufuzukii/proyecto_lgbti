@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 
 from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
@@ -70,9 +70,11 @@ def build_home_layout() -> Component:
                                     html.Div(
                                         [
                                             html.P(
-                                                "RainbowLens",
+                                                "RainbowLens Datahub",
                                                 className="home-map-eyebrow",
-                                                **text_attrs("RainbowLens", "RainbowLens"),
+                                                **text_attrs(
+                                                    "RainbowLens Datahub", "RainbowLens Datahub"
+                                                ),
                                             ),
                                             html.H1(
                                                 text(
@@ -149,10 +151,13 @@ def build_home_layout() -> Component:
                                 id="home-main-map",
                                 figure=_home_map_figure(build_ilga_choropleth(ilga_document)),
                                 className="home-europe-map",
-                                config={
-                                    "displayModeBar": True,
-                                    **fixed_europe_map_config(),
-                                },
+                                config=cast(
+                                    dcc.Graph.Config,
+                                    {
+                                        "displayModeBar": True,
+                                        **fixed_europe_map_config(),
+                                    },
+                                ),
                             ),
                             dcc.Store(id="home-country-status-refresh", data=0),
                             dcc.Store(id="home-country-status-editor-state", data={}),

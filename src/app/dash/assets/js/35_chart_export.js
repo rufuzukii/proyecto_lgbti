@@ -32,7 +32,7 @@
       ? graph.layout.meta
       : {};
     const format = String(meta.export_format || button.dataset.exportFormat || "png").toLowerCase();
-    const filename = safeFilename(meta.export_filename || `rainbow-lens_${targetId || "grafico"}`, format);
+    const filename = safeFilename(meta.export_filename || `rainbowlens-datahub_${targetId || "grafico"}`, format);
     const options = {
       format,
       filename,
@@ -75,7 +75,7 @@
       .replace(new RegExp(`\\.${format}$`, "i"), "")
       .replace(/[^a-zA-Z0-9_-]+/g, "-")
       .replace(/^-+|-+$/g, "");
-    return withoutExtension || "rainbow-lens_grafico";
+    return withoutExtension || "rainbowlens-datahub_grafico";
   }
 
   function positiveInteger(value, fallback) {

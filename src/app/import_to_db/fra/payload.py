@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -108,15 +109,20 @@ def _build_question_document(document: dict[str, Any], code: str) -> dict[str, A
     specific_category = _specific_category(document)
     question_text = str(document.get("question") or "").strip()
 
-    return {
+    output = {
         "id": str(ObjectId()),
         "code": code,
         "dataset": FRA_DATASET_CODE,
+        "record_type": "statistic",
         "category": _category(document),
         "specific_category": specific_category,
         "question": question_text,
         "answers": [],
     }
+    metadata = document.get("metadata")
+    if isinstance(metadata, dict) and metadata:
+        output["metadata"] = deepcopy(metadata)
+    return output
 
 
 def _build_answer(answer: dict[str, Any]) -> dict[str, Any]:

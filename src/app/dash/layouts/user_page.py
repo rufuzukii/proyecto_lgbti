@@ -9,7 +9,7 @@ from flask_login import current_user
 from app.auth.csrf import get_csrf_token
 from app.auth.permissions import Permission, user_has_permission
 from app.auth.rate_limit import create_rate_limiter
-from app.dash.i18n import text, text_attrs, ui_text
+from app.dash.i18n import dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
 from app.http_security import rate_limit_key
 from app.users.contact_service import (
@@ -247,11 +247,15 @@ def _quick_actions(
         ),
     ]
     profile = _user_type_value(user_type)
-    if profile in {UserType.RRHH.value, UserType.POLITICO.value, UserType.ONG.value} or _is_admin_role(role):
+    if profile in {
+        UserType.RRHH.value,
+        UserType.POLITICO.value,
+        UserType.ONG.value,
+    } or _is_admin_role(role):
         actions.append(
             (
-                "Informes",
-                "Reports",
+                ui_text("report_module_name", "es"),
+                ui_text("report_module_name", "en"),
                 "/informes",
                 "Crear informes con opciones adaptadas a tu perfil.",
                 "Create reports with options adapted to your profile.",
@@ -326,10 +330,10 @@ def _contact_panel(
         [
             html.H2("¡Contáctanos!", **text_attrs("¡Contáctanos!", "Contact us!")),
             html.P(
-                "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens.",
+                "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens Datahub.",
                 **text_attrs(
-                    "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens.",
-                    "Request a new profile or send us any suggestion about RainbowLens.",
+                    "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens Datahub.",
+                    "Request a new profile or send us any suggestion about RainbowLens Datahub.",
                 ),
             ),
             html.Div(
@@ -414,7 +418,7 @@ def _contact_panel(
                             html.P(
                                 id="user-contact-file-summary",
                                 className="auth-help",
-                                **{"aria-live": "polite"},
+                                **dash_attrs({"aria-live": "polite"}),
                             ),
                         ],
                         className="user-contact-field",
@@ -430,7 +434,7 @@ def _contact_panel(
                         id="user-contact-status",
                         className="auth-message is-hidden",
                         role="status",
-                        **{"aria-live": "polite"},
+                        **dash_attrs({"aria-live": "polite"}),
                     ),
                     html.Span(
                         _role_label(role, user_type),

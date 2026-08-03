@@ -108,7 +108,7 @@ def send_role_contact_email(
         raise ContactDeliveryError("smtp_not_configured")
 
     email_message = EmailMessage()
-    email_message["Subject"] = f"RainbowLens · Contacto · {clean_subject}"
+    email_message["Subject"] = f"RainbowLens Datahub · Contacto · {clean_subject}"
     email_message["From"] = sender
     email_message["To"] = CONTACT_RECIPIENT
     email_message["Reply-To"] = clean_email

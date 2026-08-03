@@ -143,7 +143,15 @@ def test_mongo_preparation_converts_json_id_to_object_id() -> None:
         "category": "Discrimination",
         "specific_category": "Discrimination in areas of life",
         "question": "Felt discriminated at work",
-        "answers": [],
+        "answers": [
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 21.0,
+                "filters": [{"type": "All", "value": "All"}],
+            }
+        ],
     }
 
     prepared = _prepare_indicator_document(payload)

@@ -43,11 +43,11 @@ PRIMARY_SOURCES = [
             ),
             (
                 (
-                    "En RainbowLens, FELGTBI+ aporta contexto estatal sobre activismo, "
+                    "En RainbowLens Datahub, FELGTBI+ aporta contexto estatal sobre activismo, "
                     "derechos y organización social LGBTIQ+."
                 ),
                 (
-                    "In RainbowLens, FELGTBI+ adds national context on LGBTIQ+ "
+                    "In RainbowLens Datahub, FELGTBI+ adds national context on LGBTIQ+ "
                     "activism, rights and social organisation."
                 ),
             ),
@@ -94,11 +94,11 @@ PRIMARY_SOURCES = [
             ),
             (
                 (
-                    "En RainbowLens, FRA complementa el mapa legal de ILGA con "
+                    "En RainbowLens Datahub, FRA complementa el mapa legal de ILGA con "
                     "evidencia social comparable entre países."
                 ),
                 (
-                    "In RainbowLens, FRA complements ILGA's legal map with "
+                    "In RainbowLens Datahub, FRA complements ILGA's legal map with "
                     "social evidence that can be compared across countries."
                 ),
             ),
@@ -249,22 +249,25 @@ def build_about_layout() -> Component:
                                 **text_attrs("Fuentes y metodología", "Sources and methodology"),
                             ),
                             html.H1(
-                                "Acerca de RainbowLens",
-                                **text_attrs("Acerca de RainbowLens", "About RainbowLens"),
+                                "Acerca de RainbowLens Datahub",
+                                **text_attrs(
+                                    "Acerca de RainbowLens Datahub",
+                                    "About RainbowLens Datahub",
+                                ),
                             ),
                             html.P(
                                 (
-                                    "RainbowLens integra fuentes oficiales para analizar la "
+                                    "RainbowLens Datahub integra fuentes oficiales para analizar la "
                                     "situación legal y social de las personas LGBTIQ+ en Europa."
                                 ),
                                 className="about-lead",
                                 **text_attrs(
                                     (
-                                        "RainbowLens integra fuentes oficiales para analizar la "
+                                        "RainbowLens Datahub integra fuentes oficiales para analizar la "
                                         "situación legal y social de las personas LGBTIQ+ en Europa."
                                     ),
                                     (
-                                        "RainbowLens integrates official sources to analyse the "
+                                        "RainbowLens Datahub integrates official sources to analyse the "
                                         "legal and social situation of LGBTIQ+ people in Europe."
                                     ),
                                 ),
@@ -326,19 +329,19 @@ def build_about_layout() -> Component:
                     ),
                     html.P(
                         (
-                            "Rainbow Lens recopila, organiza y visualiza información procedente "
+                            "RainbowLens Datahub recopila, organiza y visualiza información procedente "
                             "de fuentes externas. La autoría, metodología y responsabilidad de "
                             "los datos corresponden a las organizaciones que publican cada recurso."
                         ),
                         className="about-attribution",
                         **text_attrs(
                             (
-                                "Rainbow Lens recopila, organiza y visualiza información procedente "
+                                "RainbowLens Datahub recopila, organiza y visualiza información procedente "
                                 "de fuentes externas. La autoría, metodología y responsabilidad de "
                                 "los datos corresponden a las organizaciones que publican cada recurso."
                             ),
                             (
-                                "Rainbow Lens collects, organises and visualises information from "
+                                "RainbowLens Datahub collects, organises and visualises information from "
                                 "external sources. Authorship, methodology and responsibility for "
                                 "the data remain with the organisations publishing each resource."
                             ),

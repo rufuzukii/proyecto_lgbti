@@ -18,6 +18,10 @@ from app.cache import cache
 from app.config import get_mongo_config, get_postgres_connect_timeout, get_postgres_dsn
 from app.errors import DatabaseUnavailableError
 from app.import_to_db.felgtbi.semantics import sanitize_report_document
+from app.import_to_db.fra.validation import (
+    INVALID_FRA_CATEGORIES,
+    is_valid_fra_category,
+)
 from app.mongo import get_mongo_client
 
 logger = logging.getLogger(__name__)
@@ -209,18 +213,18 @@ def get_categories() -> list[str]:
     return [str(row["name"]) for row in rows if row.get("name")]
 
 
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS, source_check=True)
 def get_fra_categories() -> list[str]:
     try:
         categories = _mongo_collection("Indicator_fra").distinct(
             "category",
-            {"code": {"$exists": True, "$ne": ""}},
+            _fra_statistic_document_filter(),
         )
     except Exception:
         logger.exception("fra_categories_read_failed")
         return []
     return sorted(
-        {str(category).strip() for category in categories if str(category or "").strip()},
+        {str(category).strip() for category in categories if is_valid_fra_category(category)},
         key=str.casefold,
     )
 
@@ -258,17 +262,18 @@ def get_fra_indicators() -> list[FraIndicator]:
             question=row["question"],
         )
         for row in rows
+        if is_valid_fra_category(row.get("category"))
     ]
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_fra_mongo_indicators_by_category(category: str) -> list[FraIndicator]:
     clean_category = str(category or "").strip()
-    if not clean_category:
+    if not is_valid_fra_category(clean_category):
         return []
     try:
         rows = _mongo_collection("Indicator_fra").find(
-            {"category": clean_category},
+            _fra_statistic_document_filter(category=clean_category),
             {
                 "_id": 0,
                 "code": 1,
@@ -291,6 +296,36 @@ def get_fra_mongo_indicators_by_category(category: str) -> list[FraIndicator]:
     except Exception:
         logger.exception("fra_mongo_category_read_failed", extra={"category": clean_category})
         return []
+
+
+def _fra_statistic_document_filter(*, category: str | None = None) -> dict[str, Any]:
+    category_filter: dict[str, Any] | str
+    if category is None:
+        category_filter = {
+            "$type": "string",
+            "$nin": sorted(INVALID_FRA_CATEGORIES),
+            "$not": {"$regex": r"^\s*$"},
+        }
+    else:
+        category_filter = category
+    return {
+        "$or": [
+            {"record_type": "statistic"},
+            {"record_type": {"$exists": False}},
+        ],
+        "code": {"$exists": True, "$nin": [None, ""]},
+        "category": category_filter,
+        "answers": {
+            "$elemMatch": {
+                "$or": [
+                    {"country": {"$exists": True, "$nin": [None, ""]}},
+                    {"country_code": {"$exists": True, "$nin": [None, ""]}},
+                ],
+                "answer": {"$exists": True, "$nin": [None, ""]},
+                "percentage": {"$type": "number", "$gte": 0, "$lte": 100},
+            }
+        },
+    }
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)

@@ -119,6 +119,7 @@ def create_auth_app() -> Flask:
             rate_limiter.record_failure(rate_key)
             return jsonify({"status": "error", "message": "invalid_credentials"}), 401
         session.clear()
+        session.permanent = True
         login_user(
             AuthUser(
                 id=record.id,

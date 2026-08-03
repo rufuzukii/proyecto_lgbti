@@ -48,7 +48,7 @@ class PDFExporter:
             topMargin=18 * mm,
             bottomMargin=18 * mm,
             title=report.configuration.title,
-            author=report.configuration.author or "RainbowLens",
+            author=report.configuration.author or "RainbowLens Datahub",
             subject="LGBTIQ+ diversity and inclusion",
         )
         styles = _styles()
@@ -552,8 +552,8 @@ def _enabled(report: ReportContent, section: str) -> bool:
 
 
 def _page_decorations(canvas, document, *, cover: bool) -> None:
-    canvas.setCreator("RainbowLens")
-    canvas.setProducer("RainbowLens")
+    canvas.setCreator("RainbowLens Datahub")
+    canvas.setProducer("RainbowLens Datahub")
     canvas.saveState()
     width, height = A4
     canvas.setFillColor(BRAND_BLUE)
@@ -563,7 +563,7 @@ def _page_decorations(canvas, document, *, cover: bool) -> None:
         canvas.line(17 * mm, 14 * mm, width - 17 * mm, 14 * mm)
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(MUTED)
-        canvas.drawString(17 * mm, 9 * mm, "RainbowLens")
+        canvas.drawString(17 * mm, 9 * mm, "RainbowLens Datahub")
         canvas.drawRightString(
             width - 17 * mm,
             9 * mm,

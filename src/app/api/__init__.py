@@ -14,7 +14,7 @@ def create_api_app() -> FastAPI:
     config = get_app_config()
     documentation_url = "/docs" if config.local_mode else None
     app = FastAPI(
-        title="RainbowLens API",
+        title="RainbowLens Datahub API",
         version="0.1.0",
         docs_url=documentation_url,
         redoc_url="/redoc" if config.local_mode else None,

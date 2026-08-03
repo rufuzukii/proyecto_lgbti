@@ -70,7 +70,7 @@ def build_export_filename(
     """Build a safe, descriptive export filename with a bounded length."""
     country_values = [str(country).strip() for country in countries or [] if str(country).strip()]
     parts = [
-        "rainbow-lens",
+        "rainbowlens-datahub",
         _slug(chart_type, fallback="grafico", limit=32),
         _slug(indicator, fallback="estadisticas", limit=64),
         _slug("-".join(country_values), fallback="europa", limit=40),

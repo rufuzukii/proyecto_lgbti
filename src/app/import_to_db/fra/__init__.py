@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from .schema import (
         FraCsvSchema,
         detect_fra_csv_schema,
+        find_fra_header_row,
         normalize_current_fra_csv,
         normalize_legacy_fra_csv,
     )
@@ -49,6 +50,7 @@ _LAZY_EXPORTS = {
     "insert_indicator_fra_json": ("app.import_to_db.fra.mongo", "insert_indicator_fra_json"),
     "FraCsvSchema": ("app.import_to_db.fra.schema", "FraCsvSchema"),
     "detect_fra_csv_schema": ("app.import_to_db.fra.schema", "detect_fra_csv_schema"),
+    "find_fra_header_row": ("app.import_to_db.fra.schema", "find_fra_header_row"),
     "normalize_current_fra_csv": (
         "app.import_to_db.fra.schema",
         "normalize_current_fra_csv",
@@ -88,6 +90,7 @@ __all__ = [
     "convert_fra_csv_files",
     "count_fra_questions",
     "detect_fra_csv_schema",
+    "find_fra_header_row",
     "generate_fra_json",
     "generate_fra_questions_json",
     "insert_indicator_fra_json",

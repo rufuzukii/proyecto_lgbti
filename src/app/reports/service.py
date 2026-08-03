@@ -74,7 +74,7 @@ def generate_report_pdf(configuration: ReportConfiguration) -> GeneratedReport:
     try:
         content = build_report(configuration)
         image_started = time.perf_counter()
-        with tempfile.TemporaryDirectory(prefix="rainbowlens-report-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="rainbowlens-datahub-report-") as temp_dir:
             root = Path(temp_dir).resolve()
             chart_paths = {
                 chart.key: root / f"{index:02d}-{chart.key}.png"

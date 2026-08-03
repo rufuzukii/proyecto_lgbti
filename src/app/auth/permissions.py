@@ -53,9 +53,10 @@ def has_permission(
 ) -> bool:
     if role == UserRole.ADMIN:
         return True
-    return permission in ROLE_PERMISSIONS.get(role, set()) or permission in USER_TYPE_PERMISSIONS.get(
-        user_type, set()
+    type_permissions = (
+        USER_TYPE_PERMISSIONS.get(user_type, set()) if user_type is not None else set()
     )
+    return permission in ROLE_PERMISSIONS.get(role, set()) or permission in type_permissions
 
 
 def user_has_permission(user: object, permission: Permission) -> bool:

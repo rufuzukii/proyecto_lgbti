@@ -59,6 +59,37 @@ COUNTRY_NAMES: dict[str, tuple[str, str]] = {
     "XK": ("Kosovo", "Kosovo"),
 }
 UI_TEXT = {
+    "report_module_name": {
+        "es": "Informe DataHub",
+        "en": "DataHub Report",
+    },
+    "report_generation_eyebrow": {
+        "es": "Generación de informes",
+        "en": "Report generation",
+    },
+    "report_configuration": {
+        "es": "Configuración",
+        "en": "Configuration",
+    },
+    "report_advanced_options": {
+        "es": "Opciones avanzadas",
+        "en": "Advanced options",
+    },
+    "report_advanced_restricted": {
+        "es": (
+            "Las opciones avanzadas están disponibles únicamente para "
+            "determinados perfiles profesionales."
+        ),
+        "en": ("Advanced options are available only to selected professional profiles."),
+    },
+    "report_advanced_toggle": {
+        "es": "Mostrar u ocultar las opciones avanzadas",
+        "en": "Show or hide advanced options",
+    },
+    "report_login_required": {
+        "es": "Debes iniciar sesión para generar informes.",
+        "en": "You must sign in to generate reports.",
+    },
     "download_table": {
         "es": "Descargar tabla",
         "en": "Download table",
@@ -155,6 +186,24 @@ def ui_text(key: str, language: str = "es") -> str:
         return key
     clean_language = language if language in SUPPORTED_LANGUAGES else "es"
     return translations.get(clean_language) or translations["es"]
+
+
+def ui_text_component(
+    key: str,
+    *,
+    class_name: str | None = None,
+    language: str | None = None,
+) -> Component:
+    return text(
+        ui_text(key, "es"),
+        ui_text(key, "en"),
+        class_name=class_name,
+        language=language,
+    )
+
+
+def ui_text_data_attrs(key: str) -> dict[str, Any]:
+    return text_attrs(ui_text(key, "es"), ui_text(key, "en"))
 
 
 def country_labels(country_code: str, fallback: str = "") -> tuple[str, str]:

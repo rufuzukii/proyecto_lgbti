@@ -167,7 +167,7 @@ def create_dash_app() -> Dash:
         assets_folder=str(assets_path),
         suppress_callback_exceptions=True,
         serve_locally=True,
-        title="RainbowLens",
+        title="RainbowLens Datahub",
     )
     app.index_string = DASH_INDEX_STRING
     app.server.config.update(
@@ -208,7 +208,7 @@ def create_dash_app() -> Dash:
             html.Div(id="page-content"),
             html.Footer(
                 [
-                    html.Strong("RainbowLens"),
+                    html.Strong("RainbowLens Datahub"),
                     html.Span(
                         "Versión 1.0.0",
                         **dash_attrs(
@@ -262,7 +262,11 @@ def create_dash_app() -> Dash:
                 return build_progress_layout()
             if pathname in {"/informes", "/reports"}:
                 if not current_user.is_authenticated:
-                    return build_login_layout(next_path=pathname)
+                    requested_report = _safe_next(f"{pathname}{search or ''}", pathname)
+                    return dcc.Location(
+                        href=f"/login?{urlencode({'next': requested_report, 'notice': 'report_login_required'})}",
+                        id="reports-login-redirect",
+                    )
                 if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
                     return build_reports_access_denied_layout()
                 return build_reports_layout(
@@ -293,6 +297,7 @@ def create_dash_app() -> Dash:
                 return build_login_layout(
                     next_path=_safe_next(_first_param(params, "next"), "/user"),
                     error_code=_first_param(params, "error"),
+                    notice_code=_first_param(params, "notice"),
                 )
             if pathname == "/register":
                 if current_user.is_authenticated:
@@ -478,6 +483,7 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/login", error="invalid_credentials", next_path=next_path)
 
         session.clear()
+        session.permanent = True
         login_user(_session_user_from_record(record), remember=False, fresh=True)
         rotate_csrf_token()
         rate_limiter.reset(rate_key)
@@ -523,6 +529,7 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/register", error="storage", next_path=next_path)
 
         session.clear()
+        session.permanent = True
         login_user(_session_user_from_record(record), remember=False, fresh=True)
         rotate_csrf_token()
         rate_limiter.reset(rate_key)

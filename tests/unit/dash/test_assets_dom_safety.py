@@ -107,7 +107,7 @@ def test_navbar_exposes_an_accessible_collapsible_mobile_menu(monkeypatch) -> No
     assert _props(navbar)["data-i18n-aria-label-en"] == "Primary navigation"
     assert menu_props["className"] == "nav-menu"
     assert mobile_logo_props["src"].endswith("rainbow_lens_icono.ico")
-    assert mobile_logo_props["alt"] == "RainbowLens"
+    assert mobile_logo_props["alt"] == "RainbowLens Datahub"
 
 
 def test_navbar_logo_uses_spa_home_navigation(monkeypatch) -> None:
@@ -127,7 +127,7 @@ def test_navbar_logo_uses_spa_home_navigation(monkeypatch) -> None:
 
     assert props["href"] == "/"
     assert props["refresh"] is False
-    assert props["title"] == "RainbowLens · Inicio / Home"
+    assert props["title"] == "RainbowLens Datahub · Inicio / Home"
 
 
 def test_admin_navbar_groups_user_and_admin_without_duplicating_link(monkeypatch) -> None:

@@ -1,4 +1,4 @@
-# Informes
+# Informe DataHub
 
 El módulo genera informes de diversidad e inclusión para RRHH a partir de los
 mismos servicios y figuras que utiliza la página de Estadísticas.

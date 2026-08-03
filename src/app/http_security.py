@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any, cast
 from urllib.parse import urlsplit
 
-from flask import Flask, Response, abort, request
+from flask import Flask, Response, abort, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 AUTH_REQUEST_MAX_BYTES = 64 * 1024
@@ -26,7 +26,7 @@ def configure_flask_security(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=production,
-        SESSION_REFRESH_EACH_REQUEST=False,
+        SESSION_REFRESH_EACH_REQUEST=True,
         PERMANENT_SESSION_LIFETIME=timedelta(
             hours=_bounded_int_env("SESSION_LIFETIME_HOURS", 12, minimum=1, maximum=168)
         ),
@@ -39,6 +39,15 @@ def configure_flask_security(
 
     if production:
         app.wsgi_app = cast(Any, ProxyFix(app.wsgi_app, x_for=1, x_proto=1))
+
+    @app.before_request
+    def keep_authenticated_session_active() -> None:
+        # Flask-Login's strong protection removes a non-permanent session when
+        # the proxy-visible client identifier changes. Promote both new and
+        # pre-existing authenticated sessions before current_user is loaded so
+        # ordinary navigation cannot silently log the user out.
+        if session.get("_user_id") is not None and not session.permanent:
+            session.permanent = True
 
     @app.before_request
     def reject_oversized_auth_request() -> None:

@@ -42,7 +42,7 @@ def test_export_filename_is_descriptive_safe_and_bounded() -> None:
     )
 
     assert filename == (
-        "rainbow-lens_ranking-comparativo_discriminacion-en-el-empleo-promocion_"
+        "rainbowlens-datahub_ranking-comparativo_discriminacion-en-el-empleo-promocion_"
         "espana-franca_2024.png"
     )
     assert malicious.endswith(".png")
@@ -134,7 +134,9 @@ def test_summary_table_csv_uses_visible_columns_order_bom_and_safe_values() -> N
     assert parsed[2][0].startswith("'=")
     assert parsed[2][1] == "-2.5"
     assert all("secret" not in row for row in parsed)
-    assert table_export.filename == ("rainbow-lens_tabla-resumida_discriminacion_europa_2024.csv")
+    assert table_export.filename == (
+        "rainbowlens-datahub_tabla-resumida_discriminacion_europa_2024.csv"
+    )
     assert table_export.mime_type == "text/csv;charset=utf-8"
 
 
@@ -272,7 +274,7 @@ const calls = [];
 const graph = {{
   data: [{{type: "bar", x: ["Spain"], y: [63]}}],
   layout: {{meta: {{
-    export_filename: "rainbow-lens_ranking_españa_2024.png",
+    export_filename: "rainbowlens-datahub_ranking_españa_2024.png",
     export_format: "png",
     export_width: 1600,
     export_height: 900,
@@ -306,7 +308,7 @@ const button = {{
   await window.RainbowLens.chartExport.downloadChart(button);
   if (calls.length !== 2) throw new Error("expected two downloads");
   if (button.disabled) throw new Error("button was not restored");
-  if (calls[0].filename !== "rainbow-lens_ranking_espa-a_2024") throw new Error("unsafe filename");
+  if (calls[0].filename !== "rainbowlens-datahub_ranking_espa-a_2024") throw new Error("unsafe filename");
   if (calls[0].width !== 1600 || calls[0].height !== 900 || calls[0].scale !== 2) throw new Error("invalid resolution");
   if (!errorStatus.hidden) throw new Error("unexpected error state");
 }})().catch((error) => {{console.error(error); process.exitCode = 1;}});

@@ -1,6 +1,6 @@
 # Frontend Dash
 
-Esta carpeta contiene la presentación de RainbowLens. La composición y el enrutamiento viven en `src/app/dash_app.py`; aquí se almacenan componentes reutilizables, páginas y estilos.
+Esta carpeta contiene la presentación de RainbowLens Datahub. La composición y el enrutamiento viven en `src/app/dash_app.py`; aquí se almacenan componentes reutilizables, páginas y estilos.
 
 ## Archivo Python
 

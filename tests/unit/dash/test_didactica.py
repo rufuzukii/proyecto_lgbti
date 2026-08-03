@@ -154,7 +154,7 @@ def test_teacher_resources_have_metadata_and_generate_in_memory_pdf() -> None:
     )
     payload, filename = generate_teacher_resource_pdf(resources[0].id, "es")
     assert payload.startswith(b"%PDF")
-    assert filename.startswith("rainbowlens-")
+    assert filename.startswith("rainbowlens-datahub-")
     assert filename.endswith("-es.pdf")
     assert "/" not in filename and "\\" not in filename
 

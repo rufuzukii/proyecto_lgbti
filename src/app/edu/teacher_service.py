@@ -46,7 +46,7 @@ def generate_teacher_resource_pdf(resource_id: str, language: str) -> tuple[byte
         topMargin=18 * mm,
         bottomMargin=18 * mm,
         title=resource.title.get(language),
-        author="RainbowLens",
+        author="RainbowLens Datahub",
     )
     styles = getSampleStyleSheet()
     story = [
@@ -77,4 +77,4 @@ def generate_teacher_resource_pdf(resource_id: str, language: str) -> tuple[byte
     ]
     document.build(story)
     safe_id = re.sub(r"[^a-z0-9_-]+", "-", resource.id.casefold()).strip("-")
-    return output.getvalue(), f"rainbowlens-{safe_id}-{language}.pdf"
+    return output.getvalue(), f"rainbowlens-datahub-{safe_id}-{language}.pdf"

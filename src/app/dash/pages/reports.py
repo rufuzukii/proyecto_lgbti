@@ -26,7 +26,15 @@ from app.auth.permissions import (
     user_has_permission,
 )
 from app.auth.rate_limit import create_rate_limiter
-from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
+from app.dash.i18n import (
+    attribute_attrs,
+    country_labels,
+    dash_attrs,
+    text,
+    text_attrs,
+    ui_text,
+    ui_text_component,
+)
 from app.dash.layouts.navigation import build_navbar
 from app.dates import utc_today_iso
 from app.http_security import rate_limit_key
@@ -145,22 +153,25 @@ def build_reports_layout(
                 data=config.to_dict(),
                 storage_type="memory",
             ),
+            dcc.Store(
+                id="report-advanced-open-store",
+                data=False,
+                storage_type="memory",
+            ),
             dcc.Download(id="report-download"),
             html.Main(
                 [
                     html.Header(
                         [
                             html.P(
-                                "Informes personalizados",
+                                ui_text("report_generation_eyebrow", "es"),
                                 className="stats-eyebrow",
-                                **text_attrs("Informes personalizados", "Custom reports"),
+                                **text_attrs(
+                                    ui_text("report_generation_eyebrow", "es"),
+                                    ui_text("report_generation_eyebrow", "en"),
+                                ),
                             ),
-                            html.H1(
-                                text(
-                                    "Informe de diversidad e inclusión",
-                                    "Diversity and inclusion report",
-                                )
-                            ),
+                            html.H1(ui_text_component("report_module_name")),
                             html.P(
                                 text(
                                     "Configura, previsualiza y descarga un informe basado en las estadísticas europeas actuales.",
@@ -278,6 +289,26 @@ def register_reports_callbacks(app: Dash) -> None:
         window_seconds=max(60, int(os.getenv("REPORT_RATE_WINDOW_SECONDS", "3600"))),
         namespace="report-downloads",
     )
+
+    @app.callback(
+        Output("report-advanced-open-store", "data"),
+        Output("report-advanced-content", "className"),
+        Output("report-advanced-content", "aria-hidden"),
+        Output("report-advanced-toggle", "aria-expanded"),
+        Input("report-advanced-toggle", "n_clicks"),
+        State("report-advanced-open-store", "data"),
+        prevent_initial_call=True,
+    )
+    def toggle_advanced_options(_clicks: int | None, is_open: bool | None):
+        if not can_configure_advanced_reports(current_user):
+            return False, "reports-advanced-content is-collapsed", "true", "false"
+        expanded = not bool(is_open)
+        return (
+            expanded,
+            "reports-advanced-content" + ("" if expanded else " is-collapsed"),
+            "false" if expanded else "true",
+            "true" if expanded else "false",
+        )
 
     @app.callback(
         Output("report-year-select", "options"),
@@ -573,7 +604,10 @@ def _configuration_panel(
 ) -> Component:
     return html.Section(
         [
-            html.H2(text("1. Configuración", "1. Configuration")),
+            html.H2(
+                ui_text_component("report_configuration"),
+                className="reports-section-title",
+            ),
             _field(
                 "Título",
                 "Title",
@@ -707,7 +741,7 @@ def _configuration_panel(
                 ),
             ),
         ],
-        className="reports-card",
+        className="reports-card reports-card-configuration",
     )
 
 
@@ -716,90 +750,119 @@ def _content_panel(
     *,
     advanced_enabled: bool,
 ) -> Component:
+    advanced_content_class = "reports-advanced-content is-collapsed"
     return html.Section(
         [
-            html.H2(text("2. Selección de contenido", "2. Content selection")),
+            html.Button(
+                [
+                    ui_text_component("report_advanced_options"),
+                    html.Span(
+                        className="reports-advanced-chevron",
+                        **dash_attrs({"aria-hidden": "true"}),
+                    ),
+                ],
+                id="report-advanced-toggle",
+                type="button",
+                className="reports-advanced-toggle",
+                n_clicks=0,
+                disabled=not advanced_enabled,
+                **dash_attrs(
+                    {
+                        "aria-controls": "report-advanced-content",
+                        "aria-expanded": "false",
+                        **attribute_attrs(
+                            "aria-label",
+                            ui_text("report_advanced_toggle", "es"),
+                            ui_text("report_advanced_toggle", "en"),
+                        ),
+                    }
+                ),
+            ),
             html.P(
-                text(
-                    "Las opciones avanzadas están disponibles para perfiles RRHH, Político y ONG.",
-                    "Advanced options are available to HR, Policy maker and NGO profiles.",
-                ),
-                className="reports-advanced-notice" if not advanced_enabled else "is-hidden",
+                ui_text_component("report_advanced_restricted"),
+                className=("reports-advanced-notice" if not advanced_enabled else "is-hidden"),
             ),
-            _field(
-                "Modo",
-                "Mode",
-                dcc.RadioItems(
-                    id="report-mode-select",
-                    options=[
-                        {
-                            "label": text("Automático", "Automatic"),
-                            "value": "automatic",
-                            "disabled": not advanced_enabled,
-                        },
-                        {
-                            "label": text("Personalizado", "Custom"),
-                            "value": "custom",
-                            "disabled": not advanced_enabled,
-                        },
-                    ],
-                    value=config.mode,
-                ),
-            ),
-            _field(
-                "Nivel de detalle",
-                "Detail level",
-                dcc.RadioItems(
-                    id="report-detail-select",
-                    options=[
-                        {
-                            "label": text("Estándar", "Standard"),
-                            "value": "standard",
-                            "disabled": not advanced_enabled,
-                        },
-                        {
-                            "label": text("Detallado", "Detailed"),
-                            "value": "detailed",
-                            "disabled": not advanced_enabled,
-                        },
-                    ],
-                    value=config.detail_level,
-                    inline=True,
-                ),
-            ),
-            _field(
-                "Secciones",
-                "Sections",
-                dcc.Checklist(
-                    id="report-sections-select",
-                    options=[
-                        {
-                            "label": text(*SECTION_LABELS[key]),
-                            "value": key,
-                            "disabled": not advanced_enabled,
-                        }
-                        for key in DEFAULT_REPORT_SECTIONS
-                    ],
-                    value=list(config.sections),
-                    className="reports-checklist",
-                ),
-            ),
-            _field(
-                "Gráficos",
-                "Charts",
-                dcc.Checklist(
-                    id="report-charts-select",
-                    options=[
-                        {
-                            "label": text(*CHART_LABELS[key]),
-                            "value": key,
-                            "disabled": not advanced_enabled,
-                        }
-                        for key in DEFAULT_REPORT_CHARTS
-                    ],
-                    value=list(config.charts),
-                    className="reports-checklist",
-                ),
+            html.Div(
+                [
+                    _field(
+                        "Modo",
+                        "Mode",
+                        dcc.RadioItems(
+                            id="report-mode-select",
+                            options=[
+                                {
+                                    "label": text("Automático", "Automatic"),
+                                    "value": "automatic",
+                                    "disabled": not advanced_enabled,
+                                },
+                                {
+                                    "label": text("Personalizado", "Custom"),
+                                    "value": "custom",
+                                    "disabled": not advanced_enabled,
+                                },
+                            ],
+                            value=config.mode,
+                        ),
+                    ),
+                    _field(
+                        "Nivel de detalle",
+                        "Detail level",
+                        dcc.RadioItems(
+                            id="report-detail-select",
+                            options=[
+                                {
+                                    "label": text("Estándar", "Standard"),
+                                    "value": "standard",
+                                    "disabled": not advanced_enabled,
+                                },
+                                {
+                                    "label": text("Detallado", "Detailed"),
+                                    "value": "detailed",
+                                    "disabled": not advanced_enabled,
+                                },
+                            ],
+                            value=config.detail_level,
+                            inline=True,
+                        ),
+                    ),
+                    _field(
+                        "Secciones",
+                        "Sections",
+                        dcc.Checklist(
+                            id="report-sections-select",
+                            options=[
+                                {
+                                    "label": text(*SECTION_LABELS[key]),
+                                    "value": key,
+                                    "disabled": not advanced_enabled,
+                                }
+                                for key in DEFAULT_REPORT_SECTIONS
+                            ],
+                            value=list(config.sections),
+                            className="reports-checklist",
+                        ),
+                    ),
+                    _field(
+                        "Gráficos",
+                        "Charts",
+                        dcc.Checklist(
+                            id="report-charts-select",
+                            options=[
+                                {
+                                    "label": text(*CHART_LABELS[key]),
+                                    "value": key,
+                                    "disabled": not advanced_enabled,
+                                }
+                                for key in DEFAULT_REPORT_CHARTS
+                            ],
+                            value=list(config.charts),
+                            className="reports-checklist",
+                        ),
+                    ),
+                ],
+                id="report-advanced-content",
+                className=advanced_content_class,
+                **dash_attrs({"aria-hidden": "true"}),
             ),
             html.Div(
                 [
@@ -812,7 +875,10 @@ def _content_panel(
                 className="reports-inherited-filters",
             ),
         ],
-        className="reports-card",
+        className=(
+            "reports-card reports-card-advanced"
+            + (" reports-card-advanced-locked" if not advanced_enabled else "")
+        ),
     )
 
 

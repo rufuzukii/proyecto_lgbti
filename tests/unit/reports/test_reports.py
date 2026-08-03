@@ -308,11 +308,11 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert "Recomendaciones para RRHH" in extracted
     assert "FRA EU LGBTIQ Survey III" in extracted
     assert "España" in extracted
-    assert "RainbowLens" in extracted
+    assert "RainbowLens Datahub" in extracted
     metadata = document.metadata
     assert metadata is not None
-    assert metadata["creator"] == "RainbowLens"
-    assert metadata["producer"] == "RainbowLens"
+    assert metadata["creator"] == "RainbowLens Datahub"
+    assert metadata["producer"] == "RainbowLens Datahub"
     assert "ReportLab" not in " ".join(str(value) for value in metadata.values())
 
 
@@ -405,6 +405,12 @@ def test_advanced_report_configuration_is_profile_and_server_protected(monkeypat
 
 def test_advanced_content_controls_are_disabled_for_common_profile() -> None:
     panel = reports_page._content_panel(_configuration(), advanced_enabled=False)
+    toggle = _component_by_id(panel, "report-advanced-toggle")
+    content = _component_by_id(panel, "report-advanced-content")
+
+    assert toggle.disabled is True
+    assert "is-collapsed" in content.className
+    assert content.to_plotly_json()["props"]["aria-hidden"] == "true"
     for identifier in (
         "report-mode-select",
         "report-detail-select",
@@ -413,6 +419,64 @@ def test_advanced_content_controls_are_disabled_for_common_profile() -> None:
     ):
         control = _component_by_id(panel, identifier)
         assert all(option["disabled"] is True for option in control.options)
+
+
+def test_authorized_profiles_can_open_and_keep_advanced_options_stable(monkeypatch) -> None:
+    app = Dash(__name__, suppress_callback_exceptions=True)
+    reports_page.register_reports_callbacks(app)
+    callback = next(
+        item["callback"].__wrapped__
+        for item in app.callback_map.values()
+        if getattr(item.get("callback"), "__wrapped__", None)
+        and item["callback"].__wrapped__.__name__ == "toggle_advanced_options"
+    )
+
+    authorized_users = [
+        SimpleNamespace(
+            is_authenticated=True,
+            role=UserRole.COMMON,
+            user_type=profile,
+        )
+        for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG)
+    ]
+    authorized_users.append(
+        SimpleNamespace(
+            is_authenticated=True,
+            role=UserRole.ADMIN,
+            user_type=None,
+        )
+    )
+
+    for user in authorized_users:
+        monkeypatch.setattr(reports_page, "current_user", user)
+        assert callback(1, False) == (
+            True,
+            "reports-advanced-content",
+            "false",
+            "true",
+        )
+        assert callback(2, True) == (
+            False,
+            "reports-advanced-content is-collapsed",
+            "true",
+            "false",
+        )
+
+    monkeypatch.setattr(
+        reports_page,
+        "current_user",
+        SimpleNamespace(
+            is_authenticated=True,
+            role=UserRole.COMMON,
+            user_type=UserType.COMUN,
+        ),
+    )
+    assert callback(1, False) == (
+        False,
+        "reports-advanced-content is-collapsed",
+        "true",
+        "false",
+    )
 
 
 def _component_by_id(component: Any, identifier: str):
@@ -472,6 +536,9 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
         "report-download",
         "report-sections-select",
         "report-charts-select",
+        "report-advanced-open-store",
+        "report-advanced-toggle",
+        "report-advanced-content",
     }.issubset(ids)
     store_data = getattr(store, "data", None)
     assert isinstance(store_data, dict)

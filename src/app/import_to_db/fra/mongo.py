@@ -5,6 +5,10 @@ from typing import Any
 
 from bson import ObjectId
 
+from app.import_to_db.fra.validation import (
+    has_valid_fra_statistic_answer,
+    is_valid_fra_category,
+)
 from app.mongo import get_mongo_collection
 
 INDICATOR_FRA_COLLECTION = "Indicator_fra"
@@ -33,6 +37,7 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
     if not code:
         raise ValueError("invalid_json_payload")
     prepared["code"] = code
+    prepared["record_type"] = "statistic"
     prepared["_id"] = _resolve_object_id(prepared.pop("id", None))
     prepared.pop("external_code", None)
     prepared.pop("datasets", None)
@@ -49,6 +54,10 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
         prepared["answers"] = answers
     else:
         prepared.pop("answers", None)
+    if not is_valid_fra_category(prepared.get("category")):
+        raise ValueError("invalid_fra_category")
+    if not has_valid_fra_statistic_answer(prepared):
+        raise ValueError("invalid_fra_statistic_document")
     return prepared
 
 

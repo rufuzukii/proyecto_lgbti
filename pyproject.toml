@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "proyecto-lgbti"
 version = "0.1.0"
-description = "RainbowLens LGBTIQ+ data analysis and visualization platform"
+description = "RainbowLens Datahub LGBTIQ+ data analysis and visualization platform"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "dash==4.4.0",

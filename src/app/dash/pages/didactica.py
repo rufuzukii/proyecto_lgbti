@@ -21,7 +21,7 @@ from app.dash.components.didactica import (
     teacher_resource_details,
     translated,
 )
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.edu.custom_game_service import (
     CustomGameAuthorizationError,
@@ -68,7 +68,7 @@ def build_didactica_layout() -> Component:
                 html.Section(
                     cards,
                     className="didactica-resource-grid",
-                    **{"aria-label": pair("learning")[0]},
+                    **dash_attrs({"aria-label": pair("learning")[0]}),
                 ),
             ],
             className="didactica-shell",
@@ -125,12 +125,12 @@ def build_dictionary_layout() -> Component:
                 html.P(
                     id="didactica-glossary-count",
                     className="didactica-result-count",
-                    **{"aria-live": "polite"},
+                    **dash_attrs({"aria-live": "polite"}),
                 ),
                 html.Section(
                     id="didactica-glossary-results",
                     className="didactica-glossary-grid",
-                    **{"aria-live": "polite"},
+                    **dash_attrs({"aria-live": "polite"}),
                 ),
             ],
             className="didactica-shell",
@@ -216,7 +216,7 @@ def build_presentations_layout(lesson_id: str | None = None) -> Component:
                     value="1",
                     max=len(lesson.slides) + 1,
                     className="didactica-progress",
-                    **{"aria-label": pair("progress")[0]},
+                    **dash_attrs({"aria-label": pair("progress")[0]}),
                 ),
                 html.Article(id="didactica-lesson-slide", className="didactica-slide"),
                 html.Section(
@@ -244,7 +244,7 @@ def build_presentations_layout(lesson_id: str | None = None) -> Component:
                 html.P(
                     id="didactica-lesson-status",
                     className="didactica-feedback",
-                    **{"aria-live": "polite"},
+                    **dash_attrs({"aria-live": "polite"}),
                 ),
                 html.Div(
                     [
@@ -362,12 +362,12 @@ def build_games_layout(game_id: str | None = None) -> Component:
                         html.P(
                             id="didactica-game-hint-text",
                             className="didactica-hint",
-                            **{"aria-live": "polite"},
+                            **dash_attrs({"aria-live": "polite"}),
                         ),
                         html.P(
                             id="didactica-game-feedback",
                             className="didactica-feedback",
-                            **{"aria-live": "assertive"},
+                            **dash_attrs({"aria-live": "assertive"}),
                         ),
                         html.Div(
                             [
@@ -465,7 +465,7 @@ def build_docente_layout() -> Component:
                 html.P(
                     id="didactica-docente-status",
                     className="didactica-feedback",
-                    **{"aria-live": "polite"},
+                    **dash_attrs({"aria-live": "polite"}),
                 ),
                 html.Section(
                     [
@@ -518,7 +518,7 @@ def build_docente_layout() -> Component:
                                 html.P(
                                     id="didactica-custom-game-status",
                                     className="didactica-feedback",
-                                    **{"aria-live": "polite"},
+                                    **dash_attrs({"aria-live": "polite"}),
                                 ),
                             ],
                             className="didactica-game-editor",
@@ -949,7 +949,7 @@ def _language(value: str | None) -> str:
     return "en" if value == "en" else "es"
 
 
-def _slide(slide: dict[str, Any], language: str, number: int, total: int) -> Component:
+def _slide(slide: dict[str, Any], language: str, number: int, total: int) -> list[Component]:
     return [
         html.P(f"{number}/{total}", className="didactica-slide-number"),
         html.H2(slide["title"][language]),
@@ -961,8 +961,12 @@ def _game_round(state: dict[str, Any], language: str) -> tuple[str, list[dict[st
     identifier = state["order"][int(state.get("index", 0))]
     if state["game_id"] == "guess_term":
         term = get_glossary_term(identifier)
+        if term is None:
+            raise ValueError("unknown_glossary_term")
         return term.short_definition.get(language), guess_options(identifier, language)
     question = true_false_question(identifier)
+    if question is None:
+        raise ValueError("unknown_true_false_question")
     return question["statement"][language], [
         {"label": tr("true", language), "value": "true"},
         {"label": tr("false", language), "value": "false"},
@@ -974,8 +978,12 @@ def _check_game_answer(
 ) -> tuple[bool, str]:
     if game_id == "guess_term":
         term = get_glossary_term(identifier)
+        if term is None:
+            raise ValueError("unknown_glossary_term")
         return selected == identifier, term.definition.get(language)
     question = true_false_question(identifier)
+    if question is None:
+        raise ValueError("unknown_true_false_question")
     return (
         selected == str(question["answer"]).lower(),
         f"{question['explanation'][language]} {tr('source', language)}: {question['source']}.",
@@ -985,6 +993,10 @@ def _check_game_answer(
 def _game_hint(game_id: str, identifier: str, language: str) -> str:
     if game_id == "guess_term":
         term = get_glossary_term(identifier)
+        if term is None:
+            raise ValueError("unknown_glossary_term")
         return f"{tr('hint_text', language)} «{term.term.get(language)[0].upper()}»."
     question = true_false_question(identifier)
+    if question is None:
+        raise ValueError("unknown_true_false_question")
     return f"{tr('source', language)}: {question['source']}"

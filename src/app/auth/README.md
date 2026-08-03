@@ -14,6 +14,8 @@ Implementa un servicio Flask JSON independiente:
 - `GET /auth/me`: devuelve rol anónimo o usuario actual.
 - `_rate_key()`: normaliza IP y email para el limitador.
 
+Las sesiones autenticadas son permanentes con vencimiento deslizante: cada petición activa renueva el plazo configurado. La protección `strong` de Flask-Login se mantiene, pero un cambio del identificador de red observado a través del proxy deja la sesión como no reciente en vez de eliminar al usuario durante la navegación.
+
 Este servicio se ejecuta con `run_auth.py`. Es independiente de las rutas HTML registradas dentro de `dash_app.py`.
 
 ### `rate_limit.py`

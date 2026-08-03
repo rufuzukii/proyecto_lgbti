@@ -43,7 +43,7 @@
 .reports-config-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 1.25rem;
+    gap: 1.5rem;
     align-items: start;
 }
 
@@ -57,11 +57,15 @@
 }
 
 .reports-card {
-    padding: 1.35rem;
+    padding: clamp(1.25rem, 2.5vw, 1.75rem);
 }
 
-.reports-card h2 {
-    margin: 0 0 1rem;
+.reports-section-title {
+    margin: 0 0 1.5rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--reports-border);
+    font-size: clamp(1.55rem, 2.8vw, 2rem);
+    line-height: 1.15;
 }
 
 .reports-card h2,
@@ -79,6 +83,75 @@
     display: grid;
     gap: 0.42rem;
     margin-bottom: 1rem;
+}
+
+.reports-card-configuration .reports-field:last-child {
+    margin-bottom: 0;
+}
+
+.reports-advanced-toggle {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0;
+    padding: 0 0 0.95rem;
+    color: var(--reports-text);
+    border: 0;
+    border-bottom: 1px solid var(--reports-border);
+    background: transparent;
+    font: inherit;
+    font-size: clamp(1.35rem, 2.5vw, 1.7rem);
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: left;
+    cursor: pointer;
+}
+
+.reports-advanced-toggle:focus-visible {
+    border-radius: 8px;
+    outline: 3px solid var(--reports-control-focus);
+    outline-offset: 4px;
+}
+
+.reports-advanced-toggle:disabled {
+    cursor: not-allowed;
+    opacity: 0.82;
+}
+
+.reports-advanced-chevron {
+    width: 0.72rem;
+    height: 0.72rem;
+    flex: 0 0 auto;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg) translate(-2px, 2px);
+    transition: transform 180ms ease;
+}
+
+.reports-advanced-toggle[aria-expanded="true"] .reports-advanced-chevron {
+    transform: rotate(225deg) translate(-2px, 2px);
+}
+
+.reports-advanced-content {
+    display: block;
+    padding-top: 1.25rem;
+}
+
+.reports-advanced-content.is-collapsed {
+    display: none;
+}
+
+.reports-advanced-notice {
+    margin: 1rem 0 0;
+    padding: 0.85rem 0.95rem;
+    color: var(--reports-muted-text);
+    border: 1px solid var(--reports-border);
+    border-radius: 10px;
+    background: var(--reports-surface-soft);
+    font-size: 0.92rem;
+    line-height: 1.55;
 }
 
 .reports-field > label {
@@ -106,6 +179,37 @@
 
 .reports-field input[type="text"]::placeholder {
     color: var(--reports-muted-text);
+}
+
+.reports-field .dash-datepicker,
+.reports-field .dash-datepicker-input-wrapper {
+    box-sizing: border-box;
+    display: inline-flex;
+    width: min(100%, 11.25rem);
+}
+
+.reports-field .dash-datepicker {
+    align-items: center;
+    min-width: 0;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.reports-field .dash-datepicker-input-wrapper {
+    flex: 1 1 auto;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.reports-field .dash-datepicker-input-wrapper input {
+    box-sizing: border-box;
+    min-height: 36px;
+    width: 100%;
+    padding: 0.42rem 0.6rem;
+    font-size: 0.875rem;
 }
 
 .reports-checklist {
@@ -319,10 +423,12 @@ body[data-theme="dark"] .reports-primary-button {
 }
 
 html[data-theme="dark"] .reports-checklist label,
+html[data-theme="dark"] .reports-advanced-notice,
 html[data-theme="dark"] .reports-preview-metric,
 html[data-theme="dark"] .reports-preview-section,
 html[data-theme="dark"] .reports-preview-chart,
 body[data-theme="dark"] .reports-checklist label,
+body[data-theme="dark"] .reports-advanced-notice,
 body[data-theme="dark"] .reports-preview-metric,
 body[data-theme="dark"] .reports-preview-section,
 body[data-theme="dark"] .reports-preview-chart {
@@ -363,6 +469,34 @@ body[data-theme="dark"] .reports-field .SingleDatePickerInput {
 html[data-theme="dark"] .reports-field .DateInput_input__focused,
 body[data-theme="dark"] .reports-field .DateInput_input__focused {
     border-color: var(--reports-primary) !important;
+}
+
+html[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper,
+body[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    color: var(--reports-text) !important;
+    color-scheme: dark;
+}
+
+html[data-theme="dark"] .reports-field .dash-datepicker,
+body[data-theme="dark"] .reports-field .dash-datepicker {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+html[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input,
+body[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input {
+    background: var(--reports-control-bg) !important;
+    border-color: var(--reports-border) !important;
+    color: var(--reports-text) !important;
+}
+
+html[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input::placeholder,
+body[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input::placeholder {
+    color: var(--reports-muted-text) !important;
 }
 
 html[data-theme="dark"] .reports-field .SingleDatePicker_picker,
@@ -477,5 +611,13 @@ body[data-theme="dark"] .reports-preview-chart .js-plotly-plot .zerolinelayer pa
 
     .reports-actions > * {
         width: 100%;
+    }
+
+    .reports-card {
+        border-radius: 16px;
+    }
+
+    .reports-advanced-toggle {
+        font-size: 1.25rem;
     }
 }

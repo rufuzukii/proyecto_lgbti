@@ -310,7 +310,7 @@ def migrate_legacy_user_types() -> int:
     """Rename the legacy educator profile in every users column that stores it."""
     with _connect() as conn:
         columns = {
-            str(row["column_name"])
+            str(cast(dict[str, Any], row)["column_name"])
             for row in conn.execute(
                 """
                 select column_name

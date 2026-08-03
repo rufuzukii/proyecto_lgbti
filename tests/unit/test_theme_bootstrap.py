@@ -38,6 +38,14 @@ def test_dark_toggle_position_uses_persistent_document_theme() -> None:
     assert ':root[data-theme="dark"] .theme-toggle .theme-toggle-dot' in styles
 
 
+def test_dark_theme_renders_dash_option_text_in_white() -> None:
+    styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
+
+    assert ':root[data-theme="dark"] span.dash-options-list-option-text' in styles
+    assert 'body[data-theme="dark"] span.dash-options-list-option-text' in styles
+    assert "color: #fff !important;" in styles
+
+
 def test_inserted_theme_controls_are_synchronized_immediately() -> None:
     bootstrap = (ASSETS / "js" / "40_bootstrap.js").read_text(encoding="utf-8")
     theme = (ASSETS / "js" / "20_theme.js").read_text(encoding="utf-8")

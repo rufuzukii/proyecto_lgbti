@@ -5,7 +5,7 @@ from dash.development.base_component import Component
 from flask_login import current_user
 
 from app.auth.permissions import Permission, user_has_permission
-from app.dash.i18n import attribute_attrs, dash_attrs, text, text_attrs
+from app.dash.i18n import attribute_attrs, dash_attrs, text, text_attrs, ui_text
 from app.users.schemas import UserRole
 
 
@@ -14,7 +14,12 @@ def build_navbar(active: str | None = None) -> Component:
         ("Inicio", "Home", "/", "home"),
         ("España", "Spain", "/spain", "spain"),
         ("Estadísticas", "Statistics", "/statistics", "statistics"),
-        ("Informes", "Reports", "/informes", "reports"),
+        (
+            ui_text("report_module_name", "es"),
+            ui_text("report_module_name", "en"),
+            "/informes",
+            "reports",
+        ),
         ("Didáctica", "Learning", "/didactica", "didactica"),
         ("Acerca de", "About", "/about", "about"),
         ("Importar datos", "Import data", "/upload", "upload"),
@@ -32,19 +37,19 @@ def build_navbar(active: str | None = None) -> Component:
                 [
                     html.Img(
                         src="/assets/img/rainbow_lens_logo.png",
-                        alt="RainbowLens",
+                        alt="RainbowLens Datahub",
                         className="nav-brand-logo nav-brand-logo-desktop",
                     ),
                     html.Img(
                         src="/assets/img/rainbow_lens_icono.ico",
-                        alt="RainbowLens",
+                        alt="RainbowLens Datahub",
                         className="nav-brand-logo nav-brand-logo-mobile",
                     ),
                 ],
                 href="/",
                 refresh=False,
                 className="nav-brand",
-                title="RainbowLens · Inicio / Home",
+                title="RainbowLens Datahub · Inicio / Home",
             ),
             html.Div(
                 [

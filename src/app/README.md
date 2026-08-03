@@ -1,6 +1,6 @@
 # Paquete principal `app`
 
-`app` reúne todos los componentes ejecutables y la lógica de dominio de RainbowLens.
+`app` reúne todos los componentes ejecutables y la lógica de dominio de RainbowLens Datahub.
 
 ## Archivos de primer nivel
 

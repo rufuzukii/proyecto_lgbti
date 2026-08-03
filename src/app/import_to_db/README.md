@@ -44,7 +44,7 @@ Clasifica errores de conexión y esquema en mensajes seguros. Oculta contraseña
 
 ## Subpaquetes
 
-- `fra/`: CSV heterogéneo de EU LGBTIQ+ Survey III, catálogo PostgreSQL y `Indicator_fra`.
+- `fra/`: CSV heterogéneo de EU LGBTIQ+ Survey III, detección de cabecera variable, separación de metadatos y pies de nota, catálogo PostgreSQL y `Indicator_fra`.
 - `ilga/`: Rainbow Map anual e `Indicator_ilga`.
 
 ## Persistencia esperada

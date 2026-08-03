@@ -17,6 +17,11 @@ from app.import_to_db.fra.schema import (
     read_fra_csv_text,
     validate_fra_filter_scope,
 )
+from app.import_to_db.fra.validation import (
+    fra_metadata_key,
+    is_fra_footnote_symbol,
+    is_valid_fra_category,
+)
 from app.import_to_db.utils import normalize_header, parse_float
 
 FRA_SOURCE_NAME = "EU LGBTIQ+ Survey III (FRA 2023)"
@@ -250,6 +255,8 @@ def _parse_answer_survey_rows(
             fallback_topic=raw_topic,
         )
         category = question_parts.category
+        if not is_valid_fra_category(category):
+            continue
         specific_category = question_parts.specific_category
         topic = question_parts.topic
         question = question_parts.question
@@ -291,7 +298,7 @@ def _parse_answer_survey_rows(
 
     for document in documents.values():
         document["validation"] = validate_fra_document(document)
-        document["hyperlink"] = document["metadata"].pop("hyperlink", "")
+        document["hyperlink"] = document["metadata"].get("hyperlink", "")
 
     return list(documents.values())
 
@@ -336,6 +343,7 @@ def _parse_normalized_fra_dataframe(
     context: FraPathContext,
 ) -> list[dict]:
     documents: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
+    fra_metadata = dict(dataframe.attrs.get("fra_metadata") or {})
     for row in dataframe.to_dict(orient="records"):
         source = str(row.get("source") or FRA_SOURCE_NAME)
         category = str(row.get("category") or context.category or "Uncategorized")
@@ -360,6 +368,7 @@ def _parse_normalized_fra_dataframe(
                     "fra_csv_schema": schema.version,
                     "file_name": context.file_name,
                     "requires_review": False,
+                    **fra_metadata,
                 },
                 "answers": [],
             }
@@ -384,7 +393,7 @@ def _parse_normalized_fra_dataframe(
 
     for document in documents.values():
         document["validation"] = validate_fra_document(document)
-        document["hyperlink"] = document["metadata"].pop("hyperlink", "")
+        document["hyperlink"] = document["metadata"].get("hyperlink", "")
     return list(documents.values())
 
 
@@ -509,8 +518,8 @@ def extract_file_metadata(rows: Iterable[dict[str, str]]) -> dict[str, str]:
     }
 
     for row in rows:
-        label = normalize_header(row.get("country", "").rstrip(":"))
-        value = row.get("topic", "").strip()
+        raw_label, value = _metadata_label_and_value(row)
+        label = normalize_header(raw_label.rstrip(":"))
         if not value:
             continue
         metadata_key = label_map.get(label)
@@ -525,28 +534,16 @@ def extract_file_metadata(rows: Iterable[dict[str, str]]) -> dict[str, str]:
 
 
 def is_metadata_or_note_row(row: dict[str, str]) -> bool:
-    label = normalize_header(row.get("country", "").rstrip(":"))
-    metadata_labels = {
-        "source",
-        "fuente",
-        "date",
-        "fecha",
-        "question_code",
-        "codigo_pregunta",
-        "indicator_code",
-        "hyperlink",
-        "link",
-        "url",
-        "note",
-        "nota",
-        "general_disclaimer_of_the_fra_website",
-    }
-    if label in metadata_labels:
+    raw_label, _value = _metadata_label_and_value(row)
+    if fra_metadata_key(raw_label):
         return True
     return is_footnote_label(row)
 
 
 def is_footnote_label(row: dict[str, str]) -> bool:
+    raw_label, _value = _metadata_label_and_value(row)
+    if is_fra_footnote_symbol(raw_label):
+        return True
     country = row.get("country", "").strip()
     if not country:
         return False
@@ -556,6 +553,14 @@ def is_footnote_label(row: dict[str, str]) -> bool:
     if resolve_country_code(country):
         return False
     return bool(row.get("topic"))
+
+
+def _metadata_label_and_value(row: Mapping[str, str]) -> tuple[str, str]:
+    country_label = str(row.get("country") or "").strip()
+    if country_label:
+        return country_label, str(row.get("topic") or row.get("question") or "").strip()
+    topic_label = str(row.get("topic") or row.get("category") or "").strip()
+    return topic_label, str(row.get("question") or "").strip()
 
 
 def resolve_note_text(note: str, file_metadata: dict[str, str]) -> str:

@@ -8,6 +8,7 @@ import pandas as pd
 from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
+from flask_login import current_user
 
 from app.analytics.repository import (
     assert_analytics_databases_available,
@@ -524,6 +525,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         countries: list[str] | None,
         language: str | None,
     ) -> str:
+        selected_countries = _normalize_selected_countries(countries)
         params = {
             "source": source or "fra",
             "year": year,
@@ -535,12 +537,8 @@ def register_statistics_callbacks(app: Dash) -> None:
             "filter_b_name": filter_b_name or "All",
             "filter_b_value": filter_b_value or "All",
             "criterion": criterion,
-            "countries": ",".join(_normalize_selected_countries(countries)),
-            "primary_country": (
-                _normalize_selected_countries(countries)[0]
-                if _normalize_selected_countries(countries)
-                else None
-            ),
+            "countries": ",".join(selected_countries),
+            "primary_country": selected_countries[0] if selected_countries else None,
             "language": "en" if language == "en" else "es",
             "mode": "automatic",
             "charts": "ranking,average,countries,responses,temporal,radar",
@@ -549,7 +547,11 @@ def register_statistics_callbacks(app: Dash) -> None:
             key: value for key, value in params.items() if value is not None and str(value).strip()
         }
         path = "/reports" if language == "en" else "/informes"
-        return f"{path}?{urlencode(clean)}"
+        report_href = f"{path}?{urlencode(clean)}"
+        return _report_destination(
+            report_href,
+            authenticated=bool(getattr(current_user, "is_authenticated", False)),
+        )
 
     @app.callback(
         Output("stats-year-select", "options"),
@@ -1134,6 +1136,12 @@ def _header() -> Component:
     )
 
 
+def _report_destination(report_href: str, *, authenticated: bool) -> str:
+    if authenticated:
+        return report_href
+    return f"/login?{urlencode({'next': report_href, 'notice': 'report_login_required'})}"
+
+
 def _map_panel(placeholder: Any) -> Component:
     return html.Div(
         [
@@ -1166,9 +1174,7 @@ def _map_panel(placeholder: Any) -> Component:
                 id="stats-map-graph",
                 figure=placeholder,
                 responsive=True,
-                config=fixed_europe_map_config(
-                    extra_mode_bar_buttons_to_remove=("toImage",)
-                ),
+                config=fixed_europe_map_config(extra_mode_bar_buttons_to_remove=("toImage",)),
                 className="stats-mapbox-graph",
                 style={"width": "100%"},
             ),

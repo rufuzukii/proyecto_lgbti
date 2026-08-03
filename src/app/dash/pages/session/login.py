@@ -4,7 +4,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.auth.csrf import get_csrf_token
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs, ui_text_component
 from app.dash.layouts.navigation import build_navbar
 
 ERROR_MESSAGES = {
@@ -31,8 +31,13 @@ ERROR_MESSAGES = {
 }
 
 
-def build_login_layout(next_path: str = "/user", error_code: str | None = None) -> Component:
+def build_login_layout(
+    next_path: str = "/user",
+    error_code: str | None = None,
+    notice_code: str | None = None,
+) -> Component:
     message = ERROR_MESSAGES.get(error_code) if error_code is not None else None
+    notice = _notice(notice_code)
 
     return html.Div(
         [
@@ -56,6 +61,7 @@ def build_login_layout(next_path: str = "/user", error_code: str | None = None) 
                                         ),
                                         className="auth-copy",
                                     ),
+                                    notice,
                                     _message(message, is_error=True),
                                     html.Form(
                                         [
@@ -145,3 +151,19 @@ def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | 
         "auth-message auth-message-error" if is_error else "auth-message auth-message-success"
     )
     return html.Div(es, className=class_name, role="alert", **text_attrs(es, en))
+
+
+def _notice(notice_code: str | None) -> Component | str:
+    if notice_code != "report_login_required":
+        return ""
+    return html.Div(
+        ui_text_component("report_login_required"),
+        className="auth-message auth-message-info auth-toast",
+        role="status",
+        **dash_attrs(
+            {
+                "aria-live": "polite",
+                "data-auto-dismiss-ms": "5000",
+            }
+        ),
+    )

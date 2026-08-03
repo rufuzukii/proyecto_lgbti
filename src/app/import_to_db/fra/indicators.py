@@ -6,6 +6,10 @@ from typing import Any, cast
 import psycopg
 from psycopg.rows import dict_row
 
+from app.import_to_db.fra.validation import (
+    has_valid_fra_statistic_answer,
+    is_valid_fra_category,
+)
 from app.import_to_db.import_log import _resolve_postgres_dsn
 
 
@@ -24,7 +28,12 @@ def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> Non
     question = (indicator.get("question") or "").strip()
     category = _resolve_category(indicator)
     specific_category = _resolve_specific_category(indicator)
-    if not code or not question:
+    if (
+        not code
+        or not question
+        or not is_valid_fra_category(category)
+        or not has_valid_fra_statistic_answer(indicator)
+    ):
         raise ValueError("invalid_indicator_payload")
 
     category_id = _get_or_create_category(conn, category)

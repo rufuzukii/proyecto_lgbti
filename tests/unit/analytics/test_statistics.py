@@ -166,14 +166,45 @@ def test_fra_categories_are_loaded_from_mongo_without_postgres(monkeypatch) -> N
     class FakeCollection:
         def distinct(self, field, query):
             assert field == "category"
-            assert query == {"code": {"$exists": True, "$ne": ""}}
-            return ["Everyday life", "Discrimination", "", None, "Discrimination"]
+            assert query["code"] == {"$exists": True, "$nin": [None, ""]}
+            assert "$elemMatch" in query["answers"]
+            assert "Date:" in query["category"]["$nin"]
+            return [
+                "Everyday life",
+                "Discrimination",
+                "Date:",
+                "‡",
+                "",
+                None,
+                "Discrimination",
+            ]
 
     monkeypatch.setattr(analytics_repository, "_mongo_collection", lambda _name: FakeCollection())
 
     categories = analytics_repository.get_fra_categories.uncached()
 
     assert categories == ["Discrimination", "Everyday life"]
+
+
+def test_fra_category_cache_is_invalidated_without_restarting_application(monkeypatch) -> None:
+    class MutableCollection:
+        def __init__(self) -> None:
+            self.categories = ["Discrimination"]
+
+        def distinct(self, _field, _query):
+            return list(self.categories)
+
+    collection = MutableCollection()
+    monkeypatch.setattr(analytics_repository, "_mongo_collection", lambda _name: collection)
+    app = Flask("fra-category-cache")
+    init_cache(app)
+
+    with app.app_context():
+        assert analytics_repository.get_fra_categories() == ["Discrimination"]
+        collection.categories = ["Discrimination", "Education"]
+        assert analytics_repository.get_fra_categories() == ["Discrimination"]
+        analytics_repository.invalidate_analytics_cache()
+        assert analytics_repository.get_fra_categories() == ["Discrimination", "Education"]
 
 
 def test_statistics_fra_selectors_start_empty() -> None:
@@ -1774,9 +1805,9 @@ def test_all_statistics_graphs_are_responsive_without_fixed_widths(monkeypatch) 
         assert props["config"]["responsive"] is True
         assert props["style"]["width"] == "100%"
 
-    map_config = cast(Any, _component_by_id(layout, "stats-map-graph")).to_plotly_json()[
-        "props"
-    ]["config"]
+    map_config = cast(Any, _component_by_id(layout, "stats-map-graph")).to_plotly_json()["props"][
+        "config"
+    ]
     assert map_config["scrollZoom"] is False
     assert map_config["doubleClick"] is False
     assert {"zoomInGeo", "zoomOutGeo", "resetGeo", "toImage"}.issubset(

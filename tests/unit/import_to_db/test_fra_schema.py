@@ -14,12 +14,14 @@ from app.import_to_db.fra.schema import (
     InvalidFraCsvError,
     UnsupportedFraCsvSchemaError,
     detect_fra_csv_schema,
+    find_fra_header_row,
     normalize_fra_csv,
     parse_fra_percentage,
     read_fra_csv_text,
 )
+from app.import_to_db.fra.validation import is_valid_fra_category
 
-CURRENT_CSV = '''topic,question,question_code,Location,country,Yes
+CURRENT_CSV = """topic,question,question_code,Location,country,Yes
 Discrimination,Discrimination in areas of life > Felt discriminated,D1_1,Spain,ES,42
 Discrimination,Discrimination in areas of life > Felt discriminated,D1_1,Greece,EL,"42,5 %"
 ,,,,,
@@ -31,7 +33,7 @@ Source:,"EU LGBTIQ Survey III, 2023",,,,
 Date:,2026-08-01,,,,
 Question Code:,D1_1,,,,
 Hyperlink:,https://fra.example/export,,,,
-'''
+"""
 
 
 def payload_dict(payload: Any) -> dict[str, Any]:
@@ -57,7 +59,16 @@ def test_detects_and_normalizes_current_wide_fra_csv() -> None:
 
 def test_detect_function_accepts_a_dataframe_directly() -> None:
     dataframe = pd.DataFrame(
-        [{"topic": "T", "question": "Q", "question_code": "I", "Location": "Spain", "country": "ES", "Yes": "42"}]
+        [
+            {
+                "topic": "T",
+                "question": "Q",
+                "question_code": "I",
+                "Location": "Spain",
+                "country": "ES",
+                "Yes": "42",
+            }
+        ]
     )
     assert detect_fra_csv_schema(dataframe).version == "current_wide"
 
@@ -99,21 +110,15 @@ weighted,percentage,ES,42,Spain,D1_1,Area > Question,Discrimination
         ),
     ],
 )
-def test_current_filter_combinations(
-    metadata: str, expected_a: str, expected_b: str
-) -> None:
-    dataframe, schema = read_fra_csv_text(
-        CURRENT_CSV.replace("Answer: Yes", metadata)
-    )
+def test_current_filter_combinations(metadata: str, expected_a: str, expected_b: str) -> None:
+    dataframe, schema = read_fra_csv_text(CURRENT_CSV.replace("Answer: Yes", metadata))
     row = normalize_fra_csv(dataframe, schema).iloc[0]
     assert row["filter_a_value"] == expected_a
     assert row["filter_b_value"] == expected_b
 
 
 def test_all_all_filename_rejects_explicit_endosex_metadata() -> None:
-    inconsistent = CURRENT_CSV.replace(
-        "Answer: Yes", "Answer: Yes; Sex Characteristics: Endosex"
-    )
+    inconsistent = CURRENT_CSV.replace("Answer: Yes", "Answer: Yes; Sex Characteristics: Endosex")
     with pytest.raises(FraMetadataMismatchError, match="fra_metadata_mismatch"):
         parse_fra_csv_text(inconsistent, file_name="d1-1_yes_2023_all_all.csv")
 
@@ -124,9 +129,7 @@ def test_all_all_and_explicit_endosex_reach_expected_payload_filters() -> None:
     )
     assert all_payload["answers"][0]["filters"] == [{"type": "All", "value": "All"}]
 
-    endosex_csv = CURRENT_CSV.replace(
-        "Answer: Yes", "Answer: Yes; Sex Characteristics: Endosex"
-    )
+    endosex_csv = CURRENT_CSV.replace("Answer: Yes", "Answer: Yes; Sex Characteristics: Endosex")
     endosex_payload = payload_dict(
         parse_fra_csv_text(endosex_csv, file_name="d1-1_yes_2023_sc-endosex.csv")
     )
@@ -136,9 +139,9 @@ def test_all_all_and_explicit_endosex_reach_expected_payload_filters() -> None:
 
 
 def test_legacy_semicolon_csv_and_decimal_comma_remain_supported() -> None:
-    csv_text = '''country;topic;question;answer;Age;Sexual Orientation;percentage;question_code
+    csv_text = """country;topic;question;answer;Age;Sexual Orientation;percentage;question_code
 España;Discrimination;Area > Pregunta;Yes;18-24;Lesbian;"42,5 %";D1_1
-'''
+"""
     dataframe, schema = read_fra_csv_text(csv_text)
     assert schema.version == "legacy_long"
     row = normalize_fra_csv(dataframe, schema).iloc[0]
@@ -210,3 +213,108 @@ def test_repeated_persistence_uses_set_semantics_for_answer_batches() -> None:
         update = call.args[1]
         assert "$addToSet" in update
         assert "$each" in update["$addToSet"]["answers"]
+
+
+def test_current_csv_detects_header_after_leading_metadata_and_keeps_it_separate() -> None:
+    csv_text = """Date:,2026-08-03,,,,
+Filters:,Answer: Yes,,,,
+Source:,"EU LGBTIQ Survey III, 2023",,,,
+Question Code:,D1_1,,,,
+Hyperlink:,https://fra.example/export,,,,
+Note:,Weighted survey results,,,,
+General Disclaimer of the FRA website:,https://fra.example/terms,,,,
+¹,not available due to sample size,,,,
+topic,question,question_code,Location,country,Yes
+Discrimination,Area > Felt discriminated,D1_1,Spain,ES,42
+‡,small sample size,,,,
+"""
+
+    dataframe, schema = read_fra_csv_text(csv_text)
+    normalized = normalize_fra_csv(dataframe, schema)
+    payload = payload_dict(parse_fra_csv_text(csv_text, file_name="fra-new.csv"))
+
+    assert schema.header_row == 8
+    assert normalized["category"].tolist() == ["Discrimination"]
+    assert payload["category"] == "Discrimination"
+    assert payload["record_type"] == "statistic"
+    assert payload["metadata"]["date"] == "2026-08-03"
+    assert payload["metadata"]["question_code"] == "D1_1"
+    assert payload["metadata"]["hyperlink"] == "https://fra.example/export"
+    assert payload["metadata"]["note"] == "Weighted survey results"
+    assert payload["metadata"]["disclaimer"] == "https://fra.example/terms"
+    assert payload["metadata"]["footnotes"] == {
+        "¹": "not available due to sample size",
+        "‡": "small sample size",
+    }
+
+
+def test_legacy_csv_detects_header_after_variable_metadata_preamble() -> None:
+    csv_text = """Source:;"EU LGBTIQ Survey III, 2023";;;;
+Date:;2026-08-03;;;;
+Note:;Legacy export;;;;
+country;topic;question;answer;percentage;question_code
+Spain;Discrimination;Area > Felt discriminated;Yes;42;D1_1
+"""
+
+    dataframe, schema = read_fra_csv_text(csv_text)
+    normalized = normalize_fra_csv(dataframe, schema)
+
+    assert schema.version == "legacy_long"
+    assert schema.header_row == 3
+    assert normalized[["category", "country_code", "percentage"]].to_dict("records") == [
+        {"category": "Discrimination", "country_code": "ES", "percentage": 42}
+    ]
+
+
+def test_find_header_row_rejects_metadata_only_csv() -> None:
+    with pytest.raises(UnsupportedFraCsvSchemaError, match="header_not_detected"):
+        find_fra_header_row([["Date:", "2026-08-03"], ["Source:", "FRA"]])
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        "",
+        "   ",
+        "Date:",
+        "Filters:",
+        "Source:",
+        "Question Code:",
+        "Hyperlink:",
+        "Note:",
+        "General Disclaimer of the FRA website:",
+        "¹",
+        "‡",
+        "ą",
+        "https://fra.example/category",
+    ],
+)
+def test_invalid_fra_categories_are_rejected(value: object) -> None:
+    assert not is_valid_fra_category(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "Discrimination",
+        "Health: access and outcomes",
+        "A long valid category describing social attitudes and government response",
+    ],
+)
+def test_real_categories_with_long_text_or_colons_remain_valid(value: str) -> None:
+    assert is_valid_fra_category(value)
+
+
+def test_import_logs_one_summary_instead_of_warning_per_metadata_row(caplog) -> None:
+    caplog.set_level("INFO", logger="app.import_to_db.fra.schema")
+    dataframe, schema = read_fra_csv_text(CURRENT_CSV)
+    normalize_fra_csv(dataframe, schema)
+
+    summaries = [record for record in caplog.records if record.message == "fra_import_summary"]
+    assert len(summaries) == 1
+    summary = summaries[0]
+    assert summary.rows_valid == 2
+    assert summary.metadata_rows >= 6
+    assert summary.footnote_rows == 2
+    assert summary.skipped_rows >= 1

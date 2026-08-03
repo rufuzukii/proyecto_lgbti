@@ -51,7 +51,7 @@ def discover_felgtbi_pdfs(
     timeout_seconds: int = 10,
 ) -> list[dict]:
     _validate_felgtbi_url(page_url)
-    request = Request(page_url, headers={"User-Agent": "RainbowLens/1.0"})
+    request = Request(page_url, headers={"User-Agent": "RainbowLens-Datahub/1.0"})
     opener = build_opener(_SafeRedirectHandler())
     with opener.open(request, timeout=max(1, min(timeout_seconds, 30))) as response:
         content_type = str(response.headers.get("Content-Type") or "").casefold()

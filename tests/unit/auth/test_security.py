@@ -48,6 +48,7 @@ def test_flask_security_sets_headers_cookies_and_auth_request_limit() -> None:
     assert "Secure" in cookie
     assert "HttpOnly" in cookie
     assert "SameSite=Lax" in cookie
+    assert app.config["SESSION_REFRESH_EACH_REQUEST"] is True
     assert client.post("/auth/login", data=b"x" * 33).status_code == 413
     assert (
         client.post(

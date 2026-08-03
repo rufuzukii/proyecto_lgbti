@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from dash import dcc, html
 from dash.development.base_component import Component
 
-from app.dash.i18n import text_attrs
+from app.dash.i18n import dash_attrs, text_attrs
 from app.edu.glossary_service import get_glossary_term
 from app.edu.models import GlossaryTerm, Lesson, TeacherResource
 from app.edu.translations import category_name, pair, tr
 
 
-def translated(key: str, *, tag=html.Span, class_name: str | None = None) -> Component:
+def translated(
+    key: str,
+    *,
+    tag: Callable[..., Component] = html.Span,
+    class_name: str | None = None,
+) -> Component:
     es, en = pair(key)
     return tag(es, className=class_name, **text_attrs(es, en))
 
@@ -17,10 +24,18 @@ def translated(key: str, *, tag=html.Span, class_name: str | None = None) -> Com
 def resource_card(title_key: str, description_key: str, href: str, icon: str) -> Component:
     return dcc.Link(
         [
-            html.Span(icon, className="didactica-card-icon", **{"aria-hidden": "true"}),
+            html.Span(
+                icon,
+                className="didactica-card-icon",
+                **dash_attrs({"aria-hidden": "true"}),
+            ),
             translated(title_key, tag=html.H2),
             translated(description_key, tag=html.P),
-            html.Span("→", className="didactica-card-arrow", **{"aria-hidden": "true"}),
+            html.Span(
+                "→",
+                className="didactica-card-arrow",
+                **dash_attrs({"aria-hidden": "true"}),
+            ),
         ],
         href=href,
         refresh=False,

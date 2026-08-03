@@ -672,6 +672,12 @@ body[data-theme="dark"] .auth-message-success {
   color: #bbf7d0;
 }
 
+body[data-theme="dark"] .auth-message-info {
+  background: #16324f;
+  border-color: rgba(147, 197, 253, 0.32);
+  color: #bfdbfe;
+}
+
 body[data-theme="dark"] .home-map-metric {
   border-left-color: var(--link-green);
 }
@@ -714,6 +720,11 @@ body[data-theme="dark"] .Select-menu-outer div {
 :root[data-theme="dark"] .Select-placeholder,
 body[data-theme="dark"] .Select-placeholder {
   color: var(--color-text-muted) !important;
+}
+
+:root[data-theme="dark"] span.dash-options-list-option-text,
+body[data-theme="dark"] span.dash-options-list-option-text {
+  color: #fff !important;
 }
 
 :root[data-theme="dark"] .Select-value,
