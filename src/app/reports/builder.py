@@ -11,7 +11,7 @@ from app.analytics.statistics_charts import (
     build_eu_average_comparison_chart,
     build_experience_legal_radar,
     build_fra_response_comparison_chart,
-    build_ilga_criteria_heatmap,
+    build_ilga_response_details_chart,
     build_response_country_comparison_chart,
     build_temporal_evolution_chart,
 )
@@ -307,9 +307,12 @@ def _charts(
                 (
                     "responses",
                     _t(language, "Criterios jurídicos", "Legal criteria"),
-                    lambda: build_ilga_criteria_heatmap(
-                        list(result.get("data") or []),
+                    lambda: build_ilga_response_details_chart(
+                        detail,
+                        selected,
                         language=language,
+                        indicator=indicator,
+                        year=result.get("year"),
                     ),
                 ),
                 (
@@ -319,6 +322,7 @@ def _charts(
                         list(result.get("history") or []),
                         selected,
                         language,
+                        visible_countries=selected or None,
                     ),
                 ),
             ]

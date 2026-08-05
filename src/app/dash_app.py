@@ -76,6 +76,7 @@ from app.import_to_db.import_log import (
 )
 from app.logging_config import configure_secure_logging
 from app.mongo_indexes import initialize_mongo_indexes
+from app.trends import build_trends_layout, register_trend_callbacks
 from app.users.schemas import UserRegister, UserRole, UserType
 from app.users.service import (
     UserRecord,
@@ -99,6 +100,7 @@ SAFE_NEXT_PATHS = {
     "/reports",
     "/spain",
     "/statistics",
+    "/tendencias",
     "/upload",
     "/user",
     "/didactica",
@@ -234,6 +236,8 @@ def create_dash_app() -> Dash:
         try:
             if pathname == "/statistics":
                 return build_statistics_layout()
+            if pathname == "/tendencias":
+                return build_trends_layout()
             if pathname == "/didactics":
                 return dcc.Location(href="/didactica", id="legacy-didactica-redirect")
             if pathname == "/didactica":
@@ -357,6 +361,7 @@ def create_dash_app() -> Dash:
     _register_client_preferences_callbacks(app)
     register_upload_callbacks(app)
     register_statistics_callbacks(app)
+    register_trend_callbacks(app)
     register_reports_callbacks(app)
     register_spain_callbacks(app)
     register_home_callbacks(app)

@@ -43,6 +43,7 @@ Hyperlink:,http://example.test/fra,,,,,,
         "country_code": "ES",
         "answer": "Yes",
         "percentage": 21.0,
+        "date": "2026-02-27",
         "filters": [
             {"type": "Age", "value": "18-24"},
             {"type": "Gender Expression", "value": "Trans women"},

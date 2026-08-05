@@ -322,33 +322,36 @@ def test_fra_result_keeps_country_without_selected_answer_as_missing(monkeypatch
 
 
 def test_ilga_result_keeps_country_without_selected_criterion_as_missing(monkeypatch) -> None:
-    document = {
-        "year": 2026,
-        "countries": [
-            {
-                "country": "Spain",
-                "country_code": "ES",
-                "ranking": 75,
-                "criteria": [
-                    {
-                        "category": "Family",
-                        "indicator": "Marriage equality",
-                        "value": 1,
-                        "weight": 1,
-                    }
-                ],
-            },
-            {
-                "country": "France",
-                "country_code": "FR",
-                "ranking": 70,
-                "criteria": [],
-            },
-        ],
-    }
+    rows = [
+        {
+            "document_id": "2",
+            "year": 2026,
+            "country_index": 0,
+            "country_name": "Spain",
+            "country_code": "ES",
+            "ranking": 75,
+            "criteria": [
+                {
+                    "category": "Family",
+                    "indicator": "Marriage equality",
+                    "value": 1,
+                    "weight": 1,
+                }
+            ],
+        },
+        {
+            "document_id": "2",
+            "year": 2026,
+            "country_index": 1,
+            "country_name": "France",
+            "country_code": "FR",
+            "ranking": 70,
+            "criteria": [],
+        },
+    ]
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_ilga_document_by_year",
-        lambda _year: document,
+        "app.analytics.statistics_service.get_ilga_analysis_rows",
+        lambda _category, _criterion: rows,
     )
 
     result = get_ilga_statistics(

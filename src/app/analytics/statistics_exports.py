@@ -176,6 +176,14 @@ def prepare_figure_for_export(
     margin = cast(Any, figure).layout.margin
     existing_meta = cast(Any, figure).layout.meta
     preserved_meta = dict(existing_meta) if isinstance(existing_meta, dict) else {}
+    minimum_width = preserved_meta.get("minimum_width")
+    export_width = EXPORT_WIDTH
+    if isinstance(minimum_width, (int, float)):
+        export_width = max(EXPORT_WIDTH, min(4800, int(minimum_width)))
+    layout_height = cast(Any, figure).layout.height
+    export_height = EXPORT_HEIGHT
+    if isinstance(layout_height, (int, float)):
+        export_height = max(EXPORT_HEIGHT, min(2000, int(layout_height)))
     figure.update_layout(
         title={
             "text": title_text,
@@ -198,8 +206,8 @@ def prepare_figure_for_export(
                 year,
             ),
             "export_format": EXPORT_FORMAT,
-            "export_width": EXPORT_WIDTH,
-            "export_height": EXPORT_HEIGHT,
+            "export_width": export_width,
+            "export_height": export_height,
             "export_scale": EXPORT_SCALE,
             "export_source": source_label,
         },

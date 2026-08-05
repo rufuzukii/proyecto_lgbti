@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import colorsys
+import hashlib
 import logging
+import time
 from typing import Any, cast
 
 import pandas as pd
@@ -141,17 +144,21 @@ PLOTLY_TRANSPARENT = "rgba(0,0,0,0)"
 
 
 def country_color(iso: Any = None, country: Any = None) -> str:
-    """Return the approved country colour or the default blue."""
+    """Return a stable country colour shared by every application chart."""
     clean_iso = None if _is_missing_country_value(iso) else iso
-    code = normalize_country_code(clean_iso, country)
-    code = ISO3_TO_ISO2.get(code, code)
-    if code in COUNTRY_COLORS:
-        return COUNTRY_COLORS[code]
+    normalized_code = normalize_country_code(clean_iso, country)
+    normalized_code = ISO3_TO_ISO2.get(normalized_code, normalized_code)
+    if normalized_code in COUNTRY_COLORS:
+        return COUNTRY_COLORS[normalized_code]
 
     for candidate in (country, clean_iso):
-        code = COUNTRY_NAME_CODES.get(normalize_text_key(candidate), "")
-        if code in COUNTRY_COLORS:
-            return COUNTRY_COLORS[code]
+        mapped_code = COUNTRY_NAME_CODES.get(normalize_text_key(candidate), "")
+        if mapped_code in COUNTRY_COLORS:
+            return COUNTRY_COLORS[mapped_code]
+    if normalized_code in ISO2_TO_ISO3:
+        hue = int(hashlib.sha256(normalized_code.encode("ascii")).hexdigest()[:8], 16) / 0xFFFFFFFF
+        red, green, blue = colorsys.hls_to_rgb(hue, 0.48, 0.68)
+        return f"#{round(red * 255):02X}{round(green * 255):02X}{round(blue * 255):02X}"
     return DEFAULT_COUNTRY_COLOR
 
 
@@ -2053,11 +2060,308 @@ def build_response_country_comparison_chart(
     return figure
 
 
+def build_ilga_response_details_chart(
+    detail_rows: list[dict[str, Any]],
+    selected_countries: list[str] | None = None,
+    language: str = "es",
+    *,
+    indicator: str | None = None,
+    year: int | str | None = None,
+) -> go.Figure:
+    """Render legal scores or semantic compliance states for every country."""
+    started_at = time.perf_counter()
+    dataframe = pd.DataFrame(detail_rows)
+    required = {"country_code", "country_name", "value", "indicator_id", "response"}
+    if dataframe.empty or not required.issubset(dataframe.columns):
+        return empty_figure(
+            _chart_text(
+                language,
+                "No hay detalles jurídicos para esta selección.",
+                "There are no legal details for this selection.",
+            )
+        )
+    dataframe = dataframe.copy()
+    dataframe["country_code"] = [
+        normalize_country_code(code, name)
+        for code, name in zip(dataframe["country_code"], dataframe["country_name"], strict=True)
+    ]
+    dataframe = dataframe[dataframe["country_code"].ne("") & dataframe["country_code"].ne("EU27")]
+    if dataframe.empty:
+        return empty_figure("No hay países comparables para esta selección.")
+    dataframe["country_label"] = [
+        country_labels(code, str(name))[1 if language == "en" else 0]
+        for code, name in zip(dataframe["country_code"], dataframe["country_name"], strict=True)
+    ]
+    dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
+    dataframe["response_order"] = pd.to_numeric(
+        dataframe.get("response_order", pd.Series(index=dataframe.index, dtype=float)),
+        errors="coerce",
+    ).fillna(99)
+    country_frame = (
+        dataframe[["country_code", "country_label"]]
+        .groupby("country_code", as_index=False, sort=False)
+        .agg(country_label=("country_label", "first"))
+        .sort_values("country_label", key=lambda values: values.str.casefold(), kind="stable")
+    )
+    countries = country_frame["country_label"].tolist()
+    selected_keys = _selected_country_keys(selected_countries)
+    indicator_count = int(dataframe["indicator_id"].astype(str).nunique())
+    missing_count = int(dataframe["value"].isna().sum())
+    response_order = (
+        dataframe[["response", "response_order"]]
+        .groupby("response", as_index=False, sort=False)
+        .agg(response_order=("response_order", "min"))
+        .sort_values(["response_order", "response"], kind="stable")["response"]
+        .astype(str)
+        .tolist()
+    )
+    visible_responses = [response for response in response_order if response != "not_available"]
+    figure = go.Figure()
+    if indicator_count <= 1:
+        _add_legal_score_traces(
+            figure,
+            dataframe,
+            visible_responses,
+            selected_keys,
+            language=language,
+            indicator=indicator,
+            year=year,
+        )
+        y_title = _chart_text(language, "Puntuación o valor legal", "Legal score or value")
+        y_axis: dict[str, Any] = {
+            "title": y_title,
+            "range": [0, 100],
+            "ticksuffix": "%",
+            "automargin": True,
+        }
+        barmode = "group"
+    else:
+        _add_legal_status_count_traces(
+            figure,
+            dataframe,
+            visible_responses,
+            selected_keys,
+            language=language,
+            indicator=indicator,
+            year=year,
+        )
+        y_axis = {
+            "title": _chart_text(language, "Número de criterios", "Number of criteria"),
+            "rangemode": "tozero",
+            "dtick": 1,
+            "automargin": True,
+        }
+        barmode = "stack"
+
+    country_count = len(country_frame)
+    response_count = max(1, len(visible_responses))
+    chart_height = min(max(560, country_count * 8 + response_count * 32), 1000)
+    # Keep country labels readable without making the Plotly canvas several
+    # viewport widths larger than the section. Any remaining excess is handled
+    # by the section's local horizontal scroller.
+    minimum_width = min(2400, max(760, 190 + country_count * 44))
+    _apply_base_layout(figure, margin={"l": 72, "r": 30, "t": 70, "b": 175})
+    figure.update_layout(
+        autosize=True,
+        barmode=barmode,
+        bargap=0.2,
+        height=chart_height,
+        meta={"minimum_width": minimum_width},
+        xaxis={
+            "title": _chart_text(language, "País", "Country"),
+            "categoryorder": "array",
+            "categoryarray": countries,
+            "tickangle": -40,
+            "automargin": True,
+        },
+        yaxis=y_axis,
+        legend={
+            "title": {"text": _chart_text(language, "Respuesta legal", "Legal response")},
+            "orientation": "h",
+            "y": -0.24,
+            "yanchor": "top",
+            "itemclick": "toggle",
+            "itemdoubleclick": "toggleothers",
+        },
+        showlegend=True,
+    )
+    if missing_count:
+        figure.add_annotation(
+            text=f"{_chart_text(language, 'Sin datos', 'No data')}: {missing_count}",
+            x=1,
+            y=1.08,
+            xref="paper",
+            yref="paper",
+            xanchor="right",
+            showarrow=False,
+        )
+    logger.info(
+        "legal_response_details_chart countries_loaded=%d responses_detected=%d rows_rendered=%d figure_ms=%.2f",
+        country_count,
+        len(response_order),
+        int(dataframe["value"].notna().sum()),
+        (time.perf_counter() - started_at) * 1000,
+        extra={
+            "countries_loaded": country_count,
+            "responses_detected": response_order,
+            "rows_rendered": int(dataframe["value"].notna().sum()),
+            "figure_ms": round((time.perf_counter() - started_at) * 1000, 2),
+        },
+    )
+    return figure
+
+
+def _add_legal_score_traces(
+    figure: go.Figure,
+    dataframe: pd.DataFrame,
+    responses: list[str],
+    selected_keys: set[str],
+    *,
+    language: str,
+    indicator: str | None,
+    year: int | str | None,
+) -> None:
+    for response in responses:
+        rows = dataframe[
+            dataframe["response"].astype(str).eq(response) & dataframe["value"].notna()
+        ]
+        if rows.empty:
+            continue
+        selected = rows["country_code"].isin(selected_keys).tolist()
+        values = rows["value"].astype(float).tolist()
+        figure.add_trace(
+            go.Bar(
+                x=rows["country_label"],
+                y=values,
+                name=_legal_response_label(response, language),
+                marker={
+                    "color": _legal_response_color(response),
+                    "opacity": [
+                        1.0 if item else 0.72 if selected_keys else 0.9 for item in selected
+                    ],
+                    "line": _selected_marker_line(selected),
+                },
+                customdata=[
+                    [
+                        _legal_response_label(response, language),
+                        format_percentage(value) or _chart_text(language, "Sin datos", "No data"),
+                        str(row_year or year or ""),
+                        str(row_indicator or indicator or ""),
+                        str(source or "ILGA-Europe"),
+                    ]
+                    for value, row_year, row_indicator, source in zip(
+                        values,
+                        rows.get("year", pd.Series(index=rows.index, dtype=object)),
+                        rows["indicator_id"],
+                        rows.get("source", pd.Series(index=rows.index, dtype=object)),
+                        strict=True,
+                    )
+                ],
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    f"{_chart_text(language, 'Respuesta', 'Answer')}: %{{customdata[0]}}<br>"
+                    f"{_chart_text(language, 'Valor', 'Value')}: %{{customdata[1]}}<br>"
+                    f"{_chart_text(language, 'Año', 'Year')}: %{{customdata[2]}}<br>"
+                    f"{_chart_text(language, 'Indicador', 'Indicator')}: %{{customdata[3]}}<br>"
+                    f"{_chart_text(language, 'Fuente', 'Source')}: %{{customdata[4]}}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+
+def _add_legal_status_count_traces(
+    figure: go.Figure,
+    dataframe: pd.DataFrame,
+    responses: list[str],
+    selected_keys: set[str],
+    *,
+    language: str,
+    indicator: str | None,
+    year: int | str | None,
+) -> None:
+    valid = dataframe[dataframe["value"].notna()]
+    grouped = valid.groupby(
+        ["country_code", "country_label", "response"], as_index=False, sort=False
+    ).agg(
+        criterion_count=("indicator_id", "count"),
+        row_year=("year", "first"),
+        source=("source", "first"),
+    )
+    for response in responses:
+        rows = grouped[grouped["response"].astype(str).eq(response)]
+        if rows.empty:
+            continue
+        selected = rows["country_code"].isin(selected_keys).tolist()
+        figure.add_trace(
+            go.Bar(
+                x=rows["country_label"],
+                y=rows["criterion_count"],
+                name=_legal_response_label(response, language),
+                marker={
+                    "color": _legal_response_color(response),
+                    "opacity": [
+                        1.0 if item else 0.72 if selected_keys else 0.9 for item in selected
+                    ],
+                    "line": _selected_marker_line(selected),
+                },
+                customdata=[
+                    [
+                        _legal_response_label(response, language),
+                        int(count),
+                        str(row_year or year or ""),
+                        str(indicator or ""),
+                        str(source or "ILGA-Europe"),
+                    ]
+                    for count, row_year, source in zip(
+                        rows["criterion_count"], rows["row_year"], rows["source"], strict=True
+                    )
+                ],
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    f"{_chart_text(language, 'Respuesta', 'Answer')}: %{{customdata[0]}}<br>"
+                    f"{_chart_text(language, 'Criterios', 'Criteria')}: %{{customdata[1]}}<br>"
+                    f"{_chart_text(language, 'Año', 'Year')}: %{{customdata[2]}}<br>"
+                    f"{_chart_text(language, 'Indicador', 'Indicator')}: %{{customdata[3]}}<br>"
+                    f"{_chart_text(language, 'Fuente', 'Source')}: %{{customdata[4]}}"
+                    "<extra></extra>"
+                ),
+            )
+        )
+
+
+def _legal_response_label(response: str, language: str) -> str:
+    samples: dict[str, float | None] = {
+        "not_met": 0,
+        "partially_met": 0.5,
+        "fully_met": 1,
+        "not_available": None,
+    }
+    if response == "overall_score":
+        return _chart_text(language, "Puntuación legal", "Legal score")
+    if response in samples:
+        return get_criterion_status(samples[response], 1, language)["label"]
+    return str(response).strip()
+
+
+def _legal_response_color(response: str) -> str:
+    return {
+        "not_met": NO_RESPONSE_COLOR,
+        "partially_met": "#E3B505",
+        "fully_met": YES_RESPONSE_COLOR,
+        "not_available": MISSING_PERCENTAGE_COLOR,
+        "overall_score": DEFAULT_COUNTRY_COLOR,
+    }.get(response, DEFAULT_COUNTRY_COLOR)
+
+
 def build_temporal_evolution_chart(
     history_rows: list[dict[str, Any]],
     selected_countries: list[str] | None = None,
     language: str = "es",
+    *,
+    visible_countries: list[str] | None = None,
 ) -> go.Figure:
+    started_at = time.perf_counter()
     dataframe = pd.DataFrame(history_rows)
     if dataframe.empty or not {"year", "country", "value"}.issubset(dataframe.columns):
         return empty_figure(
@@ -2067,44 +2371,165 @@ def build_temporal_evolution_chart(
                 "There is no historical data for this indicator.",
             )
         )
-    selected = _selected_country_keys(selected_countries)
-    if selected:
-        dataframe = dataframe[
-            dataframe.apply(
-                lambda row: _country_key(row.get("iso"), row.get("country")) in selected, axis=1
+    dataframe = dataframe.copy()
+    if "iso" not in dataframe and "country_code" in dataframe:
+        dataframe["iso"] = dataframe["country_code"]
+    if "iso" not in dataframe:
+        dataframe["iso"] = ""
+    dataframe["iso"] = [
+        normalize_country_code(iso, country)
+        for iso, country in zip(dataframe.get("iso", ""), dataframe["country"], strict=True)
+    ]
+    dataframe["year"] = pd.to_numeric(dataframe["year"], errors="coerce")
+    dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
+    dataframe = dataframe[
+        dataframe["iso"].ne("")
+        & dataframe["iso"].ne("EU27")
+        & dataframe["year"].notna()
+        & dataframe["value"].notna()
+        & dataframe["value"].between(0, 100)
+    ]
+    if visible_countries is not None:
+        visible = _selected_country_keys(visible_countries)
+        dataframe = dataframe[dataframe["iso"].isin(visible)]
+    if dataframe.empty:
+        return empty_figure(
+            _chart_text(
+                language,
+                "No hay países activados en el selector de evolución temporal.",
+                "No countries are enabled in the temporal evolution selector.",
             )
-        ]
-    else:
-        latest = (
-            dataframe.sort_values("year")
-            .groupby("country", as_index=False)
-            .tail(1)
-            .nlargest(6, "value")
         )
-        dataframe = dataframe[dataframe["country"].isin(latest["country"])]
+
+    duplicate_groups = dataframe.groupby(["iso", "year"])["value"].nunique(dropna=True)
+    conflicts = duplicate_groups[duplicate_groups.gt(1)]
+    if not conflicts.empty:
+        conflict_keys = set(conflicts.index.tolist())
+        dataframe = dataframe[
+            ~dataframe.apply(lambda row: (row["iso"], row["year"]) in conflict_keys, axis=1)
+        ]
+        logger.warning(
+            "legal_temporal_conflicting_years groups=%d",
+            len(conflict_keys),
+            extra={"conflicting_year_group_count": len(conflict_keys)},
+        )
+    if dataframe.empty:
+        return empty_figure(
+            _chart_text(
+                language,
+                "Los datos históricos duplicados son contradictorios.",
+                "The duplicate historical records conflict.",
+            )
+        )
+    dataframe = dataframe.groupby(["iso", "year"], as_index=False, sort=False).agg(
+        country=("country", "first"),
+        value=("value", "first"),
+        indicator_id=("indicator_id", "first")
+        if "indicator_id" in dataframe
+        else ("country", lambda _values: ""),
+        source=("source", "first")
+        if "source" in dataframe
+        else ("country", lambda _values: "ILGA-Europe"),
+    )
+    highlighted = _selected_country_keys(selected_countries)
+    all_years = sorted(int(year) for year in dataframe["year"].unique().tolist())
+    year_count = len(all_years)
     figure = go.Figure()
-    for country, rows in dataframe.sort_values("year").groupby("country"):
-        iso = rows.iloc[0].get("iso")
-        color = country_color(iso, country)
+    series = dataframe.sort_values(["country", "year"], kind="stable").groupby("iso", sort=False)
+    for iso, rows in series:
+        fallback_country = str(rows.iloc[0].get("country") or iso)
+        country = country_labels(str(iso), fallback_country)[1 if language == "en" else 0]
+        color = country_color(iso, fallback_country)
+        values_by_year = {int(row.year): float(row.value) for row in rows.itertuples()}
+        values = [values_by_year.get(year) for year in all_years]
+        available_count = sum(value is not None for value in values)
+        incomplete = available_count < year_count or available_count < 2
+        completeness = (
+            _chart_text(language, "Serie incompleta", "Incomplete series")
+            if incomplete
+            else _chart_text(language, "Serie completa", "Complete series")
+        )
+        is_highlighted = str(iso) in highlighted
+        opacity = 1.0 if is_highlighted or not highlighted else 0.22
         figure.add_trace(
             go.Scatter(
-                x=rows["year"],
-                y=rows["value"],
-                mode="lines+markers",
+                x=all_years,
+                y=values,
+                mode="markers" if available_count < 2 else "lines+markers",
                 name=str(country),
-                line={"color": color},
-                marker={"color": color},
+                connectgaps=False,
+                opacity=opacity,
+                line={"color": color, "width": 3.2 if is_highlighted else 1.5},
+                marker={"color": color, "size": 8 if is_highlighted else 5},
+                customdata=[
+                    [
+                        str(
+                            rows.loc[rows["year"].eq(year), "indicator_id"].iloc[0]
+                            if year in values_by_year
+                            else ""
+                        ),
+                        str(
+                            rows.loc[rows["year"].eq(year), "source"].iloc[0]
+                            if year in values_by_year
+                            else "ILGA-Europe"
+                        ),
+                        completeness,
+                        format_percentage(values_by_year.get(year)) or "",
+                    ]
+                    for year in all_years
+                ],
+                hovertemplate=(
+                    "<b>%{fullData.name}</b><br>"
+                    f"{_chart_text(language, 'Año', 'Year')}: %{{x}}<br>"
+                    f"{_chart_text(language, 'Valor', 'Value')}: %{{customdata[3]}}<br>"
+                    f"{_chart_text(language, 'Indicador', 'Indicator')}: %{{customdata[0]}}<br>"
+                    f"{_chart_text(language, 'Fuente', 'Source')}: %{{customdata[1]}}<br>"
+                    "%{customdata[2]}<extra></extra>"
+                ),
             )
         )
     figure.update_layout(
-        xaxis={"title": _chart_text(language, "Año", "Year"), "dtick": 1},
+        autosize=True,
+        height=680,
+        meta={"minimum_width": 860},
+        xaxis={
+            "title": _chart_text(language, "Año", "Year"),
+            "dtick": 1,
+            "automargin": True,
+        },
         yaxis={
             "title": _chart_text(language, "Puntuación ILGA (%)", "ILGA score (%)"),
             "range": [0, 100],
+            "automargin": True,
         },
     )
-    _apply_base_layout(figure, margin={"l": 55, "r": 25, "t": 20, "b": 55})
-    figure.update_layout(showlegend=True, legend={"orientation": "h", "y": -0.2})
+    _apply_base_layout(figure, margin={"l": 68, "r": 230, "t": 28, "b": 70})
+    figure.update_layout(
+        showlegend=True,
+        legend={
+            "orientation": "v",
+            "x": 1.01,
+            "xanchor": "left",
+            "y": 1,
+            "yanchor": "top",
+            "maxheight": 0.98,
+            "itemclick": "toggle",
+            "itemdoubleclick": "toggleothers",
+        },
+    )
+    logger.info(
+        "legal_temporal_figure countries_loaded=%d years_loaded=%d series_rendered=%d figure_ms=%.2f",
+        int(dataframe["iso"].nunique()),
+        year_count,
+        len(figure.data),
+        (time.perf_counter() - started_at) * 1000,
+        extra={
+            "countries_loaded": int(dataframe["iso"].nunique()),
+            "years_loaded": year_count,
+            "series_rendered": len(figure.data),
+            "figure_ms": round((time.perf_counter() - started_at) * 1000, 2),
+        },
+    )
     return figure
 
 
@@ -2454,8 +2879,6 @@ def _first_criterion_category(dataframe: pd.DataFrame, criterion: str) -> str:
 def _normalized_criterion_value(value: float | None, weight: float | None) -> float | None:
     if value is None:
         return None
-    if weight is not None and weight > 0:
-        return max(0.0, min(1.0, value / weight))
     return max(0.0, min(1.0, value))
 
 
@@ -2473,8 +2896,8 @@ def _legal_hover_data(
         },
         language,
     )
-    status = get_criterion_status(value, weight, language)
-    score = get_criterion_score_label(value, weight, language)
+    status = get_criterion_status(value, 1, language)
+    score = get_criterion_score_label(value, 1, language)
     unavailable_score = (
         "Score: information unavailable"
         if language == "en"

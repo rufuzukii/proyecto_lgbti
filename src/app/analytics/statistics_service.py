@@ -10,6 +10,7 @@ from typing import Any
 
 import pandas as pd
 
+from app.analytics.legal_criteria import get_criterion_status
 from app.analytics.percentage_display import (
     coerce_percentage,
     normalize_percentage_values,
@@ -18,8 +19,8 @@ from app.analytics.repository import (
     ANALYTICS_CACHE_TIMEOUT_SECONDS,
     get_fra_indicator_answers,
     get_fra_indicator_documents,
+    get_ilga_analysis_rows,
     get_ilga_document_by_year,
-    get_ilga_history_documents,
 )
 from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_A,
@@ -46,6 +47,13 @@ NO_DATA_MESSAGE = (
 )
 
 RADAR_MAPPING_VERSION = "fra-ilga-v1"
+ILGA_RESPONSE_ORDER = {
+    "not_met": 0,
+    "partially_met": 1,
+    "fully_met": 2,
+    "not_available": 3,
+    "overall_score": 4,
+}
 RADAR_DIMENSION_MAPPING: dict[str, dict[str, Any]] = {
     "equal_treatment": {
         "label_es": "Igualdad y no discriminación",
@@ -203,6 +211,153 @@ def ilga_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
                 }
             )
     return pd.DataFrame(rows) if rows else _empty_ilga_dataframe()
+
+
+def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    """Normalize projected ILGA country rows into one canonical analysis frame.
+
+    Duplicate resolution is deterministic: the newest Mongo document id wins;
+    exact duplicates inside that document collapse to one row; conflicting
+    values inside the winning document become missing instead of being averaged.
+    """
+    normalized: list[dict[str, Any]] = []
+    discarded: dict[str, int] = {
+        "invalid_year": 0,
+        "missing_country": 0,
+        "invalid_ranking": 0,
+        "invalid_criterion_value": 0,
+        "invalid_weight": 0,
+    }
+    for raw_row in rows:
+        if not isinstance(raw_row, dict):
+            continue
+        year = _safe_int(raw_row.get("year"))
+        if year is None:
+            discarded["invalid_year"] += 1
+            continue
+        country_name = repair_text_encoding(raw_row.get("country_name")).strip()
+        country_code = normalize_country_code(raw_row.get("country_code"), country_name)
+        if not country_code or not country_name or country_code == "EU27":
+            discarded["missing_country"] += 1
+            continue
+        document_id = str(raw_row.get("document_id") or "")
+        country_index = _safe_int(raw_row.get("country_index")) or 0
+        ranking = coerce_percentage(raw_row.get("ranking"))
+        if ranking is None and raw_row.get("ranking") is not None:
+            discarded["invalid_ranking"] += 1
+        normalized.append(
+            {
+                "document_id": document_id,
+                "country_index": country_index,
+                "criterion_index": -1,
+                "source": "ILGA-Europe",
+                "year": year,
+                "country": country_name,
+                "country_name": country_name,
+                "iso": country_code,
+                "country_code": country_code,
+                "ranking": ranking,
+                "category": "Ranking total",
+                "criterion": "",
+                "indicator_id": "Ranking total",
+                "criterion_value": None,
+                "criterion_weight": None,
+                "value": ranking,
+                "response": "overall_score",
+                "response_order": ILGA_RESPONSE_ORDER["overall_score"],
+            }
+        )
+        criteria = raw_row.get("criteria")
+        if not isinstance(criteria, list):
+            continue
+        for criterion_index, criterion in enumerate(criteria):
+            if not isinstance(criterion, dict):
+                continue
+            category = repair_text_encoding(criterion.get("category")).strip()
+            indicator = repair_text_encoding(criterion.get("indicator")).strip()
+            if not category or not indicator:
+                continue
+            raw_value = _safe_unit_score(criterion.get("value"))
+            if raw_value is None and criterion.get("value") is not None:
+                discarded["invalid_criterion_value"] += 1
+            weight = _safe_positive_float(criterion.get("weight"))
+            if weight is None and criterion.get("weight") is not None:
+                discarded["invalid_weight"] += 1
+            response = get_criterion_status(raw_value, 1, "en")["id"]
+            normalized.append(
+                {
+                    "document_id": document_id,
+                    "country_index": country_index,
+                    "criterion_index": criterion_index,
+                    "source": "ILGA-Europe",
+                    "year": year,
+                    "country": country_name,
+                    "country_name": country_name,
+                    "iso": country_code,
+                    "country_code": country_code,
+                    "ranking": ranking,
+                    "category": category,
+                    "criterion": indicator,
+                    "indicator_id": indicator,
+                    "criterion_value": raw_value,
+                    "criterion_weight": weight,
+                    "value": raw_value * 100 if raw_value is not None else None,
+                    "response": response,
+                    "response_order": ILGA_RESPONSE_ORDER[response],
+                }
+            )
+    if not normalized:
+        return _empty_ilga_analysis_dataframe()
+
+    dataframe = pd.DataFrame(normalized)
+    resolved_rows: list[dict[str, Any]] = []
+    duplicate_groups = 0
+    conflicting_groups = 0
+    group_columns = ["year", "country_code", "indicator_id", "category"]
+    for _key, group in dataframe.groupby(group_columns, sort=False, dropna=False):
+        latest_document = max(group["document_id"].astype(str).tolist(), default="")
+        candidates = group[group["document_id"].astype(str).eq(latest_document)].sort_values(
+            ["country_index", "criterion_index"], kind="stable"
+        )
+        duplicate_groups += int(len(group) > 1)
+        numeric_values = {
+            float(value)
+            for value in candidates["value"].tolist()
+            if value is not None and pd.notna(value)
+        }
+        chosen = candidates.iloc[0].to_dict()
+        if len(numeric_values) > 1:
+            conflicting_groups += 1
+            chosen["value"] = None
+            chosen["criterion_value"] = None
+            chosen["response"] = "not_available"
+            chosen["response_order"] = ILGA_RESPONSE_ORDER["not_available"]
+        resolved_rows.append(chosen)
+
+    resolved = pd.DataFrame(resolved_rows)
+    latest_names = (
+        resolved.sort_values(["year", "document_id", "country_index"], kind="stable")
+        .groupby("country_code", sort=False)
+        .tail(1)
+        .set_index("country_code")["country_name"]
+        .to_dict()
+    )
+    resolved["country_name"] = resolved["country_code"].map(latest_names)
+    resolved["country"] = resolved["country_name"]
+    discarded = {key: value for key, value in discarded.items() if value}
+    if discarded or duplicate_groups or conflicting_groups:
+        logger.warning(
+            "ilga_analysis_quality discarded=%r duplicate_groups=%d conflicting_groups=%d",
+            discarded,
+            duplicate_groups,
+            conflicting_groups,
+            extra={
+                "discarded": discarded,
+                "duplicate_group_count": duplicate_groups,
+                "conflicting_group_count": conflicting_groups,
+            },
+        )
+    return resolved[_empty_ilga_analysis_dataframe().columns.tolist()].reset_index(drop=True)
 
 
 def build_fra_filter_type_options(
@@ -914,32 +1069,72 @@ def _build_ilga_statistics(
     *,
     include_history: bool,
 ) -> dict[str, Any]:
-    document = get_ilga_document_by_year(query.year)
-    source_dataframe = ilga_document_to_dataframe(document)
+    query_started_at = time.perf_counter()
+    raw_rows = get_ilga_analysis_rows(query.category, query.criterion)
+    query_ms = (time.perf_counter() - query_started_at) * 1000
+    normalization_started_at = time.perf_counter()
+    source_dataframe = ilga_analysis_rows_to_dataframe(raw_rows)
+    normalization_ms = (time.perf_counter() - normalization_started_at) * 1000
     if source_dataframe.empty:
         return _status("empty", "No hay datos ILGA-Europe para el año seleccionado.")
 
-    dataframe = filter_ilga_dataframe(source_dataframe, query)
-    if dataframe.empty:
-        return _status("empty", "No hay datos ILGA-Europe para la combinación seleccionada.")
+    available_years = sorted(
+        int(year) for year in source_dataframe["year"].dropna().unique().tolist()
+    )
+    effective_year = query.year if query.year is not None else max(available_years, default=None)
+    if effective_year not in available_years:
+        return _status("empty", "No hay datos ILGA-Europe para el año seleccionado.")
 
-    if query.category and query.category != "Ranking total":
-        ranking = _ilga_category_scores(dataframe)
-    else:
-        ranking = dataframe[dataframe["category"] == "Ranking total"][["country", "iso", "ranking"]]
-        ranking = ranking.rename(columns={"ranking": "value"}).drop_duplicates()
+    grouping_started_at = time.perf_counter()
+    current_year = source_dataframe[source_dataframe["year"].eq(effective_year)].copy()
+    country_universe = _ilga_country_universe(current_year, countries=query.countries)
+    current_selection = _ilga_selected_rows(current_year, query)
+    ranking = _ilga_ranking_from_analysis(current_selection, query)
+    if ranking.empty and current_selection.empty:
+        return _status("empty", "No hay datos ILGA-Europe para la combinación seleccionada.")
     ranking = _complete_country_ranking(
         ranking,
-        source_dataframe,
+        country_universe,
         countries=query.countries,
     )
-    effective_year = _safe_int(document.get("year")) if isinstance(document, dict) else query.year
-    country_universe = (
-        source_dataframe[source_dataframe["category"].eq("Ranking total")][
-            ["country", "iso", "ranking", "year", "source"]
-        ]
-        .drop_duplicates(["iso", "country"])
-        .sort_values(["ranking", "country"], ascending=[False, True])
+    history_dataframe = _ilga_history_dataframe(
+        source_dataframe,
+        category=query.category,
+        criterion=query.criterion,
+    )
+    detail_dataframe, response_diagnostics = _prepare_ilga_response_details(
+        current_selection,
+        country_universe,
+        query,
+    )
+    grouping_ms = (time.perf_counter() - grouping_started_at) * 1000
+    history_records = history_dataframe.to_dict("records") if include_history else []
+    logger.info(
+        "legal_statistics_pipeline query_ms=%.2f normalization_ms=%.2f grouping_ms=%.2f",
+        query_ms,
+        normalization_ms,
+        grouping_ms,
+        extra={
+            "query_ms": round(query_ms, 2),
+            "normalization_ms": round(normalization_ms, 2),
+            "grouping_ms": round(grouping_ms, 2),
+            "category": query.category,
+            "criterion": query.criterion,
+            "year": effective_year,
+        },
+    )
+    logger.info(
+        "legal_temporal_evolution countries_loaded=%d years_loaded=%d series_rendered=%d",
+        int(history_dataframe["country_code"].nunique()) if not history_dataframe.empty else 0,
+        int(history_dataframe["year"].nunique()) if not history_dataframe.empty else 0,
+        int(history_dataframe["country_code"].nunique()) if not history_dataframe.empty else 0,
+    )
+    logger.info(
+        "legal_response_details countries_loaded=%d responses_detected=%d rows_rendered=%d",
+        response_diagnostics["countries_loaded"],
+        len(response_diagnostics["responses_detected"]),
+        len(detail_dataframe),
+        extra=response_diagnostics,
     )
     return {
         "status": "ok",
@@ -949,17 +1144,17 @@ def _build_ilga_statistics(
         "category": query.category,
         "indicator": query.criterion or query.category or "Ranking total",
         "criterion": query.criterion,
-        "data": dataframe.to_dict("records"),
+        "data": current_selection.to_dict("records"),
+        "detail_data": detail_dataframe.to_dict("records"),
+        "legal_response_details_diagnostics": response_diagnostics,
         "country_universe": country_universe.to_dict("records"),
         "ranking": ranking.to_dict("records"),
         "available_countries": sorted(
             value
-            for value in source_dataframe["iso"].dropna().astype(str).unique().tolist()
+            for value in country_universe["iso"].dropna().astype(str).unique().tolist()
             if value
         ),
-        "history": get_ilga_history_rows(query.category, query.criterion)
-        if include_history
-        else [],
+        "history": history_records,
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "methodology": ("ILGA-Europe Rainbow Map mide leyes, políticas y protecciones jurídicas. "),
     }
@@ -979,7 +1174,7 @@ def _ilga_statistics_cache_key(
         "include_history": include_history,
     }
     serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return f"ilga-statistics-v3:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+    return f"ilga-statistics-v4:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
 def filter_fra_dataframe(
@@ -1049,28 +1244,9 @@ def get_ilga_history_rows(
     category: str | None,
     criterion: str | None,
 ) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for document in get_ilga_history_documents():
-        dataframe = ilga_document_to_dataframe(document)
-        if dataframe.empty:
-            continue
-        query = IlgaStatisticsQuery(category=category, criterion=criterion)
-        filtered = filter_ilga_dataframe(dataframe, query)
-        if category and category != "Ranking total":
-            ranking = _ilga_category_scores(filtered)
-        else:
-            ranking = filtered[filtered["category"] == "Ranking total"][
-                ["country", "iso", "ranking"]
-            ]
-            ranking = ranking.rename(columns={"ranking": "value"}).drop_duplicates()
-        if ranking.empty:
-            continue
-        ranking["year"] = _safe_int(document.get("year"))
-        rows.extend(
-            {str(key): value for key, value in record.items()}
-            for record in ranking[["year", "country", "iso", "value"]].to_dict("records")
-        )
-    return rows
+    dataframe = ilga_analysis_rows_to_dataframe(get_ilga_analysis_rows(category, criterion))
+    history = _ilga_history_dataframe(dataframe, category=category, criterion=criterion)
+    return history.to_dict("records")
 
 
 def filter_ilga_dataframe(dataframe: pd.DataFrame, query: IlgaStatisticsQuery) -> pd.DataFrame:
@@ -1083,6 +1259,189 @@ def filter_ilga_dataframe(dataframe: pd.DataFrame, query: IlgaStatisticsQuery) -
     if query.criterion:
         filtered = filtered[filtered["criterion"] == query.criterion]
     return filtered
+
+
+def _ilga_country_universe(
+    dataframe: pd.DataFrame,
+    *,
+    countries: list[str] | None = None,
+) -> pd.DataFrame:
+    columns = [
+        "country",
+        "country_name",
+        "iso",
+        "country_code",
+        "ranking",
+        "year",
+        "source",
+    ]
+    if dataframe.empty:
+        return pd.DataFrame(columns=columns)
+    universe = dataframe[dataframe["category"].eq("Ranking total")][columns].copy()
+    if countries:
+        selected = {normalize_country_code(country) or str(country) for country in countries}
+        universe = universe[universe["iso"].isin(selected) | universe["country"].isin(selected)]
+    return universe.sort_values(["ranking", "country"], ascending=[False, True]).reset_index(
+        drop=True
+    )
+
+
+def _ilga_selected_rows(dataframe: pd.DataFrame, query: IlgaStatisticsQuery) -> pd.DataFrame:
+    if dataframe.empty:
+        return dataframe
+    category = str(query.category or "Ranking total")
+    if category == "Ranking total":
+        selected_rows = dataframe[dataframe["category"].eq("Ranking total")].copy()
+    else:
+        selected_rows = dataframe[dataframe["category"].eq(category)].copy()
+        if query.criterion:
+            selected_rows = selected_rows[selected_rows["criterion"].eq(query.criterion)]
+    if query.countries:
+        selected = {normalize_country_code(country) or str(country) for country in query.countries}
+        selected_rows = selected_rows[
+            selected_rows["iso"].isin(selected) | selected_rows["country"].isin(selected)
+        ]
+    return selected_rows.reset_index(drop=True)
+
+
+def _ilga_ranking_from_analysis(
+    dataframe: pd.DataFrame,
+    query: IlgaStatisticsQuery,
+) -> pd.DataFrame:
+    if dataframe.empty:
+        return pd.DataFrame(columns=["country", "iso", "value"])
+    category = str(query.category or "Ranking total")
+    if category == "Ranking total" or query.criterion:
+        return dataframe[["country", "iso", "value"]].copy()
+    return _ilga_category_scores(dataframe)
+
+
+def _ilga_history_dataframe(
+    dataframe: pd.DataFrame,
+    *,
+    category: str | None,
+    criterion: str | None,
+) -> pd.DataFrame:
+    columns = [
+        "country_code",
+        "country_name",
+        "year",
+        "value",
+        "indicator_id",
+        "source",
+        "iso",
+        "country",
+    ]
+    if dataframe.empty:
+        return pd.DataFrame(columns=columns)
+    clean_category = str(category or "Ranking total")
+    if clean_category == "Ranking total":
+        history = dataframe[dataframe["category"].eq("Ranking total")][
+            ["country_code", "country_name", "year", "value", "source", "iso", "country"]
+        ].copy()
+        history["indicator_id"] = "Ranking total"
+    elif criterion:
+        history = dataframe[
+            dataframe["category"].eq(clean_category) & dataframe["criterion"].eq(criterion)
+        ][["country_code", "country_name", "year", "value", "source", "iso", "country"]].copy()
+        history["indicator_id"] = str(criterion)
+    else:
+        grouped_rows: list[pd.DataFrame] = []
+        criteria = dataframe[dataframe["category"].eq(clean_category)]
+        for year, year_rows in criteria.groupby("year", sort=True):
+            scores = _ilga_category_scores(year_rows)
+            if scores.empty:
+                continue
+            scores["year"] = int(year)
+            scores["country_code"] = scores["iso"]
+            scores["country_name"] = scores["country"]
+            scores["indicator_id"] = clean_category
+            scores["source"] = "ILGA-Europe"
+            grouped_rows.append(scores[columns])
+        history = pd.concat(grouped_rows, ignore_index=True) if grouped_rows else pd.DataFrame()
+    if history.empty:
+        return pd.DataFrame(columns=columns)
+    history["value"] = pd.to_numeric(history["value"], errors="coerce")
+    history = history[history["value"].notna()]
+    return (
+        history[columns].sort_values(["country_code", "year"], kind="stable").reset_index(drop=True)
+    )
+
+
+def _prepare_ilga_response_details(
+    dataframe: pd.DataFrame,
+    country_universe: pd.DataFrame,
+    query: IlgaStatisticsQuery,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    columns = [
+        "country_code",
+        "country_name",
+        "year",
+        "value",
+        "indicator_id",
+        "source",
+        "response",
+        "response_order",
+        "category",
+        "criterion_weight",
+        "criterion_value",
+        "iso",
+        "country",
+    ]
+    details = dataframe.copy()
+    expected_indicators = details["indicator_id"].dropna().astype(str).unique().tolist()
+    represented = {
+        (str(row.country_code), str(row.indicator_id))
+        for row in details[["country_code", "indicator_id"]].itertuples(index=False)
+    }
+    missing_rows: list[dict[str, Any]] = []
+    for country_row in country_universe.itertuples(index=False):
+        for indicator_id in expected_indicators:
+            if (str(country_row.country_code), indicator_id) in represented:
+                continue
+            missing_rows.append(
+                {
+                    "country_code": country_row.country_code,
+                    "country_name": country_row.country_name,
+                    "year": country_row.year,
+                    "value": None,
+                    "indicator_id": indicator_id,
+                    "source": country_row.source,
+                    "response": "not_available",
+                    "response_order": ILGA_RESPONSE_ORDER["not_available"],
+                    "category": str(query.category or "Ranking total"),
+                    "criterion_weight": None,
+                    "criterion_value": None,
+                    "iso": country_row.iso,
+                    "country": country_row.country,
+                }
+            )
+    if missing_rows:
+        details = pd.concat([details, pd.DataFrame(missing_rows)], ignore_index=True)
+    if details.empty:
+        details = pd.DataFrame(columns=columns)
+    else:
+        details = details[columns].sort_values(
+            ["country_name", "response_order", "indicator_id"], kind="stable"
+        )
+    responses = (
+        details[["response", "response_order"]]
+        .dropna(subset=["response"])
+        .sort_values("response_order", kind="stable")["response"]
+        .astype(str)
+        .unique()
+        .tolist()
+    )
+    countries_loaded = int(country_universe["country_code"].nunique())
+    countries_with_values = int(details.loc[details["value"].notna(), "country_code"].nunique())
+    diagnostics = {
+        "countries_loaded": countries_loaded,
+        "countries_rendered": countries_with_values,
+        "countries_without_data": countries_loaded - countries_with_values,
+        "responses_detected": responses,
+        "rows_rendered": len(details),
+    }
+    return details.reset_index(drop=True), diagnostics
 
 
 def aggregate_fra_data(
@@ -1357,14 +1716,17 @@ def _first_matching_filter(filters: dict[str, str], allowed: tuple[str, ...]) ->
 
 def _ilga_category_scores(dataframe: pd.DataFrame) -> pd.DataFrame:
     criteria = dataframe[dataframe["category"] != "Ranking total"].copy()
-    criteria = criteria[criteria["criterion_value"].notna()]
+    criteria["criterion_value"] = pd.to_numeric(criteria["criterion_value"], errors="coerce")
+    criteria["criterion_weight"] = pd.to_numeric(criteria["criterion_weight"], errors="coerce")
+    criteria = criteria[
+        criteria["criterion_value"].notna()
+        & criteria["criterion_weight"].notna()
+        & criteria["criterion_weight"].gt(0)
+    ]
     if criteria.empty:
         return pd.DataFrame(columns=["country", "iso", "value"])
-    criteria["weighted_value"] = criteria.apply(
-        lambda row: float(row["criterion_value"]) * float(row["criterion_weight"] or 1),
-        axis=1,
-    )
-    criteria["weight"] = criteria["criterion_weight"].apply(lambda value: float(value or 1))
+    criteria["weighted_value"] = criteria["criterion_value"] * criteria["criterion_weight"]
+    criteria["weight"] = criteria["criterion_weight"]
     grouped = criteria.groupby(["country", "iso"], dropna=False)[["weighted_value", "weight"]].sum()
     grouped["value"] = 100 * grouped["weighted_value"] / grouped["weight"]
     return grouped.reset_index()[["country", "iso", "value"]]
@@ -1477,6 +1839,22 @@ def _safe_float(value: Any) -> float | None:
     return coerce_percentage(value)
 
 
+def _safe_unit_score(value: Any) -> float | None:
+    try:
+        numeric = float(value)
+    except TypeError, ValueError:
+        return None
+    return numeric if pd.notna(numeric) and 0 <= numeric <= 1 else None
+
+
+def _safe_positive_float(value: Any) -> float | None:
+    try:
+        numeric = float(value)
+    except TypeError, ValueError:
+        return None
+    return numeric if pd.notna(numeric) and numeric > 0 else None
+
+
 def _answer_percentage_value(answer: dict[str, Any]) -> Any:
     if "percentage" in answer:
         return answer.get("percentage")
@@ -1540,5 +1918,30 @@ def _empty_ilga_dataframe() -> pd.DataFrame:
             "criterion",
             "criterion_value",
             "criterion_weight",
+        ]
+    )
+
+
+def _empty_ilga_analysis_dataframe() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "document_id",
+            "country_index",
+            "criterion_index",
+            "source",
+            "year",
+            "country",
+            "country_name",
+            "iso",
+            "country_code",
+            "ranking",
+            "category",
+            "criterion",
+            "indicator_id",
+            "criterion_value",
+            "criterion_weight",
+            "value",
+            "response",
+            "response_order",
         ]
     )

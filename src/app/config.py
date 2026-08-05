@@ -57,6 +57,7 @@ class AppConfig:
     auth_port: int
     dash_host: str
     dash_port: int
+    use_mock_trend_data: bool = False
 
     @property
     def debug(self) -> bool:
@@ -111,6 +112,9 @@ class MongoConfig:
 def get_app_config() -> AppConfig:
     env = (_get_env("APP_ENV", "local") or "local").strip().lower()
     local_mode = _get_bool("LOCAL_MODE", env != "production")
+    use_mock_trend_data = _get_bool("USE_MOCK_TREND_DATA", False)
+    if env == "production" and not local_mode and use_mock_trend_data:
+        raise RuntimeError("USE_MOCK_TREND_DATA cannot be enabled in production.")
     secret_key = _get_env("SECRET_KEY")
     if not secret_key:
         if local_mode:
@@ -130,6 +134,7 @@ def get_app_config() -> AppConfig:
         auth_port=_get_int("AUTH_PORT", 5002),
         dash_host=_get_env("DASH_HOST", "127.0.0.1") or "127.0.0.1",
         dash_port=_get_int("DASH_PORT", 5001),
+        use_mock_trend_data=use_mock_trend_data,
     )
 
 

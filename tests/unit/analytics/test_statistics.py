@@ -1539,11 +1539,11 @@ def test_ilga_criteria_heatmap_uses_legal_metadata_in_hover() -> None:
     trace = _trace(figure, 0)
 
     assert list(trace.x) == ["Protección constitucional por orientación sexual"]
-    assert trace.z[0][0] == 1.0
+    assert trace.z[0][0] == pytest.approx(0.05882352941)
     assert trace.colorscale == ((0.0, COUNTRY_COLORS["ES"]), (1.0, COUNTRY_COLORS["ES"]))
     assert trace.customdata[0][0][0] == "Protección constitucional por orientación sexual"
     assert "discriminación por orientación sexual" in trace.customdata[0][0][1]
-    assert trace.customdata[0][0][3] == "Cumplimiento completo"
+    assert trace.customdata[0][0][3] == "Cumplimiento parcial"
     assert "<extra></extra>" in trace.hovertemplate
 
     english_trace = _trace(build_ilga_criteria_heatmap(rows, language="en"))

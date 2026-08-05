@@ -5,25 +5,32 @@ from dash.development.base_component import Component
 from flask_login import current_user
 
 from app.auth.permissions import Permission, user_has_permission
+from app.dash.components.section_navigation import PRIMARY_SECTIONS
 from app.dash.i18n import attribute_attrs, dash_attrs, text, text_attrs, ui_text
 from app.users.schemas import UserRole
 
 
 def build_navbar(active: str | None = None) -> Component:
     links = [
-        ("Inicio", "Home", "/", "home"),
-        ("España", "Spain", "/spain", "spain"),
-        ("Estadísticas", "Statistics", "/statistics", "statistics"),
         (
-            ui_text("report_module_name", "es"),
-            ui_text("report_module_name", "en"),
-            "/informes",
-            "reports",
-        ),
-        ("Didáctica", "Learning", "/didactica", "didactica"),
-        ("Acerca de", "About", "/about", "about"),
-        ("Importar datos", "Import data", "/upload", "upload"),
+            ui_text(section.label_key, "es"),
+            ui_text(section.label_key, "en"),
+            section.href,
+            section.key,
+        )
+        for section in PRIMARY_SECTIONS
     ]
+    links.extend(
+        [
+            (
+                ui_text("report_module_name", "es"),
+                ui_text("report_module_name", "en"),
+                "/informes",
+                "reports",
+            ),
+            ("Importar datos", "Import data", "/upload", "upload"),
+        ]
+    )
     if not user_has_permission(current_user, Permission.UPLOAD_DATA):
         links = [link for link in links if link[3] != "upload"]
     if not user_has_permission(current_user, Permission.GENERATE_REPORTS):

@@ -28,7 +28,7 @@ from app.analytics.statistics_charts import (
     build_europe_distribution_chart,
     build_experience_legal_radar,
     build_fra_response_comparison_chart,
-    build_ilga_criteria_heatmap,
+    build_ilga_response_details_chart,
     build_legal_reality_gap_chart,
     build_response_country_comparison_chart,
     build_temporal_evolution_chart,
@@ -82,6 +82,14 @@ EXCLUDED_CATEGORY_KEYS = {
     normalize_text_key("Political Participation"),
     normalize_text_key("Spanish LGBTI+ indicators"),
     normalize_text_key("Spanish LGBTIQ+ indicators"),
+}
+
+LEGAL_RESPONSE_LABELS = {
+    "not_met": ("No reconocido", "Not met"),
+    "partially_met": ("Cumplimiento parcial", "Partially met"),
+    "fully_met": ("Cumplimiento completo", "Fully met"),
+    "not_available": ("Sin datos", "No data"),
+    "overall_score": ("Puntuación legal", "Legal score"),
 }
 
 SEGMENTATION_LABELS = {
@@ -166,14 +174,11 @@ def build_statistics_layout() -> Component:
                             html.Section(
                                 [
                                     html.Div(
-                                        _graph_panel(
-                                            "Evolución temporal",
-                                            "Temporal evolution",
-                                            "stats-temporal-graph",
-                                            placeholder,
-                                        ),
+                                        _temporal_panel(placeholder),
                                         id="stats-temporal-panel",
-                                        className="stats-panel-wrapper is-hidden",
+                                        className=(
+                                            "stats-panel-wrapper stats-temporal-wrapper is-hidden"
+                                        ),
                                     ),
                                     _graph_panel(
                                         "Ranking comparativo",
@@ -281,12 +286,15 @@ def build_statistics_layout() -> Component:
                                                 id="stats-detail-summary",
                                                 className="stats-detail-summary",
                                             ),
-                                            dcc.Graph(
-                                                id="stats-response-detail-graph",
-                                                figure=placeholder,
-                                                responsive=True,
-                                                config=chart_graph_config(),
-                                                style=_response_detail_graph_style(placeholder),
+                                            html.Div(
+                                                dcc.Graph(
+                                                    id="stats-response-detail-graph",
+                                                    figure=placeholder,
+                                                    responsive=True,
+                                                    config=chart_graph_config(),
+                                                    style=_response_detail_graph_style(placeholder),
+                                                ),
+                                                className="stats-response-detail-scroll",
                                             ),
                                         ],
                                         id="stats-response-panel",
@@ -803,6 +811,35 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
 
     @app.callback(
+        Output("stats-temporal-country-select", "options"),
+        Output("stats-temporal-country-select", "value"),
+        Input("stats-data-store", "data"),
+        Input("stats-temporal-select-all", "n_clicks"),
+        Input("stats-temporal-deselect-all", "n_clicks"),
+        Input("app-language-store", "data"),
+        State("stats-temporal-country-select", "value"),
+    )
+    def update_temporal_country_selection(
+        result: dict[str, Any] | None,
+        _select_all_clicks: int | None,
+        _deselect_all_clicks: int | None,
+        language: str | None,
+        current: list[str] | None,
+    ) -> tuple[list[dict[str, str]], list[str]]:
+        options = _temporal_country_options(result or {}, language or "es")
+        available = [option["value"] for option in options]
+        if ctx.triggered_id == "stats-temporal-deselect-all":
+            return options, []
+        if ctx.triggered_id in {"stats-temporal-select-all", "stats-data-store", None}:
+            return options, available
+        selected = [
+            country
+            for country in _normalize_selected_countries(current)
+            if country in set(available)
+        ]
+        return options, selected
+
+    @app.callback(
         Output("stats-status-message", "children"),
         Output("stats-status-message", "className"),
         Output("stats-map-graph", "figure"),
@@ -834,15 +871,20 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-table-export-status", "className"),
         Input("stats-data-store", "data"),
         Input("stats-selected-countries", "data"),
+        Input("stats-temporal-country-select", "value"),
         Input("app-language-store", "data"),
     )
     def render_statistics(
         result: dict[str, Any] | None,
         countries: list[str] | None,
+        temporal_countries: list[str] | None,
         language: str | None,
     ):
         return _render_dashboard(
-            result or {}, _normalize_selected_countries(countries), language or "es"
+            result or {},
+            _normalize_selected_countries(countries),
+            language or "es",
+            temporal_countries=_normalize_selected_countries(temporal_countries),
         )
 
     @app.callback(
@@ -1183,6 +1225,75 @@ def _map_panel(placeholder: Any) -> Component:
     )
 
 
+def _temporal_panel(placeholder: Any) -> Component:
+    return html.Div(
+        [
+            _chart_panel_heading(
+                "Evolución temporal",
+                "Temporal evolution",
+                "stats-temporal-graph",
+            ),
+            html.Details(
+                [
+                    html.Summary(
+                        text(
+                            "Países visibles en la evolución",
+                            "Countries visible in the evolution",
+                        )
+                    ),
+                    html.Div(
+                        [
+                            html.Button(
+                                text("Seleccionar todos", "Select all"),
+                                id="stats-temporal-select-all",
+                                type="button",
+                                n_clicks=0,
+                                className="stats-temporal-selection-button",
+                            ),
+                            html.Button(
+                                text("Deseleccionar todos", "Deselect all"),
+                                id="stats-temporal-deselect-all",
+                                type="button",
+                                n_clicks=0,
+                                className="stats-temporal-selection-button",
+                            ),
+                        ],
+                        className="stats-temporal-selection-actions",
+                    ),
+                    dcc.Checklist(
+                        id="stats-temporal-country-select",
+                        options=[],
+                        value=[],
+                        className="stats-temporal-country-list",
+                        inputClassName="stats-temporal-country-input",
+                        labelClassName="stats-temporal-country-option",
+                    ),
+                ],
+                className="stats-temporal-country-controls",
+            ),
+            html.P(
+                text(
+                    "La selección del mapa destaca series, pero no elimina otros países.",
+                    "The map selection highlights series without removing other countries.",
+                ),
+                className="stats-panel-hint",
+            ),
+            html.Div(
+                dcc.Graph(
+                    id="stats-temporal-graph",
+                    figure=placeholder,
+                    responsive=True,
+                    config=chart_graph_config(),
+                    className="stats-chart-graph",
+                    style={"width": "100%", "minWidth": "860px", "height": "680px"},
+                ),
+                className="stats-temporal-chart-scroll",
+            ),
+        ],
+        className="stats-panel stats-panel-wide stats-temporal-section",
+    )
+
+
 def _graph_panel(
     title_es: str,
     title_en: str,
@@ -1222,7 +1333,12 @@ def _chart_panel_heading(title_es: str, title_en: str, graph_id: str) -> Compone
 
 
 def _response_detail_graph_style(figure: Any) -> dict[str, str]:
-    return _dynamic_graph_style(figure, min_height=520)
+    style = _dynamic_graph_style(figure, min_height=520)
+    meta = getattr(getattr(figure, "layout", None), "meta", None)
+    minimum_width = meta.get("minimum_width") if isinstance(meta, dict) else None
+    if isinstance(minimum_width, (int, float)) and minimum_width > 760:
+        style["minWidth"] = f"{int(minimum_width)}px"
+    return style
 
 
 def _ranking_graph_style(figure: Any) -> dict[str, str]:
@@ -1301,6 +1417,28 @@ def _block_header(kicker: str, title_es: str, title_en: str) -> Component:
 def _year_options(source: str | None) -> list[dict[str, Any]]:
     years = get_fra_years() if source == "fra" else get_ilga_years()
     return [{"label": str(year), "value": year} for year in years]
+
+
+def _temporal_country_options(
+    result: dict[str, Any],
+    language: str,
+) -> list[dict[str, str]]:
+    countries: dict[str, str] = {}
+    for row in result.get("history") or []:
+        if not isinstance(row, dict):
+            continue
+        iso = normalize_country_code(
+            row.get("country_code") or row.get("iso"),
+            row.get("country_name") or row.get("country"),
+        )
+        if not iso or iso == "EU27":
+            continue
+        fallback = str(row.get("country_name") or row.get("country") or iso)
+        countries[iso] = country_labels(iso, fallback)[1 if language == "en" else 0]
+    return [
+        {"label": label, "value": iso}
+        for iso, label in sorted(countries.items(), key=lambda item: item[1].casefold())
+    ]
 
 
 def _category_options(source: str | None, year: int | None) -> list[dict[str, Any]]:
@@ -1419,7 +1557,13 @@ def _segmentation_group(
     )
 
 
-def _render_dashboard(result: dict[str, Any], selected: list[str], language: str):
+def _render_dashboard(
+    result: dict[str, Any],
+    selected: list[str],
+    language: str,
+    *,
+    temporal_countries: list[str] | None = None,
+):
     if result.get("status") != "ok":
         message = str(
             result.get("message") or "Selecciona un indicador para cargar los resultados."
@@ -1432,7 +1576,7 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             not bool(selected),
             [],
             empty,
-            "stats-panel-wrapper is-hidden",
+            "stats-panel-wrapper stats-temporal-wrapper is-hidden",
             empty,
             empty,
             empty,
@@ -1467,7 +1611,12 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
     map_figure = build_europe_choropleth(
         ranking, source=source, selected_isos=selected, language=language
     )
-    temporal = build_temporal_evolution_chart(history, selected, language)
+    temporal = build_temporal_evolution_chart(
+        history,
+        selected,
+        language,
+        visible_countries=temporal_countries,
+    )
     comparative_ranking = build_comparative_ranking_chart(
         ranking,
         selected,
@@ -1501,10 +1650,12 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
             language=language,
         )
         if source == "FRA"
-        else build_ilga_criteria_heatmap(
-            data,
-            available_countries=list(result.get("country_universe") or []),
+        else build_ilga_response_details_chart(
+            detail,
+            selected,
             language=language,
+            indicator=str(result.get("indicator") or ""),
+            year=result.get("year"),
         )
     )
     gap = build_legal_reality_gap_chart(combined, selected, language)
@@ -1548,7 +1699,11 @@ def _render_dashboard(result: dict[str, Any], selected: list[str], language: str
         not bool(selected),
         _executive_metric_cards(ranking, selected, history),
         temporal,
-        "stats-panel-wrapper" if source == "ILGA-Europe" else "stats-panel-wrapper is-hidden",
+        (
+            "stats-panel-wrapper stats-temporal-wrapper"
+            if source == "ILGA-Europe"
+            else "stats-panel-wrapper stats-temporal-wrapper is-hidden"
+        ),
         comparative_ranking,
         distribution,
         average,
@@ -1740,7 +1895,55 @@ def _detail_summary(
     available_countries: list[dict[str, Any]] | None = None,
 ) -> Any:
     if source != "FRA":
-        return ""
+        dataframe = pd.DataFrame(rows)
+        required = {"country_code", "response"}
+        if dataframe.empty or not required.issubset(dataframe.columns):
+            return ""
+        dataframe = dataframe.copy()
+        dataframe["country_code"] = dataframe["country_code"].fillna("").astype(str)
+        dataframe["response"] = dataframe["response"].fillna("not_available").astype(str)
+        dataframe["response_order"] = pd.to_numeric(
+            dataframe.get(
+                "response_order",
+                pd.Series(index=dataframe.index, dtype=float),
+            ),
+            errors="coerce",
+        ).fillna(99)
+        countries = int(dataframe.loc[dataframe["country_code"].ne(""), "country_code"].nunique())
+        responses = (
+            dataframe[["response", "response_order"]]
+            .drop_duplicates()
+            .sort_values(["response_order", "response"], kind="stable")["response"]
+            .tolist()
+        )
+        labels = [
+            LEGAL_RESPONSE_LABELS.get(response, (response, response))[1 if language == "en" else 0]
+            for response in responses
+        ]
+        return html.Div(
+            [
+                html.Div(
+                    [
+                        html.Span(
+                            "Countries compared" if language == "en" else "Países comparados"
+                        ),
+                        html.Strong(str(countries)),
+                    ],
+                    className="stats-detail-summary-card stats-detail-summary-card-wide",
+                ),
+                html.Div(
+                    [
+                        html.Span(
+                            "Legal responses detected"
+                            if language == "en"
+                            else "Respuestas legales detectadas"
+                        ),
+                        html.Ul([html.Li(label) for label in labels]),
+                    ],
+                    className="stats-detail-summary-card stats-detail-summary-card-wide",
+                ),
+            ]
+        )
     summary = summarize_response_comparison(
         rows,
         available_countries=available_countries,

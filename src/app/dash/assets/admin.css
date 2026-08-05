@@ -21,7 +21,7 @@
 
 .admin-review-panel {
   align-items: center;
-  background: linear-gradient(135deg, #f0fbf8 0%, #fff6f1 100%);
+  background: linear-gradient(135deg, #eff8fa 0%, #fff6f1 100%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   display: flex;
@@ -263,7 +263,7 @@
 
 .admin-import-file {
   align-items: center;
-  background: linear-gradient(135deg, #fffefe 0%, #f0fbf8 100%);
+  background: linear-gradient(135deg, #fffefe 0%, #eff8fa 100%);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text);

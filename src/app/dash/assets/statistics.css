@@ -19,6 +19,7 @@
   max-width: 100%;
   min-height: calc(100vh - 110px);
   min-width: 0;
+  overflow-x: clip;
   padding: 2rem max(1rem, 5vw) 3.25rem;
   width: 100%;
 }
@@ -150,7 +151,7 @@
 
 .stats-reset-link:hover {
   border-color: var(--link-green);
-  box-shadow: 0 10px 18px rgba(21, 95, 82, 0.1);
+  box-shadow: 0 10px 18px rgba(12, 74, 95, 0.1);
   transform: translateY(-1px);
 }
 
@@ -395,7 +396,7 @@
 .stats-segmented-control .dash-options-list-option.is-active,
 .stats-segmented-control .dash-options-list-option.active {
   background: var(--stats-primary);
-  box-shadow: 0 8px 16px rgba(21, 95, 82, 0.16);
+  box-shadow: 0 8px 16px rgba(12, 74, 95, 0.16);
   color: var(--color-text-on-dark);
 }
 
@@ -584,10 +585,20 @@
 
 .stats-ranking-panel,
 .stats-response-comparison-section,
+.stats-response-panel,
+.stats-temporal-wrapper,
+.stats-temporal-section,
 .stats-experience-legal-radar-section {
   grid-column: 1 / -1;
   min-width: 0;
   width: 100%;
+}
+
+.stats-response-panel,
+.stats-temporal-wrapper,
+.stats-temporal-section {
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .stats-chart-graph,
@@ -609,6 +620,95 @@
   overflow-y: visible;
   overscroll-behavior-inline: contain;
   width: 100%;
+}
+
+.stats-response-detail-scroll {
+  contain: inline-size;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+  width: 100%;
+}
+
+.stats-temporal-chart-scroll {
+  contain: inline-size;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
+  width: 100%;
+}
+
+.stats-response-detail-scroll > .dash-graph,
+.stats-temporal-chart-scroll > .dash-graph {
+  flex: 0 0 auto;
+  max-width: none !important;
+}
+
+.stats-temporal-country-controls {
+  background: color-mix(in srgb, var(--panel-muted) 78%, var(--panel-bg));
+  border: 1px solid var(--stats-card-border);
+  border-radius: 10px;
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.stats-temporal-country-controls summary {
+  color: var(--color-text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.stats-temporal-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.stats-temporal-selection-button {
+  background: var(--panel-bg);
+  border: 1px solid var(--link-green);
+  border-radius: 8px;
+  color: var(--link-green);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.45rem 0.7rem;
+}
+
+.stats-temporal-selection-button:hover,
+.stats-temporal-selection-button:focus-visible {
+  background: color-mix(in srgb, var(--link-green) 12%, var(--panel-bg));
+}
+
+.stats-temporal-country-list {
+  display: grid;
+  gap: 0.35rem 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  max-height: 230px;
+  overflow-y: auto;
+  padding: 0.2rem 0.15rem 0.35rem;
+}
+
+.stats-temporal-country-option {
+  align-items: center;
+  color: var(--color-text);
+  display: flex;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.stats-temporal-country-input {
+  accent-color: var(--link-green);
+  flex: 0 0 auto;
 }
 
 .stats-radar-country-field {
@@ -638,7 +738,7 @@
   height: auto;
   min-height: 520px;
   min-width: 0;
-  overflow: visible;
+  overflow: hidden;
   width: 100%;
 }
 
@@ -646,7 +746,6 @@
 .stats-response-panel .js-plotly-plot,
 .stats-response-panel .plot-container,
 .stats-response-panel .svg-container {
-  max-width: 100%;
   width: 100% !important;
 }
 
@@ -1553,12 +1652,25 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
   .stats-panel-wide,
   .stats-ranking-panel,
   .stats-response-comparison-section,
+  .stats-response-panel,
+  .stats-temporal-wrapper,
+  .stats-temporal-section,
   .stats-experience-legal-radar-section,
   .stats-panel-wrapper {
     grid-column: 1;
     max-width: 100%;
     min-width: 0;
     width: 100%;
+  }
+
+  .stats-response-detail-scroll,
+  .stats-response-comparison-scroll,
+  .stats-temporal-chart-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .stats-temporal-country-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .stats-radar-country-field {

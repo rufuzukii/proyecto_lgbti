@@ -427,6 +427,49 @@ def get_fra_indicator_documents(codes: tuple[str, ...]) -> list[dict[str, Any]]:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_fra_historical_documents(
+    code: str,
+    category: str,
+    specific_category: str,
+    question: str,
+) -> list[dict[str, Any]]:
+    """Load one exact FRA question across editions without merging its document metadata."""
+    clean_code = str(code or "").strip()
+    clean_category = str(category or "").strip()
+    clean_specific_category = str(specific_category or "").strip()
+    clean_question = str(question or "").strip()
+    if not clean_code or not is_valid_fra_category(clean_category) or not clean_question:
+        return []
+
+    query = _fra_statistic_document_filter(category=clean_category)
+    query.update({"code": clean_code, "question": clean_question})
+    query["specific_category"] = clean_specific_category or {"$in": [None, ""]}
+    try:
+        return list(
+            _mongo_collection("Indicator_fra").find(
+                query,
+                {
+                    "_id": 0,
+                    "answers": 1,
+                    "category": 1,
+                    "code": 1,
+                    "dataset": 1,
+                    "metadata": 1,
+                    "question": 1,
+                    "source": 1,
+                    "specific_category": 1,
+                },
+            )
+        )
+    except Exception:
+        logger.exception(
+            "fra_historical_series_read_failed",
+            extra={"code": clean_code, "category": clean_category},
+        )
+        raise
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_fra_years(code: str | None = None) -> list[int]:
     query: dict[str, Any] = {}
     clean_code = str(code or "").strip()
@@ -924,6 +967,97 @@ def get_ilga_history_documents() -> list[dict[str, Any]]:
     except Exception:
         logger.exception("ilga_history_read_failed")
         return []
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_ilga_analysis_rows(
+    category: str | None,
+    criterion: str | None = None,
+) -> list[dict[str, Any]]:
+    """Load the complete ILGA time series and current-detail fields in one query.
+
+    The projection deliberately keeps the country universe even when a criterion
+    is absent, while filtering the nested criteria array in MongoDB.  The
+    ``dataset, year`` index serves the leading match and no full source document
+    is transferred to the application.
+    """
+    clean_category = str(category or "Ranking total").strip() or "Ranking total"
+    clean_criterion = str(criterion or "").strip()
+    criteria_condition: dict[str, Any] | bool
+    if clean_category == "Ranking total":
+        criteria_condition = False
+    else:
+        conditions: list[dict[str, Any]] = [
+            {"$eq": ["$$criterion.category", clean_category]},
+        ]
+        if clean_criterion:
+            conditions.append({"$eq": ["$$criterion.indicator", clean_criterion]})
+        criteria_condition = {"$and": conditions}
+
+    pipeline = [
+        {"$match": {"dataset": "ilga_rainbow_map"}},
+        {
+            "$project": {
+                "_id": 1,
+                "year": 1,
+                "countries": {
+                    "$map": {
+                        "input": {"$ifNull": ["$countries", []]},
+                        "as": "country",
+                        "in": {
+                            "country_code": "$$country.country_code",
+                            "country_name": "$$country.country",
+                            "ranking": "$$country.ranking",
+                            "criteria": {
+                                "$filter": {
+                                    "input": {"$ifNull": ["$$country.criteria", []]},
+                                    "as": "criterion",
+                                    "cond": criteria_condition,
+                                }
+                            },
+                        },
+                    }
+                },
+            }
+        },
+        {"$unwind": {"path": "$countries", "includeArrayIndex": "country_index"}},
+        {
+            "$project": {
+                "_id": 0,
+                "document_id": {"$toString": "$_id"},
+                "year": 1,
+                "country_index": 1,
+                "country_code": "$countries.country_code",
+                "country_name": "$countries.country_name",
+                "ranking": "$countries.ranking",
+                "criteria": "$countries.criteria",
+            }
+        },
+        {"$sort": {"year": 1, "country_code": 1, "document_id": -1, "country_index": 1}},
+    ]
+    started_at = time.perf_counter()
+    try:
+        rows = list(_mongo_collection("Indicator_ilga").aggregate(pipeline))
+    except Exception:
+        logger.exception(
+            "ilga_analysis_read_failed",
+            extra={"category": clean_category, "criterion": clean_criterion},
+        )
+        return []
+    logger.info(
+        "ilga_analysis_query category=%s criterion=%s rows=%d query_ms=%.2f",
+        clean_category,
+        clean_criterion or "all",
+        len(rows),
+        (time.perf_counter() - started_at) * 1000,
+        extra={
+            "category": clean_category,
+            "criterion": clean_criterion,
+            "row_count": len(rows),
+            "query_ms": round((time.perf_counter() - started_at) * 1000, 2),
+        },
+    )
+    return rows
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)

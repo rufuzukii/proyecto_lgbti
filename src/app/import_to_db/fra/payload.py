@@ -114,6 +114,7 @@ def _build_question_document(document: dict[str, Any], code: str) -> dict[str, A
         "code": code,
         "dataset": FRA_DATASET_CODE,
         "record_type": "statistic",
+        "source": str(document.get("source") or "").strip(),
         "category": _category(document),
         "specific_category": specific_category,
         "question": question_text,
@@ -131,6 +132,7 @@ def _build_answer(answer: dict[str, Any]) -> dict[str, Any]:
         "country_code": answer.get("country_code") or "",
         "answer": answer.get("answer") or "",
         "percentage": answer.get("percentage"),
+        "date": answer.get("date") or "",
         "filters": _build_filters(answer.get("filters")),
     }
 

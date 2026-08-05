@@ -24,6 +24,7 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics_normalizers import normalize_country_code
 from app.auth.permissions import is_admin_user
+from app.dash.components.section_navigation import build_home_section_navigation
 from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
@@ -198,27 +199,7 @@ def build_home_layout() -> Component:
                         ],
                         className="home-map-stage",
                     ),
-                    html.Section(
-                        [
-                            _source_summary(
-                                "ILGA Europe",
-                                (
-                                    "ILGA Europe analiza el marco legal y político que afecta a "
-                                    "las personas LGBTIQ+ en Europa. Su Rainbow Map resume áreas "
-                                    "como igualdad, familia, delitos de odio, reconocimiento legal "
-                                    "de género, integridad corporal, asilo y espacio de sociedad civil."
-                                ),
-                                (
-                                    "ILGA Europe analyses the legal and policy framework affecting "
-                                    "LGBTIQ+ people in Europe. Its Rainbow Map summarises areas such "
-                                    "as equality, family, hate crime, legal gender recognition, bodily "
-                                    "integrity, asylum and civil society space."
-                                ),
-                                ("Explorar el contexto legal", "Explore the legal context"),
-                            ),
-                        ],
-                        className="home-source-grid home-source-grid--single",
-                    ),
+                    build_home_section_navigation(),
                 ],
                 className="home-data-shell",
             ),
@@ -1309,24 +1290,6 @@ def _metric(
             html.Span(_localized(label_es, label_en, language), **text_attrs(label_es, label_en)),
         ],
         className="home-map-metric",
-    )
-
-
-def _source_summary(
-    title: str,
-    body_es: str,
-    body_en: str,
-    link_label: tuple[str, str],
-) -> Component:
-    return html.Article(
-        [
-            html.H2(title),
-            html.P(body_es, **text_attrs(body_es, body_en)),
-            html.A(
-                text(link_label[0], link_label[1]), href="/about", className="home-analysis-link"
-            ),
-        ],
-        className="home-source-card",
     )
 
 
