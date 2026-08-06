@@ -6,7 +6,7 @@ import logging
 import re
 import time
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -128,7 +128,14 @@ def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
                 {
                     year
                     for answer in answers
-                    if (year := _extract_year(answer.get("date"))) is not None
+                    if (
+                        year := _extract_year(
+                            answer.get("survey_year")
+                            or document.get("survey_year")
+                            or answer.get("date")
+                        )
+                    )
+                    is not None
                 }
             ),
         },
@@ -153,7 +160,11 @@ def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
                 "answer": answer_value,
                 "answer_label": normalize_filter_value(answer_value),
                 "percentage": percentage,
-                "year": _extract_year(answer.get("date")),
+                "year": _extract_year(
+                    answer.get("survey_year")
+                    or document.get("survey_year")
+                    or answer.get("date")
+                ),
                 "filters": filters,
                 "filter_a": _first_matching_filter(filters, FRA_FILTER_GROUP_A),
                 "filter_b": _first_matching_filter(filters, FRA_FILTER_GROUP_B),
@@ -325,7 +336,7 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
             for value in candidates["value"].tolist()
             if value is not None and pd.notna(value)
         }
-        chosen = candidates.iloc[0].to_dict()
+        chosen = cast(dict[str, Any], candidates.iloc[0].to_dict())
         if len(numeric_values) > 1:
             conflicting_groups += 1
             chosen["value"] = None
@@ -435,19 +446,6 @@ def build_fra_filter_value_options(
     ] or [display_option("All", "All", disabled=True)]
 
 
-def build_fra_answer_options(document: dict[str, Any] | None) -> list[dict[str, Any]]:
-    dataframe = fra_document_to_dataframe(document)
-    if dataframe.empty:
-        return []
-    values = {
-        str(row.answer): normalize_filter_value(row.answer)
-        for row in dataframe[["answer"]].drop_duplicates().itertuples()
-    }
-    return [
-        {"label": label, "value": value}
-        for value, label in sorted(values.items(), key=lambda item: item[1])
-    ]
-
 
 def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]:
     """Derive all FRA control options without constructing a pandas DataFrame."""
@@ -512,75 +510,7 @@ def get_fra_control_payload(code: str) -> dict[str, Any]:
     return payload
 
 
-def _fra_control_payload_from_dataframe(dataframe: pd.DataFrame) -> dict[str, Any]:
-    if dataframe.empty:
-        return {"answers": [], "segmentations": [], "values": {}}
 
-    answers = [
-        {"label": label, "value": value}
-        for value, label in sorted(
-            {
-                str(row.answer): normalize_filter_value(row.answer)
-                for row in dataframe[["answer"]].drop_duplicates().itertuples()
-            }.items(),
-            key=lambda item: item[1],
-        )
-    ]
-    present = _present_filter_types(dataframe)
-    ordered_types = ["All", *FRA_FILTER_GROUP_A[1:], *FRA_FILTER_GROUP_B[1:]]
-    segmentations = [
-        display_option(filter_type, filter_type)
-        for filter_type in ordered_types
-        if filter_type == "All" or filter_type in present
-    ]
-    values: dict[str, list[dict[str, Any]]] = {"All": [display_option("All", "All")]}
-    records = dataframe[["filters"]].to_dict("records")
-    for filter_type in ordered_types[1:]:
-        if filter_type not in present:
-            continue
-        found: dict[str, str] = {}
-        for row in records:
-            filters = row.get("filters")
-            if not isinstance(filters, dict):
-                continue
-            for raw_type, raw_value in filters.items():
-                if normalize_filter_type(raw_type) == filter_type:
-                    found.setdefault(str(raw_value), normalize_filter_value(raw_value))
-        values[filter_type] = [
-            {"label": label, "value": raw_value}
-            for raw_value, label in sorted(found.items(), key=lambda item: item[1].casefold())
-        ]
-    return {"answers": answers, "segmentations": segmentations, "values": values}
-
-
-def build_fra_country_options(document: dict[str, Any] | None) -> list[dict[str, Any]]:
-    dataframe = fra_document_to_dataframe(document)
-    if dataframe.empty:
-        return []
-    countries = dataframe[["country", "iso"]].drop_duplicates().sort_values("country")
-    return [
-        {
-            "label": f"{row.country} ({row.iso})" if row.iso else row.country,
-            "value": row.iso or row.country,
-        }
-        for row in countries.itertuples()
-        if row.country
-    ]
-
-
-def build_ilga_country_options(document: dict[str, Any] | None) -> list[dict[str, Any]]:
-    dataframe = ilga_document_to_dataframe(document)
-    if dataframe.empty:
-        return []
-    countries = dataframe[["country", "iso"]].drop_duplicates().sort_values("country")
-    return [
-        {
-            "label": f"{row.country} ({row.iso})" if row.iso else row.country,
-            "value": row.iso or row.country,
-        }
-        for row in countries.itertuples()
-        if row.country
-    ]
 
 
 def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
@@ -1186,7 +1116,7 @@ def filter_fra_dataframe(
 ) -> pd.DataFrame:
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
-        filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
+        filtered = filtered[filtered["year"] == query.year]
     if query.countries:
         selected = {normalize_country_code(country) or str(country) for country in query.countries}
         filtered = filtered[filtered["iso"].isin(selected) | filtered["country"].isin(selected)]
@@ -1205,7 +1135,7 @@ def filter_fra_detail_dataframe(
 ) -> pd.DataFrame:
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
-        filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
+        filtered = filtered[filtered["year"] == query.year]
     filtered = _apply_exact_filter_scope(filtered, query, filter_scope=filter_scope)
     return filtered
 
@@ -1221,7 +1151,7 @@ def filter_fra_comparison_dataframe(
     """
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
-        filtered = filtered[(filtered["year"].isna()) | (filtered["year"] == query.year)]
+        filtered = filtered[filtered["year"] == query.year]
     if filtered.empty:
         return filtered
 
@@ -1246,7 +1176,7 @@ def get_ilga_history_rows(
 ) -> list[dict[str, Any]]:
     dataframe = ilga_analysis_rows_to_dataframe(get_ilga_analysis_rows(category, criterion))
     history = _ilga_history_dataframe(dataframe, category=category, criterion=criterion)
-    return history.to_dict("records")
+    return cast(list[dict[str, Any]], history.to_dict("records"))
 
 
 def filter_ilga_dataframe(dataframe: pd.DataFrame, query: IlgaStatisticsQuery) -> pd.DataFrame:
@@ -1352,7 +1282,10 @@ def _ilga_history_dataframe(
             scores = _ilga_category_scores(year_rows)
             if scores.empty:
                 continue
-            scores["year"] = int(year)
+            parsed_year = _safe_int(year)
+            if parsed_year is None:
+                continue
+            scores["year"] = parsed_year
             scores["country_code"] = scores["iso"]
             scores["country_name"] = scores["country"]
             scores["indicator_id"] = clean_category
@@ -1494,21 +1427,6 @@ def classify_external_data_error(payload: Any) -> str:
     return "invalid_response"
 
 
-def _apply_filter_pair(
-    dataframe: pd.DataFrame,
-    filter_name: str | None,
-    filter_value: str | None,
-) -> pd.DataFrame:
-    clean_name = normalize_filter_type(filter_name)
-    clean_value = repair_text_encoding(filter_value).strip()
-    if not clean_name or clean_name == "All" or not clean_value or clean_value == "All":
-        return dataframe
-    return dataframe[
-        dataframe["filters"].apply(
-            lambda filters: _filter_matches(filters, clean_name, clean_value)
-        )
-    ]
-
 
 def _apply_exact_filter_scope(
     dataframe: pd.DataFrame,
@@ -1601,20 +1519,6 @@ def _sorted_non_all_filter_values(dataframe: pd.DataFrame, column: str) -> list[
     }
     return sorted(values, key=str.casefold)
 
-
-def _filter_matches(filters: Any, filter_name: str, filter_value: str) -> bool:
-    if not isinstance(filters, dict):
-        return False
-    expected_label = normalize_filter_value(filter_value)
-    for raw_type, raw_value in filters.items():
-        if normalize_filter_type(raw_type) != filter_name:
-            continue
-        if (
-            repair_text_encoding(raw_value).strip() == filter_value
-            or normalize_filter_value(raw_value) == expected_label
-        ):
-            return True
-    return False
 
 
 def _filters_to_dict(filters: Any) -> dict[str, str]:

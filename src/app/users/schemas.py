@@ -13,9 +13,11 @@ class UserRole(StrEnum):
 
 
 class UserType(StrEnum):
+    ADMIN = "admin"
     RRHH = "rrhh"
     DOCENTE = "docente"
     POLITICO = "politico"
+    SOCIOLOGO = "sociologo"
     ONG = "ong"
     COMUN = "comun"
 
@@ -39,3 +41,7 @@ class UserRead(BaseModel):
     role: UserRole = UserRole.COMMON
     organization: str | None = None
     user_type: UserType | None = None
+    version: str = ""
+    active: bool = True
+    email_verified: bool = True
+    session_version: int = 0

@@ -6,12 +6,12 @@ from app.import_to_db.felgtbi.importer import (
     _extract_figure_segments,
     _layout_visual_bbox,
     _resolve_report_title,
-    _supabase_s3_client,
     extract_pdf_pages,
     parse_felgtbi_pdf_bytes,
     parse_felgtbi_text_pages,
 )
 from app.import_to_db.felgtbi.mongo import _prepare_indicator_document
+from app.import_to_db.felgtbi.storage import supabase_s3_client
 from app.storage import supabase_public_image_url
 
 
@@ -374,12 +374,12 @@ def test_supabase_s3_client_is_reused_with_bounded_timeouts(monkeypatch) -> None
         clients.append((service_name, kwargs))
         return object()
 
-    _supabase_s3_client.cache_clear()
+    supabase_s3_client.cache_clear()
     monkeypatch.setattr(boto3, "client", fake_client)
 
-    first = _supabase_s3_client("https://storage.test", "access", "secret", "eu-west-1")
-    second = _supabase_s3_client("https://storage.test", "access", "secret", "eu-west-1")
-    _supabase_s3_client.cache_clear()
+    first = supabase_s3_client("https://storage.test", "access", "secret", "eu-west-1")
+    second = supabase_s3_client("https://storage.test", "access", "secret", "eu-west-1")
+    supabase_s3_client.cache_clear()
 
     assert first is second
     assert len(clients) == 1

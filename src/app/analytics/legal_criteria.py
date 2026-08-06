@@ -5,66 +5,18 @@ import re
 import unicodedata
 from typing import Any
 
+from app.taxonomy import taxonomy_label
+
 SUPPORTED_LANGUAGES = {"es", "en"}
 
 logger = logging.getLogger(__name__)
 
 
-LEGAL_STATUS_TRANSLATIONS = {
-    "fully_met": {
-        "es": {"label": "Cumplimiento completo", "icon": "OK"},
-        "en": {"label": "Fully met", "icon": "OK"},
-    },
-    "partially_met": {
-        "es": {"label": "Cumplimiento parcial", "icon": "1/2"},
-        "en": {"label": "Partially met", "icon": "1/2"},
-    },
-    "not_met": {
-        "es": {"label": "No reconocido", "icon": "X"},
-        "en": {"label": "Not met", "icon": "X"},
-    },
-    "not_available": {
-        "es": {"label": "Información no disponible", "icon": "-"},
-        "en": {"label": "Information unavailable", "icon": "-"},
-    },
-}
-
-
-LEGAL_CATEGORY_TRANSLATIONS = {
-    "equality & non-discrimination": {
-        "es": "Igualdad y no discriminación",
-        "en": "Equality and non-discrimination",
-    },
-    "equality and non-discrimination": {
-        "es": "Igualdad y no discriminación",
-        "en": "Equality and non-discrimination",
-    },
-    "family": {"es": "Familia", "en": "Family"},
-    "hate crime & hate speech": {
-        "es": "Delitos y discursos de odio",
-        "en": "Hate crime and hate speech",
-    },
-    "hate crime and hate speech": {
-        "es": "Delitos y discursos de odio",
-        "en": "Hate crime and hate speech",
-    },
-    "legal gender recognition": {
-        "es": "Reconocimiento legal del género",
-        "en": "Legal gender recognition",
-    },
-    "intersex bodily integrity": {
-        "es": "Integridad corporal intersex",
-        "en": "Intersex bodily integrity",
-    },
-    "intersex rights": {
-        "es": "Integridad corporal intersex",
-        "en": "Intersex bodily integrity",
-    },
-    "civil society space": {
-        "es": "Espacio de la sociedad civil",
-        "en": "Civil society space",
-    },
-    "asylum": {"es": "Asilo", "en": "Asylum"},
+LEGAL_STATUS_ICONS = {
+    "fully_met": "OK",
+    "partially_met": "1/2",
+    "not_met": "X",
+    "not_available": "-",
 }
 
 
@@ -160,11 +112,10 @@ def get_criterion_status(
         status_id = "partially_met"
 
     lang = _language(language)
-    translation = LEGAL_STATUS_TRANSLATIONS[status_id][lang]
     return {
         "id": status_id,
-        "label": translation["label"],
-        "icon": translation["icon"],
+        "label": taxonomy_label("legal_status", status_id, lang),
+        "icon": LEGAL_STATUS_ICONS[status_id],
     }
 
 
@@ -187,9 +138,8 @@ def get_criterion_score_label(
 def translate_legal_category(category: str, language: str = "es") -> str:
     lang = _language(language)
     clean = str(category or "").strip()
-    translation = LEGAL_CATEGORY_TRANSLATIONS.get(clean.lower())
-    if translation:
-        return translation[lang]
+    if clean:
+        return taxonomy_label("ilga_category", clean, lang)
     return clean or ("Sin categoría" if lang == "es" else "Uncategorised")
 
 

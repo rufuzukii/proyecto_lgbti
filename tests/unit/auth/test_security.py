@@ -186,7 +186,7 @@ def test_user_text_normalization_removes_control_and_bidi_characters() -> None:
 
 def test_admin_role_parser_rejects_unknown_values() -> None:
     with pytest.raises(ValueError, match="invalid_role"):
-        user_service._parse_admin_role("owner")
+        user_service._parse_admin_user_type("owner")
 
 
 def test_api_keys_are_long_and_admin_scope_is_separate(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -217,7 +217,7 @@ def test_production_api_hides_schema_and_protects_admin_routes(
     assert client.get("/docs").status_code == 404
     assert client.get("/openapi.json").status_code == 404
     chart_response = client.get("/charts/export", headers={"X-API-Key": general_key})
-    assert chart_response.status_code == 200
+    assert chart_response.status_code == 404
     assert chart_response.headers["Strict-Transport-Security"].startswith("max-age=")
     assert client.get("/users/", headers={"X-API-Key": general_key}).status_code == 401
 

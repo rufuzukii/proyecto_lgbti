@@ -40,6 +40,10 @@ def initialize_mongo_indexes() -> None:
         [
             IndexModel([("code", ASCENDING)], name="fra_code"),
             IndexModel(
+                [("dataset", ASCENDING), ("survey_year", DESCENDING)],
+                name="fra_dataset_survey_year",
+            ),
+            IndexModel(
                 [
                     ("category", ASCENDING),
                     ("specific_category", ASCENDING),
@@ -47,6 +51,16 @@ def initialize_mongo_indexes() -> None:
                     ("code", ASCENDING),
                 ],
                 name="fra_category_question_code",
+            ),
+            IndexModel(
+                [
+                    ("category", ASCENDING),
+                    ("specific_category", ASCENDING),
+                    ("question", ASCENDING),
+                    ("code", ASCENDING),
+                    ("survey_year", DESCENDING),
+                ],
+                name="fra_category_question_code_year",
             ),
         ],
     )
@@ -113,6 +127,47 @@ def initialize_mongo_indexes() -> None:
                 [("owner_id", ASCENDING), ("updated_at", DESCENDING)],
                 name="docente_games_by_owner",
             ),
+        ],
+    )
+    _ensure_collection_indexes(
+        "user_admin_audit",
+        [
+            IndexModel(
+                [("target_user_id", ASCENDING), ("created_at", DESCENDING)],
+                name="user_audit_by_target",
+            ),
+            IndexModel(
+                [("actor_user_id", ASCENDING), ("created_at", DESCENDING)],
+                name="user_audit_by_actor",
+            ),
+        ],
+    )
+    _ensure_collection_indexes(
+        "user_account_security",
+        [IndexModel([("user_id", ASCENDING)], unique=True, name="account_security_user")],
+    )
+    _ensure_collection_indexes(
+        "user_security_tokens",
+        [
+            IndexModel(
+                [("purpose", ASCENDING), ("token_hash", ASCENDING)],
+                unique=True,
+                name="security_token_hash",
+            ),
+            IndexModel(
+                [("user_id", ASCENDING), ("purpose", ASCENDING), ("used_at", ASCENDING)],
+                name="security_tokens_by_user",
+            ),
+            IndexModel([("expires_at", ASCENDING)], expireAfterSeconds=0, name="security_token_ttl"),
+        ],
+    )
+    _ensure_collection_indexes(
+        "user_security_audit",
+        [
+            IndexModel(
+                [("user_id", ASCENDING), ("created_at", DESCENDING)],
+                name="security_audit_by_user",
+            )
         ],
     )
 

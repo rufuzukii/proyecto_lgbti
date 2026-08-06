@@ -5,6 +5,35 @@ import app.dash.pages.admin.users as admin_users
 from app.users.schemas import UserRead, UserRole, UserType
 
 
+def test_admin_layout_builds_accessible_search_form_with_supported_dash_props(monkeypatch) -> None:
+    monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
+    monkeypatch.setattr(admin_users, "build_navbar", lambda **_kwargs: "")
+    user = UserRead(
+        id="user-1",
+        username="Admin",
+        email="admin@example.com",
+        role=UserRole.ADMIN,
+        user_type=UserType.ADMIN,
+    )
+
+    layout = admin_users.build_admin_users_layout([user], current_user_id=user.id)
+
+    search = next(
+        component
+        for component in _walk(layout)
+        if _props(component).get("id") == "admin-user-search"
+    )
+    label = next(
+        component
+        for component in _walk(layout)
+        if _props(component).get("htmlFor") == "admin-user-search"
+    )
+    assert search.__class__.__name__ == "Input"
+    assert _props(search)["type"] == "search"
+    assert "data-i18n-aria-label-es" not in _props(search)
+    assert _props(label)["htmlFor"] == _props(search)["id"]
+
+
 def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
     row = admin_users._build_user_row(
@@ -46,6 +75,7 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
         "rrhh",
         "politico",
         "ong",
+        "sociologo",
         "admin",
     ]
     assert all("selected" not in _props(option) for option in role_options)
@@ -61,8 +91,52 @@ def test_admin_role_is_selected_natively_without_react_selected_prop() -> None:
         UserType.RRHH.value,
         UserType.POLITICO.value,
         UserType.ONG.value,
+        UserType.SOCIOLOGO.value,
     ]
     assert all("selected" not in _props(option) for option in options)
+
+
+def test_non_admin_canonical_role_is_preserved_in_options() -> None:
+    options = admin_users._admin_role_options(UserType.DOCENTE)
+
+    assert _props(options[0])["value"] == UserType.DOCENTE.value
+
+
+def test_current_user_cannot_delete_self_from_admin_table(monkeypatch) -> None:
+    monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
+    user = UserRead(
+        id="user-1",
+        username="Admin",
+        email="admin@example.com",
+        role=UserRole.ADMIN,
+        user_type=UserType.ADMIN,
+        version="version-1",
+    )
+
+    row = admin_users._build_user_row(user, current_user_id="user-1", search="adm", page=2)
+
+    components = list(_walk(row))
+    delete = _component_with_class(components, "admin-delete-button")
+    hidden_values = {
+        _props(component).get("name"): _props(component).get("value")
+        for component in components
+        if _props(component).get("type") == "hidden"
+    }
+    assert _props(delete)["disabled"] is True
+    assert hidden_values["version"] == "version-1"
+    assert hidden_values["q"] == "adm"
+    assert hidden_values["page"] == "2"
+
+
+def test_admin_pagination_preserves_search() -> None:
+    pagination = admin_users._pagination("rainbow", 2, 4)
+
+    assert not isinstance(pagination, str)
+    links = [item for item in _walk(pagination) if getattr(item, "href", None)]
+    assert [item.href for item in links] == [
+        "/admin?page=1&q=rainbow",
+        "/admin?page=3&q=rainbow",
+    ]
 
 
 def test_success_message_auto_dismisses_but_error_remains_visible() -> None:
@@ -124,6 +198,8 @@ def test_admin_assets_define_editing_and_saving_states() -> None:
     assert "dialog.showModal()" in javascript
     assert "submitAdminUserDelete(deleteButton)" in javascript
     assert "row.requestSubmit(deleteButton)" in javascript
+    assert "data-admin-user-deactivate" in javascript
+    assert "window.confirm(question" in javascript
     assert ".admin-table-row.is-editing" in css
     assert ".admin-input:disabled" in css
     assert "background: #ffffff" in css

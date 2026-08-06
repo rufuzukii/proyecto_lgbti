@@ -67,14 +67,15 @@ def test_fra_loader_preserves_exact_response_filters_and_year(monkeypatch) -> No
         "get_fra_historical_documents",
         lambda *_args: [
             {
-                "metadata": {"methodology_version": "survey-v3", "date": "2023-05-01"},
+                "survey_year": 2023,
+                "metadata": {"methodology_version": "survey-v3", "survey_year": 2023},
                 "answers": [
                     {
                         "country": "Spain",
                         "country_code": "ES",
                         "answer": "Yes",
                         "percentage": 42,
-                        "date": "2024-02-01",
+                        "survey_year": 2024,
                         "filters": [{"type": "Age", "value": "25-39"}],
                     },
                     {

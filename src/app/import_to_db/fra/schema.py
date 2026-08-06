@@ -23,9 +23,10 @@ from app.import_to_db.utils import normalize_header
 
 logger = logging.getLogger(__name__)
 
-FRA_SOURCE_NAME = "EU LGBTIQ+ Survey III (FRA 2023)"
+FRA_SOURCE_NAME = "EU LGBTIQ+ Survey (FRA)"
 FRA_SOURCE_TYPE = "EU_SURVEY"
-FRA_DEFAULT_SURVEY_YEAR = 2023
+FRA_MIN_SURVEY_YEAR = 1990
+FRA_MAX_SURVEY_YEAR = 2100
 
 FraCsvVersion = Literal["legacy_long", "current_wide"]
 PercentageScale = Literal["percentage_points", "proportion"]
@@ -46,7 +47,7 @@ NORMALIZED_FRA_COLUMNS = (
     "response",
     "percentage",
     "raw_percentage",
-    "year",
+    "survey_year",
     "date",
     "filter_a_type",
     "filter_a_value",
@@ -186,25 +187,6 @@ RESERVED_CURRENT_COLUMNS = frozenset(
         "hyperlink",
     }
 )
-RESERVED_LEGACY_COLUMNS = frozenset(
-    {
-        *COLUMN_ALIASES,
-        "filter",
-        "filters",
-        "filter1",
-        "filter2",
-        "filter3",
-        "filter_1",
-        "filter_2",
-        "filter_3",
-        "filtro",
-        "filtros",
-        "filtro1",
-        "filtro2",
-        "filtro3",
-    }
-)
-
 COUNTRY_NAME_CODES = {
     "albania": "AL",
     "austria": "AT",
@@ -283,7 +265,7 @@ class FraCsvSchema:
 @dataclass(frozen=True)
 class FraCsvMetadata:
     source: str = FRA_SOURCE_NAME
-    survey_year: int = FRA_DEFAULT_SURVEY_YEAR
+    survey_year: int | None = None
     downloaded_at: str = ""
     indicator_id: str = ""
     hyperlink: str = ""
@@ -429,11 +411,22 @@ def normalize_fra_csv(
     schema: FraCsvSchema,
     *,
     path_filters: Mapping[str, str] | None = None,
+    file_name: Path | str | None = None,
 ) -> pd.DataFrame:
     if schema.version == "current_wide":
-        normalized = normalize_current_fra_csv(dataframe, schema=schema, path_filters=path_filters)
+        normalized = normalize_current_fra_csv(
+            dataframe,
+            schema=schema,
+            path_filters=path_filters,
+            file_name=file_name,
+        )
     elif schema.version == "legacy_long":
-        normalized = normalize_legacy_fra_csv(dataframe, schema=schema, path_filters=path_filters)
+        normalized = normalize_legacy_fra_csv(
+            dataframe,
+            schema=schema,
+            path_filters=path_filters,
+            file_name=file_name,
+        )
     else:
         raise UnsupportedFraCsvSchemaError(f"unsupported_fra_csv_schema:{schema.version}")
     metadata = dict(normalized.attrs.get("fra_metadata") or {})
@@ -448,11 +441,12 @@ def normalize_current_fra_csv(
     schema: FraCsvSchema | None = None,
     *,
     path_filters: Mapping[str, str] | None = None,
+    file_name: Path | str | None = None,
 ) -> pd.DataFrame:
     current_schema = schema or detect_fra_csv_schema(dataframe)
     if current_schema.version != "current_wide":
         raise UnsupportedFraCsvSchemaError("expected_current_fra_csv")
-    metadata = extract_fra_csv_metadata(dataframe, current_schema)
+    metadata = extract_fra_csv_metadata(dataframe, current_schema, file_name=file_name)
     filters = metadata.filters or _canonical_filter_dict(path_filters or {})
     filter_scope = _split_filter_scope(filters)
     rows: list[dict[str, Any]] = []
@@ -498,7 +492,7 @@ def normalize_current_fra_csv(
                     response=response,
                     percentage=percentage,
                     raw_percentage=raw_percentage,
-                    year=metadata.survey_year,
+                    survey_year=metadata.survey_year,
                     date=metadata.downloaded_at,
                     filters=filters,
                     filter_scope=filter_scope,
@@ -517,11 +511,12 @@ def normalize_legacy_fra_csv(
     schema: FraCsvSchema | None = None,
     *,
     path_filters: Mapping[str, str] | None = None,
+    file_name: Path | str | None = None,
 ) -> pd.DataFrame:
     legacy_schema = schema or detect_fra_csv_schema(dataframe)
     if legacy_schema.version != "legacy_long":
         raise UnsupportedFraCsvSchemaError("expected_legacy_fra_csv")
-    metadata = extract_fra_csv_metadata(dataframe, legacy_schema)
+    metadata = extract_fra_csv_metadata(dataframe, legacy_schema, file_name=file_name)
     original_to_canonical = {
         original: COLUMN_ALIASES.get(normalize_header(original), normalize_header(original))
         for original in legacy_schema.original_columns
@@ -568,7 +563,10 @@ def normalize_legacy_fra_csv(
                 response=response,
                 percentage=percentage,
                 raw_percentage=raw_percentage,
-                year=_parse_year(record.get("year") or record.get("date")) or metadata.survey_year,
+                survey_year=(
+                    metadata.survey_year
+                    or extract_fra_survey_year(record.get("year") or record.get("date"))
+                ),
                 date=record.get("date") or metadata.downloaded_at,
                 filters=filters,
                 filter_scope=filter_scope,
@@ -585,9 +583,12 @@ def normalize_legacy_fra_csv(
 def extract_fra_csv_metadata(
     dataframe: pd.DataFrame,
     schema: FraCsvSchema,
+    *,
+    file_name: Path | str | None = None,
 ) -> FraCsvMetadata:
     source = FRA_SOURCE_NAME
-    survey_year = FRA_DEFAULT_SURVEY_YEAR
+    source_year: int | None = None
+    metadata_year: int | None = None
     downloaded_at = ""
     indicator_id = ""
     hyperlink = ""
@@ -626,7 +627,9 @@ def extract_fra_csv_metadata(
             response, filters = parse_fra_filter_metadata(raw_value)
         elif label in {"source", "fuente"}:
             source = raw_value or source
-            survey_year = _parse_year(raw_value) or survey_year
+            source_year = extract_fra_survey_year(raw_value) or source_year
+        elif label in {"survey_year", "survey year", "ano_encuesta", "anio_encuesta"}:
+            metadata_year = extract_fra_survey_year(raw_value) or metadata_year
         elif label in {"date", "fecha"}:
             downloaded_at = raw_value
         elif label in {"question_code", "codigo_pregunta", "indicator_code"}:
@@ -639,9 +642,11 @@ def extract_fra_csv_metadata(
             disclaimer = raw_value
         elif _looks_like_footnote_label(raw_label) and raw_value:
             footnotes[raw_label.strip()] = raw_value
+    explicit_year = _explicit_fra_year(dataframe, schema.year_column)
+    filename_year = extract_fra_survey_year(Path(file_name).stem) if file_name else None
     return FraCsvMetadata(
         source=source,
-        survey_year=survey_year,
+        survey_year=source_year or explicit_year or metadata_year or filename_year,
         downloaded_at=downloaded_at,
         indicator_id=indicator_id,
         hyperlink=hyperlink,
@@ -724,7 +729,7 @@ def validate_normalized_fra(dataframe: pd.DataFrame) -> pd.DataFrame:
 
     identity = [
         "source",
-        "year",
+        "survey_year",
         "indicator_id",
         "question",
         "country_code",
@@ -826,7 +831,7 @@ def _normalized_row(
     response: str,
     percentage: float | None,
     raw_percentage: str,
-    year: int,
+    survey_year: int | None,
     date: str,
     filters: Mapping[str, str],
     filter_scope: tuple[str, str, str, str],
@@ -848,7 +853,7 @@ def _normalized_row(
         "response": response,
         "percentage": percentage,
         "raw_percentage": raw_percentage,
-        "year": int(year),
+        "survey_year": survey_year,
         "date": date,
         "filter_a_type": filter_a_type,
         "filter_a_value": filter_a_value,
@@ -983,9 +988,25 @@ def _note_for_percentage(raw_percentage: str, metadata: FraCsvMetadata) -> str:
     return metadata.footnotes.get(raw_percentage.strip(), metadata.note)
 
 
-def _parse_year(value: Any) -> int | None:
-    match = re.search(r"(?<!\d)(20\d{2})(?!\d)", _clean(value))
-    return int(match.group(1)) if match else None
+def extract_fra_survey_year(source_text: object) -> int | None:
+    """Return one unambiguous, plausible four-digit FRA survey year."""
+    matches = {
+        int(match)
+        for match in re.findall(r"(?<!\d)(?:19|20|21)\d{2}(?!\d)", _clean(source_text))
+        if FRA_MIN_SURVEY_YEAR <= int(match) <= FRA_MAX_SURVEY_YEAR
+    }
+    return next(iter(matches)) if len(matches) == 1 else None
+
+
+def _explicit_fra_year(dataframe: pd.DataFrame, year_column: str | None) -> int | None:
+    if not year_column or year_column not in dataframe.columns:
+        return None
+    years = {
+        year
+        for value in dataframe[year_column].tolist()
+        if (year := extract_fra_survey_year(value)) is not None
+    }
+    return next(iter(years)) if len(years) == 1 else None
 
 
 def _looks_like_footnote_label(value: str) -> bool:

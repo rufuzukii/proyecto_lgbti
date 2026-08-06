@@ -3,13 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 from dash import Dash
 
 import app.dash_app as dash_app_module
 import app.trends.callbacks as trend_callbacks
 import app.trends.layout as trend_layout
-from app.config import get_app_config
 from app.dash.i18n import ui_text
 from app.dash.layouts import navigation
 from app.trends.analysis import analyze_historical_series
@@ -242,20 +240,6 @@ def test_trends_styles_cover_dark_mode_and_mobile() -> None:
     assert ".trend-controls" in stylesheet
     assert "grid-template-columns: 1fr" in stylesheet
     assert "overflow-x: clip" in stylesheet
-
-
-def test_mock_trend_data_defaults_off_and_is_rejected_in_production(monkeypatch) -> None:
-    monkeypatch.setenv("APP_ENV", "local")
-    monkeypatch.setenv("LOCAL_MODE", "true")
-    monkeypatch.delenv("USE_MOCK_TREND_DATA", raising=False)
-    assert get_app_config().use_mock_trend_data is False
-
-    monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("LOCAL_MODE", "false")
-    monkeypatch.setenv("SECRET_KEY", "s" * 32)
-    monkeypatch.setenv("USE_MOCK_TREND_DATA", "true")
-    with pytest.raises(RuntimeError, match="cannot be enabled in production"):
-        get_app_config()
 
 
 def test_production_trends_package_contains_no_fixture_data() -> None:

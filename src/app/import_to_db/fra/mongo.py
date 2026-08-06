@@ -38,6 +38,10 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("invalid_json_payload")
     prepared["code"] = code
     prepared["record_type"] = "statistic"
+    survey_year = _survey_year(prepared.get("survey_year"))
+    if survey_year is None:
+        raise ValueError("missing_fra_survey_year")
+    prepared["survey_year"] = survey_year
     prepared["_id"] = _resolve_object_id(prepared.pop("id", None))
     prepared.pop("external_code", None)
     prepared.pop("datasets", None)
@@ -45,8 +49,7 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
     for answer in prepared.get("answers", []):
         if not isinstance(answer, dict):
             continue
-        answers.append(_prepare_answer(answer))
-    prepared.pop("metadata", None)
+        answers.append(_prepare_answer(answer, survey_year=survey_year))
     prepared.pop("questions", None)
     prepared.pop("validation", None)
     prepared.pop("hyperlink", None)
@@ -82,12 +85,13 @@ def _normalize_documents(file_json: dict[str, Any] | list[Any]) -> list[dict[str
     return [deepcopy(item) for item in file_json]
 
 
-def _prepare_answer(answer: dict[str, Any]) -> dict[str, Any]:
+def _prepare_answer(answer: dict[str, Any], *, survey_year: int) -> dict[str, Any]:
     return {
         "country": answer.get("country") or "",
         "country_code": answer.get("country_code") or "",
         "answer": answer.get("answer") or "",
         "percentage": answer.get("percentage"),
+        "survey_year": _survey_year(answer.get("survey_year")) or survey_year,
         "filters": _prepare_answer_filters(answer.get("filters")),
     }
 
@@ -121,4 +125,15 @@ def _question_filter(document: dict[str, Any]) -> dict[str, Any]:
         "category": document.get("category") or "",
         "specific_category": document.get("specific_category") or "",
         "question": document.get("question") or "",
+        "survey_year": document["survey_year"],
     }
+
+
+def _survey_year(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        year = int(value)
+    except TypeError, ValueError:
+        return None
+    return year if 1990 <= year <= 2100 else None

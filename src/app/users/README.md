@@ -5,7 +5,7 @@ Este paquete modela usuarios y centraliza las operaciones PostgreSQL.
 ## `schemas.py`
 
 - `UserRole`: `anonymous`, `admin` y `common`.
-- `UserType`: `comun`, `docente`, `rrhh`, `politico` y `ong`.
+- `UserType`: `comun`, `admin`, `docente`, `rrhh`, `politico`, `ong` y `sociologo`.
 - `UserRegister`: valida nombre, email, contraseña, organización y tipo.
 - `UserRead`: respuesta pública sin hash de contraseña.
 
@@ -14,17 +14,18 @@ Este paquete modela usuarios y centraliza las operaciones PostgreSQL.
 - `UserStorageError`: error previsto para problemas de almacenamiento seguro.
 - `UserRecord`: modelo interno con `password_hash`.
 - `list_users()`, `get_user()`, `get_user_record()` y `get_user_record_by_email()`: consultas.
-- `create_user()`: normaliza email, genera hash Werkzeug e inserta rol común salvo alta administrativa explícita.
+- `create_user()`: normaliza email, genera hash Werkzeug e inserta el tipo común salvo alta administrativa explícita.
 - `authenticate_user()`: comprueba el hash.
 - `update_user_profile()`: exige contraseña actual y permite cambiar nombre, email y contraseña.
-- `update_user_as_admin()`: permite cambiar nombre, email, organización y rol.
+- `update_user_as_admin()`: permite cambiar nombre, email, organización y tipo de usuario.
 - `delete_user_as_admin()`: elimina por UUID.
-- `migrate_legacy_user_types()`: migra de forma idempotente el antiguo perfil educativo.
-- Helpers privados: conexión, DSN, normalización, conversión de filas y compatibilidad de roles antiguos (`comun`/`user`).
+- Helpers privados: conexión, DSN, normalización, conversión de filas y derivación del rol técnico desde `user_type`.
 
 `DATABASE_URL` tiene prioridad. Si no existe, el servicio compone el DSN desde `config.py`.
-Los perfiles funcionales se persisten en `user_type` cuando la columna existe o,
-por compatibilidad con el esquema desplegado, en `role`.
+Los perfiles funcionales se persisten exclusivamente en `user_type`. El rol técnico
+`admin`/`common` se deriva en Python: `user_type = 'admin'` concede el rol administrativo
+y cualquier otro tipo concede el rol común. El servicio presupone que la tabla PostgreSQL
+ya existe y no ejecuta DDL ni migraciones.
 
 ## `__init__.py`
 

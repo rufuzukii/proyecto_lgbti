@@ -9,22 +9,42 @@ import logging
 import os
 import re
 import time
-import unicodedata
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 from bson import ObjectId
 
+from app.import_to_db.felgtbi import pipeline as _pipeline
+from app.import_to_db.felgtbi.document_identity import (
+    attach_source_document_metadata as _attach_source_document_metadata,
+)
+from app.import_to_db.felgtbi.document_identity import (
+    build_metadata_source_document_id as _build_metadata_source_document_id,
+)
+from app.import_to_db.felgtbi.document_identity import (
+    build_pdf_source_document_id as _build_pdf_source_document_id,
+)
+from app.import_to_db.felgtbi.models import PdfExtractionError, StorageUploadError
+from app.import_to_db.felgtbi.pdf_reader import bbox_area as _bbox_area
+from app.import_to_db.felgtbi.pdf_reader import bbox_overlap_area as _bbox_overlap_area
+from app.import_to_db.felgtbi.pdf_reader import extract_pdf_pages
+from app.import_to_db.felgtbi.pdf_reader import safe_bbox as _safe_bbox
 from app.import_to_db.felgtbi.semantics import (
     ExtractionContext,
     analyze_chart_residual_text,
     clean_figure_paragraphs,
     is_chart_residual_text,
 )
+from app.import_to_db.felgtbi.storage import (
+    figure_storage_path as _figure_storage_path,
+)
+from app.import_to_db.felgtbi.storage import (
+    supabase_storage_bucket as _supabase_storage_bucket,
+)
+from app.import_to_db.felgtbi.storage import (
+    upload_figure_to_supabase as _upload_figure_to_supabase,
+)
 from app.import_to_db.utils import normalize_header, parse_float
-from app.storage import DEFAULT_SUPABASE_STORAGE_BUCKET
 
 FELGTBI_SOURCE_CODE = "felgtbi_estado_lgtbi"
 FELGTBI_SOURCE_NAME = "FELGTBI+ Estado LGBTIQ+"
@@ -34,13 +54,10 @@ FIGURE_IMAGE_MIME_TYPE = "image/webp"
 FIGURE_IMAGE_EXTENSION = "webp"
 logger = logging.getLogger(__name__)
 
-
-class PdfExtractionError(RuntimeError):
-    pass
-
-
-class StorageUploadError(RuntimeError):
-    pass
+# Compatibility exports: orchestration now lives in pipeline.py while the
+# extraction implementation remains here during the gradual refactor.
+parse_felgtbi_pdf = _pipeline.parse_felgtbi_pdf
+parse_felgtbi_pdf_bytes = _pipeline.parse_felgtbi_pdf_bytes
 
 
 def _peak_memory_mb() -> float | None:
@@ -377,12 +394,7 @@ BROAD_REPORT_CATEGORIES: tuple[tuple[str, str], ...] = (
 )
 
 
-def parse_felgtbi_pdf(file_path: Path | str, *, year: int | None = None) -> list[dict]:
-    path = Path(file_path)
-    return parse_felgtbi_pdf_bytes(path.read_bytes(), file_name=path.name, year=year)
-
-
-def parse_felgtbi_pdf_bytes(
+def _run_felgtbi_pdf_pipeline(
     pdf_bytes: bytes,
     *,
     file_name: str = "felgtbi.pdf",
@@ -518,115 +530,6 @@ def parse_felgtbi_pdf_bytes(
             exception_message=str(exc)[:500],
         )
         raise
-
-
-def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
-    try:
-        import fitz
-    except ImportError as exc:
-        raise RuntimeError("missing_pdf_dependency") from exc
-
-    pages: list[dict[str, Any]] = []
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as document:
-        if document.needs_pass:
-            raise PdfExtractionError("encrypted_pdf_not_supported")
-        maximum_pages = max(1, int(os.getenv("PDF_MAX_PAGES", "500")))
-        if document.page_count > maximum_pages:
-            raise PdfExtractionError("pdf_page_limit_exceeded")
-        for page_index in range(document.page_count):
-            page = document.load_page(page_index)
-            # ``TEXTFLAGS_DICT`` includes the binary content of every image by
-            # default.  A report can therefore expand a few megabytes of PDF
-            # data into hundreds of megabytes even though this stage only
-            # needs text styles and image coordinates.  The image-free flags
-            # are also identical to ``TEXTFLAGS_TEXT`` / ``TEXTFLAGS_BLOCKS``,
-            # so one TextPage can serve all three extractions instead of
-            # interpreting each PDF page three times.
-            text_dict_flags = fitz.TEXTFLAGS_DICT & ~fitz.TEXT_PRESERVE_IMAGES
-            text_page = page.get_textpage(flags=text_dict_flags)
-            text_blocks = page.get_text("blocks", textpage=text_page)
-            page_dict = page.get_text("dict", textpage=text_page)
-            dict_blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
-            image_blocks = [
-                {"type": 1, "bbox": image.get("bbox")}
-                for image in page.get_image_info(hashes=False, xrefs=False)
-                if isinstance(image, dict)
-            ]
-            page_width = float(page.rect.width)
-            page_height = float(page.rect.height)
-            visual_regions = [
-                *_extract_page_figures(image_blocks, kind="figure"),
-                *_extract_page_vector_regions(page, page_width, page_height),
-            ]
-            pages.append(
-                {
-                    "page": page_index + 1,
-                    "text": page.get_text("text", textpage=text_page),
-                    "blocks": [
-                        {
-                            "x0": block[0],
-                            "y0": block[1],
-                            "x1": block[2],
-                            "y1": block[3],
-                            "text": block[4],
-                            **_text_block_style(dict_blocks, block),
-                        }
-                        for block in text_blocks
-                        if len(block) >= 5
-                    ],
-                    "figures": _deduplicate_visual_regions(visual_regions),
-                    "width": page_width,
-                    "height": page_height,
-                }
-            )
-            del text_page, page_dict, dict_blocks, image_blocks, text_blocks, visual_regions, page
-    return pages
-
-
-def _text_block_style(
-    dict_blocks: list[dict[str, Any]],
-    text_block: Any,
-) -> dict[str, Any]:
-    """Return font hints for a text block without changing its extracted text."""
-    if len(text_block) < 4:
-        return {}
-    block_bbox = [float(text_block[index]) for index in range(4)]
-    best: dict[str, Any] | None = None
-    best_overlap = 0.0
-    for candidate in dict_blocks:
-        if candidate.get("type") != 0:
-            continue
-        bbox = _safe_bbox(candidate.get("bbox"))
-        if bbox is None:
-            continue
-        overlap = _bbox_overlap_area(block_bbox, bbox)
-        if overlap > best_overlap:
-            best = candidate
-            best_overlap = overlap
-    if best is None:
-        return {}
-
-    spans = [
-        span
-        for line in best.get("lines", [])
-        if isinstance(line, dict)
-        for span in line.get("spans", [])
-        if isinstance(span, dict)
-    ]
-    if not spans:
-        return {}
-    fonts = [str(span.get("font") or "") for span in spans]
-    return {
-        "font_size": round(max(float(span.get("size") or 0) for span in spans), 2),
-        "is_bold": any("bold" in font.casefold() for font in fonts),
-        "is_italic": any("italic" in font.casefold() for font in fonts),
-    }
-
-
-def _bbox_overlap_area(first: list[float], second: list[float]) -> float:
-    width = max(0.0, min(first[2], second[2]) - max(first[0], second[0]))
-    height = max(0.0, min(first[3], second[3]) - max(first[1], second[1]))
-    return width * height
 
 
 def _attach_page_assets(
@@ -768,18 +671,6 @@ def _figure_render_scale(width: float, height: float) -> float:
     return round(max(1.0, min(2.0, (max_pixels / source_pixels) ** 0.5)), 3)
 
 
-def _safe_bbox(value: Any) -> list[float] | None:
-    if not isinstance(value, (list, tuple)) or len(value) != 4:
-        return None
-    try:
-        bbox = [float(item) for item in value]
-    except TypeError, ValueError:
-        return None
-    if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
-        return None
-    return [round(item, 2) for item in bbox]
-
-
 def _pixmap_image_bytes(pixmap: Any) -> tuple[bytes, int, int, str]:
     try:
         from PIL import Image
@@ -802,228 +693,6 @@ def _pixmap_image_bytes(pixmap: Any) -> tuple[bytes, int, int, str]:
         if rgb_image is not source_image:
             rgb_image.close()
         source_image.close()
-
-
-def _upload_figure_to_supabase(
-    *,
-    image_bytes: bytes,
-    storage_path: str,
-    mime_type: str,
-    checksum: str,
-) -> dict[str, Any]:
-    config = _supabase_storage_config()
-    if not config:
-        return {
-            "status": "failed",
-            "error": "supabase_storage_not_configured",
-            "bucket": _supabase_storage_bucket(),
-            "storage_path": storage_path,
-        }
-    try:
-        from botocore.exceptions import BotoCoreError, ClientError
-    except ImportError:
-        return {
-            "status": "failed",
-            "error": "boto3_not_installed",
-            "bucket": config["bucket"],
-            "storage_path": storage_path,
-        }
-
-    client = _supabase_s3_client(
-        config["endpoint"],
-        config["access_key"],
-        config["secret_key"],
-        config["region"],
-    )
-    should_upload = True
-    try:
-        existing = client.head_object(Bucket=config["bucket"], Key=storage_path)
-        metadata = existing.get("Metadata") or {}
-        if metadata.get("checksum") == checksum:
-            should_upload = False
-    except ClientError as exc:
-        response = exc.response if isinstance(exc.response, dict) else {}
-        error_value = response.get("Error")
-        error: dict[str, Any] = error_value if isinstance(error_value, dict) else {}
-        status_code = int((response.get("ResponseMetadata") or {}).get("HTTPStatusCode") or 0)
-        error_code = str(error.get("Code") or status_code or exc.__class__.__name__)
-        if status_code != 404 and error_code not in {"404", "NoSuchKey", "NotFound"}:
-            return {
-                "status": "failed",
-                "error": f"head_object:{error_code}",
-                "bucket": config["bucket"],
-                "storage_path": storage_path,
-            }
-    except (BotoCoreError, OSError) as exc:
-        return {
-            "status": "failed",
-            "error": f"head_object:{exc.__class__.__name__}",
-            "bucket": config["bucket"],
-            "storage_path": storage_path,
-        }
-
-    if should_upload:
-        try:
-            client.put_object(
-                Bucket=config["bucket"],
-                Key=storage_path,
-                Body=image_bytes,
-                ContentType=mime_type,
-                CacheControl="public, max-age=31536000, immutable",
-                Metadata={"checksum": checksum},
-            )
-        except ClientError as exc:
-            response = exc.response if isinstance(exc.response, dict) else {}
-            error_value = response.get("Error")
-            error = error_value if isinstance(error_value, dict) else {}
-            status_code = int((response.get("ResponseMetadata") or {}).get("HTTPStatusCode") or 0)
-            error_code = str(error.get("Code") or status_code or exc.__class__.__name__)
-            return {
-                "status": "failed",
-                "error": f"put_object:{error_code}",
-                "bucket": config["bucket"],
-                "storage_path": storage_path,
-            }
-        except (BotoCoreError, OSError) as exc:
-            return {
-                "status": "failed",
-                "error": f"put_object:{exc.__class__.__name__}",
-                "bucket": config["bucket"],
-                "storage_path": storage_path,
-            }
-
-    return {
-        "status": "uploaded" if should_upload else "reused",
-        "error": None,
-        "bucket": config["bucket"],
-        "storage_path": storage_path,
-        "mime_type": mime_type,
-    }
-
-
-@lru_cache(maxsize=2)
-def _supabase_s3_client(
-    endpoint: str,
-    access_key: str,
-    secret_key: str,
-    region: str,
-) -> Any:
-    import boto3
-    from botocore.config import Config
-
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-        region_name=region,
-        config=Config(
-            connect_timeout=max(1, int(os.getenv("SUPABASE_CONNECT_TIMEOUT_SECONDS", "3"))),
-            read_timeout=max(1, int(os.getenv("SUPABASE_READ_TIMEOUT_SECONDS", "10"))),
-            retries={"mode": "standard", "total_max_attempts": 2},
-            max_pool_connections=4,
-            s3={"addressing_style": "path"},
-        ),
-    )
-
-
-def _supabase_storage_config() -> dict[str, str] | None:
-    endpoint = os.getenv("SUPABASE_S3_ENDPOINT", "").strip()
-    access_key = os.getenv("SUPABASE_S3_ACCESS_KEY", "").strip()
-    secret_key = os.getenv("SUPABASE_S3_SECRET_KEY", "").strip()
-    if not endpoint or not access_key or not secret_key:
-        return None
-    parsed_endpoint = urlsplit(endpoint)
-    if parsed_endpoint.scheme not in {"http", "https"} or not parsed_endpoint.hostname:
-        return None
-    from app.config import get_app_config
-
-    if not get_app_config().local_mode and parsed_endpoint.scheme != "https":
-        return None
-    return {
-        "bucket": _supabase_storage_bucket(),
-        "endpoint": endpoint,
-        "access_key": access_key,
-        "secret_key": secret_key,
-        "region": os.getenv("SUPABASE_S3_REGION", "us-east-1").strip() or "us-east-1",
-    }
-
-
-def _supabase_storage_bucket() -> str:
-    return (
-        os.getenv("SUPABASE_STORAGE_BUCKET", DEFAULT_SUPABASE_STORAGE_BUCKET).strip()
-        or DEFAULT_SUPABASE_STORAGE_BUCKET
-    )
-
-
-def _figure_storage_path(document: dict[str, Any], file_name: str) -> str:
-    year = str(document.get("year") or _extract_year(file_name) or "unknown")
-    report_slug = _slugify(str(document.get("report_title") or Path(file_name).stem or "felgtbi"))
-    section_slug = _slugify(
-        str(document.get("section_title") or document.get("specific_category") or "seccion")
-    )
-    figure_number = str(
-        document.get("figure_number") or (document.get("figure") or {}).get("number") or ""
-    )
-    figure_slug = _figure_file_stem(figure_number)
-    return f"{year}/{report_slug}/{section_slug}/{figure_slug}.{FIGURE_IMAGE_EXTENSION}"
-
-
-def _figure_file_stem(figure_number: str) -> str:
-    number = re.sub(r"[^0-9]+", "-", figure_number).strip("-")
-    return f"figura-{number}" if number else "figura"
-
-
-def _slugify(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", ascii_text.lower()).strip("-")
-    return re.sub(r"-{2,}", "-", slug) or "felgtbi"
-
-
-def _asset_key(pdf_bytes: bytes, file_name: str) -> str:
-    digest = hashlib.sha1(usedforsecurity=False)
-    digest.update(str(file_name or "felgtbi.pdf").encode("utf-8", errors="ignore"))
-    digest.update(pdf_bytes)
-    return digest.hexdigest()[:16]
-
-
-def _build_pdf_source_document_id(pdf_bytes: bytes, file_name: str) -> str:
-    digest = hashlib.sha1(usedforsecurity=False)
-    digest.update(_safe_original_filename(file_name).encode("utf-8", errors="ignore"))
-    digest.update(pdf_bytes)
-    return f"felgtbi_pdf_{digest.hexdigest()[:16]}"
-
-
-def _build_metadata_source_document_id(file_name: str, year: int, report_title: str) -> str:
-    seed = f"{_safe_original_filename(file_name)}|{year}|{report_title}"
-    digest = hashlib.sha1(seed.encode("utf-8", errors="ignore"), usedforsecurity=False).hexdigest()[
-        :16
-    ]
-    return f"felgtbi_pdf_{digest}"
-
-
-def _safe_original_filename(file_name: str) -> str:
-    clean_name = str(file_name or "felgtbi.pdf").replace("\\", "/").rstrip("/")
-    clean_name = clean_name.rsplit("/", 1)[-1].strip()
-    return clean_name or "felgtbi.pdf"
-
-
-def _attach_source_document_metadata(
-    documents: list[dict],
-    *,
-    file_name: str,
-    source_document_id: str,
-    overwrite_document_id: bool = False,
-) -> None:
-    original_filename = _safe_original_filename(file_name)
-    for document in documents:
-        if not isinstance(document, dict):
-            continue
-        document["original_filename"] = str(document.get("original_filename") or original_filename)
-        if overwrite_document_id or not document.get("source_document_id"):
-            document["source_document_id"] = source_document_id
-        document["import_status"] = str(document.get("import_status") or "processed")
 
 
 def parse_felgtbi_text_pages(
@@ -2328,99 +1997,6 @@ def _clean_lines(text: str) -> list[str]:
     return [" ".join(line.strip().split()) for line in text.splitlines() if line and line.strip()]
 
 
-def _extract_page_figures(
-    blocks: list[dict[str, Any]],
-    *,
-    kind: str = "figure",
-) -> list[dict[str, Any]]:
-    figures: list[dict[str, Any]] = []
-    for block in blocks:
-        if block.get("type") != 1:
-            continue
-        bbox = block.get("bbox")
-        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-            continue
-        x0, y0, x1, y1 = [float(value) for value in bbox]
-        width = x1 - x0
-        height = y1 - y0
-        if width < 80 or height < 60:
-            continue
-        if x0 < 5 and y0 < 5 and width > 550 and height > 780:
-            continue
-        if y0 < 90 and height < 100:
-            continue
-        figures.append(
-            {
-                "kind": kind,
-                "bbox": [round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)],
-            }
-        )
-    return figures
-
-
-def _extract_page_vector_regions(
-    page: Any,
-    page_width: float,
-    page_height: float,
-) -> list[dict[str, Any]]:
-    try:
-        regions = page.cluster_drawings()
-    except AttributeError, RuntimeError, ValueError:
-        return []
-
-    page_area = max(page_width * page_height, 1.0)
-    figures: list[dict[str, Any]] = []
-    for region in regions:
-        try:
-            x0, y0, x1, y1 = (
-                float(region.x0),
-                float(region.y0),
-                float(region.x1),
-                float(region.y1),
-            )
-        except AttributeError, TypeError, ValueError:
-            continue
-        width = x1 - x0
-        height = y1 - y0
-        area_ratio = (width * height) / page_area
-        if width < 80 or height < 60 or area_ratio >= 0.8:
-            continue
-        if y0 < 70 and height < 100:
-            continue
-        figures.append(
-            {
-                "kind": "vector",
-                "bbox": [round(x0, 2), round(y0, 2), round(x1, 2), round(y1, 2)],
-            }
-        )
-    return figures
-
-
-def _deduplicate_visual_regions(regions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
-    for region in regions:
-        bbox = _safe_bbox(region.get("bbox"))
-        if bbox is None:
-            continue
-        duplicate = False
-        for existing in result:
-            existing_bbox = _safe_bbox(existing.get("bbox"))
-            if existing_bbox is None:
-                continue
-            overlap = _bbox_overlap_area(bbox, existing_bbox)
-            smaller_area = min(_bbox_area(bbox), _bbox_area(existing_bbox))
-            if smaller_area > 0 and overlap / smaller_area >= 0.94:
-                duplicate = True
-                break
-        if not duplicate:
-            result.append({"kind": str(region.get("kind") or "visual"), "bbox": bbox})
-    return result
-
-
-def _bbox_area(bbox: list[float]) -> float:
-    return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
-
-
 def _build_visual_context(
     page: int,
     bbox: list[float] | None,
@@ -3005,22 +2581,6 @@ def _figure_block_extraction_context(
     )
 
 
-def _figure_description(
-    pages: list[dict[str, Any]],
-    caption: dict[str, Any],
-    next_caption: dict[str, Any] | None,
-    previous_caption: dict[str, Any] | None,
-    toc_sections: list[dict[str, Any]],
-) -> str:
-    before_text, after_text = _figure_text_parts(
-        pages,
-        caption,
-        next_caption,
-        previous_caption,
-        toc_sections,
-    )
-    return _format_description(f"{before_text} {after_text}", max_length=6000)
-
 
 def _clean_figure_caption_title(text: str) -> str:
     match = FIGURE_CAPTION_PATTERN.match(text)
@@ -3340,9 +2900,6 @@ def _page_text_block_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-def _page_text_blocks(page: dict[str, Any]) -> list[str]:
-    return [block["text"] for block in _page_text_block_entries(page)]
-
 
 def _reading_order_key(block: dict[str, Any]) -> tuple[int, float, float]:
     y0 = float(block.get("y0") or 0)
@@ -3574,13 +3131,6 @@ def _infer_topic(
                 return topic
     return fallback or "Spanish LGBTIQ+ indicators"
 
-
-def _section_from_previous_lines(lines: list[str], index: int) -> str:
-    for position in range(index - 1, max(index - 8, -1), -1):
-        candidate = lines[position].strip()
-        if _looks_like_heading(candidate):
-            return _clean_section_title(candidate)[:120]
-    return ""
 
 
 def _looks_like_heading(value: str) -> bool:

@@ -19,6 +19,7 @@ from app.analytics.repository import (
     get_ilga_criteria_categories_by_year,
     get_ilga_years,
 )
+from app.analytics.statistics.ranking import paginate_ranking
 from app.analytics.statistics_charts import (
     build_combined_heatmap,
     build_combined_scatter,
@@ -64,47 +65,21 @@ from app.analytics.statistics_service import (
 from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import attribute_attrs, country_labels, dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
+from app.taxonomy import taxonomy_label, taxonomy_pair
 
 DATA_TYPE_OPTIONS = [
     {
-        "label": html.Span(
-            "Sociodemográficos", **text_attrs("Sociodemográficos", "Sociodemographic")
-        ),
-        "value": "fra",
-    },
-    {
-        "label": html.Span("Legales", **text_attrs("Legales", "Legal")),
-        "value": "ilga",
-    },
+        "label": html.Span(label_es, **text_attrs(label_es, label_en)),
+        "value": value,
+    }
+    for value in ("fra", "ilga")
+    for label_es, label_en in [taxonomy_pair("data_type", value)]
 ]
 
 EXCLUDED_CATEGORY_KEYS = {
     normalize_text_key("Political Participation"),
     normalize_text_key("Spanish LGBTI+ indicators"),
     normalize_text_key("Spanish LGBTIQ+ indicators"),
-}
-
-LEGAL_RESPONSE_LABELS = {
-    "not_met": ("No reconocido", "Not met"),
-    "partially_met": ("Cumplimiento parcial", "Partially met"),
-    "fully_met": ("Cumplimiento completo", "Fully met"),
-    "not_available": ("Sin datos", "No data"),
-    "overall_score": ("Puntuación legal", "Legal score"),
-}
-
-SEGMENTATION_LABELS = {
-    "All": ("Todos", "All"),
-    "Age": ("Edad", "Age"),
-    "Sexual Orientation": ("Orientación sexual", "Sexual orientation"),
-    "Education": ("Educación", "Education"),
-    "Employment status": ("Situación laboral", "Employment status"),
-    "Belonging to a minority group": ("Pertenencia a una minoría", "Minority status"),
-    "Openness about being LGBTIQ+": ("Apertura sobre ser LGBTIQ+", "Openness about being LGBTIQ+"),
-    "Place of residence": ("Lugar de residencia", "Place of residence"),
-    "Activity limitation": ("Limitación de actividad", "Activity limitation"),
-    "Making ends meet": ("Capacidad para llegar a fin de mes", "Making ends meet"),
-    "Gender Expression": ("Identidad o expresión de género", "Gender identity or expression"),
-    "Sex Characteristics": ("Características sexuales", "Sex characteristics"),
 }
 
 LABELS_EN = {
@@ -149,6 +124,7 @@ def build_statistics_layout() -> Component:
             build_navbar(active="statistics"),
             dcc.Store(id="stats-data-store", storage_type="memory"),
             dcc.Store(id="stats-fra-control-store", storage_type="memory"),
+            dcc.Store(id="stats-ranking-page", data=0, storage_type="memory"),
             dcc.Store(id="stats-selected-countries", data=[], storage_type="session"),
             dcc.Download(id="stats-summary-table-download"),
             html.Main(
@@ -189,6 +165,7 @@ def build_statistics_layout() -> Component:
                                         panel_class_name=(
                                             "stats-panel stats-panel-wide stats-ranking-panel"
                                         ),
+                                        footer=_ranking_pagination_controls(),
                                     ),
                                     _graph_panel(
                                         "Distribución europea",
@@ -440,6 +417,55 @@ def build_statistics_layout() -> Component:
 
 def register_statistics_callbacks(app: Dash) -> None:
     @app.callback(
+        Output("stats-ranking-page", "data"),
+        Output("stats-ranking-previous", "disabled"),
+        Output("stats-ranking-next", "disabled"),
+        Output("stats-ranking-page-label", "children"),
+        Input("stats-data-store", "data"),
+        Input("stats-selected-countries", "data"),
+        Input("stats-ranking-previous", "n_clicks"),
+        Input("stats-ranking-next", "n_clicks"),
+        Input("app-language-store", "data"),
+        State("stats-ranking-page", "data"),
+    )
+    def update_ranking_page(
+        result: dict[str, Any] | None,
+        selected_countries: list[str] | None,
+        _previous_clicks: int | None,
+        _next_clicks: int | None,
+        language: str | None,
+        current_page: int | None,
+    ) -> tuple[int, bool, bool, str]:
+        requested_page = 0 if ctx.triggered_id in {
+            None,
+            "stats-data-store",
+            "stats-selected-countries",
+        } else int(current_page or 0)
+        if ctx.triggered_id == "stats-ranking-previous":
+            requested_page -= 1
+        elif ctx.triggered_id == "stats-ranking-next":
+            requested_page += 1
+        ranking_page = paginate_ranking(
+            list((result or {}).get("ranking") or []),
+            requested_page,
+            selected_countries=_normalize_selected_countries(selected_countries),
+        )
+        if ranking_page.total_items:
+            label = (
+                f"Countries {ranking_page.start}\u2013{ranking_page.end} of {ranking_page.total_items}"
+                if language == "en"
+                else f"Pa\u00edses {ranking_page.start}\u2013{ranking_page.end} de {ranking_page.total_items}"
+            )
+        else:
+            label = "No countries" if language == "en" else "Sin pa\u00edses"
+        return (
+            ranking_page.page,
+            not ranking_page.has_previous,
+            not ranking_page.has_next,
+            label,
+        )
+
+    @app.callback(
         Output("stats-summary-table-download", "data"),
         Input("stats-table-download-button", "n_clicks"),
         State("stats-results-table", "virtualRowData"),
@@ -604,13 +630,16 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("fra-indicator-select", "disabled"),
         Input("stats-source-select", "value"),
         Input("stats-category-select", "value"),
+        Input("stats-year-select", "value"),
     )
-    def update_fra_indicators(source: str | None, category: str | None):
+    def update_fra_indicators(
+        source: str | None, category: str | None, year: int | None
+    ):
         if source != "fra" or not category:
             return [], None, True
         options = [
             {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
-            for indicator in get_fra_mongo_indicators_by_category(category)
+            for indicator in get_fra_mongo_indicators_by_category(category, year)
         ]
         return options, None, not bool(options)
 
@@ -636,7 +665,10 @@ def register_statistics_callbacks(app: Dash) -> None:
                 {},
             )
         payload = get_fra_control_payload(code)
-        answers = payload.get("answers") or []
+        answers = _translated_taxonomy_options(
+            payload.get("answers") or [],
+            "fra_response",
+        )
         segmentations = _translated_segmentation_options(payload.get("segmentations") or [])
         demographic_options = _segmentation_catalog_options(FRA_FILTER_GROUP_A, segmentations)
         identity_options = _segmentation_catalog_options(FRA_FILTER_GROUP_B, segmentations)
@@ -873,18 +905,21 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("stats-selected-countries", "data"),
         Input("stats-temporal-country-select", "value"),
         Input("app-language-store", "data"),
+        Input("stats-ranking-page", "data"),
     )
     def render_statistics(
         result: dict[str, Any] | None,
         countries: list[str] | None,
         temporal_countries: list[str] | None,
         language: str | None,
+        ranking_page: int | None,
     ):
         return _render_dashboard(
             result or {},
             _normalize_selected_countries(countries),
             language or "es",
             temporal_countries=_normalize_selected_countries(temporal_countries),
+            ranking_page=ranking_page,
         )
 
     @app.callback(
@@ -1302,6 +1337,7 @@ def _graph_panel(
     *,
     panel_id: str | None = None,
     panel_class_name: str = "stats-panel",
+    footer: Component | None = None,
 ) -> Component:
     panel_props: dict[str, Any] = {"className": panel_class_name}
     if panel_id:
@@ -1317,8 +1353,42 @@ def _graph_panel(
                 className="stats-chart-graph",
                 style={"width": "100%"},
             ),
+            footer,
         ],
         **panel_props,
+    )
+
+
+def _ranking_pagination_controls() -> Component:
+    return html.Nav(
+        [
+            html.Button(
+                text("Anterior", "Previous"),
+                id="stats-ranking-previous",
+                type="button",
+                disabled=True,
+                className="stats-ranking-page-button",
+            ),
+            html.Span(
+                text("Sin pa\u00edses", "No countries"),
+                id="stats-ranking-page-label",
+                className="stats-ranking-page-label",
+                **dash_attrs({"aria-live": "polite"}),
+            ),
+            html.Button(
+                text("Siguiente", "Next"),
+                id="stats-ranking-next",
+                type="button",
+                disabled=True,
+                className="stats-ranking-page-button",
+            ),
+        ],
+        className="stats-ranking-pagination",
+        **dash_attrs(
+            {
+                "aria-label": "Paginaci\u00f3n del ranking / Ranking pagination",
+            }
+        ),
     )
 
 
@@ -1443,22 +1513,33 @@ def _temporal_country_options(
 
 def _category_options(source: str | None, year: int | None) -> list[dict[str, Any]]:
     if source == "fra":
-        return _visible_category_options(get_fra_categories())
+        return _visible_category_options(get_fra_categories(year))
     options: list[dict[str, Any]] = [
         {
-            "label": text("Ranking total", "Overall ranking"),
+            "label": text(*taxonomy_pair("ilga_category", "Ranking total")),
             "value": "Ranking total",
         }
     ]
     options.extend(
-        {"label": category, "value": category}
+        {
+            "label": html.Span(label_es, **text_attrs(label_es, label_en)),
+            "value": category,
+        }
         for category in _visible_categories(get_ilga_criteria_categories_by_year(year))
+        for label_es, label_en in [taxonomy_pair("ilga_category", category)]
     )
     return options
 
 
 def _visible_category_options(categories: list[str]) -> list[dict[str, Any]]:
-    return [{"label": category, "value": category} for category in _visible_categories(categories)]
+    return [
+        {
+            "label": html.Span(label_es, **text_attrs(label_es, label_en)),
+            "value": category,
+        }
+        for category in _visible_categories(categories)
+        for label_es, label_en in [taxonomy_pair("fra_category", category)]
+    ]
 
 
 def _visible_categories(categories: list[str]) -> list[str]:
@@ -1470,14 +1551,19 @@ def _visible_categories(categories: list[str]) -> list[str]:
 
 
 def _translated_segmentation_options(options: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    translated = []
+    return _translated_taxonomy_options(options, "fra_filter")
+
+
+def _translated_taxonomy_options(
+    options: list[dict[str, Any]],
+    namespace: str,
+) -> list[dict[str, Any]]:
+    translated: list[dict[str, Any]] = []
     for option in options:
         value = str(option.get("value") or "")
-        labels = SEGMENTATION_LABELS.get(
-            value, (str(option.get("label") or value), str(option.get("label") or value))
-        )
+        label_es, label_en = taxonomy_pair(namespace, value)
         translated.append(
-            {**option, "label": html.Span(labels[0], **text_attrs(labels[0], labels[1]))}
+            {**option, "label": html.Span(label_es, **text_attrs(label_es, label_en))}
         )
     return translated
 
@@ -1501,7 +1587,7 @@ def _segmentation_catalog_options(
     }
     options: list[dict[str, Any]] = []
     for value in catalog:
-        labels = SEGMENTATION_LABELS.get(value, (value, value))
+        labels = taxonomy_pair("fra_filter", value)
         options.append(
             {
                 "label": html.Span(labels[0], **text_attrs(labels[0], labels[1])),
@@ -1563,6 +1649,7 @@ def _render_dashboard(
     language: str,
     *,
     temporal_countries: list[str] | None = None,
+    ranking_page: int | None = 0,
 ):
     if result.get("status") != "ok":
         message = str(
@@ -1608,6 +1695,11 @@ def _render_dashboard(
     history = list(result.get("history") or [])
     combined = list(result.get("combined") or [])
     scope = _selection_scope(ranking, selected, language)
+    visible_ranking = paginate_ranking(
+        ranking,
+        ranking_page,
+        selected_countries=selected,
+    ).rows
     map_figure = build_europe_choropleth(
         ranking, source=source, selected_isos=selected, language=language
     )
@@ -1618,14 +1710,19 @@ def _render_dashboard(
         visible_countries=temporal_countries,
     )
     comparative_ranking = build_comparative_ranking_chart(
-        ranking,
+        visible_ranking,
         selected,
         language,
         indicator=str(result.get("indicator") or ""),
         year=result.get("year"),
     )
     distribution = build_europe_distribution_chart(ranking, selected, language)
-    average = build_eu_average_comparison_chart(ranking, selected, language)
+    average = build_eu_average_comparison_chart(
+        ranking,
+        selected,
+        language,
+        focus_rows=visible_ranking,
+    )
     comparison = (
         build_response_country_comparison_chart(
             detail,
@@ -1917,7 +2014,7 @@ def _detail_summary(
             .tolist()
         )
         labels = [
-            LEGAL_RESPONSE_LABELS.get(response, (response, response))[1 if language == "en" else 0]
+            taxonomy_label("legal_status", response, language)
             for response in responses
         ]
         return html.Div(
@@ -2119,15 +2216,6 @@ def _methodology_text(result: dict[str, Any], source: str, language: str = "es")
         )
     return str(result.get("methodology") or "")
 
-
-def _source_display_name(source: Any) -> str:
-    return (
-        "Sociodemográficos"
-        if source == "FRA"
-        else "Legales"
-        if source == "ILGA-Europe"
-        else str(source or "")
-    )
 
 
 def _selection_scope(

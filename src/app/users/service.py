@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import unicodedata
 from dataclasses import dataclass
+from hashlib import sha256
 from typing import Any, cast
 
 import psycopg
@@ -11,6 +13,19 @@ from psycopg.rows import dict_row
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.config import get_postgres_connect_timeout, get_postgres_dsn
+from app.taxonomy import canonical_taxonomy_value
+from app.users.account_security import (
+    AccountSecurityState,
+    AccountSecurityStorageError,
+    get_account_security,
+    get_account_security_many,
+    increment_session_version,
+    initialize_new_account,
+    mark_email_unverified,
+    record_security_event,
+    set_account_active,
+)
+from app.users.audit import record_user_admin_event
 from app.users.schemas import (
     MAX_PASSWORD_LENGTH,
     MIN_PASSWORD_LENGTH,
@@ -26,6 +41,8 @@ class UserStorageError(RuntimeError):
 
 
 _DUMMY_PASSWORD_HASH = generate_password_hash("not-a-real-account-password")
+logger = logging.getLogger(__name__)
+ADMIN_ROSTER_LOCK_ID = 1_981_060_117
 
 
 @dataclass
@@ -37,23 +54,82 @@ class UserRecord:
     organization: str | None
     password_hash: str | None
     user_type: UserType | None = None
+    active: bool = True
+    email_verified: bool = True
+    session_version: int = 0
 
     @property
     def display_name(self) -> str:
         return self.username or self.email
 
 
+@dataclass(frozen=True, slots=True)
+class UserPage:
+    users: list[UserRead]
+    page: int
+    page_size: int
+    total: int
+    page_count: int
+
+
 def list_users() -> list[UserRead]:
     with _connect() as conn:
         rows = conn.execute(
             """
-            select id::text, username, email, role, organization,
-                   coalesce(to_jsonb(u)->>'user_type', role) as user_type
-            from public.users as u
+            select id::text, username, email, organization, user_type
+            from public.users
             order by created_at desc nulls last, email asc
             """
         ).fetchall()
-    return [_row_to_user_read(row) for row in rows]
+    return _rows_to_user_reads(rows)
+
+
+def list_users_page(
+    *,
+    search: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> UserPage:
+    clean_search = _normalize_user_text(search or "")[:120]
+    clean_page_size = min(100, max(1, page_size))
+    pattern = f"%{_escape_like(clean_search)}%"
+    where = """
+        where (%s = '' or username ilike %s escape '\\' or email ilike %s escape '\\'
+               or coalesce(organization, '') ilike %s escape '\\')
+    """
+    with _connect() as conn:
+        count_row = conn.execute(
+            f"select count(*) as total from public.users {where}",
+            (clean_search, pattern, pattern, pattern),
+        ).fetchone()
+        count_values = cast(dict[str, Any], count_row or {})
+        total = int(count_values.get("total") or 0)
+        page_count = max(1, (total + clean_page_size - 1) // clean_page_size)
+        clean_page = min(max(1, page), page_count)
+        rows = conn.execute(
+            f"""
+            select id::text, username, email, organization, user_type
+            from public.users
+            {where}
+            order by created_at desc nulls last, email asc
+            limit %s offset %s
+            """,
+            (
+                clean_search,
+                pattern,
+                pattern,
+                pattern,
+                clean_page_size,
+                (clean_page - 1) * clean_page_size,
+            ),
+        ).fetchall()
+    return UserPage(
+        users=_rows_to_user_reads(rows),
+        page=clean_page,
+        page_size=clean_page_size,
+        total=total,
+        page_count=page_count,
+    )
 
 
 def get_user(user_id: str) -> UserRead | None:
@@ -69,14 +145,16 @@ def get_user_record(user_id: str) -> UserRecord | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            select id::text, username, email, role, organization, password_hash,
-                   coalesce(to_jsonb(u)->>'user_type', role) as user_type
-            from public.users as u
+            select id::text, username, email, organization, password_hash, user_type
+            from public.users
             where id = %s::uuid
             """,
             (user_id,),
         ).fetchone()
-    return _row_to_user_record(row) if row else None
+    if row is None:
+        return None
+    values = cast(dict[str, Any], row)
+    return _row_to_user_record(values, _account_state(str(values["id"])))
 
 
 def get_user_record_by_email(email: str) -> UserRecord | None:
@@ -86,14 +164,16 @@ def get_user_record_by_email(email: str) -> UserRecord | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            select id::text, username, email, role, organization, password_hash,
-                   coalesce(to_jsonb(u)->>'user_type', role) as user_type
-            from public.users as u
+            select id::text, username, email, organization, password_hash, user_type
+            from public.users
             where lower(email) = %s
             """,
             (normalized,),
         ).fetchone()
-    return _row_to_user_record(row) if row else None
+    if row is None:
+        return None
+    values = cast(dict[str, Any], row)
+    return _row_to_user_record(values, _account_state(str(values["id"])))
 
 
 def create_user(payload: UserRegister, *, role: UserRole = UserRole.COMMON) -> UserRead:
@@ -112,44 +192,36 @@ def create_user(payload: UserRegister, *, role: UserRole = UserRole.COMMON) -> U
 
     try:
         with _connect() as conn:
-            if _users_has_column(conn, "user_type"):
-                row = conn.execute(
-                    """
-                    insert into public.users
-                        (username, email, role, user_type, organization, password_hash)
-                    values (%s, %s, %s, %s, %s, %s)
-                    returning id::text, username, email, role, organization, user_type
-                    """,
+            row = conn.execute(
+                """
+                insert into public.users
+                    (username, email, user_type, organization, password_hash)
+                values (%s, %s, %s, %s, %s)
+                returning id::text, username, email, organization, user_type
+                """,
+                (
+                    username,
+                    normalized_email,
                     (
-                        username,
-                        normalized_email,
-                        assigned_role.value,
-                        None if assigned_role == UserRole.ADMIN else UserType.COMUN.value,
-                        organization,
-                        password_hash,
+                        UserType.ADMIN.value
+                        if assigned_role == UserRole.ADMIN
+                        else UserType.COMUN.value
                     ),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    """
-                    insert into public.users (username, email, role, organization, password_hash)
-                    values (%s, %s, %s, %s, %s)
-                    returning id::text, username, email, role, organization,
-                              coalesce(to_jsonb(users)->>'user_type', role) as user_type
-                    """,
-                    (
-                        username,
-                        normalized_email,
-                        assigned_role.value,
-                        organization,
-                        password_hash,
-                    ),
-                ).fetchone()
+                    organization,
+                    password_hash,
+                ),
+            ).fetchone()
+            if row is None:
+                raise UserStorageError("user_creation_failed")
+            row_values = cast(dict[str, Any], row)
+            new_account_state = initialize_new_account(str(row_values["id"]))
             conn.commit()
     except UniqueViolation as exc:
         raise ValueError("email_exists") from exc
+    except AccountSecurityStorageError as exc:
+        raise UserStorageError("account_security_unavailable") from exc
 
-    return _row_to_user_read(row)
+    return _row_to_user_read(row_values, new_account_state)
 
 
 def authenticate_user(email: str, password: str) -> UserRecord | None:
@@ -163,6 +235,8 @@ def authenticate_user(email: str, password: str) -> UserRecord | None:
     )
     password_matches = check_password_hash(password_hash, password)
     if record is None or not record.password_hash or not password_matches:
+        return None
+    if not record.active:
         return None
     return record
 
@@ -207,8 +281,7 @@ def update_user_profile(
                     email = %s,
                     password_hash = %s
                 where id = %s::uuid
-                returning id::text, username, email, role, organization, password_hash,
-                          coalesce(to_jsonb(users)->>'user_type', role) as user_type
+                returning id::text, username, email, organization, password_hash, user_type
                 """,
                 (clean_username, normalized_email, next_hash, user_id),
             ).fetchone()
@@ -218,7 +291,20 @@ def update_user_profile(
 
     if row is None:
         raise ValueError("user_not_found")
-    return _row_to_user_record(row)
+    email_changed = normalized_email != record.email.casefold()
+    security_changed = email_changed or bool(clean_new_password)
+    if security_changed:
+        try:
+            if email_changed:
+                mark_email_unverified(user_id)
+            increment_session_version(user_id)
+            _record_security_event_safely(
+                user_id,
+                "email_changed" if email_changed else "password_changed",
+            )
+        except AccountSecurityStorageError as exc:
+            raise UserStorageError("account_security_unavailable") from exc
+    return _row_to_user_record(row, _account_state(user_id))
 
 
 def update_user_as_admin(
@@ -228,11 +314,13 @@ def update_user_as_admin(
     email: str,
     role: str,
     organization: str | None,
+    actor_user_id: str,
+    expected_version: str | None = None,
 ) -> UserRecord:
     clean_username = _normalize_user_text(username)
     normalized_email = _normalize_email(email)
     clean_organization = _normalize_optional_text(organization)
-    parsed_role = _parse_admin_role(role)
+    parsed_user_type = _parse_admin_user_type(role)
 
     if len(clean_username) < 2 or len(clean_username) > 80:
         raise ValueError("invalid_username")
@@ -243,59 +331,89 @@ def update_user_as_admin(
 
     try:
         with _connect() as conn:
-            if _users_has_column(conn, "user_type"):
-                is_admin = parsed_role == UserRole.ADMIN
-                stored_type = None
-                if not is_admin:
-                    stored_type = (
-                        UserType.COMUN.value
-                        if parsed_role == UserRole.COMMON
-                        else parsed_role.value
-                    )
-                row = conn.execute(
-                    """
-                    update public.users
-                    set username = %s, email = %s, role = %s, user_type = %s, organization = %s
-                    where id = %s::uuid
-                    returning id::text, username, email, role, organization, password_hash, user_type
-                    """,
-                    (
-                        clean_username,
-                        normalized_email,
-                        UserRole.ADMIN.value if is_admin else UserRole.COMMON.value,
-                        stored_type,
-                        clean_organization,
-                        user_id,
-                    ),
+            conn.execute("select pg_advisory_xact_lock(%s)", (ADMIN_ROSTER_LOCK_ID,))
+            current = conn.execute(
+                """
+                select id::text, username, email, organization, password_hash, user_type
+                from public.users
+                where id = %s::uuid
+                for update
+                """,
+                (user_id,),
+            ).fetchone()
+            if current is None:
+                raise ValueError("user_not_found")
+            current_values = cast(dict[str, Any], current)
+            if expected_version and expected_version != _user_version(current_values):
+                raise ValueError("concurrent_update")
+            if (
+                _parse_user_type(current_values.get("user_type")) == UserType.ADMIN
+                and parsed_user_type != UserType.ADMIN
+            ):
+                admin_count_row = conn.execute(
+                    "select count(*) as total from public.users where lower(user_type) = %s",
+                    (UserType.ADMIN.value,),
                 ).fetchone()
-            else:
-                row = conn.execute(
-                    """
-                    update public.users
-                    set username = %s, email = %s, role = %s, organization = %s
-                    where id = %s::uuid
-                    returning id::text, username, email, role, organization, password_hash,
-                              coalesce(to_jsonb(users)->>'user_type', role) as user_type
-                    """,
-                    (
-                        clean_username,
-                        normalized_email,
-                        parsed_role.value,
-                        clean_organization,
-                        user_id,
-                    ),
-                ).fetchone()
+                admin_count = cast(dict[str, Any], admin_count_row or {})
+                if int(admin_count.get("total") or 0) <= 1:
+                    raise ValueError("last_admin")
+            row = conn.execute(
+                """
+                update public.users
+                set username = %s, email = %s, user_type = %s, organization = %s
+                where id = %s::uuid
+                returning id::text, username, email, organization, password_hash, user_type
+                """,
+                (
+                    clean_username,
+                    normalized_email,
+                    parsed_user_type.value,
+                    clean_organization,
+                    user_id,
+                ),
+            ).fetchone()
             conn.commit()
     except UniqueViolation as exc:
         raise ValueError("email_exists") from exc
 
     if row is None:
         raise ValueError("user_not_found")
-    return _row_to_user_record(row)
+    updated = _row_to_user_record(row, _account_state(user_id))
+    _record_admin_event_safely(
+        actor_user_id=actor_user_id,
+        target_user_id=user_id,
+        action="user_updated",
+        before=current_values,
+        after=cast(dict[str, Any], row),
+    )
+    return updated
 
 
-def delete_user_as_admin(*, user_id: str) -> None:
+def delete_user_as_admin(*, user_id: str, actor_user_id: str) -> None:
+    if not actor_user_id or actor_user_id == user_id:
+        raise ValueError("self_delete")
     with _connect() as conn:
+        conn.execute("select pg_advisory_xact_lock(%s)", (ADMIN_ROSTER_LOCK_ID,))
+        current = conn.execute(
+            """
+            select id::text, username, email, organization, password_hash, user_type
+            from public.users
+            where id = %s::uuid
+            for update
+            """,
+            (user_id,),
+        ).fetchone()
+        if current is None:
+            raise ValueError("user_not_found")
+        current_values = cast(dict[str, Any], current)
+        if _parse_user_type(current_values.get("user_type")) == UserType.ADMIN:
+            admin_count_row = conn.execute(
+                "select count(*) as total from public.users where lower(user_type) = %s",
+                (UserType.ADMIN.value,),
+            ).fetchone()
+            admin_count = cast(dict[str, Any], admin_count_row or {})
+            if int(admin_count.get("total") or 0) <= 1:
+                raise ValueError("last_admin")
         result = conn.execute(
             "delete from public.users where id = %s::uuid",
             (user_id,),
@@ -304,34 +422,65 @@ def delete_user_as_admin(*, user_id: str) -> None:
 
     if result.rowcount == 0:
         raise ValueError("user_not_found")
+    _record_admin_event_safely(
+        actor_user_id=actor_user_id,
+        target_user_id=user_id,
+        action="user_deleted",
+        before=current_values,
+    )
 
 
-def migrate_legacy_user_types() -> int:
-    """Rename the legacy educator profile in every users column that stores it."""
-    with _connect() as conn:
-        columns = {
-            str(cast(dict[str, Any], row)["column_name"])
-            for row in conn.execute(
-                """
-                select column_name
-                from information_schema.columns
-                where table_schema = 'public' and table_name = 'users'
-                """
-            ).fetchall()
-        }
-        updated = 0
-        if "role" in columns:
-            updated += conn.execute(
-                "update public.users set role = %s where lower(role) = %s",
-                (UserType.DOCENTE.value, "profesor"),
-            ).rowcount
-        if "user_type" in columns:
-            updated += conn.execute(
-                "update public.users set user_type = %s where lower(user_type) = %s",
-                (UserType.DOCENTE.value, "profesor"),
-            ).rowcount
-        conn.commit()
+def set_user_active_as_admin(
+    *,
+    user_id: str,
+    active: bool,
+    actor_user_id: str,
+) -> UserRecord:
+    if not actor_user_id:
+        raise ValueError("actor_required")
+    if user_id == actor_user_id and not active:
+        raise ValueError("self_deactivate")
+    record = get_user_record(user_id)
+    if record is None:
+        raise ValueError("user_not_found")
+    try:
+        state = set_account_active(user_id, active=active)
+        if not active:
+            increment_session_version(user_id)
+        _record_security_event_safely(
+            user_id,
+            "account_activated" if active else "account_deactivated",
+        )
+    except AccountSecurityStorageError as exc:
+        raise UserStorageError("account_security_unavailable") from exc
+    updated = _record_with_security(record, state)
+    _record_admin_event_safely(
+        actor_user_id=actor_user_id,
+        target_user_id=user_id,
+        action="user_activated" if active else "user_deactivated",
+        before={"active": record.active},
+        after={"active": active},
+    )
     return updated
+
+
+def set_user_password(*, user_id: str, new_password: str) -> None:
+    if not (MIN_PASSWORD_LENGTH <= len(new_password) <= MAX_PASSWORD_LENGTH):
+        raise ValueError("weak_password")
+    password_hash = generate_password_hash(new_password)
+    with _connect() as conn:
+        result = conn.execute(
+            "update public.users set password_hash = %s where id = %s::uuid",
+            (password_hash, user_id),
+        )
+        if result.rowcount == 0:
+            raise ValueError("user_not_found")
+        conn.commit()
+    try:
+        increment_session_version(user_id)
+        _record_security_event_safely(user_id, "password_reset")
+    except AccountSecurityStorageError as exc:
+        raise UserStorageError("account_security_unavailable") from exc
 
 
 def _connect() -> psycopg.Connection:
@@ -340,18 +489,6 @@ def _connect() -> psycopg.Connection:
         row_factory=cast(Any, dict_row),
         connect_timeout=get_postgres_connect_timeout(),
     )
-
-
-def _users_has_column(conn: psycopg.Connection, column_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.columns
-        where table_schema = 'public' and table_name = 'users' and column_name = %s
-        """,
-        (column_name,),
-    ).fetchone()
-    return row is not None
 
 
 def _postgres_dsn() -> str:
@@ -386,20 +523,56 @@ def _normalize_user_text(value: str) -> str:
     ).strip()
 
 
-def _row_to_user_record(row: Any) -> UserRecord:
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _user_version(row: Any) -> str:
+    values = cast(dict[str, Any], row)
+    canonical = "\x1f".join(
+        str(values.get(key) or "")
+        for key in ("id", "username", "email", "organization", "user_type")
+    )
+    return sha256(canonical.encode("utf-8")).hexdigest()[:24]
+
+
+def _record_admin_event_safely(**event: Any) -> None:
+    try:
+        record_user_admin_event(**event)
+    except Exception:
+        logger.exception("user_admin_audit_write_failed")
+
+
+def _record_security_event_safely(user_id: str, action: str) -> None:
+    try:
+        record_security_event(user_id, action)
+    except AccountSecurityStorageError:
+        logger.exception("user_security_audit_write_failed")
+
+
+def _row_to_user_record(
+    row: Any,
+    state: AccountSecurityState | None = None,
+) -> UserRecord:
     row = cast(dict[str, Any], row)
     return UserRecord(
         id=row["id"],
         username=row.get("username"),
         email=row["email"],
-        role=_parse_role(row.get("role")),
+        role=_role_from_user_type(row.get("user_type")),
         organization=row.get("organization"),
         password_hash=row.get("password_hash"),
         user_type=_parse_user_type(row.get("user_type")),
+        active=state.active if state is not None else True,
+        email_verified=state.email_verified if state is not None else True,
+        session_version=state.session_version if state is not None else 0,
     )
 
 
-def _row_to_user_read(row: Any) -> UserRead:
+def _row_to_user_read(
+    row: Any,
+    state: AccountSecurityState | None = None,
+) -> UserRead:
     row = cast(dict[str, Any], row)
     username = row.get("username")
     return UserRead(
@@ -407,9 +580,12 @@ def _row_to_user_read(row: Any) -> UserRead:
         username=username,
         name=username,
         email=row.get("email"),
-        role=_parse_role(row.get("role")),
+        role=_role_from_user_type(row.get("user_type")),
         organization=row.get("organization") or "No organization",
         user_type=_parse_user_type(row.get("user_type")),
+        version=_user_version(row),
+        active=state.active if state is not None else True,
+        email_verified=state.email_verified if state is not None else True,
     )
 
 
@@ -422,21 +598,61 @@ def _record_to_user_read(record: UserRecord) -> UserRead:
         role=record.role,
         organization=record.organization or "No organization",
         user_type=record.user_type,
+        version=_user_version(
+            {
+                "id": record.id,
+                "username": record.username,
+                "email": record.email,
+                "organization": record.organization,
+                "user_type": record.user_type.value if record.user_type else None,
+            }
+        ),
+        active=record.active,
+        email_verified=record.email_verified,
+        session_version=record.session_version,
     )
 
 
-def _parse_role(value: str | None) -> UserRole:
-    if value in {"comun", "user"}:
-        return UserRole.COMMON
-    if value in {role.value for role in UserRole}:
-        return UserRole(value)
-    return UserRole.COMMON
+def _rows_to_user_reads(rows: Any) -> list[UserRead]:
+    values = [cast(dict[str, Any], row) for row in rows]
+    try:
+        states = get_account_security_many([str(row["id"]) for row in values])
+    except AccountSecurityStorageError as exc:
+        raise UserStorageError("account_security_unavailable") from exc
+    return [_row_to_user_read(row, states.get(str(row["id"]))) for row in values]
 
 
-def _parse_admin_role(value: str | None) -> UserRole | UserType:
-    clean_value = str(value or "").strip().casefold()
-    if clean_value in {UserRole.ADMIN.value, UserRole.COMMON.value}:
-        return UserRole(clean_value)
+def _account_state(user_id: str) -> AccountSecurityState:
+    try:
+        return get_account_security(user_id)
+    except AccountSecurityStorageError as exc:
+        raise UserStorageError("account_security_unavailable") from exc
+
+
+def _record_with_security(
+    record: UserRecord,
+    state: AccountSecurityState,
+) -> UserRecord:
+    return UserRecord(
+        id=record.id,
+        username=record.username,
+        email=record.email,
+        role=record.role,
+        organization=record.organization,
+        password_hash=record.password_hash,
+        user_type=record.user_type,
+        active=state.active,
+        email_verified=state.email_verified,
+        session_version=state.session_version,
+    )
+
+
+def _role_from_user_type(value: str | None) -> UserRole:
+    return UserRole.ADMIN if _parse_user_type(value) == UserType.ADMIN else UserRole.COMMON
+
+
+def _parse_admin_user_type(value: str | None) -> UserType:
+    clean_value = canonical_taxonomy_value("role", value)
     try:
         return UserType(clean_value)
     except ValueError as exc:
@@ -444,11 +660,7 @@ def _parse_admin_role(value: str | None) -> UserRole | UserType:
 
 
 def _parse_user_type(value: str | None) -> UserType | None:
-    clean_value = str(value or "").strip().casefold()
-    if clean_value == "profesor":
-        clean_value = UserType.DOCENTE.value
-    if clean_value == UserRole.COMMON.value:
-        clean_value = UserType.COMUN.value
+    clean_value = canonical_taxonomy_value("role", value)
     try:
         return UserType(clean_value)
     except ValueError:

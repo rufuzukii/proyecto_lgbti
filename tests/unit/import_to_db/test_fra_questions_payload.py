@@ -38,12 +38,14 @@ Hyperlink:,http://example.test/fra,,,,,,
     assert payload["category"] == "Discrimination"
     assert payload["specific_category"] == "Discrimination in areas of life"
     assert payload["question"] == "Felt discriminated at work"
+    assert payload["survey_year"] == 2023
     assert payload["answers"][0] == {
         "country": "Spain",
         "country_code": "ES",
         "answer": "Yes",
         "percentage": 21.0,
         "date": "2026-02-27",
+        "survey_year": 2023,
         "filters": [
             {"type": "Age", "value": "18-24"},
             {"type": "Gender Expression", "value": "Trans women"},
@@ -141,6 +143,7 @@ def test_mongo_preparation_converts_json_id_to_object_id() -> None:
         "id": "665f1f3f9b9f7a2f4b7a0b11",
         "code": "D1_1",
         "dataset": "eu_lgbtiq_survey_iii",
+        "survey_year": 2023,
         "category": "Discrimination",
         "specific_category": "Discrimination in areas of life",
         "question": "Felt discriminated at work",
@@ -166,6 +169,7 @@ def test_mongo_upsert_does_not_update_answers_in_set_on_insert() -> None:
         "id": "665f1f3f9b9f7a2f4b7a0b11",
         "code": "D1_1",
         "dataset": "eu_lgbtiq_survey_iii",
+        "survey_year": 2023,
         "category": "Discrimination",
         "specific_category": "Discrimination in areas of life",
         "question": "Felt discriminated at work",
@@ -192,7 +196,36 @@ def test_mongo_upsert_does_not_update_answers_in_set_on_insert() -> None:
         "category": "Discrimination",
         "specific_category": "Discrimination in areas of life",
         "question": "Felt discriminated at work",
+        "survey_year": 2023,
     }
     assert "answers" not in update.get("$setOnInsert", {})
     assert "$addToSet" in update
     assert "answers" in update["$addToSet"]
+
+
+def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> None:
+    collection = MagicMock()
+    payload = {
+        "code": "D1_1",
+        "dataset": "eu_lgbtiq_survey_iii",
+        "category": "Discrimination",
+        "specific_category": "Area",
+        "question": "Question",
+        "answers": [
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": "Yes",
+                "percentage": 42,
+                "filters": [{"type": "All", "value": "All"}],
+            }
+        ],
+    }
+    with patch("app.import_to_db.fra.mongo.get_mongo_collection", return_value=collection):
+        insert_indicator_fra_json({**payload, "survey_year": 2019})
+        insert_indicator_fra_json({**payload, "survey_year": 2023})
+
+    assert [call.args[0]["survey_year"] for call in collection.update_one.call_args_list] == [
+        2019,
+        2023,
+    ]

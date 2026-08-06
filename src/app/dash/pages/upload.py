@@ -25,6 +25,7 @@ from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
 from app.http_security import rate_limit_key
+from app.taxonomy import taxonomy_pair
 
 logger = logging.getLogger(__name__)
 MEBIBYTE = 1024 * 1024
@@ -52,15 +53,15 @@ class UploadValidationError(ValueError):
 
 DATA_SOURCE_OPTIONS = [
     {
-        "label": text("Encuesta europea LGBTIQ+", "European LGBTIQ+ survey"),
+        "label": text(*taxonomy_pair("data_source", "fra")),
         "value": "FRA",
     },
     {
-        "label": text("Mapa legal europeo", "European legal map"),
+        "label": text(*taxonomy_pair("data_source", "ilga")),
         "value": "ILGA",
     },
     {
-        "label": text("Estado LGBTIQ+ en España", "LGBTIQ+ situation in Spain"),
+        "label": text(*taxonomy_pair("data_source", "felgtbi")),
         "value": "FELGTB",
     },
 ]
@@ -375,11 +376,10 @@ def register_upload_callbacks(app: Dash) -> None:
     @app.callback(
         Output("upload-output", "children", allow_duplicate=True),
         Input("upload-error-close", "n_clicks"),
-        Input("upload-error-retry", "n_clicks"),
         prevent_initial_call=True,
     )
-    def dismiss_upload_error(close_clicks: int | None, retry_clicks: int | None):
-        if not close_clicks and not retry_clicks:
+    def dismiss_upload_error(close_clicks: int | None):
+        if not close_clicks:
             raise PreventUpdate
         return ""
 
@@ -569,8 +569,13 @@ def _validate_upload_metadata(
 def _validate_decoded_payload(source: str, file_name: str, payload: bytes) -> None:
     if len(payload) > MAX_UPLOAD_BYTES:
         raise UploadValidationError("file_too_large")
-    if source == "FELGTB" and not payload.lstrip().startswith(b"%PDF-"):
-        raise UploadValidationError("invalid_pdf_signature")
+    if source == "FELGTB":
+        from app.import_to_db.felgtbi.validation import PdfValidationError, validate_felgtbi_pdf
+
+        try:
+            validate_felgtbi_pdf(payload, file_name)
+        except PdfValidationError as exc:
+            raise UploadValidationError(str(exc)) from exc
     if not Path(file_name).name:
         raise UploadValidationError("missing_filename")
 
@@ -747,24 +752,6 @@ def build_error_message(message: tuple[str, str], details: list[str] | None = No
                 className="upload-message-details",
             )
         )
-    children.append(
-        html.Div(
-            html.Button(
-                "Volver a intentar",
-                id="upload-error-retry",
-                type="button",
-                className="upload-message-retry",
-                **dash_attrs(
-                    {
-                        **text_attrs("Volver a intentar", "Try again"),
-                        "data-upload-dismiss": "true",
-                    }
-                ),
-            ),
-            className="upload-message-actions",
-        )
-    )
-
     return html.Div(
         children,
         className="upload-message upload-message-error",

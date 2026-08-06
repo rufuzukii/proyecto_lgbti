@@ -1125,6 +1125,46 @@
   margin: 0;
 }
 
+.stats-ranking-pagination {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 0.65rem;
+}
+
+.stats-ranking-page-button {
+  background: var(--stats-card-bg);
+  border: 1px solid var(--stats-border);
+  border-radius: 999px;
+  color: var(--stats-text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  min-height: 42px;
+  padding: 0.55rem 1rem;
+}
+
+.stats-ranking-page-button:hover:not(:disabled),
+.stats-ranking-page-button:focus-visible:not(:disabled) {
+  border-color: var(--stats-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--stats-primary) 15%, transparent);
+}
+
+.stats-ranking-page-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.stats-ranking-page-label {
+  color: var(--stats-text-muted);
+  font-size: 0.9rem;
+  font-weight: 750;
+  min-width: 12rem;
+  text-align: center;
+}
+
 .stats-panel-actions {
   align-items: center;
   display: flex;

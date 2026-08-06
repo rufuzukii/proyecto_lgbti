@@ -20,19 +20,21 @@ Las tres lecturas están memoizadas. Ante errores de base de datos registran el 
 
 ### `geography.py`
 
-Contiene centroides aproximados de países europeos y `build_ilga_geodataframe()`. Esta función convierte los países ILGA válidos en un `GeoDataFrame` WGS84 (`EPSG:4326`) con puntos, latitud, longitud y ranking. Omite países sin coordenadas o ranking numérico.
+Contiene códigos ISO y centroides aproximados reutilizados por las figuras Plotly. No construye
+un `GeoDataFrame`: la unión GeoPandas experimental carecía de consumidores y se retiró.
 
 ### `figures.py`
 
 - `build_ilga_choropleth()`: mapa coroplético europeo Plotly.
-- `build_ilga_ranking_bar()`: ranking horizontal de los mejores países.
-- `build_fra_country_bar()`: media de porcentajes FRA por país y número de observaciones.
-- `build_ilga_mapbox_figure()`: puntos sobre OpenStreetMap.
-- `_countries()` y `_aggregate_fra_answers()`: normalización interna de datos.
+- `build_fra_choropleth()`: mapa FRA con selección de respuesta y filtros.
+- helpers privados: normalización territorial y de respuestas para ambos mapas de Inicio.
+
+Los constructores antiguos de rankings, barras, heatmaps y Mapbox se retiraron al no tener
+consumidores. Las figuras de Estadísticas se construyen en `statistics_charts.py`.
 
 ## Dependencias
 
-PostgreSQL, MongoDB, Flask-Caching, Plotly, GeoPandas y Shapely.
+PostgreSQL, MongoDB, Flask-Caching, Plotly y Pandas.
 
 ## Estadísticas europeas FRA / ILGA-Europe
 
@@ -42,9 +44,9 @@ La pagina `/statistics` usa una capa modular nueva:
 - `statistics_normalizers.py`: normalización de códigos ISO, tipos de filtro y erratas conocidas sin perder el valor bruto usado por los datos.
 - `statistics_service.py`: conversión de documentos Mongo a `DataFrame`, filtrado, agregación y estados sin datos.
 - `statistics_charts.py`: generación centralizada de gráficos Plotly para mapa, ranking, distribución, comparador, heatmap ILGA y scatter FRA/ILGA.
-- `statistics_geodata.py`: unión reusable GeoPandas por código ISO y detección de países sin geometría o duplicados.
 
-El mapa mantiene Plotly `Choropleth` en vez de introducir Dash Leaflet porque la aplicación ya usaba Plotly para estos mapas, no necesita token privado de Mapbox, se integra con `clickData` y reduce el cambio de dependencias y callbacks. La unión GeoPandas queda preparada para incorporar geometría real europea cuando el proyecto incluya un GeoJSON o `GeoDataFrame` fuente.
+El mapa mantiene Plotly `Choropleth`: no necesita token privado de Mapbox, se integra con
+`clickData` y evita una dependencia geoespacial que no participaba en el flujo real.
 
 Los documentos FRA se esperan en `Indicator_fra` con `answers[]` que contengan `country`, `country_code`, `answer`, `percentage` y `filters[]` como pares `{type, value}`. Los documentos ILGA se esperan en `Indicator_ilga` con `countries[]`, `ranking` y `criteria[]`. Los criterios ILGA disponibles se extraen de los metadatos importados (`category`, `indicator`, `weight`); no se inventan descripciones jurídicas si el dataset no las trae.
 

@@ -214,11 +214,14 @@ def get_categories() -> list[str]:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS, source_check=True)
-def get_fra_categories() -> list[str]:
+def get_fra_categories(year: int | None = None) -> list[str]:
     try:
+        query = _fra_statistic_document_filter()
+        if year is not None:
+            query["survey_year"] = year
         categories = _mongo_collection("Indicator_fra").distinct(
             "category",
-            _fra_statistic_document_filter(),
+            query,
         )
     except Exception:
         logger.exception("fra_categories_read_failed")
@@ -267,13 +270,18 @@ def get_fra_indicators() -> list[FraIndicator]:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_fra_mongo_indicators_by_category(category: str) -> list[FraIndicator]:
+def get_fra_mongo_indicators_by_category(
+    category: str, year: int | None = None
+) -> list[FraIndicator]:
     clean_category = str(category or "").strip()
     if not is_valid_fra_category(clean_category):
         return []
     try:
+        query = _fra_statistic_document_filter(category=clean_category)
+        if year is not None:
+            query["survey_year"] = year
         rows = _mongo_collection("Indicator_fra").find(
-            _fra_statistic_document_filter(category=clean_category),
+            query,
             {
                 "_id": 0,
                 "code": 1,
@@ -346,8 +354,9 @@ def get_fra_indicator_answers(code: str, category: str | None = None) -> dict[st
                     "code": 1,
                     "category": 1,
                     "specific_category": 1,
-                    "question": 1,
-                    "answers": 1,
+                "question": 1,
+                "survey_year": 1,
+                "answers": 1,
                 },
             )
         )
@@ -397,6 +406,7 @@ def get_fra_indicator_documents(codes: tuple[str, ...]) -> list[dict[str, Any]]:
                     "category": 1,
                     "specific_category": 1,
                     "question": 1,
+                    "survey_year": 1,
                     "answers": 1,
                 },
             )
@@ -417,6 +427,7 @@ def get_fra_indicator_documents(codes: tuple[str, ...]) -> list[dict[str, Any]]:
                 "category": document.get("category"),
                 "specific_category": document.get("specific_category"),
                 "question": document.get("question"),
+                "survey_year": document.get("survey_year"),
                 "answers": [],
             },
         )
@@ -458,6 +469,7 @@ def get_fra_historical_documents(
                     "question": 1,
                     "source": 1,
                     "specific_category": 1,
+                    "survey_year": 1,
                 },
             )
         )
@@ -476,18 +488,19 @@ def get_fra_years(code: str | None = None) -> list[int]:
     if clean_code:
         query["code"] = clean_code
     try:
-        raw_dates = _mongo_collection("Indicator_fra").distinct("answers.date", query)
+        raw_years = _mongo_collection("Indicator_fra").distinct("survey_year", query)
     except Exception:
         logger.exception("fra_years_read_failed", extra={"code": clean_code})
         return []
 
     years: set[int] = set()
-    for raw_date in raw_dates:
-        text = str(raw_date or "")
-        for token in text.replace("/", "-").split("-"):
-            token = token.strip()
-            if token.isdigit() and len(token) == 4:
-                years.add(int(token))
+    for raw_year in raw_years:
+        try:
+            year = int(raw_year)
+        except TypeError, ValueError:
+            continue
+        if 1990 <= year <= 2100:
+            years.add(year)
     return sorted(years, reverse=True)
 
 
@@ -706,92 +719,10 @@ def get_felgtbi_indicators_by_document(
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_felgtbi_categories(collection_name: str | None = None) -> list[str]:
-    resolved_collection = _resolve_spain_collection_name(collection_name)
-    if not resolved_collection:
-        return []
-    try:
-        mongo_categories = {
-            str(category).strip()
-            for category in _mongo_collection(resolved_collection).distinct(
-                "category",
-                _spain_collection_query(resolved_collection),
-            )
-            if str(category).strip()
-        }
-    except Exception:
-        logger.exception(
-            "felgtbi_categories_read_failed",
-            extra={"collection": resolved_collection},
-        )
-        return []
-
-    return sorted(mongo_categories)
-
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_felgtbi_years(
-    category: str | None = None,
-    collection_name: str | None = None,
-) -> list[int]:
-    resolved_collection = _resolve_spain_collection_name(collection_name)
-    if not resolved_collection:
-        return []
-    query = _spain_collection_query(resolved_collection)
-    clean_category = str(category or "").strip()
-    if clean_category:
-        query["category"] = clean_category
-    try:
-        years = _mongo_collection(resolved_collection).distinct("year", query)
-    except Exception:
-        logger.exception(
-            "felgtbi_years_read_failed",
-            extra={"category": clean_category, "collection": resolved_collection},
-        )
-        return []
-
-    clean_years: list[int] = []
-    for year in years:
-        try:
-            clean_years.append(int(year))
-        except TypeError, ValueError:
-            continue
-    return sorted(set(clean_years), reverse=True)
-
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_felgtbi_indicators_by_category(
-    category: str,
-    year: int | str | None = None,
-    collection_name: str | None = None,
-) -> list[FelgtbiIndicator]:
-    resolved_collection = _resolve_spain_collection_name(collection_name)
-    if not resolved_collection:
-        return []
-    clean_category = str(category or "").strip()
-    if not clean_category:
-        return []
-    query = _spain_collection_query(resolved_collection)
-    query["category"] = clean_category
-    if year is not None and str(year).strip():
-        try:
-            query["year"] = int(year)
-        except TypeError, ValueError:
-            return []
-    try:
-        rows = _mongo_collection(resolved_collection).find(
-            query,
-            _spain_navigation_projection(),
-            sort=[("year", -1), ("report_title", 1), ("topic", 1), ("description", 1)],
-        )
-        return [_row_to_felgtbi_indicator(row) for row in rows if _has_navigable_spain_section(row)]
-    except Exception:
-        logger.exception(
-            "felgtbi_category_read_failed",
-            extra={"category": clean_category, "collection": resolved_collection},
-        )
-        return []
-
 
 def get_felgtbi_indicator_answers(
     code: str,
@@ -954,20 +885,6 @@ def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_ilga_history_documents() -> list[dict[str, Any]]:
-    """Load the projected ILGA history once for temporal and combined analysis."""
-    try:
-        return list(
-            _mongo_collection("Indicator_ilga").find(
-                {"dataset": "ilga_rainbow_map"},
-                {"_id": 0, "year": 1, "countries": 1},
-                sort=[("year", 1)],
-            )
-        )
-    except Exception:
-        logger.exception("ilga_history_read_failed")
-        return []
-
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_ilga_analysis_rows(

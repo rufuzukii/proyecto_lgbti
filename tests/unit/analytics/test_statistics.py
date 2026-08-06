@@ -22,7 +22,6 @@ from app.analytics.statistics_charts import (
     normalize_percentage,
     summarize_response_comparison,
 )
-from app.analytics.statistics_geodata import merge_statistics_with_geodata
 from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_A,
     FRA_FILTER_GROUP_B,
@@ -148,7 +147,7 @@ def test_statistics_category_options_exclude_hidden_categories(
 ) -> None:
     monkeypatch.setattr(
         "app.dash.pages.statistics.get_fra_categories",
-        lambda: ["Discrimination", "Spanish LGBTIQ+ indicators", "Everyday life"],
+        lambda _year=None: ["Discrimination", "Spanish LGBTIQ+ indicators", "Everyday life"],
     )
     monkeypatch.setattr(
         "app.dash.pages.statistics.get_ilga_criteria_categories_by_year",
@@ -184,27 +183,6 @@ def test_fra_categories_are_loaded_from_mongo_without_postgres(monkeypatch) -> N
     categories = analytics_repository.get_fra_categories.uncached()
 
     assert categories == ["Discrimination", "Everyday life"]
-
-
-def test_fra_category_cache_is_invalidated_without_restarting_application(monkeypatch) -> None:
-    class MutableCollection:
-        def __init__(self) -> None:
-            self.categories = ["Discrimination"]
-
-        def distinct(self, _field, _query):
-            return list(self.categories)
-
-    collection = MutableCollection()
-    monkeypatch.setattr(analytics_repository, "_mongo_collection", lambda _name: collection)
-    app = Flask("fra-category-cache")
-    init_cache(app)
-
-    with app.app_context():
-        assert analytics_repository.get_fra_categories() == ["Discrimination"]
-        collection.categories = ["Discrimination", "Education"]
-        assert analytics_repository.get_fra_categories() == ["Discrimination"]
-        analytics_repository.invalidate_analytics_cache()
-        assert analytics_repository.get_fra_categories() == ["Discrimination", "Education"]
 
 
 def test_statistics_fra_selectors_start_empty() -> None:
@@ -313,7 +291,7 @@ def test_fra_dataframe_keeps_one_filter_a_and_one_filter_b() -> None:
                 "country_code": "ES",
                 "answer": "Yes",
                 "percentage": 21.0,
-                "date": "2023",
+                "survey_year": 2023,
                 "filters": [
                     {"type": "Age", "value": "18-24"},
                     {"type": "Gender Expression", "value": "Trans women"},
@@ -341,7 +319,7 @@ def test_fra_dataframe_repairs_mojibake_from_source_document() -> None:
                 "country_code": "ES",
                 "answer": "S\u00c3\u00ad",
                 "percentage": 21.0,
-                "date": "2023",
+                "survey_year": 2023,
                 "filters": [{"type": "Age", "value": "18-24"}],
             }
         ],
@@ -365,7 +343,7 @@ def test_fra_dataframe_accepts_string_percentages() -> None:
                 "country_code": "ES",
                 "answer": "Yes",
                 "percentage": "67,5%",
-                "date": "2023",
+                "survey_year": 2023,
                 "filters": [],
             }
         ],
@@ -1652,29 +1630,6 @@ def test_ilga_criteria_hover_fallback_does_not_show_technical_label() -> None:
     assert "compliance level" in hover[1]
 
 
-def test_merge_statistics_with_geodata_flags_missing_geometry_and_duplicates() -> None:
-    gpd = pytest.importorskip("geopandas")
-    from shapely.geometry import Point
-
-    geodata = gpd.GeoDataFrame(
-        [{"iso": "ES", "geometry": Point(0, 0)}],
-        geometry="geometry",
-        crs="EPSG:4326",
-    )
-    stats = pd.DataFrame(
-        [
-            {"iso": "ES", "value": 10.0},
-            {"iso": "ES", "value": 11.0},
-            {"iso": "XK", "value": 12.0},
-        ]
-    )
-
-    merged = merge_statistics_with_geodata(geodata, stats, "iso", "iso")
-
-    assert merged.iloc[0]["has_statistics"]
-    assert merged.attrs["missing_geometry_iso"] == ["XK"]
-    assert merged.attrs["duplicated_statistics_iso"] == ["ES"]
-
 
 def test_statistics_control_group_omits_empty_id() -> None:
     component = _control_group("Tipo de datos", [])
@@ -1716,9 +1671,10 @@ def test_fra_repository_merges_every_document_for_indicator_in_one_find(monkeypa
                 "_id": 0,
                 "code": 1,
                 "category": 1,
-                "specific_category": 1,
-                "question": 1,
-                "answers": 1,
+                    "specific_category": 1,
+                    "question": 1,
+                    "survey_year": 1,
+                    "answers": 1,
             },
         )
     ]

@@ -130,6 +130,13 @@ def build_login_layout(
                                         ],
                                         className="auth-switch",
                                     ),
+                                    html.P(
+                                        html.A(
+                                            text("He olvidado mi contrase\u00f1a", "I forgot my password"),
+                                            href="/forgot-password",
+                                        ),
+                                        className="auth-switch",
+                                    ),
                                 ],
                                 className="auth-card",
                             )

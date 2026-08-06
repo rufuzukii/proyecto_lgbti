@@ -655,22 +655,6 @@ def _indicator_option_label(
     return f"{clean_section}{value_label}"
 
 
-def _value_panel_content(document: dict[str, Any] | None) -> Any:
-    image_source = _figure_url(document)
-    if image_source:
-        return html.Img(
-            src=image_source,
-            alt="Gráfica asociada al indicador",
-            className="spain-pdf-figure",
-        )
-    figure_placeholder = _figure_placeholder_component(document)
-    if figure_placeholder is not None:
-        return figure_placeholder
-    return dcc.Graph(
-        figure=_value_figure(document),
-        config={"displaylogo": False},
-    )
-
 
 def _html_content_panel(document: dict[str, Any] | None) -> Any:
     structured_content = _structured_report_content(document)

@@ -4,7 +4,8 @@ Esta carpeta contiene la infraestructura FastAPI. La aplicación desplegada por 
 
 ## Archivos Python
 
-- `__init__.py`: crea la instancia FastAPI con `create_api_app()`, registra routers y aplica `Depends(require_api_key)` a todos los routers. `GET /health` queda público.
+- `__init__.py`: crea FastAPI, registra routers con clave general o administradora y deja
+  público `GET /health`, que reutiliza el diagnóstico real de la aplicación.
 - `security.py`: lee `API_KEYS` o `API_KEY`, recibe `X-API-Key` y compara claves con `hmac.compare_digest`. Responde `503` si no existe configuración y `401` si la clave no es válida.
 - `routers/`: endpoints agrupados por dominio.
 
@@ -15,3 +16,4 @@ python run_api.py
 ```
 
 FastAPI expone además documentación OpenAPI en `/docs` y `/redoc` cuando el servidor está activo.
+En producción estas rutas de documentación se deshabilitan.

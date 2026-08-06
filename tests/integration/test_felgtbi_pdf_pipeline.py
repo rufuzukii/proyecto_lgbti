@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+from typing import Any
+
+import fitz
+
+from app.import_to_db.felgtbi import importer, mongo
+from app.import_to_db.felgtbi.pipeline import parse_felgtbi_pdf_bytes
+
+
+class RecordingCollection:
+    def __init__(self) -> None:
+        self.deleted: list[dict[str, Any]] = []
+        self.updates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+
+    def delete_many(self, query):
+        self.deleted.append(query)
+
+    def update_one(self, query, update, *, upsert=False):
+        assert upsert is True
+        self.updates.append((query, update))
+
+
+def test_pdf_extraction_storage_identity_and_mongo_persistence(monkeypatch) -> None:
+    # Arrange
+    pdf = fitz.open()
+    page = pdf.new_page(width=595, height=842)
+    page.insert_text((85, 90), "Estado LGTBI+ 2026", fontsize=14)
+    page.insert_text((85, 130), "Dimension del odio", fontsize=12)
+    page.insert_text(
+        (85, 170), "El 54% de las personas LGTBI+ declara haber sufrido odio.", fontsize=10
+    )
+    pdf_bytes = pdf.tobytes()
+    pdf.close()
+    collection = RecordingCollection()
+    monkeypatch.setattr(
+        importer,
+        "_upload_figure_to_supabase",
+        lambda **_kwargs: {"status": "uploaded", "storage_path": "2026/report/figure.webp"},
+    )
+    monkeypatch.setattr(mongo, "get_mongo_collection", lambda _name: collection)
+
+    # Act
+    documents = parse_felgtbi_pdf_bytes(pdf_bytes, file_name="estado-odio-2026.pdf")
+    inserted = mongo.insert_indicator_felgtbi_json(
+        documents, original_filename="estado-odio-2026.pdf"
+    )
+
+    # Assert
+    assert inserted == len(documents) == 1
+    assert documents[0]["year"] == 2026
+    assert documents[0]["source_document_id"].startswith("felgtbi_pdf_")
+    assert collection.deleted == [
+        {"source": "felgtbi_estado_lgtbi", "source_document_id": documents[0]["source_document_id"]}
+    ]
+    assert collection.updates[0][1]["$set"]["import_status"] == "processed"

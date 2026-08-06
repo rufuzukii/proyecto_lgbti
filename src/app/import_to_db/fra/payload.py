@@ -76,7 +76,7 @@ def build_fra_questions_payload(
     *,
     file_name: str = "",
 ) -> JsonPayload:
-    question_documents_by_identity: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    question_documents_by_identity: dict[tuple[str, str, str, str, int | None], dict[str, Any]] = {}
 
     for document in documents:
         code = _question_code(document)
@@ -91,7 +91,10 @@ def build_fra_questions_payload(
 
         for answer in document.get("answers", []):
             if isinstance(answer, dict):
-                _append_unique(question_document["answers"], _build_answer(answer))
+                _append_unique(
+                    question_document["answers"],
+                    _build_answer(answer, survey_year=question_document.get("survey_year")),
+                )
 
     question_documents = list(question_documents_by_identity.values())
     if len(question_documents) == 1:
@@ -118,6 +121,7 @@ def _build_question_document(document: dict[str, Any], code: str) -> dict[str, A
         "category": _category(document),
         "specific_category": specific_category,
         "question": question_text,
+        "survey_year": _document_survey_year(document),
         "answers": [],
     }
     metadata = document.get("metadata")
@@ -126,13 +130,14 @@ def _build_question_document(document: dict[str, Any], code: str) -> dict[str, A
     return output
 
 
-def _build_answer(answer: dict[str, Any]) -> dict[str, Any]:
+def _build_answer(answer: dict[str, Any], *, survey_year: int | None) -> dict[str, Any]:
     return {
         "country": answer.get("country") or "",
         "country_code": answer.get("country_code") or "",
         "answer": answer.get("answer") or "",
         "percentage": answer.get("percentage"),
         "date": answer.get("date") or "",
+        "survey_year": answer.get("survey_year") or survey_year,
         "filters": _build_filters(answer.get("filters")),
     }
 
@@ -156,13 +161,30 @@ def _question_code(document: dict[str, Any]) -> str:
     ).strip()
 
 
-def _question_identity(document: dict[str, Any], code: str) -> tuple[str, str, str, str]:
+def _question_identity(
+    document: dict[str, Any], code: str
+) -> tuple[str, str, str, str, int | None]:
     return (
         code,
         _category(document),
         _specific_category(document),
         str(document.get("question") or "").strip(),
+        _document_survey_year(document),
     )
+
+
+def _document_survey_year(document: dict[str, Any]) -> int | None:
+    value = document.get("survey_year")
+    metadata = document.get("metadata")
+    if value is None and isinstance(metadata, dict):
+        value = metadata.get("survey_year")
+    if isinstance(value, bool):
+        return None
+    try:
+        year = int(str(value))
+    except TypeError, ValueError:
+        return None
+    return year if 1990 <= year <= 2100 else None
 
 
 def _category(document: dict[str, Any]) -> str:

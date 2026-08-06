@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import app.dash.pages.statistics as statistics_page
 import app.dash_app as dash_app_module
+from app.dash.layouts import navigation
 from app.users.schemas import UserRole, UserType
 
 
@@ -47,6 +48,23 @@ def _callback(app, name: str):
         if getattr(value.get("callback"), "__wrapped__", None)
         and value["callback"].__wrapped__.__name__ == name
     )
+
+
+def test_navbar_uses_short_report_name(monkeypatch) -> None:
+    monkeypatch.setattr(navigation, "current_user", _user(authenticated=True))
+    monkeypatch.setattr(navigation, "user_has_permission", lambda *_args: True)
+
+    navbar = navigation.build_navbar()
+
+    report_link = next(
+        component
+        for component in _walk(navbar)
+        if getattr(component, "href", None) == "/informes"
+    )
+    label = report_link.children
+    props = label.to_plotly_json()["props"]
+    assert props["children"] == "Informe"
+    assert props["data-i18n-en"] == "Report"
 
 
 def test_statistics_report_link_preserves_selection_for_authenticated_user(monkeypatch) -> None:

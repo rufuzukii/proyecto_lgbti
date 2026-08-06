@@ -14,6 +14,7 @@ from app.import_to_db.fra.schema import (
     InvalidFraCsvError,
     UnsupportedFraCsvSchemaError,
     detect_fra_csv_schema,
+    extract_fra_survey_year,
     find_fra_header_row,
     normalize_fra_csv,
     parse_fra_percentage,
@@ -51,7 +52,7 @@ def test_detects_and_normalizes_current_wide_fra_csv() -> None:
     normalized = normalize_fra_csv(dataframe, schema)
     assert normalized["country_code"].tolist() == ["ES", "GR"]
     assert normalized["percentage"].tolist() == [42, 42.5]
-    assert normalized["year"].tolist() == [2023, 2023]
+    assert normalized["survey_year"].tolist() == [2023, 2023]
     assert set(normalized["response"]) == {"Yes"}
     assert set(normalized["filter_a_value"]) == {"All"}
     assert set(normalized["filter_b_value"]) == {"All"}
@@ -149,6 +150,26 @@ España;Discrimination;Area > Pregunta;Yes;18-24;Lesbian;"42,5 %";D1_1
     assert row["percentage"] == 42.5
     assert row["filter_a_value"] == "18-24"
     assert row["filter_b_value"] == "Lesbian"
+    assert row["survey_year"] is None
+
+
+@pytest.mark.parametrize(
+    ("source_text", "expected"),
+    [
+        ("EU LGBTIQ Survey III, 2023", 2023),
+        ("EU LGBTIQ Survey III (2023)", 2023),
+        ("Survey 2023", 2023),
+        ("Survey III", None),
+        ("", None),
+        (None, None),
+        ("Survey wave 3, edition 2023", 2023),
+        ("Survey 2019-2023", None),
+        ("Survey 1789", None),
+        ("Survey 2201", None),
+    ],
+)
+def test_extract_fra_survey_year(source_text: object, expected: int | None) -> None:
+    assert extract_fra_survey_year(source_text) == expected
 
 
 @pytest.mark.parametrize(
@@ -238,6 +259,7 @@ Discrimination,Area > Felt discriminated,D1_1,Spain,ES,42
     assert payload["category"] == "Discrimination"
     assert payload["record_type"] == "statistic"
     assert payload["metadata"]["date"] == "2026-08-03"
+    assert payload["survey_year"] == 2023
     assert payload["metadata"]["question_code"] == "D1_1"
     assert payload["metadata"]["hyperlink"] == "https://fra.example/export"
     assert payload["metadata"]["note"] == "Weighted survey results"
@@ -261,6 +283,7 @@ Spain;Discrimination;Area > Felt discriminated;Yes;42;D1_1
 
     assert schema.version == "legacy_long"
     assert schema.header_row == 3
+    assert normalized["survey_year"].tolist() == [2023]
     assert normalized[["category", "country_code", "percentage"]].to_dict("records") == [
         {"category": "Discrimination", "country_code": "ES", "percentage": 42}
     ]

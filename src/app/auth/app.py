@@ -17,6 +17,9 @@ from app.auth.rate_limit import create_rate_limiter
 from app.config import get_app_config
 from app.http_security import configure_flask_security, rate_limit_key
 from app.logging_config import configure_secure_logging
+from app.mail.service import MailDeliveryError
+from app.users.account_emails import send_verification_email
+from app.users.account_security import AccountSecurityStorageError, issue_security_token
 from app.users.schemas import UserRegister, UserRole, UserType
 from app.users.service import UserStorageError, authenticate_user, create_user, get_user
 
@@ -27,6 +30,9 @@ class AuthUser(UserMixin):
     email: str | None
     role: UserRole
     user_type: UserType | None = None
+    active: bool = True
+    email_verified: bool = True
+    session_version: int = 0
 
 
 def create_auth_app() -> Flask:
@@ -63,7 +69,22 @@ def create_auth_app() -> Flask:
             return None
         if user is None:
             return None
-        return AuthUser(id=user.id, email=user.email, role=user.role, user_type=user.user_type)
+        stored_version = session.get("_security_version")
+        if not user.active or (
+            stored_version is not None and stored_version != user.session_version
+        ):
+            session.clear()
+            return None
+        session["_security_version"] = user.session_version
+        return AuthUser(
+            id=user.id,
+            email=user.email,
+            role=user.role,
+            user_type=user.user_type,
+            active=user.active,
+            email_verified=user.email_verified,
+            session_version=user.session_version,
+        )
 
     @app.post("/auth/register")
     def register_user():
@@ -90,8 +111,17 @@ def create_auth_app() -> Flask:
             logger.exception("register_storage_error")
             return jsonify({"status": "error", "message": "storage_not_configured"}), 503
 
+        try:
+            token = issue_security_token(
+                user.id,
+                "email_verification",
+                ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
+            )
+            send_verification_email(str(user.email or data.email), token)
+        except (AccountSecurityStorageError, MailDeliveryError):
+            logger.exception("verification_email_delivery_failed")
         rate_limiter.reset(rate_key)
-        return jsonify(user.model_dump())
+        return jsonify({"status": "verification_pending"}), 201
 
     @app.post("/auth/login")
     def login():
@@ -126,8 +156,12 @@ def create_auth_app() -> Flask:
                 email=record.email,
                 role=record.role,
                 user_type=record.user_type,
+                active=record.active,
+                email_verified=record.email_verified,
+                session_version=record.session_version,
             )
         )
+        session["_security_version"] = record.session_version
         rate_limiter.reset(rate_key)
         return jsonify({"status": "ok"})
 

@@ -84,6 +84,26 @@ def test_ranking_uses_all_europe_without_selection_and_only_selected_with_select
     assert set(_trace(europe).y) == {"Spain", "France", "Portugal"}
     assert set(_trace(selected).y) == {"Spain", "Portugal"}
     assert "Sin datos" in set(_trace(selected).text)
+    selected_values = dict(zip(_trace(selected).y, _trace(selected).x, strict=True))
+    assert selected_values == {"Portugal": None, "Spain": 62.0}
+    missing_trace = _traces(selected)[1]
+    assert missing_trace.type == "scatter"
+    assert list(missing_trace.y) == ["Portugal"]
+    assert missing_trace.customdata[0][2] == "Sin datos"
+
+
+def test_ranking_distinguishes_a_real_zero_from_missing_data() -> None:
+    figure = build_comparative_ranking_chart(
+        [
+            {"country": "Spain", "iso": "ES", "value": 0.0},
+            {"country": "Portugal", "iso": "PT", "value": None},
+        ]
+    )
+
+    values = dict(zip(_trace(figure).y, _trace(figure).x, strict=True))
+    assert values["Spain"] == 0.0
+    assert values["Portugal"] is None
+    assert list(_traces(figure)[1].y) == ["Portugal"]
 
 
 def test_ranking_scales_for_all_countries_and_exposes_complete_hover_context() -> None:
@@ -211,6 +231,9 @@ def test_average_chart_exposes_value_mean_absolute_and_percentage_differences() 
     portugal = list(trace.y).index("Portugal")
     assert trace.customdata[spain].tolist() == ["60.00%", "10.00 pp", "+20.00%"]
     assert trace.customdata[portugal].tolist() == ["Sin datos", "Sin datos", "Sin datos"]
+    values = dict(zip(trace.y, trace.x, strict=True))
+    assert values["Portugal"] is None
+    assert list(_traces(figure)[1].y) == ["Portugal"]
 
 
 def test_experience_legal_radar_renders_country_and_european_means() -> None:
@@ -319,6 +342,7 @@ def test_fra_result_keeps_country_without_selected_answer_as_missing(monkeypatch
     assert rows["ES"]["position"] == 1
     assert rows["PT"]["value"] is None
     assert rows["PT"]["position"] is None
+    assert result["metrics"]["mean"] == 60.0
 
 
 def test_ilga_result_keeps_country_without_selected_criterion_as_missing(monkeypatch) -> None:

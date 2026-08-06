@@ -226,7 +226,9 @@ def test_dictionary_lesson_and_both_games_callbacks_work_in_english(dash_app, mo
         else:
             from app.edu.game_service import true_false_question
 
-            selected = str(true_false_question(identifier)["answer"]).lower()
+            question = true_false_question(identifier)
+            assert question is not None
+            selected = str(question["answer"]).lower()
         monkeypatch.setattr(
             didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-game-submit")
         )

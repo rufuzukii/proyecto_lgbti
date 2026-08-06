@@ -42,6 +42,8 @@ USER_TYPE_PERMISSIONS = {
         Permission.ACCESS_DOCENTE_RESOURCES,
         Permission.MANAGE_OWN_EDU_GAMES,
     },
+    UserType.ADMIN: set(),
+    UserType.SOCIOLOGO: set(),
     UserType.COMUN: set(),
 }
 
@@ -82,14 +84,6 @@ def is_admin_user(user: object) -> bool:
     role = getattr(user, "role", None)
     role_value = role.value if isinstance(role, UserRole) else str(role or "")
     return role_value.lower() == UserRole.ADMIN.value
-
-
-def can_access_user_type(role: UserRole, user_type: UserType | None) -> bool:
-    if role == UserRole.ADMIN:
-        return True
-    if role == UserRole.COMMON:
-        return user_type in set(UserType)
-    return False
 
 
 def can_access_docente_material(user: object) -> bool:

@@ -8,7 +8,6 @@ mismos servicios y figuras que utiliza la página de Estadísticas.
 - `recommendations.py`: reglas explícitas para recomendaciones de RRHH.
 - `service.py`: consulta única, medición de tiempos y gestión de temporales.
 - `pdf_exporter.py`: composición PDF profesional con ReportLab.
-- `generator.py`: entrada de compatibilidad hacia el servicio completo.
 
 La interfaz está disponible en `/informes` y `/reports`. La ruta heredada
 `/report` redirige a `/informes`.

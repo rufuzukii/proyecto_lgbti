@@ -112,7 +112,7 @@ def load_historical_points(indicator: TrendIndicator) -> list[HistoricalPoint]:
     for document in documents:
         raw_metadata = document.get("metadata")
         metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
-        fallback_year = _metadata_year(metadata)
+        fallback_year = _safe_year(document.get("survey_year")) or _metadata_year(metadata)
         methodology = str(
             metadata.get("methodology_version")
             or metadata.get("methodology")
@@ -125,7 +125,11 @@ def load_historical_points(indicator: TrendIndicator) -> list[HistoricalPoint]:
             country_code = normalize_country_code(answer.get("country_code"), country_name)
             points.append(
                 HistoricalPoint(
-                    year=_safe_year(answer.get("date")) or fallback_year,
+                    year=(
+                        _safe_year(answer.get("survey_year"))
+                        or _safe_year(answer.get("date"))
+                        or fallback_year
+                    ),
                     value=_safe_float(answer.get("percentage")),
                     source=TrendSource.FRA.value,
                     indicator_id=indicator.indicator_id,
@@ -159,7 +163,7 @@ def _fra_indicator_label(code: str, specific_category: str, question: str) -> st
 
 
 def _metadata_year(metadata: dict[str, Any]) -> int | None:
-    for key in ("year", "survey_year", "date", "downloaded_at"):
+    for key in ("survey_year",):
         if year := _safe_year(metadata.get(key)):
             return year
     return None

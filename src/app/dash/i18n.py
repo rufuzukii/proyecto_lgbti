@@ -161,8 +161,8 @@ UI_TEXT = {
         "en": "Open the About section",
     },
     "report_module_name": {
-        "es": "Informe DataHub",
-        "en": "DataHub Report",
+        "es": "Informe",
+        "en": "Report",
     },
     "report_generation_eyebrow": {
         "es": "Generación de informes",
@@ -411,10 +411,6 @@ def ui_text_component(
         class_name=class_name,
         language=language,
     )
-
-
-def ui_text_data_attrs(key: str) -> dict[str, Any]:
-    return text_attrs(ui_text(key, "es"), ui_text(key, "en"))
 
 
 def country_labels(country_code: str, fallback: str = "") -> tuple[str, str]:

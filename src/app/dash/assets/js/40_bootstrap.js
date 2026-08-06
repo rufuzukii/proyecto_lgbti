@@ -4,6 +4,22 @@
   let pendingAdminUserDelete = null;
 
   document.addEventListener("click", (event) => {
+    const accountDeactivate = event.target.closest("[data-admin-user-deactivate='true']");
+    if (accountDeactivate && accountDeactivate.dataset.deactivateConfirmed !== "true") {
+      event.preventDefault();
+      const question = state.currentLanguage() === "en"
+        ? accountDeactivate.dataset.confirmEn
+        : accountDeactivate.dataset.confirmEs;
+      if (window.confirm(question || "Confirm")) {
+        accountDeactivate.dataset.deactivateConfirmed = "true";
+        const row = accountDeactivate.closest("[data-admin-user-row]");
+        if (row) {
+          row.requestSubmit(accountDeactivate);
+        }
+      }
+      return;
+    }
+
     const adminUserDeleteConfirm = event.target.closest("[data-admin-user-delete-confirm]");
     if (adminUserDeleteConfirm) {
       confirmAdminUserDelete();

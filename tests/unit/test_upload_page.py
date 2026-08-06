@@ -275,16 +275,20 @@ def test_fra_upload_rejects_html_renamed_as_csv_with_validation_code() -> None:
         )
 
 
-def test_fra_schema_error_message_is_clear_and_retryable() -> None:
+def test_fra_schema_error_message_is_clear_and_closable() -> None:
+    # Arrange / Act
     message = upload_page._upload_validation_message(
         "unsupported_fra_csv_schema:foo,bar",
         "fra.csv",
     )
+
+    # Assert
     props = message.to_plotly_json()["props"]
     assert props["className"] == "upload-message upload-message-error"
     serialized = str(props["children"])
     assert "esquema del CSV de FRA" in serialized
-    assert "upload-error-retry" in serialized
+    assert "upload-error-close" in serialized
+    assert "upload-error-retry" not in serialized
 
 
 def test_concurrent_upload_is_rejected_without_starting_a_second_import(monkeypatch) -> None:

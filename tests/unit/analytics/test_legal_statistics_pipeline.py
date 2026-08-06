@@ -228,18 +228,20 @@ def test_temporal_chart_renders_every_country_and_does_not_filter_map_selection(
             )
 
     figure = build_temporal_evolution_chart(rows, ["X00"])
+    traces = cast(Any, figure).data
 
-    assert len(figure.data) == 49
-    assert figure.data[0].opacity == 1
-    assert all(trace.opacity == pytest.approx(0.22) for trace in figure.data[1:])
-    incomplete = next(trace for trace in figure.data if trace.name == "Country 48")
+    assert len(traces) == 49
+    assert traces[0].opacity == 1
+    assert all(trace.opacity == pytest.approx(0.22) for trace in traces[1:])
+    incomplete = next(trace for trace in traces if trace.name == "Country 48")
     assert list(incomplete.y) == [48.0, None]
     assert incomplete.connectgaps is False
     assert incomplete.mode == "markers"
 
     one_country = build_temporal_evolution_chart(rows, visible_countries=["X03"])
-    assert len(one_country.data) == 1
-    assert one_country.data[0].name == "Country 03"
+    one_country_traces = cast(Any, one_country).data
+    assert len(one_country_traces) == 1
+    assert one_country_traces[0].name == "Country 03"
 
 
 def test_legal_response_chart_handles_more_than_40_countries_and_nulls() -> None:
@@ -261,13 +263,14 @@ def test_legal_response_chart_handles_more_than_40_countries_and_nulls() -> None
     ]
 
     figure = build_ilga_response_details_chart(rows, ["X00"])
+    traces = cast(Any, figure).data
 
-    assert [trace.name for trace in figure.data] == [
+    assert [trace.name for trace in traces] == [
         "No reconocido",
         "Cumplimiento parcial",
         "Cumplimiento completo",
     ]
-    assert sum(len(trace.x) for trace in figure.data) == 44
+    assert sum(len(trace.x) for trace in traces) == 44
     assert 760 < cast(Any, figure).layout.meta["minimum_width"] <= 2400
     assert cast(Any, figure).layout.height >= 560
     assert cast(Any, figure).layout.xaxis.automargin is True
@@ -295,10 +298,11 @@ def test_legal_response_chart_uses_semantic_stacked_counts_for_multiple_criteria
     ]
 
     figure = build_ilga_response_details_chart(rows, indicator="Family")
+    traces = cast(Any, figure).data
 
     assert cast(Any, figure).layout.barmode == "stack"
     assert cast(Any, figure).layout.yaxis.title.text == "Número de criterios"
-    assert all(list(trace.y) == [1, 1] for trace in figure.data)
+    assert all(list(trace.y) == [1, 1] for trace in traces)
 
 
 def test_legal_sections_css_keeps_full_width_and_only_local_horizontal_scroll() -> None:

@@ -3,12 +3,10 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from io import StringIO
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pandas as pd
-from pandas.errors import EmptyDataError
 
 from app.import_to_db.fra.schema import (
     FraCsvSchema,
@@ -17,14 +15,9 @@ from app.import_to_db.fra.schema import (
     read_fra_csv_text,
     validate_fra_filter_scope,
 )
-from app.import_to_db.fra.validation import (
-    fra_metadata_key,
-    is_fra_footnote_symbol,
-    is_valid_fra_category,
-)
-from app.import_to_db.utils import normalize_header, parse_float
+from app.import_to_db.utils import normalize_header
 
-FRA_SOURCE_NAME = "EU LGBTIQ+ Survey III (FRA 2023)"
+FRA_SOURCE_NAME = "EU LGBTIQ+ Survey (FRA)"
 FRA_SOURCE_TYPE = "EU_SURVEY"
 
 COLUMN_ALIASES: dict[str, str] = {
@@ -226,82 +219,6 @@ class IndicatorQuestionParts:
     raw_question: str
 
 
-def _parse_answer_survey_rows(
-    raw_rows: Iterable[Mapping[str, str | None]],
-    *,
-    path_context: FraPathContext | None = None,
-) -> list[dict]:
-    context = path_context or FraPathContext()
-    rows = []
-    for raw_row in raw_rows:
-        normalized = normalize_row(raw_row)
-        rows.append((normalized, remap_row(normalized)))
-    file_metadata = extract_file_metadata(row for _, row in rows)
-    documents: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
-
-    for normalized, row in rows:
-        if is_metadata_or_note_row(row):
-            continue
-
-        raw_topic = row.get("topic") or context.topic
-        raw_question = row.get("question") or context.question
-        if not raw_topic or not raw_question:
-            continue
-
-        raw_category = row.get("category") or raw_topic or context.category
-        question_parts = split_indicator_question(
-            raw_question,
-            fallback_category=raw_category,
-            fallback_topic=raw_topic,
-        )
-        category = question_parts.category
-        if not is_valid_fra_category(category):
-            continue
-        specific_category = question_parts.specific_category
-        topic = question_parts.topic
-        question = question_parts.question
-        source = row.get("source") or file_metadata.get("source") or FRA_SOURCE_NAME
-        external_code = row.get("external_code") or file_metadata.get("external_code")
-        external_code = external_code or build_indicator_code(
-            source=source,
-            category=category,
-            topic=topic,
-            question=question,
-        )
-        code = external_code or build_question_code(question)
-
-        key = (source, category, specific_category, topic, question, external_code)
-        if key not in documents:
-            documents[key] = {
-                "source": source,
-                "source_type": FRA_SOURCE_TYPE,
-                "category": category,
-                "specific_category": specific_category,
-                "topic": topic,
-                "question": question,
-                "code": code,
-                "external_code": external_code,
-                "question_path": split_question_path(question_parts.raw_question),
-                "metadata": {
-                    "schema_version": 1,
-                    "file_name": context.file_name,
-                    "requires_review": True,
-                    **file_metadata,
-                },
-                "answers": [],
-            }
-
-        answer_entry = build_answer_entry(row, normalized, context, file_metadata)
-        documents[key]["answers"].append(answer_entry)
-        if row.get("hyperlink") and not documents[key]["metadata"].get("hyperlink"):
-            documents[key]["metadata"]["hyperlink"] = row["hyperlink"]
-
-    for document in documents.values():
-        document["validation"] = validate_fra_document(document)
-        document["hyperlink"] = document["metadata"].get("hyperlink", "")
-
-    return list(documents.values())
-
 
 def parse_answer_survey_csv(file_path: Path | str, *, root: Path | str | None = None) -> list[dict]:
     path = Path(file_path)
@@ -324,6 +241,7 @@ def parse_answer_survey_csv_text(
         dataframe,
         schema,
         path_filters=context.filters,
+        file_name=file_name,
     )
     if filename_declares_all_all(file_name):
         validate_fra_filter_scope(
@@ -342,7 +260,7 @@ def _parse_normalized_fra_dataframe(
     schema: FraCsvSchema,
     context: FraPathContext,
 ) -> list[dict]:
-    documents: dict[tuple[str, str, str, str, str, str], dict[str, Any]] = {}
+    documents: dict[tuple[str, str, str, str, str, str, int | None], dict[str, Any]] = {}
     fra_metadata = dict(dataframe.attrs.get("fra_metadata") or {})
     for row in dataframe.to_dict(orient="records"):
         source = str(row.get("source") or FRA_SOURCE_NAME)
@@ -351,7 +269,8 @@ def _parse_normalized_fra_dataframe(
         topic = category
         question = str(row.get("question") or "")
         external_code = str(row.get("indicator_id") or build_question_code(question))
-        key = (source, category, specific_category, topic, question, external_code)
+        survey_year = row.get("survey_year")
+        key = (source, category, specific_category, topic, question, external_code, survey_year)
         if key not in documents:
             documents[key] = {
                 "source": source,
@@ -362,6 +281,7 @@ def _parse_normalized_fra_dataframe(
                 "question": question,
                 "code": external_code,
                 "external_code": external_code,
+                "survey_year": survey_year,
                 "question_path": [specific_category, question],
                 "metadata": {
                     "schema_version": 2,
@@ -384,6 +304,7 @@ def _parse_normalized_fra_dataframe(
             "notes": str(row.get("notes") or ""),
             "note_text": str(row.get("notes") or ""),
             "date": str(row.get("date") or ""),
+            "survey_year": survey_year,
             "filters": dict(filters) if isinstance(filters, Mapping) else {},
         }
         documents[key]["answers"].append(answer_entry)
@@ -396,20 +317,6 @@ def _parse_normalized_fra_dataframe(
         document["hyperlink"] = document["metadata"].get("hyperlink", "")
     return list(documents.values())
 
-
-def read_csv_rows(csv_text: str) -> list[dict[str, str]]:
-    try:
-        dataframe = pd.read_csv(
-            StringIO(csv_text),
-            sep=None,
-            engine="python",
-            dtype=str,
-            keep_default_na=False,
-            na_filter=False,
-        )
-    except EmptyDataError:
-        return []
-    return cast(list[dict[str, str]], dataframe.to_dict(orient="records"))
 
 
 def read_text_with_fallback(file_path: Path) -> str:
@@ -424,150 +331,14 @@ def read_text_with_fallback(file_path: Path) -> str:
     return file_path.read_text()
 
 
-def normalize_row(raw_row: Mapping[str, str | None]) -> dict[str, str]:
-    normalized: dict[str, str] = {}
-    for key, value in raw_row.items():
-        if key is None:
-            continue
-        normalized[normalize_header(str(key))] = value.strip() if value is not None else ""
-    return normalized
 
 
-def remap_row(normalized_row: dict[str, str]) -> dict[str, str]:
-    remapped: dict[str, str] = {}
-    for key, value in normalized_row.items():
-        canonical = COLUMN_ALIASES.get(key, key)
-        remapped[canonical] = value
-    return remapped
 
 
-def build_answer_entry(
-    row: dict[str, str],
-    normalized_row: dict[str, str],
-    context: FraPathContext,
-    file_metadata: dict[str, str],
-) -> dict:
-    country = row.get("country", "")
-    country_code = resolve_country_code(country)
-    filters = dict(context.filters)
-    filters.update(build_filters(row, normalized_row))
-
-    return {
-        "country": country,
-        "country_code": country_code,
-        "country_scope": resolve_country_scope(country),
-        "answer": row.get("answer") or context.answer,
-        "percentage": parse_float(row.get("percentage")),
-        "raw_percentage": row.get("percentage", ""),
-        "notes": row.get("notes", ""),
-        "note_text": resolve_note_text(row.get("notes", ""), file_metadata),
-        "date": row.get("date") or file_metadata.get("date", ""),
-        "filters": filters,
-    }
 
 
-def build_filters(remapped_row: dict[str, str], normalized_row: dict[str, str]) -> dict[str, str]:
-    filters: dict[str, str] = {}
-
-    for key, value in remapped_row.items():
-        if key in RESERVED_FIELDS or key in EXPLICIT_FILTER_FIELDS:
-            continue
-        if not value:
-            continue
-        filter_key = FILTER_KEY_ALIASES.get(key, key)
-        filters[filter_key] = value
-
-    for key in EXPLICIT_FILTER_FIELDS:
-        raw_value = normalized_row.get(key, "")
-        if not raw_value:
-            continue
-        filter_key, filter_value = parse_filter_field(raw_value, fallback=key)
-        filter_key = FILTER_KEY_ALIASES.get(filter_key, filter_key)
-        filters[filter_key] = filter_value
-
-    return filters
 
 
-def parse_filter_field(value: str, fallback: str) -> tuple[str, str]:
-    if ":" in value:
-        key, val = value.split(":", 1)
-        return normalize_header(key), val.strip()
-    if "=" in value:
-        key, val = value.split("=", 1)
-        return normalize_header(key), val.strip()
-    return normalize_header(fallback), value.strip()
-
-
-def extract_file_metadata(rows: Iterable[dict[str, str]]) -> dict[str, str]:
-    metadata: dict[str, Any] = {}
-    footnotes: dict[str, str] = {}
-    label_map = {
-        "source": "source",
-        "fuente": "source",
-        "date": "date",
-        "fecha": "date",
-        "question_code": "external_code",
-        "codigo_pregunta": "external_code",
-        "indicator_code": "external_code",
-        "hyperlink": "hyperlink",
-        "link": "hyperlink",
-        "url": "hyperlink",
-        "note": "global_note",
-        "nota": "global_note",
-        "general_disclaimer_of_the_fra_website": "fra_disclaimer_url",
-    }
-
-    for row in rows:
-        raw_label, value = _metadata_label_and_value(row)
-        label = normalize_header(raw_label.rstrip(":"))
-        if not value:
-            continue
-        metadata_key = label_map.get(label)
-        if metadata_key:
-            metadata[metadata_key] = value
-        elif is_footnote_label(row):
-            footnotes[row["country"].strip()] = value
-
-    if footnotes:
-        metadata["footnotes"] = footnotes
-    return metadata
-
-
-def is_metadata_or_note_row(row: dict[str, str]) -> bool:
-    raw_label, _value = _metadata_label_and_value(row)
-    if fra_metadata_key(raw_label):
-        return True
-    return is_footnote_label(row)
-
-
-def is_footnote_label(row: dict[str, str]) -> bool:
-    raw_label, _value = _metadata_label_and_value(row)
-    if is_fra_footnote_symbol(raw_label):
-        return True
-    country = row.get("country", "").strip()
-    if not country:
-        return False
-    has_data_shape = bool(row.get("question") or row.get("answer") or row.get("percentage"))
-    if has_data_shape:
-        return False
-    if resolve_country_code(country):
-        return False
-    return bool(row.get("topic"))
-
-
-def _metadata_label_and_value(row: Mapping[str, str]) -> tuple[str, str]:
-    country_label = str(row.get("country") or "").strip()
-    if country_label:
-        return country_label, str(row.get("topic") or row.get("question") or "").strip()
-    topic_label = str(row.get("topic") or row.get("category") or "").strip()
-    return topic_label, str(row.get("question") or "").strip()
-
-
-def resolve_note_text(note: str, file_metadata: dict[str, str]) -> str:
-    footnotes = file_metadata.get("footnotes")
-    if not note or not isinstance(footnotes, dict):
-        return ""
-    return footnotes.get(note.strip(), "")
 
 
 def build_path_context(file_path: Path, root: Path | None) -> FraPathContext:
@@ -638,42 +409,6 @@ def parse_prefixed_filter(value: str) -> tuple[str, str] | None:
     return filter_key, raw_filter_value.strip()
 
 
-def build_indicator_code(*, source: str, category: str, topic: str, question: str) -> str:
-    return build_question_code(question)
-
-
-def split_indicator_question(
-    raw_question: str,
-    *,
-    fallback_category: str,
-    fallback_topic: str,
-) -> IndicatorQuestionParts:
-    clean_question = raw_question.strip()
-    category = fallback_topic.strip() or fallback_category.strip() or "Uncategorized"
-    specific_category = fallback_category.strip() or category
-    topic = category
-    question = clean_question
-
-    if ">" in clean_question:
-        left, right = clean_question.split(">", 1)
-        if left.strip():
-            specific_category = left.strip()
-        question = right.strip()
-
-    if "/" in question:
-        left, right = question.split("/", 1)
-        if left.strip():
-            specific_category = left.strip()
-        if right.strip():
-            question = right.strip()
-
-    return IndicatorQuestionParts(
-        category=category,
-        specific_category=specific_category,
-        topic=topic,
-        question=question,
-        raw_question=clean_question,
-    )
 
 
 def build_question_code(question: str) -> str:
@@ -682,24 +417,7 @@ def build_question_code(question: str) -> str:
     return f"fra_{digest}"
 
 
-def split_question_path(question: str) -> list[str]:
-    return [part.strip() for part in question.split(">") if part.strip()]
 
-
-def resolve_country_code(country: str) -> str | None:
-    normalized = normalize_header(country)
-    if not normalized:
-        return None
-    if normalized.startswith("eu") and normalized[2:].isdigit():
-        return normalized.upper()
-    return COUNTRY_CODES.get(normalized)
-
-
-def resolve_country_scope(country: str) -> str:
-    normalized = normalize_header(country)
-    if normalized.startswith("eu") and normalized[2:].isdigit():
-        return "aggregate"
-    return "country"
 
 
 def validate_fra_document(document: dict) -> dict:

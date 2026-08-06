@@ -24,6 +24,7 @@ class Collection:
         if document is None and upsert:
             document = {**query, **update.get("$setOnInsert", {})}
             self.documents.append(document)
+        assert document is not None
         document.update(update["$set"])
 
     def delete_one(self, query):
@@ -73,14 +74,18 @@ def test_docente_can_create_edit_list_and_delete_only_owned_games(monkeypatch) -
     owner = _user("docente-1")
 
     saved = custom_game_service.save_owned_game(owner, None, _values())
-    assert custom_game_service.get_owned_game(owner, saved["id"])["title_es"] == "Conceptos básicos"
-    assert "<script>" not in custom_game_service.get_owned_game(owner, saved["id"])["explanation_es"]
+    stored = custom_game_service.get_owned_game(owner, saved["id"])
+    assert stored is not None
+    assert stored["title_es"] == "Conceptos básicos"
+    assert "<script>" not in stored["explanation_es"]
     assert [item["id"] for item in custom_game_service.list_owned_games(owner)] == [saved["id"]]
     assert custom_game_service.get_owned_game(_user("docente-2"), saved["id"]) is None
 
     changed = {**_values(), "title_es": "Título actualizado"}
     custom_game_service.save_owned_game(owner, saved["id"], changed)
-    assert custom_game_service.get_owned_game(owner, saved["id"])["title_es"] == "Título actualizado"
+    stored = custom_game_service.get_owned_game(owner, saved["id"])
+    assert stored is not None
+    assert stored["title_es"] == "Título actualizado"
     assert custom_game_service.delete_owned_game(owner, saved["id"])
     assert custom_game_service.list_owned_games(owner) == []
 

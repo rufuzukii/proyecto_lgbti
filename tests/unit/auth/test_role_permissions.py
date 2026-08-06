@@ -37,6 +37,10 @@ def test_common_user_receives_general_features_but_not_privileged_tools() -> Non
     assert not user_has_permission(user, Permission.UPLOAD_DATA)
     assert not user_has_permission(user, Permission.CONFIGURE_ADVANCED_REPORTS)
 
+    sociologist = _user(user_type=UserType.SOCIOLOGO)
+    assert user_has_permission(sociologist, Permission.VIEW_DASHBOARD)
+    assert not user_has_permission(sociologist, Permission.UPLOAD_DATA)
+
 
 def test_functional_profiles_receive_only_their_added_value() -> None:
     for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG):

@@ -1,9 +1,16 @@
 services:
+  - type: keyvalue
+    name: proyecto-lgbti-cache
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+
   - type: web
     name: proyecto-lgbti
-    env: python
-    buildCommand: pip install -e . -r requirements.txt && plotly_get_chrome -y
-    startCommand: python -m app.users.migrate && gunicorn wsgi:server --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --access-logfile - --error-logfile -
+    runtime: python
+    buildCommand: python -m pip install -e . -r requirements.txt && plotly_get_chrome -y
+    startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --access-logfile - --error-logfile -
+    healthCheckPath: /health
     envVars:
       - key: APP_ENV
         value: production
@@ -17,6 +24,22 @@ services:
         generateValue: true
       - key: SESSION_LIFETIME_HOURS
         value: "12"
+      - key: AUTH_MAX_ATTEMPTS
+        value: "6"
+      - key: AUTH_WINDOW_SECONDS
+        value: "300"
+      - key: EMAIL_VERIFICATION_TTL_SECONDS
+        value: "86400"
+      - key: EMAIL_TOKEN_MAX_ATTEMPTS
+        value: "4"
+      - key: EMAIL_TOKEN_WINDOW_SECONDS
+        value: "900"
+      - key: PASSWORD_RESET_TTL_SECONDS
+        value: "3600"
+      - key: PASSWORD_RESET_MAX_ATTEMPTS
+        value: "4"
+      - key: PASSWORD_RESET_WINDOW_SECONDS
+        value: "900"
       - key: DATABASE_URL
         sync: false
       - key: POSTGRES_SSL_MODE
@@ -41,12 +64,21 @@ services:
         value: "3"
       - key: SUPABASE_READ_TIMEOUT_SECONDS
         value: "10"
-      - key: CACHE_TYPE
-        value: RedisCache
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: proyecto-lgbti-cache
+          property: connectionString
       - key: CACHE_VERSION
         value: v1
       - key: CACHE_DEFAULT_TIMEOUT
         value: "300"
+      - key: REDIS_CONNECT_TIMEOUT_SECONDS
+        value: "1"
+      - key: REDIS_SOCKET_TIMEOUT_SECONDS
+        value: "1"
+      - key: REDIS_HEALTH_CHECK_INTERVAL_SECONDS
+        value: "30"
       - key: DB_CONNECT_TIMEOUT_SECONDS
         value: "3"
       - key: MONGO_SERVER_SELECTION_TIMEOUT_MS
@@ -99,3 +131,5 @@ services:
         sync: false
       - key: SMTP_FROM_EMAIL
         sync: false
+      - key: SMTP_TIMEOUT_SECONDS
+        value: "15"

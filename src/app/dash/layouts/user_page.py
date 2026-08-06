@@ -12,6 +12,7 @@ from app.auth.rate_limit import create_rate_limiter
 from app.dash.i18n import dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
 from app.http_security import rate_limit_key
+from app.taxonomy import taxonomy_label, taxonomy_pair
 from app.users.contact_service import (
     ContactDeliveryError,
     ContactValidationError,
@@ -217,6 +218,20 @@ def _profile_card(
                         "Nombre visible", "Display name", username or "No definido", "Not set"
                     ),
                     _detail_row("Email", "Email", email or "No definido", "Not set"),
+                    _detail_row(
+                        "Correo verificado",
+                        "Verified email",
+                        (
+                            "S\u00ed"
+                            if bool(getattr(current_user, "email_verified", True))
+                            else "Pendiente"
+                        ),
+                        (
+                            "Yes"
+                            if bool(getattr(current_user, "email_verified", True))
+                            else "Pending"
+                        ),
+                    ),
                     _detail_row("Organización", "Organization", organization_es, organization_en),
                     _detail_row(
                         "Perfil",
@@ -320,11 +335,15 @@ def _contact_panel(
     user_type: UserType | str | None,
 ) -> Component:
     requested_role_options = [
-        {"label": text("Docente", "Educator"), "value": UserType.DOCENTE.value},
-        {"label": text("RRHH", "HR"), "value": UserType.RRHH.value},
-        {"label": text("Político", "Policy maker"), "value": UserType.POLITICO.value},
-        {"label": text("ONG", "NGO"), "value": UserType.ONG.value},
-        {"label": text("Usuario", "User"), "value": UserType.COMUN.value},
+        {"label": text(*taxonomy_pair("role", value)), "value": value}
+        for value in (
+            UserType.DOCENTE.value,
+            UserType.RRHH.value,
+            UserType.POLITICO.value,
+            UserType.ONG.value,
+            UserType.SOCIOLOGO.value,
+            UserType.COMUN.value,
+        )
     ]
     return html.Section(
         [
@@ -685,6 +704,20 @@ def register_user_page_callbacks(app: Dash) -> None:
         if not clicks or not user_has_permission(current_user, Permission.VIEW_DASHBOARD):
             return (no_update,) * 7
         clean_language = "en" if language == "en" else "es"
+        if not bool(getattr(current_user, "email_verified", True)):
+            return (
+                (
+                    "Verify your email before sending requests or attachments."
+                    if clean_language == "en"
+                    else "Verifica tu correo antes de enviar solicitudes o adjuntos."
+                ),
+                "auth-message auth-message-error",
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+                no_update,
+            )
         limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="contact")
         if limiter.is_blocked(limiter_key):
             return (
@@ -752,18 +785,10 @@ def _role_label(
     language: str = "es",
 ) -> str:
     value = role.value if isinstance(role, UserRole) else str(role)
-    if value == "admin":
-        return "Administrator" if language == "en" else "Administrador"
-    profile = _user_type_value(user_type)
-    labels = {
-        UserType.COMUN.value: ("Usuario", "User"),
-        UserType.DOCENTE.value: ("Docente", "Educator"),
-        UserType.RRHH.value: ("RRHH", "HR"),
-        UserType.POLITICO.value: ("Político", "Policy maker"),
-        UserType.ONG.value: ("ONG", "NGO"),
-    }
-    selected = labels.get(profile, labels[UserType.COMUN.value])
-    return selected[1] if language == "en" else selected[0]
+    if value == UserRole.ADMIN.value:
+        return taxonomy_label("role", UserType.ADMIN.value, language)
+    profile = _user_type_value(user_type) or UserType.COMUN.value
+    return taxonomy_label("role", profile, language)
 
 
 def _user_type_value(user_type: UserType | str | None) -> str:

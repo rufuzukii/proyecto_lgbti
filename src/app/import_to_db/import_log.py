@@ -185,14 +185,3 @@ def _row_to_pending_import_log(row: Any) -> PendingImportLog:
         created_at=row.get("created_at"),
         record_count=int(row.get("record_count") or 0),
     )
-
-
-def test_connection() -> dict[str, Any]:
-    dsn = _resolve_postgres_dsn()
-    with (
-        psycopg.connect(dsn, connect_timeout=get_postgres_connect_timeout()) as conn,
-        conn.cursor() as cursor,
-    ):
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-    return {"ok": result is not None}

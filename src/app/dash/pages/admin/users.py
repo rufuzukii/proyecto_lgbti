@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.auth.csrf import get_csrf_token
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.taxonomy import taxonomy_pair
 from app.users.schemas import UserRead, UserRole, UserType
 
 STATUS_MESSAGES = {
@@ -17,6 +20,8 @@ STATUS_MESSAGES = {
         "La cuenta se ha eliminado correctamente.",
         "The account was deleted successfully.",
     ),
+    "user_activated": ("La cuenta se ha activado.", "The account was activated."),
+    "user_deactivated": ("La cuenta se ha desactivado.", "The account was deactivated."),
 }
 
 ERROR_MESSAGES = {
@@ -46,6 +51,18 @@ ERROR_MESSAGES = {
         "No puedes eliminar tu propia cuenta desde esta página.",
         "You cannot delete your own account from this page.",
     ),
+    "last_admin": (
+        "Debe conservarse al menos una cuenta administradora.",
+        "At least one administrator account must be retained.",
+    ),
+    "self_deactivate": (
+        "No puedes desactivar tu propia cuenta administradora.",
+        "You cannot deactivate your own administrator account.",
+    ),
+    "concurrent_update": (
+        "La cuenta cambi\u00f3 mientras la editabas. Revisa los datos actuales y vuelve a intentarlo.",
+        "The account changed while you were editing it. Review the current data and try again.",
+    ),
     "storage": (
         "La gestión de usuarios no está disponible en este momento.",
         "User management is not available right now.",
@@ -62,6 +79,11 @@ def build_admin_users_layout(
     *,
     status_code: str | None = None,
     error_code: str | None = None,
+    search: str = "",
+    page: int = 1,
+    page_count: int = 1,
+    total: int | None = None,
+    current_user_id: str | None = None,
 ) -> Component:
     status = STATUS_MESSAGES.get(status_code) if status_code is not None else None
     error = ERROR_MESSAGES.get(error_code) if error_code is not None else None
@@ -120,7 +142,24 @@ def build_admin_users_layout(
                                     ),
                                     _message(status, is_error=False),
                                     _message(error, is_error=True),
-                                    _build_users_table(users),
+                                    _search_users_form(search),
+                                    html.P(
+                                        (
+                                            f"{len(users) if total is None else total} usuarios"
+                                        ),
+                                        className="admin-users-result-count",
+                                        **text_attrs(
+                                            f"{len(users) if total is None else total} usuarios",
+                                            f"{len(users) if total is None else total} users",
+                                        ),
+                                    ),
+                                    _build_users_table(
+                                        users,
+                                        current_user_id=current_user_id,
+                                        search=search,
+                                        page=page,
+                                    ),
+                                    _pagination(search, page, page_count),
                                     _delete_confirmation_dialog(),
                                 ],
                                 className="admin-card",
@@ -174,7 +213,53 @@ def build_access_denied_layout() -> Component:
     )
 
 
-def _build_users_table(users: list[UserRead]) -> Component:
+def _search_users_form(search: str) -> Component:
+    return html.Form(
+        [
+            html.Label(
+                text("Buscar usuarios", "Search users"),
+                htmlFor="admin-user-search",
+                className="admin-user-search-label",
+            ),
+            html.Div(
+                [
+                    dcc.Input(
+                        id="admin-user-search",
+                        name="q",
+                        type="search",
+                        value=search,
+                        maxLength=120,
+                        placeholder="Nombre, correo u organizaci\u00f3n / Name, email or organization",
+                        className="admin-user-search-input",
+                    ),
+                    html.Button(
+                        text("Buscar", "Search"),
+                        type="submit",
+                        className="admin-user-search-button",
+                    ),
+                    html.A(
+                        text("Limpiar", "Clear"),
+                        href="/admin",
+                        className="admin-user-search-clear",
+                    ),
+                ],
+                className="admin-user-search-controls",
+            ),
+        ],
+        action="/admin",
+        method="get",
+        className="admin-user-search-form",
+        role="search",
+    )
+
+
+def _build_users_table(
+    users: list[UserRead],
+    *,
+    current_user_id: str | None = None,
+    search: str = "",
+    page: int = 1,
+) -> Component:
     return html.Div(
         [
             html.Div(
@@ -201,6 +286,9 @@ def _build_users_table(users: list[UserRead]) -> Component:
                         "Acceso", className="admin-table-heading", **text_attrs("Acceso", "Access")
                     ),
                     html.Div(
+                        "Estado", className="admin-table-heading", **text_attrs("Estado", "Status")
+                    ),
+                    html.Div(
                         "Eliminar",
                         className="admin-table-heading",
                         **text_attrs("Eliminar", "Delete"),
@@ -208,19 +296,49 @@ def _build_users_table(users: list[UserRead]) -> Component:
                 ],
                 className="admin-table-row admin-table-header",
             ),
-            *[_build_user_row(user) for user in users],
+            *[
+                _build_user_row(
+                    user,
+                    current_user_id=current_user_id,
+                    search=search,
+                    page=page,
+                )
+                for user in users
+            ],
+            (
+                ""
+                if users
+                else html.Div(
+                    text(
+                        "No hay usuarios que coincidan con la b\u00fasqueda.",
+                        "No users match the search.",
+                    ),
+                    className="admin-users-empty",
+                    role="row",
+                )
+            ),
         ],
         className="admin-table",
         role="table",
     )
 
 
-def _build_user_row(user: UserRead) -> Component:
+def _build_user_row(
+    user: UserRead,
+    *,
+    current_user_id: str | None = None,
+    search: str = "",
+    page: int = 1,
+) -> Component:
     form_id = f"admin-user-{user.id}"
+    is_current = bool(current_user_id and user.id == current_user_id)
     return html.Form(
         [
             dcc.Input(type="hidden", name="csrf_token", value=get_csrf_token()),
             dcc.Input(type="hidden", name="user_id", value=user.id),
+            dcc.Input(type="hidden", name="version", value=user.version),
+            dcc.Input(type="hidden", name="q", value=search),
+            dcc.Input(type="hidden", name="page", value=str(page)),
             html.Div(
                 [
                     html.Button(
@@ -254,14 +372,24 @@ def _build_user_row(user: UserRead) -> Component:
                 className="admin-table-cell",
             ),
             html.Div(
-                dcc.Input(
-                    id=f"{form_id}-username",
-                    name="username",
-                    type="text",
-                    value=user.username or "",
-                    required=True,
-                    className="admin-input admin-editable-input",
-                ),
+                [
+                    dcc.Input(
+                        id=f"{form_id}-username",
+                        name="username",
+                        type="text",
+                        value=user.username or "",
+                        required=True,
+                        className="admin-input admin-editable-input",
+                    ),
+                    (
+                        html.Span(
+                            text("Tu cuenta", "Your account"),
+                            className="admin-current-user-badge",
+                        )
+                        if is_current
+                        else ""
+                    ),
+                ],
                 className="admin-table-cell",
             ),
             html.Div(
@@ -297,11 +425,42 @@ def _build_user_row(user: UserRead) -> Component:
                 className="admin-table-cell",
             ),
             html.Div(
+                [
+                    html.Span(
+                        text("Activa", "Active") if user.active else text("Inactiva", "Inactive"),
+                        className="admin-account-status "
+                        + ("is-active" if user.active else "is-inactive"),
+                    ),
+                    dcc.Input(type="hidden", name="active", value=str(not user.active).lower()),
+                    html.Button(
+                        (
+                            text("Desactivar", "Deactivate")
+                            if user.active
+                            else text("Activar", "Activate")
+                        ),
+                        type="submit",
+                        name="action",
+                        value="toggle_active",
+                        disabled=is_current and user.active,
+                        className="admin-action-button admin-active-button",
+                        **dash_attrs(
+                            {
+                                "data-admin-user-deactivate": str(user.active).lower(),
+                                "data-confirm-es": "\u00bfQuieres desactivar esta cuenta?",
+                                "data-confirm-en": "Do you want to deactivate this account?",
+                            }
+                        ),
+                    ),
+                ],
+                className="admin-table-cell admin-status-cell",
+            ),
+            html.Div(
                 html.Button(
                     "Eliminar",
                     type="submit",
                     name="action",
                     value="delete",
+                    disabled=is_current,
                     className="admin-action-button admin-delete-button",
                     **dash_attrs(
                         {
@@ -318,6 +477,45 @@ def _build_user_row(user: UserRead) -> Component:
         method="post",
         className="admin-table-row",
         **dash_attrs({"data-admin-user-row": "true"}),
+    )
+
+
+def _pagination(search: str, page: int, page_count: int) -> Component | str:
+    if page_count <= 1:
+        return ""
+
+    def page_href(target: int) -> str:
+        query = {"page": str(target)}
+        if search:
+            query["q"] = search
+        return f"/admin?{urlencode(query)}"
+
+    return html.Nav(
+        [
+            html.A(
+                text("Anterior", "Previous"),
+                href=page_href(page - 1) if page > 1 else None,
+                className="admin-pagination-link" + (" is-disabled" if page <= 1 else ""),
+                **dash_attrs({"aria-disabled": str(page <= 1).lower()}),
+            ),
+            html.Span(
+                f"P\u00e1gina {page} de {page_count}",
+                className="admin-pagination-status",
+                **text_attrs(
+                    f"P\u00e1gina {page} de {page_count}",
+                    f"Page {page} of {page_count}",
+                ),
+            ),
+            html.A(
+                text("Siguiente", "Next"),
+                href=page_href(page + 1) if page < page_count else None,
+                className="admin-pagination-link"
+                + (" is-disabled" if page >= page_count else ""),
+                **dash_attrs({"aria-disabled": str(page >= page_count).lower()}),
+            ),
+        ],
+        className="admin-pagination",
+        **dash_attrs({"aria-label": "Paginaci\u00f3n de usuarios / User pagination"}),
     )
 
 
@@ -384,18 +582,25 @@ def _role_value(role: UserRole | UserType | str) -> str:
         return UserType.COMUN.value
     if value == UserRole.ADMIN.value:
         return UserRole.ADMIN.value
-    return UserRole.COMMON.value
+    try:
+        return UserType(value).value
+    except ValueError:
+        return UserType.COMUN.value
 
 
 def _admin_role_options(role: UserRole | UserType | str) -> list[Component]:
     current = _role_value(role)
     definitions = [
-        (UserType.COMUN.value, "Usuario", "User"),
-        (UserType.DOCENTE.value, "Docente", "Educator"),
-        (UserType.RRHH.value, "RRHH", "HR"),
-        (UserType.POLITICO.value, "Político", "Policy maker"),
-        (UserType.ONG.value, "ONG", "NGO"),
-        (UserRole.ADMIN.value, "Administración", "Administration"),
+        (value, *taxonomy_pair("role", value))
+        for value in (
+            UserType.COMUN.value,
+            UserType.DOCENTE.value,
+            UserType.RRHH.value,
+            UserType.POLITICO.value,
+            UserType.ONG.value,
+            UserType.SOCIOLOGO.value,
+            UserRole.ADMIN.value,
+        )
     ]
     ordered = sorted(definitions, key=lambda item: item[0] != current)
     return [

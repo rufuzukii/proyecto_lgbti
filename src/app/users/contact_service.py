@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import os
-import smtplib
-import ssl
 import unicodedata
 from dataclasses import dataclass
 from email.message import EmailMessage
@@ -13,6 +10,8 @@ from typing import Any
 
 import bleach
 from email_validator import EmailNotValidError, validate_email
+
+from app.mail.service import MailDeliveryError, send_email
 
 CONTACT_RECIPIENT = "rainbowlensdatahub@gmail.com"
 MAX_CONTACT_ATTACHMENTS = 3
@@ -100,16 +99,8 @@ def send_role_contact_email(
     except EmailNotValidError as exc:
         raise ContactValidationError("invalid_contact_email") from exc
 
-    smtp_host = str(os.getenv("SMTP_HOST") or "").strip()
-    smtp_username = str(os.getenv("SMTP_USERNAME") or "").strip()
-    smtp_password = str(os.getenv("SMTP_PASSWORD") or "")
-    sender = str(os.getenv("SMTP_FROM_EMAIL") or smtp_username or "").strip()
-    if not smtp_host or not sender:
-        raise ContactDeliveryError("smtp_not_configured")
-
     email_message = EmailMessage()
     email_message["Subject"] = f"RainbowLens Datahub · Contacto · {clean_subject}"
-    email_message["From"] = sender
     email_message["To"] = CONTACT_RECIPIENT
     email_message["Reply-To"] = clean_email
     email_message.set_content(
@@ -138,26 +129,8 @@ def send_role_contact_email(
         )
 
     try:
-        port = int(os.getenv("SMTP_PORT", "465" if _env_bool("SMTP_USE_SSL", True) else "587"))
-    except ValueError as exc:
-        raise ContactDeliveryError("invalid_smtp_configuration") from exc
-    context = ssl.create_default_context()
-    try:
-        if _env_bool("SMTP_USE_SSL", True):
-            with smtplib.SMTP_SSL(smtp_host, port, timeout=20, context=context) as client:
-                if smtp_username:
-                    client.login(smtp_username, smtp_password)
-                client.send_message(email_message)
-        else:
-            with smtplib.SMTP(smtp_host, port, timeout=20) as client:
-                client.ehlo()
-                if _env_bool("SMTP_STARTTLS", True):
-                    client.starttls(context=context)
-                    client.ehlo()
-                if smtp_username:
-                    client.login(smtp_username, smtp_password)
-                client.send_message(email_message)
-    except (OSError, smtplib.SMTPException) as exc:
+        send_email(email_message)
+    except MailDeliveryError as exc:
         raise ContactDeliveryError("contact_delivery_failed") from exc
 
 
@@ -195,8 +168,3 @@ def _as_list(value: list[str] | str | None) -> list[str]:
     if value is None:
         return []
     return [str(item) for item in value] if isinstance(value, list) else [str(value)]
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    return default if value is None else value.strip().casefold() in {"1", "true", "yes", "on"}

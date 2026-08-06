@@ -16,7 +16,6 @@ from app.analytics.statistics_exports import (
 from app.auth.permissions import Permission, user_has_permission
 from app.dash.pages import reports as reports_page
 from app.dash_app import _report_params
-from app.reports import generator as report_generator
 from app.reports import service as report_service
 from app.reports.builder import HRReportBuilder
 from app.reports.models import (
@@ -584,26 +583,10 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     assert "plotly_get_chrome -y" in render_config
     assert "kaleido==1.3.0" in requirements
     assert "reportlab==4.5.1" in requirements
-
-
-def test_legacy_generator_delegates_to_completed_service(monkeypatch) -> None:
-    observed = []
-    monkeypatch.setattr(
-        report_generator,
-        "generate_report_pdf",
-        lambda configuration: observed.append(configuration) or "generated",
-    )
-
-    result = report_generator.generate_report(
-        {
-            "source": "fra",
-            "indicator_id": "EMP_1",
-            "year": 2024,
-        }
-    )
-
-    assert result == "generated"
-    assert observed[0].indicator_id == "EMP_1"
+    assert "healthCheckPath: /health" in render_config
+    assert "type: keyvalue" in render_config
+    assert "key: REDIS_URL" in render_config
+    assert "property: connectionString" in render_config
 
 
 def _walk(component):

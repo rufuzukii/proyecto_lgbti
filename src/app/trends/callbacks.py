@@ -8,6 +8,7 @@ from dash.development.base_component import Component
 
 from app.analytics.statistics_exports import chart_graph_config
 from app.dash.i18n import country_labels, text, ui_text
+from app.taxonomy import taxonomy_pair
 from app.trends.charts import build_trend_figure
 from app.trends.models import TrendAnalysis, TrendDirection, TrendFilters, TrendSource
 from app.trends.service import (
@@ -39,7 +40,18 @@ def register_trend_callbacks(app: Dash) -> None:
             logger.exception("trend_categories_load_failed", extra={"source": source})
             return [], None, True
         return (
-            [{"label": category, "value": category} for category in categories],
+            [
+                {
+                    "label": text(
+                        *taxonomy_pair(
+                            "fra_category" if source == TrendSource.FRA.value else "ilga_category",
+                            category,
+                        )
+                    ),
+                    "value": category,
+                }
+                for category in categories
+            ],
             None,
             not bool(categories),
         )

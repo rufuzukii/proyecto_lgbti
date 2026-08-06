@@ -48,6 +48,7 @@ from app.reports.service import (
     build_report,
     generate_report_pdf,
 )
+from app.taxonomy import taxonomy_pair
 
 logger = logging.getLogger(__name__)
 
@@ -1090,10 +1091,11 @@ def _category_options(source: str, year: int | None) -> list[dict[str, Any]]:
         values = ["Ranking total", *get_ilga_criteria_categories_by_year(year)]
     return [
         {
-            "label": (
-                text("Ranking total", "Overall ranking")
-                if category == "Ranking total"
-                else category
+            "label": text(
+                *taxonomy_pair(
+                    "fra_category" if source == "fra" else "ilga_category",
+                    category,
+                )
             ),
             "value": category,
         }

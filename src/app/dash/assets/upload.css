@@ -317,23 +317,6 @@ body[data-theme="dark"] .upload-loading-dialog {
   margin-top: 0.9rem;
 }
 
-.upload-message-retry {
-  background: currentColor;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: #ffffff;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 800;
-  padding: 0.65rem 0.95rem;
-}
-
-.upload-message-retry:hover,
-.upload-message-retry:focus-visible {
-  filter: brightness(0.94);
-  outline: none;
-}
-
 .upload-message-success {
   border-color: #a8e6d1;
   background: #effbf7;

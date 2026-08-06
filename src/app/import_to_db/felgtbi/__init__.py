@@ -5,19 +5,18 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .importer import (
         FELGTBI_SOURCE_CODE,
-        parse_felgtbi_pdf,
-        parse_felgtbi_pdf_bytes,
         parse_felgtbi_text_pages,
     )
     from .mongo import INDICATOR_FELGTBI_COLLECTION, insert_indicator_felgtbi_json
+    from .pipeline import parse_felgtbi_pdf, parse_felgtbi_pdf_bytes
     from .scraper import discover_felgtbi_pdfs, parse_felgtbi_pdf_links
 
 
 _LAZY_EXPORTS = {
     "FELGTBI_SOURCE_CODE": ("app.import_to_db.felgtbi.importer", "FELGTBI_SOURCE_CODE"),
-    "parse_felgtbi_pdf": ("app.import_to_db.felgtbi.importer", "parse_felgtbi_pdf"),
+    "parse_felgtbi_pdf": ("app.import_to_db.felgtbi.pipeline", "parse_felgtbi_pdf"),
     "parse_felgtbi_pdf_bytes": (
-        "app.import_to_db.felgtbi.importer",
+        "app.import_to_db.felgtbi.pipeline",
         "parse_felgtbi_pdf_bytes",
     ),
     "parse_felgtbi_text_pages": (

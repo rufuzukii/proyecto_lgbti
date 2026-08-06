@@ -81,14 +81,17 @@ def test_fra_category_selector_uses_a_covered_compound_index(monkeypatch) -> Non
 
     fra_indexes = captured["Indicator_fra"]
     category_index = next(
-        index for index in fra_indexes if index.document.get("name") == "fra_category_question_code"
+        index
+        for index in fra_indexes
+        if index.document.get("name") == "fra_category_question_code_year"
     )
     assert list(category_index.document["key"].items()) == [
         ("category", 1),
         ("specific_category", 1),
-        ("question", 1),
-        ("code", 1),
-    ]
+            ("question", 1),
+            ("code", 1),
+            ("survey_year", -1),
+        ]
     docente_indexes = captured["didactica_docente_games"]
     assert {index.document.get("name") for index in docente_indexes} == {
         "docente_game_id_unique",

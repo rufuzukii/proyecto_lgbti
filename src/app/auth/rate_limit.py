@@ -5,6 +5,7 @@ import os
 import time
 from collections import defaultdict, deque
 from threading import RLock
+from typing import Protocol
 from uuid import uuid4
 
 import redis
@@ -13,18 +14,17 @@ from redis.exceptions import RedisError
 logger = logging.getLogger(__name__)
 
 
-class RateLimiter:
-    def is_blocked(self, key: str) -> bool:
-        raise NotImplementedError
+class RateLimiter(Protocol):
+    """Structural contract implemented by local and Redis rate limiters."""
 
-    def record_failure(self, key: str) -> None:
-        raise NotImplementedError
+    def is_blocked(self, key: str) -> bool: ...
 
-    def reset(self, key: str) -> None:
-        raise NotImplementedError
+    def record_failure(self, key: str) -> None: ...
+
+    def reset(self, key: str) -> None: ...
 
 
-class InMemoryRateLimiter(RateLimiter):
+class InMemoryRateLimiter:
     def __init__(self, max_attempts: int, window_seconds: int) -> None:
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
@@ -53,7 +53,7 @@ class InMemoryRateLimiter(RateLimiter):
             self._attempts.pop(key, None)
 
 
-class ResilientRateLimiter(RateLimiter):
+class ResilientRateLimiter:
     """Use Redis when available and retain local protection during an outage."""
 
     def __init__(self, primary: RateLimiter, fallback: RateLimiter) -> None:
@@ -82,7 +82,7 @@ class ResilientRateLimiter(RateLimiter):
         self.fallback.reset(key)
 
 
-class RedisRateLimiter(RateLimiter):
+class RedisRateLimiter:
     def __init__(
         self,
         *,

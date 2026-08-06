@@ -29,27 +29,7 @@ def test_contact_attachments_are_in_memory_safe_named_and_signature_checked() ->
 
 def test_contact_email_uses_authenticated_metadata_and_in_memory_attachments(monkeypatch) -> None:
     sent: list[EmailMessage] = []
-
-    class SMTP:
-        def __init__(self, *_args, **_kwargs):
-            pass
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def login(self, *_args):
-            pass
-
-        def send_message(self, message):
-            sent.append(message)
-
-    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
-    monkeypatch.setenv("SMTP_USERNAME", "sender@example.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "secret")
-    monkeypatch.setattr(contact_service.smtplib, "SMTP_SSL", SMTP)
+    monkeypatch.setattr(contact_service, "send_email", sent.append)
     attachment = contact_service.decode_contact_attachments(
         _data_uri(b"%PDF-1.7\nproof"), "certificate.pdf"
     )
@@ -68,6 +48,8 @@ def test_contact_email_uses_authenticated_metadata_and_in_memory_attachments(mon
     assert len(sent) == 1
     assert sent[0]["To"] == contact_service.CONTACT_RECIPIENT
     assert sent[0]["Reply-To"] == "ana@example.com"
-    assert "user-1" in sent[0].get_body().get_content()
-    assert "Perfil solicitado: No indicado" in sent[0].get_body().get_content()
+    body = sent[0].get_body()
+    assert body is not None
+    assert "user-1" in body.get_content()
+    assert "Perfil solicitado: No indicado" in body.get_content()
     assert len(list(sent[0].iter_attachments())) == 1
