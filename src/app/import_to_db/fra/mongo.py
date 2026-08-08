@@ -10,6 +10,7 @@ from app.import_to_db.fra.validation import (
     is_valid_fra_category,
 )
 from app.mongo import get_mongo_collection
+from app.source_attribution import source_storage_fields
 
 INDICATOR_FRA_COLLECTION = "Indicator_fra"
 
@@ -42,6 +43,15 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
     if survey_year is None:
         raise ValueError("missing_fra_survey_year")
     prepared["survey_year"] = survey_year
+    prepared.update(
+        source_storage_fields(
+            "fra",
+            year=survey_year,
+            accessed_at=str((prepared.get("metadata") or {}).get("date") or "")
+            if isinstance(prepared.get("metadata"), dict)
+            else "",
+        )
+    )
     prepared["_id"] = _resolve_object_id(prepared.pop("id", None))
     prepared.pop("external_code", None)
     prepared.pop("datasets", None)

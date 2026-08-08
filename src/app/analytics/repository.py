@@ -17,6 +17,7 @@ from pymongo.errors import AutoReconnect, ConfigurationError, NetworkTimeout
 from app.cache import cache
 from app.config import get_mongo_config, get_postgres_connect_timeout, get_postgres_dsn
 from app.errors import DatabaseUnavailableError
+from app.import_to_db.felgtbi.document_identity import clean_felgtbi_document_label
 from app.import_to_db.felgtbi.semantics import sanitize_report_document
 from app.import_to_db.fra.validation import (
     INVALID_FRA_CATEGORIES,
@@ -614,13 +615,41 @@ def get_spain_collection_options(language: str = "es") -> list[dict[str, str]]:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_felgtbi_documents(collection_name: str | None = None) -> list[FelgtbiDocument]:
+def get_felgtbi_years(collection_name: str | None = None) -> list[int]:
     resolved_collection = _resolve_spain_collection_name(collection_name)
     if not resolved_collection:
         return []
     try:
-        rows = _mongo_collection(resolved_collection).find(
+        values = _mongo_collection(resolved_collection).distinct(
+            "year",
             _spain_collection_query(resolved_collection),
+        )
+    except Exception:
+        logger.exception("felgtbi_years_read_failed", extra={"collection": resolved_collection})
+        return []
+    return sorted(
+        {year for value in values if (year := _int_or_none(value)) is not None},
+        reverse=True,
+    )
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_felgtbi_documents(
+    collection_name: str | None = None,
+    year: int | str | None = None,
+) -> list[FelgtbiDocument]:
+    resolved_collection = _resolve_spain_collection_name(collection_name)
+    if not resolved_collection:
+        return []
+    try:
+        query = _spain_collection_query(resolved_collection)
+        if year not in (None, ""):
+            clean_year = _int_or_none(year)
+            if clean_year is None:
+                return []
+            query["year"] = clean_year
+        rows = _mongo_collection(resolved_collection).find(
+            query,
             _spain_document_projection(),
             sort=[
                 ("year", -1),
@@ -643,10 +672,13 @@ def get_felgtbi_documents(collection_name: str | None = None) -> list[FelgtbiDoc
     return _deduplicate_spain_document_labels(documents)
 
 
-def get_felgtbi_document_options(collection_name: str | None = None) -> list[dict[str, str]]:
+def get_felgtbi_document_options(
+    collection_name: str | None = None,
+    year: int | str | None = None,
+) -> list[dict[str, str]]:
     return [
         {"label": document.label, "value": document.id, "title": document.label}
-        for document in get_felgtbi_documents(collection_name)
+        for document in get_felgtbi_documents(collection_name, year)
     ]
 
 
@@ -719,11 +751,6 @@ def get_felgtbi_indicators_by_document(
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-
 def get_felgtbi_indicator_answers(
     code: str,
     collection_name: str | None = None,
@@ -844,7 +871,6 @@ def get_felgtbi_indicator_answers(
         return None
 
 
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_ilga_years() -> list[int]:
     try:
         years = _mongo_collection("Indicator_ilga").distinct(
@@ -877,16 +903,19 @@ def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
     try:
         return _mongo_collection("Indicator_ilga").find_one(
             {"dataset": "ilga_rainbow_map", "year": clean_year},
-            {"_id": 0, "dataset": 1, "year": 1, "countries": 1},
+            {
+                "_id": 0,
+                "dataset": 1,
+                "year": 1,
+                "normalization": 1,
+                "countries": 1,
+            },
         )
     except Exception:
         logger.exception("ilga_year_read_failed", extra={"year": clean_year})
         return None
 
 
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_ilga_analysis_rows(
     category: str | None,
     criterion: str | None = None,
@@ -917,6 +946,7 @@ def get_ilga_analysis_rows(
             "$project": {
                 "_id": 1,
                 "year": 1,
+                "normalization": 1,
                 "countries": {
                     "$map": {
                         "input": {"$ifNull": ["$countries", []]},
@@ -943,6 +973,7 @@ def get_ilga_analysis_rows(
                 "_id": 0,
                 "document_id": {"$toString": "$_id"},
                 "year": 1,
+                "normalization": 1,
                 "country_index": 1,
                 "country_code": "$countries.country_code",
                 "country_name": "$countries.country_name",
@@ -982,7 +1013,13 @@ def get_latest_ilga_document() -> dict[str, Any] | None:
     try:
         return _mongo_collection("Indicator_ilga").find_one(
             {"dataset": "ilga_rainbow_map"},
-            {"_id": 0, "dataset": 1, "year": 1, "countries": 1},
+            {
+                "_id": 0,
+                "dataset": 1,
+                "year": 1,
+                "normalization": 1,
+                "countries": 1,
+            },
             sort=[("year", -1)],
         )
     except Exception:
@@ -1190,6 +1227,19 @@ def _resolve_felgtbi_document(
     clean_id = str(document_id or "").strip()
     if not clean_id:
         return None
+    if clean_id.startswith("document:"):
+        source_document_id = clean_id.removeprefix("document:").strip()
+        if source_document_id:
+            return FelgtbiDocument(
+                id=clean_id,
+                label="",
+                original_filename="",
+                year=None,
+                report_title="",
+                report_type="",
+                section_count=0,
+                filter_fields=(("source_document_id", source_document_id),),
+            )
     for document in get_felgtbi_documents(collection_name):
         if document.id == clean_id:
             return document
@@ -1339,15 +1389,15 @@ def _deduplicate_spain_document_labels(documents: list[FelgtbiDocument]) -> list
 
 
 def _spain_document_display_name(row: dict[str, Any]) -> str:
+    report_title = _clean_text(row.get("report_title"))
     filename = _spain_source_filename(row)
-    if filename:
-        return _display_name_from_pdf_filename(filename)
+    if report_title or filename:
+        return clean_felgtbi_document_label(filename, report_title)
     for field in (
         "metadata.display_name",
         "metadata.title",
         "file_metadata.display_name",
         "file_metadata.title",
-        "report_title",
     ):
         candidate = _clean_text(_nested_value(row, field))
         if candidate:

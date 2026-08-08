@@ -31,6 +31,13 @@ def test_panel_replaces_permissions_with_prefilled_contact_form(monkeypatch) -> 
 
     assert "Permisos" not in _text(layout)
     assert "Permissions" not in _text(layout)
+    account_detail_labels = [
+        component.to_plotly_json()["props"]
+        for component in _walk(layout)
+        if getattr(component, "className", "") == "profile-detail-label"
+    ]
+    assert all(props.get("data-i18n-es") != "Perfil" for props in account_detail_labels)
+    assert all(props.get("data-i18n-en") != "Profile" for props in account_detail_labels)
     assert _by_id(layout, "user-contact-name").value == "Alex"
     assert _by_id(layout, "user-contact-email").value == "alex@example.test"
     assert _by_id(layout, "user-contact-name").readOnly is True
@@ -39,19 +46,15 @@ def test_panel_replaces_permissions_with_prefilled_contact_form(monkeypatch) -> 
     assert _by_id(layout, "user-contact-files").multiple is True
 
 
-def test_quick_report_link_is_profile_specific_and_admin_keeps_every_tool(monkeypatch) -> None:
-    common_links = _hrefs(_layout(monkeypatch, UserType.COMUN))
-    advanced_links = [
-        _hrefs(_layout(monkeypatch, profile))
-        for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG)
-    ]
-    docente_links = _hrefs(_layout(monkeypatch, UserType.DOCENTE))
-    admin_links = _hrefs(_layout(monkeypatch, UserType.COMUN, UserRole.ADMIN))
+def test_personal_panel_does_not_render_quick_actions(monkeypatch) -> None:
+    layout = _layout(monkeypatch, UserType.COMUN, UserRole.ADMIN)
 
-    assert "/informes" not in common_links
-    assert all("/informes" in links for links in advanced_links)
-    assert "/didactica/docentes" in docente_links
-    assert {"/informes", "/didactica/docentes", "/upload", "/admin"}.issubset(admin_links)
+    assert "Accesos rápidos" not in _text(layout)
+    assert "Quick actions" not in _text(layout)
+    assert all(
+        getattr(component, "className", "") != "user-action-tile"
+        for component in _walk(layout)
+    )
 
 
 def test_contact_callback_clears_form_only_after_success_and_returns_safe_errors(monkeypatch) -> None:
@@ -112,10 +115,6 @@ def _walk(component: Any):
 
 def _by_id(component: Any, identifier: str):
     return next(item for item in _walk(component) if getattr(item, "id", None) == identifier)
-
-
-def _hrefs(component: Any) -> set[str]:
-    return {str(item.href) for item in _walk(component) if getattr(item, "href", None)}
 
 
 def _text(component: Any) -> str:

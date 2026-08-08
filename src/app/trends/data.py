@@ -98,6 +98,12 @@ def load_historical_points(indicator: TrendIndicator) -> list[HistoricalPoint]:
                 scale_min=0.0,
                 scale_max=100.0,
                 methodology="ilga_rainbow_map",
+                normalization_applied=bool(row.get("normalization_applied")),
+                normalization_method=str(row.get("normalization_method") or ""),
+                original_scale_min=_safe_float(row.get("original_scale_min")),
+                original_scale_max=_safe_float(row.get("original_scale_max")),
+                target_scale_min=_safe_float(row.get("target_scale_min")),
+                target_scale_max=_safe_float(row.get("target_scale_max")),
             )
             for row in get_ilga_history_rows(indicator.category, criterion)
         ]

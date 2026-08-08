@@ -137,7 +137,21 @@ def _account_link() -> Component:
             current_user, "email", None
         )
         return dcc.Link(
-            text(display_name or "Cuenta", display_name or "Account"),
+            html.Span(
+                [
+                    text(
+                        display_name or "Cuenta",
+                        display_name or "Account",
+                        class_name="nav-account-name",
+                    ),
+                    text(
+                        "Panel personal",
+                        "Personal dashboard",
+                        class_name="nav-account-caption",
+                    ),
+                ],
+                className="nav-account-copy",
+            ),
             href="/user",
             className="nav-link nav-account",
         )

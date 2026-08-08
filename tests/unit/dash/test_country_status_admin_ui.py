@@ -108,6 +108,7 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
 
     helper = _find_component_by_id(app.layout, "home-map-helper-text")
     footer_meta = _find_component_by_class(app.layout, "home-map-footer-meta")
+    summary = _find_component_by_class(app.layout, "home-map-summary")
     helper_props = helper.to_plotly_json()["props"]
     callback_outputs = {
         output.component_id
@@ -124,7 +125,17 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
     assert helper_props["className"] == "home-map-helper-text"
     assert type(helper).__name__ == "H2"
     footer_children = footer_meta.to_plotly_json()["props"]["children"]
-    assert [child.id for child in footer_children] == ["home-map-source", "home-map-copy"]
+    assert [child.id for child in footer_children] == ["home-map-source"]
+    summary_children = summary.to_plotly_json()["props"]["children"]
+    summary_header = summary_children[0]
+    summary_metrics = summary_children[1]
+    assert summary_header.className == "home-map-summary-header"
+    assert [getattr(child, "id", None) for child in summary_header.children] == [
+        "home-map-copy",
+        None,
+    ]
+    assert summary_header.children[1].href == "/statistics"
+    assert summary_metrics.id == "home-map-metrics"
     assert "home-map-helper-text" in callback_outputs
 
 

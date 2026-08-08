@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import unicodedata
@@ -160,7 +161,21 @@ def figure_storage_path(document: dict[str, Any], file_name: str) -> str:
     figure_number = str(
         document.get("figure_number") or (document.get("figure") or {}).get("number") or ""
     )
-    return f"{year}/{report_slug}/{section_slug}/{figure_file_stem(figure_number)}.{FIGURE_IMAGE_EXTENSION}"
+    identity = "|".join(
+        str(value or "")
+        for value in (
+            document.get("code"),
+            document.get("page"),
+            (document.get("figure") or {}).get("caption"),
+            (document.get("visual_context") or {}).get("bbox"),
+        )
+    )
+    identity_digest = hashlib.sha1(
+        identity.encode("utf-8", errors="ignore"),
+        usedforsecurity=False,
+    ).hexdigest()[:10]
+    stem = f"{figure_file_stem(figure_number)}-{identity_digest}"
+    return f"{year}/{report_slug}/{section_slug}/{stem}.{FIGURE_IMAGE_EXTENSION}"
 
 
 def figure_file_stem(figure_number: str) -> str:

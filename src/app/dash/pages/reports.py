@@ -102,7 +102,10 @@ SECTION_LABELS = {
     "risks": ("Áreas de riesgo", "Risk areas"),
     "recommendations": ("Recomendaciones", "Recommendations"),
     "limitations": ("Limitaciones", "Limitations"),
-    "sources": ("Fuentes", "Sources"),
+    "sources": (
+        "Fuentes, metodología y atribuciones",
+        "Sources, methodology and attributions",
+    ),
 }
 
 CHART_LABELS = {
@@ -1016,10 +1019,16 @@ def _preview_content(content) -> list[Component]:
                 content.limitations,
             )
         )
-    if "sources" in enabled and content.sources:
+    # Source attribution is not an optional report section: every generated
+    # preview must identify the external dataset it actually contains.
+    if content.sources:
         components.append(
             _preview_section(
-                "Fuentes" if language == "es" else "Sources",
+                (
+                    "Fuentes, metodología y atribuciones"
+                    if language == "es"
+                    else "Sources, methodology and attributions"
+                ),
                 content.sources,
             )
         )

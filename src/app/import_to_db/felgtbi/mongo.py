@@ -1,16 +1,27 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import time
 from copy import deepcopy
 from typing import Any
+from uuid import uuid4
 
 from bson import ObjectId
+from pymongo.errors import (
+    AutoReconnect,
+    ConfigurationError,
+    NetworkTimeout,
+    ServerSelectionTimeoutError,
+)
 
 from app.import_to_db.felgtbi.importer import FELGTBI_SOURCE_CODE
 from app.import_to_db.felgtbi.semantics import sanitize_report_document
-from app.mongo import get_mongo_collection
+from app.mongo import get_mongo_collection, get_mongo_database
+from app.source_attribution import source_storage_fields
 
 INDICATOR_FELGTBI_COLLECTION = "Indicator_felgtbi"
+logger = logging.getLogger(__name__)
 
 
 def insert_indicator_felgtbi_json(
@@ -39,7 +50,87 @@ def insert_indicator_felgtbi_json(
             update["$unset"] = {"answers": ""}
         collection.update_one(_indicator_filter(prepared), update, upsert=True)
 
+    _invalidate_catalog_cache()
     return len(documents)
+
+
+def replace_indicator_felgtbi_documents(
+    file_json: list[dict[str, Any]],
+    *,
+    batch_size: int = 200,
+) -> int:
+    """Atomically replace the FELGTBI+ collection through a fully built staging collection."""
+    documents = _normalize_documents(file_json)
+    prepared = [_prepare_indicator_document(document) for document in documents]
+    identities: set[tuple[str, str, str]] = set()
+    for document in prepared:
+        identity = (
+            str(document.get("source") or ""),
+            str(document.get("source_document_id") or ""),
+            str(document.get("code") or ""),
+        )
+        if identity in identities:
+            raise ValueError(f"duplicate_felgtbi_indicator:{identity[1]}:{identity[2]}")
+        identities.add(identity)
+
+    database = _mongo_database_with_retries()
+    staging_name = f"{INDICATOR_FELGTBI_COLLECTION}__staging_{uuid4().hex[:12]}"
+    staging = database[staging_name]
+    try:
+        size = max(1, int(batch_size))
+        for start in range(0, len(prepared), size):
+            batch = prepared[start : start + size]
+            result = staging.insert_many(batch, ordered=True)
+            if len(result.inserted_ids) != len(batch):
+                raise RuntimeError("incomplete_felgtbi_batch_write")
+
+        from app.mongo_indexes import felgtbi_index_models
+
+        staging.create_indexes(felgtbi_index_models())
+        staging.rename(INDICATOR_FELGTBI_COLLECTION, dropTarget=True)
+    except Exception:
+        try:
+            database.drop_collection(staging_name)
+        except Exception:
+            logger.warning("felgtbi_staging_cleanup_failed", exc_info=True)
+        raise
+
+    _invalidate_catalog_cache()
+    logger.info(
+        "felgtbi_collection_replaced documents=%d batches=%d",
+        len(prepared),
+        (len(prepared) + max(1, int(batch_size)) - 1) // max(1, int(batch_size)),
+    )
+    return len(prepared)
+
+
+def _invalidate_catalog_cache() -> None:
+    from app.analytics.repository import invalidate_analytics_cache
+
+    try:
+        invalidate_analytics_cache()
+    except (AttributeError, RuntimeError):
+        logger.info("felgtbi_cache_invalidation_deferred no_flask_context=true")
+
+
+def _mongo_database_with_retries() -> Any:
+    transient_errors = (
+        AutoReconnect,
+        ConfigurationError,
+        NetworkTimeout,
+        ServerSelectionTimeoutError,
+    )
+    for attempt in range(1, 5):
+        try:
+            database = get_mongo_database()
+            database.client.admin.command("ping")
+            return database
+        except transient_errors:
+            if attempt >= 4:
+                raise
+            logger.warning("felgtbi_mongo_connection_retry attempt=%d max_attempts=4", attempt)
+            time.sleep(min(2.0, 0.4 * (2 ** (attempt - 1))))
+    raise RuntimeError("felgtbi_mongo_connection_unavailable")
 
 
 def _report_replacement_scopes(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -86,7 +177,7 @@ def _prepare_indicator_document(
     _remove_derived_image_fields(prepared)
     figure = prepared.get("figure")
     if isinstance(figure, dict):
-        for key in ("bucket", "mime_type", "size", "checksum", "upload"):
+        for key in ("bucket", "upload"):
             figure.pop(key, None)
     if prepared.get("source") != FELGTBI_SOURCE_CODE:
         raise ValueError("invalid_felgtbi_payload")
@@ -117,6 +208,21 @@ def _prepare_indicator_document(
     prepared["year"] = _int_or_none(prepared.get("year"))
     if prepared["year"] is None:
         raise ValueError("invalid_felgtbi_payload")
+    figure_value = prepared.get("figure")
+    figure_metadata: dict[str, Any] = figure_value if isinstance(figure_value, dict) else {}
+    prepared.update(
+        source_storage_fields(
+            "felgtbi",
+            year=prepared["year"],
+            source_name=str(prepared.get("report_title") or "") or None,
+            source_document=str(
+                prepared.get("report_title") or prepared.get("original_filename") or ""
+            )
+            or None,
+            source_figure=str(figure_metadata.get("caption") or figure_metadata.get("title") or "")
+            or None,
+        )
+    )
     prepared["_id"] = _resolve_object_id(prepared.pop("id", None))
     answers = []
     for answer in prepared.get("answers", []):

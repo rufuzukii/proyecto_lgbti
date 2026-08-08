@@ -33,7 +33,9 @@ from app.import_to_db.felgtbi.semantics import (
     ExtractionContext,
     analyze_chart_residual_text,
     clean_figure_paragraphs,
-    is_chart_residual_text,
+    clean_semantic_text,
+    is_semantically_useful_text,
+    semantic_noise_reason,
 )
 from app.import_to_db.felgtbi.storage import (
     figure_storage_path as _figure_storage_path,
@@ -111,6 +113,7 @@ CHART_NUMBER_PATTERN = re.compile(
 )
 TOC_ENTRY_PATTERN = re.compile(r"^(?P<title>.+?)\s+\.{3,}\s*(?P<page>\d{1,3})$")
 TOC_DOTS_PAGE_PATTERN = re.compile(r"^\.{3,}\s*(?P<page>\d{1,3})$")
+SIMPLE_TOC_ENTRY_PATTERN = re.compile(r"^(?P<title>.+?\D)\s+(?P<page>\d{1,3})$")
 FIGURE_CAPTION_PATTERN = re.compile(
     r"^\s*(?P<label>Figura|Gr[aá]fico|Tabla|Ilustraci[oó]n)\s+"
     r"(?P<number>\d+(?:\.\d+)?)[.:]?\s*(?P<title>.+)?$",
@@ -161,6 +164,10 @@ EXCLUDED_SECTION_KEYWORDS = {
     "trabajo de campo",
     "datos tecnicos",
     "datos t\u00e9cnicos",
+    "bibliografia",
+    "bibliograf\u00eda",
+    "referencias",
+    "anexos",
 }
 SHORT_TOC_TITLES = {
     "resumen ejecutivo",
@@ -406,7 +413,7 @@ def _run_felgtbi_pdf_pipeline(
     phase = "pdf_open_and_extract"
     _pdf_import_log(
         logging.INFO,
-        "started",
+        "felgtbi_pdf_started",
         upload_id=upload_id,
         file_name=file_name,
         phase=phase,
@@ -439,6 +446,37 @@ def _run_felgtbi_pdf_pipeline(
             started_at=started_at,
         )
         documents = parse_felgtbi_text_pages(pages, file_name=file_name, year=year)
+        detected_sections = len(
+            {
+                str(document.get("section_title") or "").strip()
+                for document in documents
+                if str(document.get("section_title") or "").strip()
+            }
+        )
+        detected_figures = sum(
+            isinstance(document.get("figure"), dict) for document in documents
+        )
+        discarded = _discarded_block_summary(documents)
+        _pdf_import_log(
+            logging.INFO,
+            "felgtbi_pdf_structure_detected",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            year=year or _extract_year(file_name),
+            sections=detected_sections,
+            figures=detected_figures,
+        )
+        _pdf_import_log(
+            logging.INFO,
+            "felgtbi_text_blocks_discarded",
+            upload_id=upload_id,
+            file_name=file_name,
+            phase=phase,
+            started_at=started_at,
+            **discarded,
+        )
         del pages
         _attach_source_document_metadata(
             documents,
@@ -508,13 +546,14 @@ def _run_felgtbi_pdf_pipeline(
         )
         _pdf_import_log(
             logging.INFO,
-            "completed",
+            "felgtbi_pdf_completed",
             upload_id=upload_id,
             file_name=file_name,
             phase=phase,
             started_at=started_at,
             page_count=page_count,
-            document_count=len(documents),
+            indicators=len(documents),
+            figures_uploaded=asset_summary["uploaded"] + asset_summary["reused"],
         )
         return documents
     except Exception as exc:
@@ -530,6 +569,23 @@ def _run_felgtbi_pdf_pipeline(
             exception_message=str(exc)[:500],
         )
         raise
+
+
+def _discarded_block_summary(documents: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {"numeric_noise": 0, "footer": 0, "duplicate": 0, "chart_noise": 0, "short": 0}
+    for document in documents:
+        extraction = document.get("extraction")
+        if not isinstance(extraction, dict):
+            continue
+        reasons = extraction.get("semantic_cleanup_reasons")
+        if not isinstance(reasons, dict):
+            continue
+        for reason, count in reasons.items():
+            clean_reason = str(reason or "")
+            if clean_reason not in summary:
+                clean_reason = "chart_noise"
+            summary[clean_reason] += int(count or 0)
+    return summary
 
 
 def _attach_page_assets(
@@ -587,7 +643,7 @@ def _attach_page_assets(
             image_bytes, width, height, mime_type = _pixmap_image_bytes(pixmap)
             checksum = hashlib.sha256(image_bytes).hexdigest()
             upload_started = time.perf_counter()
-            upload = _upload_figure_to_supabase(
+            upload = _upload_figure_with_retries(
                 image_bytes=image_bytes,
                 storage_path=storage_path,
                 mime_type=mime_type,
@@ -658,7 +714,47 @@ def _attach_page_assets(
             figure["storage_path"] = str(asset.get("storage_path") or storage_path)
             figure["width"] = int(asset.get("width") or 0)
             figure["height"] = int(asset.get("height") or 0)
+            figure["mime_type"] = str(asset.get("mime_type") or FIGURE_IMAGE_MIME_TYPE)
+            figure["size"] = int(asset.get("size") or 0)
+            figure["checksum"] = str(asset.get("checksum") or "")
     return counters
+
+
+def _upload_figure_with_retries(**kwargs: Any) -> dict[str, Any]:
+    try:
+        attempts = max(1, min(5, int(os.getenv("FELGTBI_STORAGE_ATTEMPTS", "4"))))
+    except ValueError:
+        attempts = 4
+    result: dict[str, Any] = {}
+    for attempt in range(1, attempts + 1):
+        result = _upload_figure_to_supabase(**kwargs)
+        if result.get("status") in {"uploaded", "reused"}:
+            return result
+        error = str(result.get("error") or "")
+        if not _is_transient_storage_error(error) or attempt >= attempts:
+            return result
+        logger.warning(
+            "felgtbi_figure_upload_retry attempt=%d max_attempts=%d error=%s",
+            attempt,
+            attempts,
+            error[:160],
+        )
+        time.sleep(min(2.0, 0.35 * (2 ** (attempt - 1))))
+    return result
+
+
+def _is_transient_storage_error(error: str) -> bool:
+    normalized = str(error or "").casefold()
+    return any(
+        marker in normalized
+        for marker in (
+            "timeout",
+            "endpointconnectionerror",
+            "connectionclosederror",
+            "connectionerror",
+            "temporarilyunavailable",
+        )
+    )
 
 
 def _figure_render_scale(width: float, height: float) -> float:
@@ -714,6 +810,7 @@ def parse_felgtbi_text_pages(
     toc_sections = _extract_toc_sections(pages)
     figure_segments = _extract_figure_segments(pages, toc_sections=toc_sections)
     if figure_segments:
+        occupied_pages = {int(segment.get("page") or 0) for segment in figure_segments}
         documents = _build_figure_segment_documents(
             pages=pages,
             figure_segments=figure_segments,
@@ -726,6 +823,36 @@ def parse_felgtbi_text_pages(
             fieldwork=fieldwork,
         )
         if documents:
+            supplemental_layout = _build_layout_page_documents(
+                pages=pages,
+                toc_sections=toc_sections,
+                year=resolved_year,
+                report_title=report_title,
+                report_type=report_type,
+                report_category=report_category,
+                sample_size=sample_size,
+                fieldwork=fieldwork,
+            )
+            documents.extend(
+                document
+                for document in supplemental_layout
+                if int(document.get("page") or 0) not in occupied_pages
+            )
+            occupied_pages.update(int(document.get("page") or 0) for document in documents)
+            documents.extend(
+                _build_narrative_section_documents(
+                    pages=pages,
+                    toc_sections=toc_sections,
+                    occupied_pages=occupied_pages,
+                    year=resolved_year,
+                    report_title=report_title,
+                    report_type=report_type,
+                    report_category=report_category,
+                    sample_size=sample_size,
+                    fieldwork=fieldwork,
+                )
+            )
+            documents.sort(key=lambda item: (int(item.get("page") or 0), str(item.get("code"))))
             _attach_source_document_metadata(
                 documents,
                 file_name=file_name,
@@ -747,6 +874,22 @@ def parse_felgtbi_text_pages(
         fieldwork=fieldwork,
     )
     if layout_documents:
+        layout_documents.extend(
+            _build_narrative_section_documents(
+                pages=pages,
+                toc_sections=toc_sections,
+                occupied_pages={int(document.get("page") or 0) for document in layout_documents},
+                year=resolved_year,
+                report_title=report_title,
+                report_type=report_type,
+                report_category=report_category,
+                sample_size=sample_size,
+                fieldwork=fieldwork,
+            )
+        )
+        layout_documents.sort(
+            key=lambda item: (int(item.get("page") or 0), str(item.get("code")))
+        )
         _attach_source_document_metadata(
             layout_documents,
             file_name=file_name,
@@ -838,6 +981,152 @@ def parse_felgtbi_text_pages(
         ),
     )
     return documents
+
+
+def _build_narrative_section_documents(
+    *,
+    pages: list[dict[str, Any]],
+    toc_sections: list[dict[str, Any]],
+    occupied_pages: set[int],
+    year: int,
+    report_title: str,
+    report_type: str,
+    report_category: str,
+    sample_size: int | None,
+    fieldwork: str,
+) -> list[dict[str, Any]]:
+    """Keep high-value prose sections that contain no chart or extracted figure."""
+    documents: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for section in toc_sections:
+        title = _clean_section_title(str(section.get("title") or ""))
+        normalized = normalize_header(title)
+        if not any(marker in normalized for marker in ("resumen_ejecutivo", "conclusiones")):
+            continue
+        if normalized in seen_titles or _is_excluded_section(title):
+            continue
+        start_page = _find_body_heading_page(
+            pages,
+            title,
+            approximate_page=int(section.get("start_page") or 0),
+        )
+        if start_page is None:
+            continue
+        paragraphs: list[str] = []
+        seen_paragraphs: list[str] = []
+        used_pages: list[int] = []
+        for page_number in range(start_page, min(len(pages), start_page + 4) + 1):
+            if page_number in occupied_pages:
+                continue
+            page = _page_by_number(pages, page_number)
+            if page is None:
+                continue
+            for block in _raw_text_block_entries(page):
+                block_text = str(block.get("text") or "").strip()
+                if normalize_header(block_text) == normalized:
+                    continue
+                if _looks_like_heading(block_text) or _looks_like_side_heading_block(block):
+                    continue
+                paragraph = _clean_block_paragraph(block_text)
+                if not paragraph or len(paragraph) < 55:
+                    continue
+                if not is_semantically_useful_text(paragraph, seen_texts=seen_paragraphs):
+                    continue
+                paragraphs.append(paragraph)
+                seen_paragraphs.append(paragraph)
+                used_pages.append(page_number)
+                if len(paragraphs) >= 8:
+                    break
+            if len(paragraphs) >= 8:
+                break
+        if not paragraphs:
+            continue
+        seen_titles.add(normalized)
+        page_number = min(used_pages) if used_pages else start_page
+        parent_section = _narrative_parent_section(toc_sections, title, page_number)
+        topic = _infer_topic(title, " ".join(paragraphs[:2]), "", parent_section, report_category)
+        code = _build_subsection_code(year, report_title, title, "narrative", page_number)
+        document: dict[str, Any] = {
+            "id": str(ObjectId()),
+            "schema_version": 2,
+            "source": FELGTBI_SOURCE_CODE,
+            "year": year,
+            "page": page_number,
+            "report_title": report_title,
+            "report_type": report_type,
+            "category": report_category,
+            "specific_category": parent_section,
+            "section_title": parent_section,
+            "section_number": _section_number(parent_section),
+            "subsection_title": title,
+            "topic": topic,
+            "topics": _infer_controlled_topics(
+                section=parent_section,
+                subsection=title,
+                caption="",
+                paragraphs=paragraphs,
+            ),
+            "question": title,
+            "description": _paragraphs_plain_summary(paragraphs),
+            "paragraphs": paragraphs,
+            "paragraphs_before_figure": paragraphs,
+            "paragraphs_after_figure": [],
+            "data_points": [],
+            "content_html": "",
+            "content_order": ["paragraphs_before_figure"],
+            "visual_context": {"page": page_number},
+            "code": code,
+            "extraction": {"method": "narrative_section", "semantic_cleanup_removed": 0},
+        }
+        if sample_size is not None:
+            document["sample_size"] = sample_size
+        if fieldwork:
+            document["fieldwork"] = fieldwork
+        documents.append(document)
+    return documents
+
+
+def _find_body_heading_page(
+    pages: list[dict[str, Any]],
+    title: str,
+    *,
+    approximate_page: int,
+) -> int | None:
+    normalized_title = normalize_header(title)
+    preferred = [
+        page
+        for page in pages
+        if abs(int(page.get("page") or 0) - max(1, approximate_page - 1)) <= 4
+    ]
+    for page in [*preferred, *pages]:
+        page_number = int(page.get("page") or 0)
+        if page_number <= 3:
+            continue
+        for block in _raw_text_block_entries(page):
+            block_title = normalize_header(str(block.get("text") or ""))
+            if block_title != normalized_title:
+                continue
+            if float(block.get("font_size") or 0) >= 14 or bool(block.get("is_bold")):
+                return page_number
+    return None
+
+
+def _narrative_parent_section(
+    toc_sections: list[dict[str, Any]],
+    title: str,
+    page_number: int,
+) -> str:
+    normalized_title = normalize_header(title)
+    parent = ""
+    for section in toc_sections:
+        candidate = _clean_section_title(str(section.get("title") or ""))
+        if normalize_header(candidate) == normalized_title:
+            continue
+        if int(section.get("start_page") or 0) > page_number + 1:
+            break
+        if SECTION_NUMBER_PATTERN.match(candidate) and not _is_excluded_section(candidate):
+            parent = candidate
+    return parent or "Contenido del informe"
 
 
 def _build_layout_page_documents(
@@ -951,6 +1240,9 @@ def _build_layout_page_documents(
                     "block_count": len(blocks),
                     "data_point_count": len(data_points),
                     "semantic_cleanup_removed": len(semantic_cleanup.removed),
+                    "semantic_cleanup_reasons": _semantic_cleanup_reasons(
+                        semantic_cleanup.removed
+                    ),
                 },
             }
         )
@@ -1027,11 +1319,17 @@ def _is_layout_content_page(
         return False
     normalized_text = normalize_header(str(page.get("text") or ""))
     heading_text = normalize_header(str(heading.get("text") or ""))
-    if heading_text in {"indice", "contenido", "pagina"}:
+    if heading_text in {"indice", "contenido", "pagina", "40db", "felgtbi"}:
         return False
     if "indice" in normalized_text[:120] or "tabla_de_contenidos" in normalized_text[:160]:
         return False
     if _is_excluded_section(heading_text):
+        return False
+    contact_signals = sum(
+        marker in normalized_text
+        for marker in ("info_40db", "contacto", "calle_", "telefono", "www_40db", "data_insights")
+    )
+    if contact_signals >= 2:
         return False
     if visual_regions:
         return True
@@ -1042,7 +1340,7 @@ def _is_layout_content_page(
         if len(str(block.get("text") or "").strip()) >= 40
         and _block_has_letters(str(block.get("text") or ""))
     ]
-    return len(values) >= 2 or (bool(values) and len(narrative_blocks) >= 2)
+    return len(values) >= 2 or (bool(values) and (bool(visual_regions) or len(narrative_blocks) >= 2))
 
 
 def _extract_layout_data_points(
@@ -1057,6 +1355,13 @@ def _extract_layout_data_points(
         value = float(item["value"])
         unit = str(item["unit"])
         label = _nearest_layout_label(blocks, item, heading)
+        normalized_label = normalize_header(label)
+        if (
+            not bool(item.get("explicit_percent"))
+            and value <= 10
+            and any(token in normalized_label for token in ("media", "promedio", "escala"))
+        ):
+            unit = "number"
         text = (
             f"{label}: {_format_layout_value(value, unit)}"
             if label
@@ -1114,11 +1419,15 @@ def _layout_numeric_matches(
         if text.startswith("*") or _is_figure_note_text(text):
             continue
         block_has_percentages = bool(PERCENT_PATTERN.search(text))
-        block_is_narrative = len(text) > 80 and _block_has_letters(text)
+        block_is_narrative = (
+            len(text) > 80
+            and _block_has_letters(text)
+            and is_semantically_useful_text(text)
+        )
+        if block_is_narrative:
+            continue
         for match in CHART_NUMBER_PATTERN.finditer(text):
             if block_has_percentages and not match.group("percent"):
-                continue
-            if block_is_narrative and not match.group("percent"):
                 continue
             value = parse_float(match.group("value"))
             if value is None:
@@ -1140,6 +1449,7 @@ def _layout_numeric_matches(
                     "value": float(value),
                     "unit": unit,
                     "block": block,
+                    "explicit_percent": bool(match.group("percent")),
                     "match_start": match.start(),
                     "match_end": match.end(),
                 }
@@ -1404,12 +1714,27 @@ def _build_figure_segment_documents(
         document["extraction"] = {
             "method": "figure_caption",
             "semantic_cleanup_removed": len(semantic_cleanup.removed),
+            "semantic_cleanup_reasons": _semantic_cleanup_reasons(semantic_cleanup.removed),
         }
         if document["code"] in seen_codes:
             continue
         seen_codes.add(document["code"])
         documents.append(document)
     return documents
+
+
+def _semantic_cleanup_reasons(removed: list[tuple[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for text_value, analysis in removed:
+        reason = semantic_noise_reason(
+            text_value,
+            ExtractionContext(near_figure=True),
+        )
+        if reason == "useful":
+            reasons = getattr(analysis, "reasons", ())
+            reason = str(reasons[0]) if reasons else "chart_noise"
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
 
 
 def _build_figure_document(
@@ -1456,6 +1781,7 @@ def _build_figure_document(
         "category": category,
         "specific_category": section or category,
         "section_title": section or category,
+        "section_number": _section_number(section),
         "subsection_title": subsection,
         "topic": topic,
         "topics": topics or [topic],
@@ -1629,7 +1955,7 @@ def _extract_block_paragraphs(text: str) -> list[str]:
 
 
 def _clean_block_paragraph(text: str) -> str:
-    paragraph = " ".join(str(text or "").split()).strip(" .:-")
+    paragraph = clean_semantic_text(text)
     if not paragraph:
         return ""
     paragraph = re.sub(
@@ -1647,6 +1973,11 @@ def _clean_block_paragraph(text: str) -> str:
     if "sin_resultados_relevantes" in normalized or normalized.startswith("texto_introductorio"):
         return ""
     if normalized in {"caso", "total"}:
+        return ""
+    if not is_semantically_useful_text(
+        paragraph,
+        ExtractionContext(near_figure=True),
+    ):
         return ""
     return _truncate_at_word_boundary(paragraph, 900)
 
@@ -1870,6 +2201,8 @@ def _build_document(
         "report_type": report_type,
         "category": category,
         "specific_category": section or category,
+        "section_title": section or category,
+        "section_number": _section_number(section),
         "topic": topic,
         "question": question,
         "description": description or question,
@@ -1884,6 +2217,11 @@ def _build_document(
     return document
 
 
+def _section_number(section: str) -> str:
+    match = re.match(r"^\s*(\d{1,2}(?:\.\d+)*)\.?\s+", str(section or ""))
+    return match.group(1) if match else ""
+
+
 def _extract_year(text: str) -> int | None:
     match = YEAR_PATTERN.search(text or "")
     return int(match.group(1)) if match else None
@@ -1891,6 +2229,23 @@ def _extract_year(text: str) -> int | None:
 
 def _resolve_report_title(full_text: str, file_name: str) -> str:
     lines = _clean_lines(full_text)
+    filename_title = _report_title_from_filename(file_name)
+    cover_title = _cover_report_title(lines)
+    if cover_title:
+        return cover_title
+
+    metadata_match = re.search(
+        r"\bT[ií]tulo\s*:\s*(?P<title>.+?)\s+(?=Editado\s+por\s*:|Colecci[oó]n\s*:|Madrid\s*,|ISBN\s*:)",
+        full_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if metadata_match:
+        metadata_title = _clean_report_title(metadata_match.group("title"))
+        if _filename_title_conflicts(filename_title, metadata_title):
+            return filename_title
+        if metadata_title:
+            return metadata_title
+
     for index, line in enumerate(lines[:80]):
         if normalize_header(line).startswith("titulo_"):
             title_line = line
@@ -1913,8 +2268,7 @@ def _resolve_report_title(full_text: str, file_name: str) -> str:
             candidate = _clean_report_title(lines[candidate_index])
             if _is_report_title_candidate(candidate):
                 return candidate
-    stem = Path(file_name).stem.replace("-", " ").replace("_", " ").strip()
-    stem_title = _clean_report_title(stem)[:160]
+    stem_title = filename_title
     if normalize_header(stem_title) in {"informe", "informe_estado"}:
         for line in lines[:120]:
             if not SECTION_NUMBER_PATTERN.match(line):
@@ -1922,7 +2276,74 @@ def _resolve_report_title(full_text: str, file_name: str) -> str:
             content_title = re.sub(r"^\d{1,2}(?:\.\d+)*\.?\s+", "", line).strip()
             if 4 <= len(content_title.split()) <= 16:
                 return _clean_report_title(content_title)
+    normalized_full_text = normalize_header(full_text)
+    if _is_generic_report_title(stem_title) and sum(
+        token in normalized_full_text
+        for token in ("estimacion_de_voto", "transferencias_de_voto", "movilizacion", "ideologia")
+    ) >= 2:
+        return "El voto en la comunidad LGTBI+"
     return stem_title or FELGTBI_SOURCE_NAME
+
+
+def _cover_report_title(lines: list[str]) -> str:
+    for index, line in enumerate(lines[:12]):
+        candidate = _clean_report_title(line)
+        normalized = normalize_header(candidate)
+        if not _is_report_title_candidate(candidate) or _is_collection_reference(normalized):
+            continue
+        if normalized.startswith(("han_participado", "analisis_sobre", "indice")):
+            continue
+        if 2 <= len(candidate.split()) <= 16 and any(
+            token in normalized
+            for token in (
+                "estado_",
+                "diversidad_",
+                "matrimonio_",
+                "sexilio",
+                "derechos_",
+                "voto_",
+            )
+        ):
+            if index + 1 < len(lines) and _is_collection_reference(
+                normalize_header(lines[index + 1])
+            ):
+                return candidate
+            if index == 0:
+                return candidate
+    return ""
+
+
+def _report_title_from_filename(file_name: str) -> str:
+    stem = Path(file_name).stem.replace("-", " ").replace("_", " ")
+    stem = re.sub(r"\b(?:final|revisado|v\d+)\b", " ", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"^\s*(?:i\s+)?informe\s+", "", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\s+(?:felgtbi?)\s*$", "", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\s+(?:20)?\d{2}\s*$", "", stem)
+    stem = re.sub(r"\bLGTBIQ?\+?", "LGTBI+", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\beducacion\b", "educación", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\bpolitico\b", "político", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\bsocioeconomico\b", "socioeconómico", stem, flags=re.IGNORECASE)
+    return _clean_report_title(" ".join(stem.split()))[:160]
+
+
+def _is_generic_report_title(value: str) -> bool:
+    normalized = normalize_header(value)
+    return normalized in {
+        "",
+        "informe",
+        "informe_felgtbi",
+        "estado_lgtbi",
+        "felgtbi",
+    }
+
+
+def _filename_title_conflicts(filename_title: str, metadata_title: str) -> bool:
+    filename_normalized = normalize_header(filename_title)
+    metadata_normalized = normalize_header(metadata_title)
+    topic_tokens = ("educacion", "politico", "socioeconomico", "matrimonio", "sexilio", "odio")
+    return any(
+        token in filename_normalized and token not in metadata_normalized for token in topic_tokens
+    )
 
 
 def _clean_report_title(value: str) -> str:
@@ -2249,12 +2670,40 @@ def _figure_bbox_for_caption(
         if content_bottom is not None:
             bottom = min(bottom, content_bottom + 18)
     if bottom - top < 80:
-        return None
+        return _text_chart_bbox(page, top, hard_bottom)
     return _clamp_bbox(
         [24.0, round(top, 2), page_width - 24.0, round(bottom, 2)],
         page_width,
         page_height,
     )
+
+
+def _text_chart_bbox(
+    page: dict[str, Any],
+    top: float,
+    bottom: float,
+) -> list[float] | None:
+    blocks = [
+        block
+        for block in _raw_text_block_entries(page)
+        if float(block.get("y0") or 0) >= top
+        and float(block.get("y1") or 0) <= bottom
+        and str(block.get("text") or "").strip()
+    ]
+    numeric_count = sum(
+        len(CHART_NUMBER_PATTERN.findall(str(block.get("text") or ""))) for block in blocks
+    )
+    if numeric_count < 2 or not blocks:
+        return None
+    page_width = float(page.get("width") or 595)
+    page_height = float(page.get("height") or 842)
+    x0 = max(24.0, min(float(block.get("x0") or 0) for block in blocks) - 12)
+    y0 = max(top, min(float(block.get("y0") or 0) for block in blocks) - 8)
+    x1 = min(page_width - 24.0, max(float(block.get("x1") or 0) for block in blocks) + 12)
+    y1 = min(bottom, max(float(block.get("y1") or 0) for block in blocks) + 12)
+    if x1 - x0 < 120 or y1 - y0 < 60:
+        return None
+    return _clamp_bbox([x0, y0, x1, y1], page_width, page_height)
 
 
 def _nearest_visual_region(
@@ -2498,7 +2947,7 @@ def _figure_text_parts(
                     continue
             if next_caption and page_number == end_page and block["y0"] >= next_caption["y0"]:
                 continue
-            text = block["text"]
+            text = clean_semantic_text(block["text"])
             normalized = normalize_header(text)
             if normalized.isdigit():
                 continue
@@ -2527,7 +2976,7 @@ def _figure_text_parts(
                 position="before" if position < caption_position else "after",
                 caption=str(caption.get("caption") or ""),
             )
-            if is_chart_residual_text(text, context):
+            if not is_semantically_useful_text(text, context):
                 continue
             if position < caption_position:
                 before_fragments.append(text)
@@ -2719,9 +3168,23 @@ def _page_by_number(pages: list[dict[str, Any]], page_number: int) -> dict[str, 
 def _extract_toc_sections(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     sections: list[dict[str, Any]] = []
     seen: set[tuple[str, int]] = set()
+    toc_active = False
     for page in pages[:6]:
         lines = _clean_lines(str(page.get("text") or ""))
-        if not any(normalize_header(line) == "contenido" for line in lines[:5]):
+        has_toc_heading = any(
+            normalize_header(line) in {"contenido", "indice", "indice_general"}
+            for line in lines[:8]
+        )
+        if has_toc_heading:
+            toc_active = True
+        elif not toc_active:
+            continue
+        visual_index_entries = sum(
+            bool(re.match(r"^(?:gr[aá]fico|figura|tabla)\b", line, re.IGNORECASE))
+            for line in lines
+        )
+        if visual_index_entries >= 3:
+            toc_active = False
             continue
         pending_title = ""
         for line in lines:
@@ -2743,7 +3206,7 @@ def _extract_toc_sections(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 seen.add(key)
                 sections.append({"title": title[:220], "start_page": start_page})
                 continue
-            match = TOC_ENTRY_PATTERN.match(line)
+            match = TOC_ENTRY_PATTERN.match(line) or SIMPLE_TOC_ENTRY_PATTERN.match(line)
             if not match:
                 if _looks_like_toc_title_fragment(line):
                     pending_title = f"{pending_title} {line}".strip()
@@ -2764,7 +3227,137 @@ def _extract_toc_sections(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 continue
             seen.add(key)
             sections.append({"title": title[:220], "start_page": start_page})
-    return sorted(sections, key=lambda item: int(item["start_page"]))
+        for entry in _spatial_toc_entries(page):
+            if _is_toc_continuation_title(entry["title"]):
+                continue
+            key = (normalize_header(entry["title"]), int(entry["start_page"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            sections.append(entry)
+        for entry in _linear_toc_entries(lines):
+            key = (normalize_header(entry["title"]), int(entry["start_page"]))
+            if key in seen:
+                continue
+            seen.add(key)
+            sections.append(entry)
+
+    body_sections = _extract_body_outline_sections(pages)
+    body_by_title = {normalize_header(item["title"]): item for item in body_sections}
+    combined = [
+        body_by_title.get(normalize_header(item["title"]), item)
+        for item in sections
+    ]
+    existing_titles = {normalize_header(item["title"]) for item in combined}
+    combined.extend(
+        item for item in body_sections if normalize_header(item["title"]) not in existing_titles
+    )
+    return sorted(combined, key=lambda item: (int(item["start_page"]), item["title"]))
+
+
+def _linear_toc_entries(lines: list[str]) -> list[dict[str, Any]]:
+    """Parse TOCs whose words, dot leaders and page number occupy separate lines."""
+    entries: list[dict[str, Any]] = []
+    pending: list[str] = []
+    saw_dot_leader = False
+    for raw_line in lines:
+        line = " ".join(str(raw_line or "").split()).strip()
+        if not line:
+            continue
+        if re.fullmatch(r"[.\s]{4,}", line):
+            saw_dot_leader = True
+            continue
+        if line.isdigit() and pending and saw_dot_leader:
+            title = _clean_toc_title(" ".join(pending))
+            pending = []
+            saw_dot_leader = False
+            normalized = normalize_header(title)
+            if (
+                title
+                and normalized not in {"indice", "contenido"}
+                and not normalized.startswith("indice_")
+                and not _is_excluded_section(title)
+                and not normalized.startswith(("grafico_", "figura_", "tabla_"))
+            ):
+                entries.append({"title": title[:220], "start_page": int(line)})
+            continue
+        if saw_dot_leader and not line.isdigit():
+            pending = []
+            saw_dot_leader = False
+        if not PERCENT_PATTERN.search(line) and len(line) <= 180:
+            pending.append(line.strip(" ."))
+            pending = pending[-8:]
+    return entries
+
+
+def _spatial_toc_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
+    blocks = _raw_text_block_entries(page)
+    page_width = float(page.get("width") or 595)
+    page_number = int(page.get("page") or 0)
+    number_blocks = [
+        block
+        for block in blocks
+        if str(block.get("text") or "").strip().isdigit()
+        and int(str(block.get("text") or "").strip()) != page_number
+        and float(block.get("x0") or 0) >= page_width * 0.6
+    ]
+    entries: list[dict[str, Any]] = []
+    for block in blocks:
+        title = _clean_toc_title(str(block.get("text") or ""))
+        if not SECTION_NUMBER_PATTERN.match(title) or _is_figure_caption_text(title):
+            continue
+        center_y = (float(block.get("y0") or 0) + float(block.get("y1") or 0)) / 2
+        matching_numbers = [
+            number
+            for number in number_blocks
+            if abs(
+                (float(number.get("y0") or 0) + float(number.get("y1") or 0)) / 2
+                - center_y
+            )
+            <= 8
+        ]
+        if not matching_numbers:
+            continue
+        start_page = int(str(min(matching_numbers, key=lambda item: item["x0"])["text"]).strip())
+        entries.append({"title": title[:220], "start_page": start_page})
+    return entries
+
+
+def _extract_body_outline_sections(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for page in pages:
+        page_number = int(page.get("page") or 0)
+        if page_number <= 2:
+            continue
+        page_height = float(page.get("height") or 842)
+        for block in _raw_text_block_entries(page):
+            title = _clean_section_title(str(block.get("text") or ""))
+            if not SECTION_NUMBER_PATTERN.match(title):
+                continue
+            if len(title.split()) > 24 or float(block.get("y0") or 0) > page_height * 0.7:
+                continue
+            font_size = float(block.get("font_size") or 0)
+            if font_size < 18 and not bool(block.get("is_bold")):
+                continue
+            normalized = normalize_header(title)
+            if (
+                normalized in seen
+                or _is_excluded_section(title)
+                or _is_toc_continuation_title(title)
+                or _looks_like_reference_entry(title)
+            ):
+                continue
+            seen.add(normalized)
+            sections.append({"title": title[:220], "start_page": page_number})
+    return sections
+
+
+def _looks_like_reference_entry(value: str) -> bool:
+    text = " ".join(str(value or "").split())
+    return bool(
+        re.match(r"^\d+\s+(?:https?://|www\.|\S+.*,.*\(20\d{2}\))", text, re.IGNORECASE)
+    )
 
 
 def _looks_like_toc_title_fragment(value: str) -> bool:
@@ -2791,6 +3384,10 @@ def _is_toc_continuation_title(value: str) -> bool:
         return False
     if normalized in {"lgtbi", "lgbti", "personas lgtbi", "personas lgbti"}:
         return True
+    if normalized.startswith(("indice_", "grafico_", "figura_", "tabla_")):
+        return True
+    if re.fullmatch(r"\d+(?:_\d+)+", normalized):
+        return True
     return bool(len(value.split()) < 3 and not SECTION_NUMBER_PATTERN.match(value))
 
 
@@ -2798,6 +3395,9 @@ def _clean_section_title(value: str) -> str:
     title = " ".join((value or "").split()).strip(" .:-")
     if not title:
         return ""
+    title = re.sub(r"^Contenido\s+(?=\S)", "", title, flags=re.IGNORECASE)
+    if len(title.split()) >= 3 and re.search(r"\bL$", title):
+        title = re.sub(r"\bL$", "LGTBI+", title)
     for prefix in KNOWN_SECTION_PREFIXES:
         if normalize_header(title).startswith(normalize_header(prefix)):
             return prefix[:220]
@@ -2838,9 +3438,9 @@ def _section_for_page(sections: list[dict[str, Any]], page: int) -> str:
     current = ""
     for section in sections:
         start_page = int(section.get("start_page") or 0)
-        if start_page > page + 1:
+        if start_page > page:
             break
-        if start_page <= page + 1:
+        if start_page <= page:
             current = str(section.get("title") or "")
     return current
 

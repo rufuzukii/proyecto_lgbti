@@ -29,6 +29,7 @@ from app.reports.recommendations import (
     indicator_direction,
     is_hr_relevant_indicator,
 )
+from app.source_attribution import attribution_for_sources
 
 
 def _first_comparable_radar_country(payload: dict[str, Any]) -> str | None:
@@ -595,10 +596,20 @@ def _limitations(
 
 
 def _sources(language: str, source: str, year: Any) -> list[str]:
-    year_label = f", {year}" if year else ""
-    if source == "FRA":
-        return [f"FRA EU LGBTIQ Survey III{year_label}."]
-    return [f"ILGA-Europe Rainbow Map{year_label}."]
+    clean_year = int(year) if isinstance(year, int | float) else None
+    source_keys: list[str] = []
+    source_value = str(source or "").casefold()
+    if "fra" in source_value:
+        source_keys.append("fra")
+    if "ilga" in source_value or "rainbow map" in source_value:
+        source_keys.append("ilga")
+    if "felgtbi" in source_value or "felgtb" in source_value:
+        source_keys.append("felgtbi")
+    return attribution_for_sources(
+        source_keys or ["fra"],
+        language=language,
+        year=clean_year,
+    )
 
 
 def _table_rows(

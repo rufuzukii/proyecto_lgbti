@@ -1,6 +1,7 @@
 import sys
 from types import SimpleNamespace
 
+import pytest
 from flask import Flask
 
 from app.analytics import repository
@@ -25,7 +26,9 @@ from app.import_to_db.felgtbi.semantics import (
     ExtractionContext,
     analyze_chart_residual_text,
     clean_figure_paragraphs,
+    is_semantically_useful_text,
     sanitize_report_document,
+    semantic_noise_reason,
 )
 
 
@@ -61,6 +64,9 @@ def test_structured_section_activates_the_visible_dash_report_slot() -> None:
     assert state[1] != SPAIN_SLOT_CLASS
     assert state[3] == SPAIN_SLOT_CLASS
     assert state[2] != []
+    assert "FELGTBI+" in str(state[9])
+    assert "Informe de participación 2026" in str(state[9])
+    assert "Estimación de voto" in str(state[9])
 
 
 def test_spain_visualization_keeps_content_without_duplicate_detail_panel() -> None:
@@ -68,7 +74,7 @@ def test_spain_visualization_keeps_content_without_duplicate_detail_panel() -> N
 
     assert len(panels) == 1
     assert panels[0].children[0].children == "Contenido"
-    assert len(_spain_document_view_state(None)) == 9
+    assert len(_spain_document_view_state(None)) == 10
 
 
 def test_layout_pdf_page_extracts_vector_chart_without_figure_caption() -> None:
@@ -139,6 +145,41 @@ def test_chart_percentage_sequence_is_removed_with_high_confidence() -> None:
     assert analysis.is_residual is True
     assert analysis.confidence >= 0.8
     assert "many_percentages" in analysis.reasons
+
+
+@pytest.mark.parametrize(
+    ("value", "expected", "reason"),
+    [
+        ("42,40% 43,20% 39,30% 38,50% 35,20% 26,50%", False, "numeric_noise"),
+        ("10 20 30 40 50 60 70 80 90", False, "numeric_noise"),
+        ("Página 42", False, "footer"),
+        ("https://felgtbi.org/informe", False, "footer"),
+        (
+            "El 8,9 % de las personas LGTBI+ se autoperciben como pertenecientes a una minoría étnica.",
+            True,
+            "useful",
+        ),
+        (
+            "¿Has sufrido discriminación en los últimos 12 meses? La pregunta conserva su contexto.",
+            True,
+            "useful",
+        ),
+    ],
+)
+def test_semantic_usefulness_distinguishes_chart_noise_from_real_prose(
+    value: str,
+    expected: bool,
+    reason: str,
+) -> None:
+    # Arrange
+    context = ExtractionContext(near_figure=True)
+
+    # Act
+    useful = is_semantically_useful_text(value, context)
+
+    # Assert
+    assert useful is expected
+    assert semantic_noise_reason(value, context) == reason
 
 
 def test_chart_labels_and_years_are_removed_but_real_percentage_sentences_remain() -> None:
@@ -306,6 +347,9 @@ def test_successful_figure_upload_attaches_storage_path_and_dimensions(monkeypat
     assert document["figure"]["storage_path"].endswith(".webp")
     assert document["figure"]["width"] == 1200
     assert document["figure"]["height"] == 800
+    assert document["figure"]["mime_type"] == "image/webp"
+    assert document["figure"]["size"] == len(b"image")
+    assert len(document["figure"]["checksum"]) == 64
 
 
 def test_section_cache_avoids_duplicate_mongo_queries(monkeypatch) -> None:

@@ -12,6 +12,7 @@ from app.auth.rate_limit import create_rate_limiter
 from app.dash.i18n import dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
 from app.http_security import rate_limit_key
+from app.privacy.service import PrivacyStorageError, get_personal_data_inventory
 from app.taxonomy import taxonomy_label, taxonomy_pair
 from app.users.contact_service import (
     ContactDeliveryError,
@@ -61,11 +62,51 @@ ERROR_MESSAGES = {
     ),
 }
 
+PRIVACY_ERROR_MESSAGES = {
+    "confirmation_required": (
+        "Marca la casilla para confirmar que comprendes la eliminación.",
+        "Tick the box to confirm that you understand the deletion.",
+    ),
+    "invalid_email": (
+        "El correo introducido no coincide con el de tu cuenta.",
+        "The email entered does not match your account.",
+    ),
+    "invalid_password": (
+        "La contraseña no es correcta.",
+        "The password is not correct.",
+    ),
+    "invalid_confirmation_text": (
+        "Escribe exactamente ELIMINAR MI CUENTA.",
+        "Type DELETE MY ACCOUNT exactly.",
+    ),
+    "last_admin": (
+        "No puedes eliminar la última cuenta administradora activa.",
+        "You cannot delete the last active administrator account.",
+    ),
+    "rate_limited": (
+        "Se ha alcanzado el límite temporal de intentos. Inténtalo más tarde.",
+        "The temporary attempt limit has been reached. Try again later.",
+    ),
+    "csrf": (
+        "La sesión ha caducado. Actualiza la página antes de continuar.",
+        "The session expired. Refresh the page before continuing.",
+    ),
+    "deletion_incomplete": (
+        "No se ha podido completar la eliminación de tus datos. Inténtalo de nuevo o contacta con el equipo responsable.",
+        "Your data could not be deleted. Try again or contact the responsible team.",
+    ),
+    "export_failed": (
+        "No se ha podido preparar la copia de tus datos. Inténtalo de nuevo o contacta con el equipo responsable.",
+        "Your data copy could not be prepared. Try again or contact the responsible team.",
+    ),
+}
+
 
 def build_user_page_layout(
     status_code: str | None = None,
     error_code: str | None = None,
     mode: str | None = None,
+    privacy_error: str | None = None,
 ) -> Component:
     status = STATUS_MESSAGES.get(status_code) if status_code is not None else None
     error = ERROR_MESSAGES.get(error_code) if error_code is not None else None
@@ -96,6 +137,8 @@ def build_user_page_layout(
                                     organization,
                                     role,
                                     user_type,
+                                    privacy_error=privacy_error,
+                                    privacy_dialog_open=mode == "privacy",
                                 )
                             ),
                         ],
@@ -165,13 +208,24 @@ def _build_dashboard(
     organization: str,
     role: UserRole | str,
     user_type: UserType | str | None,
+    *,
+    privacy_error: str | None = None,
+    privacy_dialog_open: bool = False,
 ) -> Component:
     return html.Div(
         [
             html.Section(
                 [
-                    _profile_card(username, email, organization, role, user_type),
-                    _quick_actions(role, user_type),
+                    _profile_card(username, email, organization),
+                    _privacy_zone(
+                        username,
+                        email,
+                        organization,
+                        role,
+                        user_type,
+                        error_code=privacy_error,
+                        dialog_open=privacy_dialog_open,
+                    ),
                 ],
                 className="user-dashboard-main",
             ),
@@ -190,8 +244,6 @@ def _profile_card(
     username: str,
     email: str,
     organization: str,
-    role: UserRole | str,
-    user_type: UserType | str | None,
 ) -> Component:
     organization_es = organization or "Sin organización"
     organization_en = organization or "No organization"
@@ -233,12 +285,6 @@ def _profile_card(
                         ),
                     ),
                     _detail_row("Organización", "Organization", organization_es, organization_en),
-                    _detail_row(
-                        "Perfil",
-                        "Profile",
-                        _role_label(role, user_type),
-                        _role_label(role, user_type, language="en"),
-                    ),
                 ],
                 className="profile-details user-detail-grid",
             ),
@@ -248,84 +294,316 @@ def _profile_card(
     )
 
 
-def _quick_actions(
+def _privacy_zone(
+    username: str,
+    email: str,
+    organization: str,
     role: UserRole | str,
     user_type: UserType | str | None,
+    *,
+    error_code: str | None,
+    dialog_open: bool,
 ) -> Component:
-    actions = [
-        (
-            "Ver estadísticas",
-            "View statistics",
-            "/statistics",
-            "Comparar indicadores FRA e ILGA.",
-            "Compare FRA and ILGA indicators.",
-        ),
-    ]
-    profile = _user_type_value(user_type)
-    if profile in {
-        UserType.RRHH.value,
-        UserType.POLITICO.value,
-        UserType.ONG.value,
-    } or _is_admin_role(role):
-        actions.append(
-            (
-                ui_text("report_module_name", "es"),
-                ui_text("report_module_name", "en"),
-                "/informes",
-                "Crear informes con opciones adaptadas a tu perfil.",
-                "Create reports with options adapted to your profile.",
+    inventory = None
+    try:
+        user_id = str(getattr(current_user, "get_id", lambda: "")() or "")
+        inventory = get_personal_data_inventory(user_id) if user_id else None
+    except PrivacyStorageError:
+        # The deletion service performs the authoritative inventory again. A
+        # preview outage must not turn the complete dashboard into a 500 page.
+        inventory = None
+
+    content_items: list[Component] = []
+    if inventory is not None:
+        if inventory.learning_progress:
+            content_items.append(
+                html.Li(
+                    "Tu progreso y puntuaciones didácticas.",
+                    **text_attrs(
+                        "Tu progreso y puntuaciones didácticas.",
+                        "Your learning progress and scores.",
+                    ),
+                )
             )
-        )
-    if profile == UserType.DOCENTE.value or _is_admin_role(role):
-        actions.append(
-            (
-                "Espacio Docente",
-                "Educator space",
-                "/didactica/docentes",
-                "Crear juegos y utilizar recursos para el aula.",
-                "Create games and use classroom resources.",
+        if inventory.teacher_games:
+            content_items.append(
+                html.Li(
+                    f"{inventory.teacher_games} juego(s) docente(s) privado(s).",
+                    **text_attrs(
+                        f"{inventory.teacher_games} juego(s) docente(s) privado(s).",
+                        f"{inventory.teacher_games} private educator game(s).",
+                    ),
+                )
             )
-        )
-    if _is_admin_role(role):
-        actions.append(
-            (
-                "Importar datos",
-                "Import data",
-                "/upload",
-                "Validar e importar nuevas fuentes.",
-                "Validate and import new sources.",
+        if inventory.import_logs:
+            content_items.append(
+                html.Li(
+                    f"{inventory.import_logs} carga(s) o registro(s) de importación.",
+                    **text_attrs(
+                        f"{inventory.import_logs} carga(s) o registro(s) de importación.",
+                        f"{inventory.import_logs} upload or import record(s).",
+                    ),
+                )
             )
-        )
-        actions.append(
-            (
-                "Administración",
-                "Administration",
-                "/admin",
-                "Gestionar usuarios y revisiones.",
-                "Manage users and reviews.",
+    if not content_items:
+        content_items.append(
+            html.Li(
+                "Los contenidos personales asociados que existan al confirmar.",
+                **text_attrs(
+                    "Los contenidos personales asociados que existan al confirmar.",
+                    "Any associated personal content present at confirmation time.",
+                ),
             )
         )
 
-    return html.Section(
+    error = PRIVACY_ERROR_MESSAGES.get(error_code or "")
+    dialog = html.Dialog(
         [
-            html.H2("Accesos rápidos", **text_attrs("Accesos rápidos", "Quick actions")),
             html.Div(
                 [
-                    html.A(
+                    html.Div(
                         [
-                            html.Strong(title_es, **text_attrs(title_es, title_en)),
-                            html.Span(copy_es, **text_attrs(copy_es, copy_en)),
+                            html.H2(
+                                "Confirmar eliminación",
+                                id="privacy-delete-dialog-title",
+                                **text_attrs("Confirmar eliminación", "Confirm deletion"),
+                            ),
+                            html.Button(
+                                "X",
+                                type="button",
+                                className="privacy-dialog-close",
+                                **dash_attrs(
+                                    {
+                                        "data-privacy-dialog-close": "true",
+                                        "aria-label": "Cerrar confirmación",
+                                        "data-i18n-aria-label-es": "Cerrar confirmación",
+                                        "data-i18n-aria-label-en": "Close confirmation",
+                                    }
+                                ),
+                            ),
                         ],
-                        href=href,
-                        className="user-action-tile",
-                    )
-                    for title_es, title_en, href, copy_es, copy_en in actions
+                        className="privacy-dialog-header",
+                    ),
+                    html.P(
+                        "¿Quieres eliminar definitivamente tu cuenta y los datos personales asociados?",
+                        className="privacy-dialog-question",
+                        **text_attrs(
+                            "¿Quieres eliminar definitivamente tu cuenta y los datos personales asociados?",
+                            "Do you want to permanently delete your account and associated personal data?",
+                        ),
+                    ),
+                    html.P(
+                        "Esta acción no se puede deshacer.",
+                        className="privacy-dialog-warning",
+                        **text_attrs(
+                            "Esta acción no se puede deshacer.",
+                            "This action cannot be undone.",
+                        ),
+                    ),
+                    html.Dl(
+                        [
+                            *_privacy_summary_row("Nombre", "Name", username or "No definido"),
+                            *_privacy_summary_row("Correo", "Email", email),
+                            *_privacy_summary_row(
+                                "Organización",
+                                "Organization",
+                                organization or "Sin organización",
+                            ),
+                            *_privacy_summary_row(
+                                "Rol actual",
+                                "Current role",
+                                _role_label(role, user_type),
+                                _role_label(role, user_type, language="en"),
+                            ),
+                        ],
+                        className="privacy-account-summary",
+                    ),
+                    html.H3(
+                        "Contenido que se eliminará",
+                        **text_attrs("Contenido que se eliminará", "Content that will be deleted"),
+                    ),
+                    html.Ul(content_items, className="privacy-content-summary"),
+                    _message(error, is_error=True),
+                    html.Form(
+                        [
+                            dcc.Input(
+                                type="hidden",
+                                name="csrf_token",
+                                value=get_csrf_token(),
+                            ),
+                            dcc.Input(
+                                id="privacy-delete-language",
+                                name="language",
+                                type="hidden",
+                                value="es",
+                            ),
+                            html.Label(
+                                "Introduce tu correo",
+                                htmlFor="privacy-delete-email",
+                                **text_attrs("Introduce tu correo", "Enter your email"),
+                            ),
+                            dcc.Input(
+                                id="privacy-delete-email",
+                                name="email",
+                                type="email",
+                                required=True,
+                                autoComplete="email",
+                                maxLength=254,
+                                className="auth-input",
+                            ),
+                            html.Label(
+                                "Introduce tu contraseña",
+                                htmlFor="privacy-delete-password",
+                                **text_attrs("Introduce tu contraseña", "Enter your password"),
+                            ),
+                            dcc.Input(
+                                id="privacy-delete-password",
+                                name="password",
+                                type="password",
+                                required=True,
+                                autoComplete="current-password",
+                                maxLength=128,
+                                className="auth-input",
+                            ),
+                            html.Label(
+                                [
+                                    dcc.Checklist(
+                                        id="privacy-confirm-checklist",
+                                        options=[
+                                            {
+                                                "label": text(
+                                                    "Comprendo que esta acción es permanente.",
+                                                    "I understand that this action is permanent.",
+                                                ),
+                                                "value": "confirmed",
+                                            }
+                                        ],
+                                        value=[],
+                                        className="privacy-confirm-checklist",
+                                    ),
+                                    dcc.Input(
+                                        id="privacy-confirm-value",
+                                        name="confirmation_checked",
+                                        type="hidden",
+                                        value="",
+                                    ),
+                                ],
+                                className="privacy-confirm-check",
+                            ),
+                            html.Label(
+                                "Escribe ELIMINAR MI CUENTA",
+                                htmlFor="privacy-delete-phrase",
+                                **text_attrs(
+                                    "Escribe ELIMINAR MI CUENTA",
+                                    "Type DELETE MY ACCOUNT",
+                                ),
+                            ),
+                            dcc.Input(
+                                id="privacy-delete-phrase",
+                                name="confirmation_text",
+                                type="text",
+                                required=True,
+                                maxLength=40,
+                                autoComplete="off",
+                                className="auth-input",
+                                placeholder="ELIMINAR MI CUENTA",
+                            ),
+                            html.Div(
+                                [
+                                    html.Button(
+                                        "Cancelar",
+                                        type="button",
+                                        className="auth-button auth-button-secondary",
+                                        **text_attrs("Cancelar", "Cancel"),
+                                        **dash_attrs({"data-privacy-dialog-close": "true"}),
+                                    ),
+                                    html.Button(
+                                        "Eliminar cuenta",
+                                        type="submit",
+                                        className="auth-button privacy-danger-button",
+                                        **text_attrs("Eliminar cuenta", "Delete account"),
+                                    ),
+                                ],
+                                className="privacy-dialog-actions",
+                            ),
+                        ],
+                        action="/privacy/delete-account",
+                        method="post",
+                        className="privacy-delete-form",
+                    ),
                 ],
-                className="user-action-grid",
-            ),
+                className="privacy-dialog-content",
+            )
         ],
-        className="user-card",
+        id="privacy-delete-dialog",
+        className="privacy-dialog",
+        **dash_attrs(
+            {
+                "aria-labelledby": "privacy-delete-dialog-title",
+                "data-privacy-dialog": "true",
+                "data-auto-open": "true" if dialog_open else "false",
+            }
+        ),
     )
+
+    return html.Section(
+        [
+            html.H2("Zona de privacidad", **text_attrs("Zona de privacidad", "Privacy area")),
+            html.P(
+                "Esta acción eliminará tu cuenta y los datos personales asociados que no sea necesario conservar por una obligación legal.",
+                **text_attrs(
+                    "Esta acción eliminará tu cuenta y los datos personales asociados que no sea necesario conservar por una obligación legal.",
+                    "This action will delete your account and associated personal data unless retention is required by law.",
+                ),
+            ),
+            html.Div(
+                [
+                    html.Form(
+                        [
+                            dcc.Input(
+                                type="hidden", name="csrf_token", value=get_csrf_token()
+                            ),
+                            html.Button(
+                                "Descargar mis datos",
+                                type="submit",
+                                className="auth-button auth-button-secondary",
+                                **text_attrs("Descargar mis datos", "Download my data"),
+                            ),
+                        ],
+                        action="/privacy/export",
+                        method="post",
+                    ),
+                    html.Button(
+                        "Eliminar mis datos",
+                        type="button",
+                        className="auth-button privacy-danger-button",
+                        **text_attrs("Eliminar mis datos", "Delete my data"),
+                        **dash_attrs(
+                            {
+                                "data-privacy-dialog-open": "privacy-delete-dialog",
+                                "aria-haspopup": "dialog",
+                            }
+                        ),
+                    ),
+                ],
+                className="privacy-zone-actions",
+            ),
+            dialog,
+        ],
+        className="user-card privacy-zone-card",
+    )
+
+
+def _privacy_summary_row(
+    label_es: str,
+    label_en: str,
+    value_es: str,
+    value_en: str | None = None,
+) -> list[Component]:
+    return [
+        html.Dt(label_es, **text_attrs(label_es, label_en)),
+        html.Dd(value_es, **text_attrs(value_es, value_en or value_es)),
+    ]
 
 
 def _contact_panel(
@@ -794,11 +1072,6 @@ def _role_label(
 def _user_type_value(user_type: UserType | str | None) -> str:
     value = user_type.value if isinstance(user_type, UserType) else str(user_type or "")
     return UserType.DOCENTE.value if value == "profesor" else value
-
-
-def _is_admin_role(role: UserRole | str) -> bool:
-    value = role.value if isinstance(role, UserRole) else str(role)
-    return value == UserRole.ADMIN.value
 
 
 def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | str:

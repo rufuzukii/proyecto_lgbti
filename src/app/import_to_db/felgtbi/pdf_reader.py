@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import unicodedata
 from typing import Any
 
 from app.import_to_db.felgtbi.models import PdfExtractionError
@@ -24,6 +25,7 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
             text_dict_flags = fitz.TEXTFLAGS_DICT & ~fitz.TEXT_PRESERVE_IMAGES
             text_page = page.get_textpage(flags=text_dict_flags)
             text_blocks = page.get_text("blocks", textpage=text_page)
+            page_text = page.get_text("text", textpage=text_page)
             page_dict = page.get_text("dict", textpage=text_page)
             dict_blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
             image_blocks = [
@@ -40,11 +42,12 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
             pages.append(
                 {
                     "page": page_index + 1,
-                    "text": page.get_text("text", textpage=text_page),
+                    "text": page_text,
                     "blocks": [
                         {
                             "x0": block[0], "y0": block[1], "x1": block[2], "y1": block[3],
-                            "text": block[4], **text_block_style(dict_blocks, block),
+                            "text": repair_block_text_spacing(str(block[4]), page_text),
+                            **text_block_style(dict_blocks, block),
                         }
                         for block in text_blocks if len(block) >= 5
                     ],
@@ -55,6 +58,36 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
             )
             del text_page, page_dict, dict_blocks, image_blocks, text_blocks, visual_regions, page
     return pages
+
+
+def repair_block_text_spacing(block_text: str, page_text: str) -> str:
+    """Restore whitespace lost by PyMuPDF block extraction using the page text layer."""
+    target_key, _target_positions = _alnum_key_with_positions(block_text)
+    source_key, source_positions = _alnum_key_with_positions(page_text)
+    if len(target_key) < 8 or not source_positions:
+        return block_text
+    start = source_key.find(target_key)
+    if start < 0:
+        return block_text
+    end = start + len(target_key) - 1
+    if end >= len(source_positions):
+        return block_text
+    restored = page_text[source_positions[start] : source_positions[end] + 1]
+    return restored if restored.strip() else block_text
+
+
+def _alnum_key_with_positions(value: str) -> tuple[str, list[int]]:
+    key: list[str] = []
+    positions: list[int] = []
+    for index, character in enumerate(str(value or "")):
+        normalized = unicodedata.normalize("NFKD", character)
+        for normalized_character in normalized:
+            if not normalized_character.isalnum():
+                continue
+            folded = normalized_character.casefold()
+            key.extend(folded)
+            positions.extend([index] * len(folded))
+    return "".join(key), positions
 
 
 def text_block_style(dict_blocks: list[dict[str, Any]], text_block: Any) -> dict[str, Any]:

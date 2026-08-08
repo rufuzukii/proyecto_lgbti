@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 import dash_ag_grid as dag
 import pandas as pd
-from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
+from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
 from flask_login import current_user
@@ -17,6 +17,7 @@ from app.analytics.repository import (
     get_fra_years,
     get_ilga_criteria_by_year,
     get_ilga_criteria_categories_by_year,
+    get_ilga_document_by_year,
     get_ilga_years,
 )
 from app.analytics.statistics.ranking import paginate_ranking
@@ -62,6 +63,11 @@ from app.analytics.statistics_service import (
     get_fra_statistics,
     get_ilga_statistics,
 )
+from app.dash.components.ilga_methodology import (
+    build_ilga_normalization_note,
+    build_ilga_series_normalization_note,
+)
+from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import attribute_attrs, country_labels, dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
@@ -197,6 +203,7 @@ def build_statistics_layout() -> Component:
                                                 ),
                                                 className="stats-response-comparison-scroll",
                                             ),
+                                            _dynamic_source_attribution("response-comparison"),
                                         ],
                                         id="stats-response-comparison-panel",
                                         className=(
@@ -245,6 +252,7 @@ def build_statistics_layout() -> Component:
                                                 id="stats-experience-legal-interpretation",
                                                 className="stats-radar-interpretation",
                                             ),
+                                            _combined_source_attribution("experience-legal-radar"),
                                         ],
                                         id="stats-experience-legal-radar-panel",
                                         className=(
@@ -273,6 +281,7 @@ def build_statistics_layout() -> Component:
                                                 ),
                                                 className="stats-response-detail-scroll",
                                             ),
+                                            _dynamic_source_attribution("response-detail"),
                                         ],
                                         id="stats-response-panel",
                                         className="stats-panel stats-panel-wide stats-response-panel",
@@ -298,18 +307,21 @@ def build_statistics_layout() -> Component:
                                                 "Legal protection vs lived experience",
                                                 "stats-gap-graph",
                                                 placeholder,
+                                                combined_sources=True,
                                             ),
                                             _graph_panel(
                                                 "Relaci\u00f3n entre protecci\u00f3n legal y experiencia reportada",
                                                 "Legal protection and reported experience relationship",
                                                 "stats-scatter-graph",
                                                 placeholder,
+                                                combined_sources=True,
                                             ),
                                             _graph_panel(
                                                 "Heatmap europeo",
                                                 "European heatmap",
                                                 "stats-combined-heatmap",
                                                 placeholder,
+                                                combined_sources=True,
                                             ),
                                         ],
                                         className="stats-grid",
@@ -401,6 +413,7 @@ def build_statistics_layout() -> Component:
                                             {"aria-label": "Tabla resumida / Summary table"}
                                         ),
                                     ),
+                                    _dynamic_source_attribution("summary-table"),
                                 ],
                                 className="stats-panel stats-results-table-panel",
                             ),
@@ -416,6 +429,69 @@ def build_statistics_layout() -> Component:
 
 
 def register_statistics_callbacks(app: Dash) -> None:
+    @app.callback(
+        Output({"type": "stats-source-attribution", "index": ALL}, "children"),
+        Input("stats-source-select", "value"),
+        Input("stats-year-select", "value"),
+        Input("app-language-store", "data"),
+        State({"type": "stats-source-attribution", "index": ALL}, "id"),
+    )
+    def update_statistics_attributions(
+        source: str | None,
+        year: int | None,
+        language: str | None,
+        targets: list[dict[str, str]] | None,
+    ) -> list[Component]:
+        source_key = "ilga" if source == "ilga" else "fra"
+        return [
+            build_source_attribution(
+                source_key,
+                year=year,
+                compact=True,
+                language=language,
+            )
+            for _target in targets or []
+        ]
+
+    @app.callback(
+        Output(
+            {"type": "stats-combined-source-attribution", "index": ALL},
+            "children",
+        ),
+        Input("stats-data-store", "data"),
+        Input("app-language-store", "data"),
+        State(
+            {"type": "stats-combined-source-attribution", "index": ALL},
+            "id",
+        ),
+    )
+    def update_combined_statistics_attributions(
+        result: dict[str, Any] | None,
+        language: str | None,
+        targets: list[dict[str, str]] | None,
+    ) -> list[Component]:
+        payload = (result or {}).get("experience_legal_radar") or {}
+        fra_year = _safe_int(payload.get("fra_year"))
+        ilga_year = _safe_int(payload.get("ilga_year"))
+        attribution = html.Div(
+            [
+                build_source_attribution(
+                    "fra",
+                    year=fra_year,
+                    compact=True,
+                    language=language,
+                ),
+                build_source_attribution(
+                    "ilga",
+                    year=ilga_year,
+                    compact=True,
+                    language=language,
+                ),
+            ],
+            className="stats-source-attribution-combined",
+        )
+        return [attribution for _target in targets or []]
+
     @app.callback(
         Output("stats-ranking-page", "data"),
         Output("stats-ranking-previous", "disabled"),
@@ -436,11 +512,16 @@ def register_statistics_callbacks(app: Dash) -> None:
         language: str | None,
         current_page: int | None,
     ) -> tuple[int, bool, bool, str]:
-        requested_page = 0 if ctx.triggered_id in {
-            None,
-            "stats-data-store",
-            "stats-selected-countries",
-        } else int(current_page or 0)
+        requested_page = (
+            0
+            if ctx.triggered_id
+            in {
+                None,
+                "stats-data-store",
+                "stats-selected-countries",
+            }
+            else int(current_page or 0)
+        )
         if ctx.triggered_id == "stats-ranking-previous":
             requested_page -= 1
         elif ctx.triggered_id == "stats-ranking-next":
@@ -503,6 +584,7 @@ def register_statistics_callbacks(app: Dash) -> None:
                 "indicator": _table_indicator_label(clean_result),
                 "year": clean_result.get("year"),
                 "countries": scope["names"],
+                "source": clean_result.get("source"),
             },
         )
         return dcc.send_string(
@@ -613,6 +695,53 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
 
     @app.callback(
+        Output("stats-ilga-normalization-note", "children"),
+        Output("stats-ilga-normalization-note", "className"),
+        Input("stats-source-select", "value"),
+        Input("stats-year-select", "value"),
+        Input("app-language-store", "data"),
+    )
+    def update_ilga_normalization_note(
+        source: str | None,
+        year: int | None,
+        language: str | None,
+    ):
+        if source != "ilga" or year is None:
+            return None, "stats-ilga-normalization-note is-hidden"
+        document = get_ilga_document_by_year(year)
+        normalization = document.get("normalization") if isinstance(document, dict) else None
+        note = build_ilga_normalization_note(
+            normalization,
+            language="en" if language == "en" else "es",
+            class_name="stats-ilga-normalization-callout",
+        )
+        if note is None:
+            return None, "stats-ilga-normalization-note is-hidden"
+        return note, "stats-ilga-normalization-note"
+
+    @app.callback(
+        Output("stats-temporal-normalization-note", "children"),
+        Output("stats-temporal-normalization-note", "className"),
+        Input("stats-data-store", "data"),
+        Input("app-language-store", "data"),
+    )
+    def update_ilga_temporal_normalization_note(
+        payload: dict[str, Any] | None,
+        language: str | None,
+    ):
+        result = payload or {}
+        if result.get("source") != "ILGA-Europe":
+            return None, "stats-temporal-normalization-note is-hidden"
+        note = build_ilga_series_normalization_note(
+            result.get("history") or [],
+            language="en" if language == "en" else "es",
+            class_name="stats-temporal-normalization-callout",
+        )
+        if note is None:
+            return None, "stats-temporal-normalization-note is-hidden"
+        return note, "stats-temporal-normalization-note"
+
+    @app.callback(
         Output("stats-category-select", "options"),
         Output("stats-category-select", "value"),
         Input("stats-source-select", "value"),
@@ -621,8 +750,12 @@ def register_statistics_callbacks(app: Dash) -> None:
     )
     def update_categories_for_year(source: str | None, year: int | None, current: str | None):
         options = _category_options(source, year)
-        values = {item["value"] for item in options}
-        return options, current if current in values else None
+        return options, _selected_category_value(
+            source,
+            options,
+            current,
+            reset_to_default=ctx.triggered_id == "stats-source-select",
+        )
 
     @app.callback(
         Output("fra-indicator-select", "options"),
@@ -632,9 +765,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("stats-category-select", "value"),
         Input("stats-year-select", "value"),
     )
-    def update_fra_indicators(
-        source: str | None, category: str | None, year: int | None
-    ):
+    def update_fra_indicators(source: str | None, category: str | None, year: int | None):
         if source != "fra" or not category:
             return [], None, True
         options = [
@@ -707,19 +838,13 @@ def register_statistics_callbacks(app: Dash) -> None:
     @app.callback(
         Output("ilga-criterion-select", "options"),
         Output("ilga-criterion-select", "value"),
+        Output("ilga-criterion-select", "disabled"),
         Input("stats-source-select", "value"),
         Input("stats-year-select", "value"),
         Input("stats-category-select", "value"),
     )
     def update_ilga_criteria(source: str | None, year: int | None, category: str | None):
-        if source != "ilga" or not category or category == "Ranking total":
-            return [], None
-        options = [
-            {"label": item["indicator"], "value": item["indicator"]}
-            for item in get_ilga_criteria_by_year(year, category)
-            if item.get("indicator")
-        ]
-        return options, None
+        return _ilga_criterion_control(source, year, category)
 
     @app.callback(
         Output("stats-data-store", "data"),
@@ -1056,6 +1181,10 @@ def _controls(
                         class_name="stats-control-field stats-year-field",
                     ),
                     html.Div(
+                        id="stats-ilga-normalization-note",
+                        className="stats-ilga-normalization-note is-hidden",
+                    ),
+                    html.Div(
                         [
                             _field(
                                 "Pregunta o indicador",
@@ -1086,6 +1215,7 @@ def _controls(
                                     id="ilga-criterion-select",
                                     options=[],
                                     value=None,
+                                    disabled=True,
                                     placeholder="Todos los criterios",
                                 ),
                             )
@@ -1219,6 +1349,25 @@ def _report_destination(report_href: str, *, authenticated: bool) -> str:
     return f"/login?{urlencode({'next': report_href, 'notice': 'report_login_required'})}"
 
 
+def _dynamic_source_attribution(index: str) -> Component:
+    return html.Div(
+        build_source_attribution("fra", compact=True),
+        id={"type": "stats-source-attribution", "index": index},
+        className="stats-source-attribution-slot",
+    )
+
+
+def _combined_source_attribution(index: str) -> Component:
+    return html.Div(
+        [
+            build_source_attribution("fra", compact=True),
+            build_source_attribution("ilga", compact=True),
+        ],
+        id={"type": "stats-combined-source-attribution", "index": index},
+        className="stats-source-attribution-combined-slot",
+    )
+
+
 def _map_panel(placeholder: Any) -> Component:
     return html.Div(
         [
@@ -1255,6 +1404,7 @@ def _map_panel(placeholder: Any) -> Component:
                 className="stats-mapbox-graph",
                 style={"width": "100%"},
             ),
+            _dynamic_source_attribution("map"),
         ],
         className="stats-panel stats-panel-wide stats-map-panel",
     )
@@ -1314,6 +1464,10 @@ def _temporal_panel(placeholder: Any) -> Component:
                 className="stats-panel-hint",
             ),
             html.Div(
+                id="stats-temporal-normalization-note",
+                className="stats-temporal-normalization-note is-hidden",
+            ),
+            html.Div(
                 dcc.Graph(
                     id="stats-temporal-graph",
                     figure=placeholder,
@@ -1324,6 +1478,7 @@ def _temporal_panel(placeholder: Any) -> Component:
                 ),
                 className="stats-temporal-chart-scroll",
             ),
+            _dynamic_source_attribution("temporal"),
         ],
         className="stats-panel stats-panel-wide stats-temporal-section",
     )
@@ -1338,6 +1493,7 @@ def _graph_panel(
     panel_id: str | None = None,
     panel_class_name: str = "stats-panel",
     footer: Component | None = None,
+    combined_sources: bool = False,
 ) -> Component:
     panel_props: dict[str, Any] = {"className": panel_class_name}
     if panel_id:
@@ -1354,6 +1510,11 @@ def _graph_panel(
                 style={"width": "100%"},
             ),
             footer,
+            (
+                _combined_source_attribution(graph_id)
+                if combined_sources
+                else _dynamic_source_attribution(graph_id)
+            ),
         ],
         **panel_props,
     )
@@ -1529,6 +1690,38 @@ def _category_options(source: str | None, year: int | None) -> list[dict[str, An
         for label_es, label_en in [taxonomy_pair("ilga_category", category)]
     )
     return options
+
+
+def _selected_category_value(
+    source: str | None,
+    options: list[dict[str, Any]],
+    current: str | None,
+    *,
+    reset_to_default: bool = False,
+) -> str | None:
+    values = {item["value"] for item in options}
+    if source == "ilga" and reset_to_default and "Ranking total" in values:
+        return "Ranking total"
+    if current in values:
+        return current
+    if source == "ilga" and "Ranking total" in values:
+        return "Ranking total"
+    return None
+
+
+def _ilga_criterion_control(
+    source: str | None,
+    year: int | None,
+    category: str | None,
+) -> tuple[list[dict[str, str]], None, bool]:
+    if source != "ilga" or not category or category == "Ranking total":
+        return [], None, True
+    options = [
+        {"label": item["indicator"], "value": item["indicator"]}
+        for item in get_ilga_criteria_by_year(year, category)
+        if item.get("indicator")
+    ]
+    return options, None, not bool(options)
 
 
 def _visible_category_options(categories: list[str]) -> list[dict[str, Any]]:
@@ -2013,10 +2206,7 @@ def _detail_summary(
             .sort_values(["response_order", "response"], kind="stable")["response"]
             .tolist()
         )
-        labels = [
-            taxonomy_label("legal_status", response, language)
-            for response in responses
-        ]
+        labels = [taxonomy_label("legal_status", response, language) for response in responses]
         return html.Div(
             [
                 html.Div(
@@ -2215,7 +2405,6 @@ def _methodology_text(result: dict[str, Any], source: str, language: str = "es")
             "Las fuentes no son directamente equivalentes."
         )
     return str(result.get("methodology") or "")
-
 
 
 def _selection_scope(

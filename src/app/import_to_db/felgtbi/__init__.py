@@ -3,16 +3,25 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .batch import import_felgtbi_pdf_directory
     from .importer import (
         FELGTBI_SOURCE_CODE,
         parse_felgtbi_text_pages,
     )
-    from .mongo import INDICATOR_FELGTBI_COLLECTION, insert_indicator_felgtbi_json
+    from .mongo import (
+        INDICATOR_FELGTBI_COLLECTION,
+        insert_indicator_felgtbi_json,
+        replace_indicator_felgtbi_documents,
+    )
     from .pipeline import parse_felgtbi_pdf, parse_felgtbi_pdf_bytes
     from .scraper import discover_felgtbi_pdfs, parse_felgtbi_pdf_links
 
 
 _LAZY_EXPORTS = {
+    "import_felgtbi_pdf_directory": (
+        "app.import_to_db.felgtbi.batch",
+        "import_felgtbi_pdf_directory",
+    ),
     "FELGTBI_SOURCE_CODE": ("app.import_to_db.felgtbi.importer", "FELGTBI_SOURCE_CODE"),
     "parse_felgtbi_pdf": ("app.import_to_db.felgtbi.pipeline", "parse_felgtbi_pdf"),
     "parse_felgtbi_pdf_bytes": (
@@ -30,6 +39,10 @@ _LAZY_EXPORTS = {
     "insert_indicator_felgtbi_json": (
         "app.import_to_db.felgtbi.mongo",
         "insert_indicator_felgtbi_json",
+    ),
+    "replace_indicator_felgtbi_documents": (
+        "app.import_to_db.felgtbi.mongo",
+        "replace_indicator_felgtbi_documents",
     ),
     "discover_felgtbi_pdfs": (
         "app.import_to_db.felgtbi.scraper",
@@ -63,9 +76,11 @@ __all__ = [
     "FELGTBI_SOURCE_CODE",
     "INDICATOR_FELGTBI_COLLECTION",
     "discover_felgtbi_pdfs",
+    "import_felgtbi_pdf_directory",
     "insert_indicator_felgtbi_json",
     "parse_felgtbi_pdf",
     "parse_felgtbi_pdf_bytes",
     "parse_felgtbi_pdf_links",
     "parse_felgtbi_text_pages",
+    "replace_indicator_felgtbi_documents",
 ]

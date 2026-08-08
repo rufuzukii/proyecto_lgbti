@@ -390,44 +390,16 @@ def update_user_as_admin(
 
 
 def delete_user_as_admin(*, user_id: str, actor_user_id: str) -> None:
+    """Run the same cross-store erasure policy from the separate admin flow."""
+
     if not actor_user_id or actor_user_id == user_id:
         raise ValueError("self_delete")
-    with _connect() as conn:
-        conn.execute("select pg_advisory_xact_lock(%s)", (ADMIN_ROSTER_LOCK_ID,))
-        current = conn.execute(
-            """
-            select id::text, username, email, organization, password_hash, user_type
-            from public.users
-            where id = %s::uuid
-            for update
-            """,
-            (user_id,),
-        ).fetchone()
-        if current is None:
-            raise ValueError("user_not_found")
-        current_values = cast(dict[str, Any], current)
-        if _parse_user_type(current_values.get("user_type")) == UserType.ADMIN:
-            admin_count_row = conn.execute(
-                "select count(*) as total from public.users where lower(user_type) = %s",
-                (UserType.ADMIN.value,),
-            ).fetchone()
-            admin_count = cast(dict[str, Any], admin_count_row or {})
-            if int(admin_count.get("total") or 0) <= 1:
-                raise ValueError("last_admin")
-        result = conn.execute(
-            "delete from public.users where id = %s::uuid",
-            (user_id,),
-        )
-        conn.commit()
+    from app.privacy.service import AccountDeletionError, delete_user_account_as_admin
 
-    if result.rowcount == 0:
-        raise ValueError("user_not_found")
-    _record_admin_event_safely(
-        actor_user_id=actor_user_id,
-        target_user_id=user_id,
-        action="user_deleted",
-        before=current_values,
-    )
+    try:
+        delete_user_account_as_admin(user_id=user_id, actor_user_id=actor_user_id)
+    except AccountDeletionError as exc:
+        raise ValueError(exc.code) from exc
 
 
 def set_user_active_as_admin(

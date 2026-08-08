@@ -50,6 +50,6 @@ def test_contact_email_uses_authenticated_metadata_and_in_memory_attachments(mon
     assert sent[0]["Reply-To"] == "ana@example.com"
     body = sent[0].get_body()
     assert body is not None
-    assert "user-1" in body.get_content()
+    assert "user-1" not in body.get_content()
     assert "Perfil solicitado: No indicado" in body.get_content()
     assert len(list(sent[0].iter_attachments())) == 1

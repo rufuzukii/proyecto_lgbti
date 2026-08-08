@@ -9,10 +9,9 @@ from app.analytics.statistics_normalizers import (
     normalize_country_code,
     repair_text_encoding,
 )
+from app.source_attribution import ILGA_ANNUAL_REVIEW_2026_PDF_URL
 
-ILGA_ANNUAL_REVIEW_2026_URL = (
-    "https://www.ilga-europe.org/files/uploads/2026/02/2026-ILGA-EUROPE-ANNUAL-REVIEW.pdf"
-)
+ILGA_ANNUAL_REVIEW_2026_URL = ILGA_ANNUAL_REVIEW_2026_PDF_URL
 MISSING_STATUS_SUMMARY_ES = "Todavía no hay información disponible para este país."
 MISSING_STATUS_SUMMARY_EN = "No information is available for this country yet."
 

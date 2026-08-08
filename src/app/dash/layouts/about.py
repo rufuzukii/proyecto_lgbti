@@ -11,14 +11,15 @@ from app.analytics.legal_criteria import (
     get_criterion_status,
 )
 from app.analytics.repository import get_latest_ilga_document
-from app.dash.i18n import country_labels, text, text_attrs
+from app.dash.i18n import country_labels, dash_attrs, text, text_attrs, ui_text, ui_text_component
 from app.dash.layouts.navigation import build_navbar
+from app.source_attribution import FELGTBI_REPORTS_URL, FRA_SURVEYS, ILGA_RAINBOW_MAP_URL
 
 PRIMARY_SOURCES = [
     {
         "entity": "FELGTBI+",
         "title": "Estado LGBTIQ+ - FELGTBI+",
-        "url": "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/",
+        "url": FELGTBI_REPORTS_URL,
         "description": (
             "Informes y estudios sobre la situación social, la discriminación y las "
             "experiencias de las personas LGBTIQ+ en España."
@@ -58,15 +59,18 @@ PRIMARY_SOURCES = [
     {
         "entity": "Agencia de los Derechos Fundamentales de la Unión Europea",
         "entity_en": "European Union Agency for Fundamental Rights",
-        "title": "EU LGBTIQ Survey III - FRA",
-        "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii",
+        "title": "EU LGBT/LGBTI/LGBTIQ Surveys - FRA",
+        "links": [
+            {"label_key": f"fra_survey_{year}", "url": survey[1]}
+            for year, survey in FRA_SURVEYS.items()
+        ],
         "description": (
-            "Resultados de la tercera encuesta europea sobre las experiencias, "
-            "condiciones de vida y discriminación de las personas LGBTIQ+."
+            "Resultados de las encuestas europeas de 2012, 2019 y 2023 sobre las "
+            "experiencias, condiciones de vida y discriminación de las personas LGBTIQ+."
         ),
         "description_en": (
-            "Results from the third European survey on the experiences, living "
-            "conditions and discrimination of LGBTIQ+ people."
+            "Results from the 2012, 2019 and 2023 European surveys on the experiences, "
+            "living conditions and discrimination of LGBTIQ+ people."
         ),
         "details": [
             (
@@ -109,7 +113,7 @@ PRIMARY_SOURCES = [
     {
         "entity": "ILGA-Europe",
         "title": "Rainbow Map - ILGA-Europe",
-        "url": "https://rainbowmap.ilga-europe.org",
+        "url": ILGA_RAINBOW_MAP_URL,
         "description": (
             "Comparación anual de la situación legal y política de las personas "
             "LGBTIQ+ en 49 países europeos."
@@ -276,8 +280,8 @@ def build_about_layout() -> Component:
                         className="about-header",
                     ),
                     _source_cards_section(
-                        "Fuentes principales de datos y situación social",
-                        "Main data and social-context sources",
+                        ui_text("about_primary_sources_title", "es"),
+                        ui_text("about_primary_sources_title", "en"),
                         PRIMARY_SOURCES,
                         class_name="about-source-section",
                     ),
@@ -326,26 +330,6 @@ def build_about_layout() -> Component:
                             ],
                         ],
                         className="about-recommended-section",
-                    ),
-                    html.P(
-                        (
-                            "RainbowLens Datahub recopila, organiza y visualiza información procedente "
-                            "de fuentes externas. La autoría, metodología y responsabilidad de "
-                            "los datos corresponden a las organizaciones que publican cada recurso."
-                        ),
-                        className="about-attribution",
-                        **text_attrs(
-                            (
-                                "RainbowLens Datahub recopila, organiza y visualiza información procedente "
-                                "de fuentes externas. La autoría, metodología y responsabilidad de "
-                                "los datos corresponden a las organizaciones que publican cada recurso."
-                            ),
-                            (
-                                "RainbowLens Datahub collects, organises and visualises information from "
-                                "external sources. Authorship, methodology and responsibility for "
-                                "the data remain with the organisations publishing each resource."
-                            ),
-                        ),
                     ),
                     _ilga_detail_section(ilga_document),
                 ],
@@ -443,17 +427,60 @@ def _source_card(source: dict[str, Any]) -> Component:
                 **text_attrs(note, note_en),
             )
         )
-    children.append(
-        html.A(
-            link_es,
-            href=str(source.get("url") or "#"),
-            target="_blank",
-            rel="noopener noreferrer",
-            className="about-resource-card__link",
-            **text_attrs(link_es, link_en),
+    source_links = source.get("links")
+    if isinstance(source_links, list):
+        children.append(
+            html.Nav(
+                [_source_card_link(link) for link in source_links],
+                className="about-resource-card__links",
+                **dash_attrs(
+                    {
+                        "aria-label": "Encuestas oficiales de la FRA",
+                        "data-i18n-aria-label-es": "Encuestas oficiales de la FRA",
+                        "data-i18n-aria-label-en": "Official FRA surveys",
+                    }
+                ),
+            )
         )
-    )
+    else:
+        children.append(
+            html.A(
+                link_es,
+                href=str(source.get("url") or "#"),
+                target="_blank",
+                rel="noopener noreferrer",
+                className="about-resource-card__link",
+                **text_attrs(link_es, link_en),
+            )
+        )
     return html.Article(children, className="about-resource-card")
+
+
+def _source_card_link(link: Any) -> Component:
+    if not isinstance(link, dict):
+        raise TypeError("source link must be a mapping")
+    label_key = str(link.get("label_key") or "")
+    label_es = ui_text(label_key, "es")
+    label_en = ui_text(label_key, "en")
+    aria_es = f"{label_es} (se abre en una pestaña nueva)"
+    aria_en = f"{label_en} (opens in a new tab)"
+    return html.A(
+        [
+            ui_text_component(label_key),
+            html.Span("↗", **dash_attrs({"aria-hidden": "true"})),
+        ],
+        href=str(link.get("url") or "#"),
+        target="_blank",
+        rel="noopener noreferrer",
+        className="about-resource-card__link",
+        **dash_attrs(
+            {
+                "aria-label": aria_es,
+                "data-i18n-aria-label-es": aria_es,
+                "data-i18n-aria-label-en": aria_en,
+            }
+        ),
+    )
 
 
 def register_about_callbacks(app: Dash) -> None:
@@ -475,11 +502,7 @@ def register_about_callbacks(app: Dash) -> None:
         Input("app-language-store", "data"),
     )
     def translate_about_controls(language: str | None) -> str:
-        return (
-            "Select a criterion"
-            if language == "en"
-            else "Selecciona un criterio"
-        )
+        return "Select a criterion" if language == "en" else "Selecciona un criterio"
 
 
 def _about_ilga_empty_state() -> Component:

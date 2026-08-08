@@ -19,6 +19,17 @@ CAPTION_PREFIX_PATTERN = re.compile(
 HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
 HTML_PARAGRAPH_PATTERN = re.compile(r"<p(?:\s[^>]*)?>(?P<body>.*?)</p>", re.IGNORECASE | re.DOTALL)
 SENTENCE_END_PATTERN = re.compile(r"[.!?](?:[\s\"'»)]|$)")
+URL_PATTERN = re.compile(r"(?:https?://|www\.|chrome-extension://)\S+", re.IGNORECASE)
+FOOTER_PATTERN = re.compile(
+    r"^\s*(?:p[aá]gina\s+)?\d{1,3}\s*$|"
+    r"(?:©|copyright|todos\s+los\s+derechos\s+reservados)|"
+    r"^\s*(?:m[aá]s\s+informaci[oó]n|isbn|dep[oó]sito\s+legal)\b",
+    re.IGNORECASE,
+)
+CONTACT_PATTERN = re.compile(
+    r"(?:\binfo@|\+34\s*\d|\bcalle\s+[A-ZÁÉÍÓÚÜÑ]|\bcontacto\b)",
+    re.IGNORECASE,
+)
 
 FUNCTION_WORDS = {
     "a",
@@ -144,6 +155,60 @@ class CleanedParagraphs:
     before: list[str]
     after: list[str]
     removed: list[tuple[str, ResidualTextAnalysis]]
+
+
+def is_semantically_useful_text(
+    text: str,
+    context: ExtractionContext | None = None,
+    *,
+    seen_texts: Iterable[str] = (),
+) -> bool:
+    """Reject chart residue and document chrome while preserving real numeric prose."""
+    clean = _plain_text(text)
+    if not clean or FOOTER_PATTERN.search(clean):
+        return False
+    words = re.findall(r"[^\W\d_]+", clean, re.UNICODE)
+    if URL_PATTERN.fullmatch(clean) or (CONTACT_PATTERN.search(clean) and len(words) < 12):
+        return False
+    if len(clean) < 18 and len(words) < 3:
+        return False
+    if any(_similarity(clean, previous) >= 0.94 for previous in seen_texts if previous):
+        return False
+    return not analyze_chart_residual_text(
+        clean,
+        context or ExtractionContext(),
+    ).is_residual
+
+
+def semantic_noise_reason(text: str, context: ExtractionContext | None = None) -> str:
+    clean = _plain_text(text)
+    if not clean:
+        return "empty"
+    if FOOTER_PATTERN.search(clean):
+        return "footer"
+    if URL_PATTERN.fullmatch(clean) or (CONTACT_PATTERN.search(clean) and len(clean.split()) < 12):
+        return "footer"
+    if len(clean) < 18 and len(re.findall(r"[^\W\d_]+", clean, re.UNICODE)) < 3:
+        return "short"
+    analysis = analyze_chart_residual_text(clean, context or ExtractionContext())
+    if analysis.is_residual:
+        if any(
+            reason in analysis.reasons
+            for reason in ("many_percentages", "numeric_token_ratio_high", "many_numeric_tokens")
+        ):
+            return "numeric_noise"
+        return "chart_noise"
+    return "useful"
+
+
+def clean_semantic_text(text: str) -> str:
+    """Remove transport-only references without altering meaningful sentences."""
+    clean = _plain_text(text)
+    clean = URL_PATTERN.sub("", clean)
+    clean = re.sub(r"\bchrome-extension:\S+", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\s+([,.;:!?])", r"\1", clean)
+    clean = re.sub(r"\s{2,}", " ", clean).strip().strip(":-")
+    return clean
 
 
 def is_chart_residual_text(text: str, context: ExtractionContext) -> bool:
@@ -309,11 +374,16 @@ def clean_figure_paragraphs(
                 figure_source=figure_source,
                 detected_image_texts=image_texts,
             )
+            reason = semantic_noise_reason(text, context)
+            if reason in {"footer", "short", "empty"}:
+                removed.append((text, _noise_analysis(reason)))
+                continue
             analysis = analyze_chart_residual_text(text, context)
             if analysis.is_residual:
                 removed.append((text, analysis))
                 continue
-            _append_best_duplicate(entries, position, text)
+            if not _append_best_duplicate(entries, position, text):
+                removed.append((text, _noise_analysis("duplicate")))
 
     return CleanedParagraphs(
         before=[text for position, text in entries if position == "before"],
@@ -386,14 +456,27 @@ def clean_report_content_html(
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip()
 
 
-def _append_best_duplicate(entries: list[tuple[str, str]], position: str, text: str) -> None:
+def _append_best_duplicate(entries: list[tuple[str, str]], position: str, text: str) -> bool:
     for index, (existing_position, existing) in enumerate(entries):
         if _similarity(existing, text) < 0.9:
             continue
         if len(text) > len(existing):
             entries[index] = (existing_position, text)
-        return
+        return False
     entries.append((position, text))
+    return True
+
+
+def _noise_analysis(reason: str) -> ResidualTextAnalysis:
+    return ResidualTextAnalysis(
+        is_residual=True,
+        score=9,
+        confidence=1.0,
+        reasons=(reason,),
+        numeric_token_ratio=0.0,
+        percentage_count=0,
+        has_semantic_sentence=False,
+    )
 
 
 def _plain_text(value: Any) -> str:

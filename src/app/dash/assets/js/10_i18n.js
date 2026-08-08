@@ -15,6 +15,14 @@
       setTextNodeValue(node, value);
     });
     applyTranslatedAttributes(selected);
+    const privacyPhrase = document.getElementById("privacy-delete-phrase");
+    const privacyLanguage = document.getElementById("privacy-delete-language");
+    if (privacyPhrase) {
+      privacyPhrase.placeholder = selected === "en" ? "DELETE MY ACCOUNT" : "ELIMINAR MI CUENTA";
+    }
+    if (privacyLanguage) {
+      privacyLanguage.value = selected;
+    }
 
     if (app.segmentedControls) {
       app.segmentedControls.syncActiveStates();

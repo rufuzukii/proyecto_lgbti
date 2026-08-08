@@ -59,6 +59,177 @@ COUNTRY_NAMES: dict[str, tuple[str, str]] = {
     "XK": ("Kosovo", "Kosovo"),
 }
 UI_TEXT = {
+    "ilga_normalization_note_title": {
+        "es": "Nota metodológica",
+        "en": "Methodological note",
+    },
+    "ilga_normalization_note_body": {
+        "es": (
+            "Los datos de este año utilizaban originalmente una escala distinta a 0-100. "
+            "Para permitir su comparación visual con ediciones posteriores, se han "
+            "normalizado linealmente a una escala de 0 a 100."
+        ),
+        "en": (
+            "The data for this year originally used a scale different from 0-100. "
+            "To allow visual comparison with later editions, the values have been "
+            "linearly normalized to a 0-100 scale."
+        ),
+    },
+    "ilga_normalization_series_note_body": {
+        "es": (
+            "Los datos de los años indicados utilizaban originalmente escalas distintas a "
+            "0-100. Para permitir su comparación visual con ediciones posteriores, se han "
+            "normalizado linealmente a una escala de 0 a 100."
+        ),
+        "en": (
+            "The data for the years shown originally used scales different from 0-100. "
+            "To allow visual comparison with later editions, the values have been linearly "
+            "normalized to a 0-100 scale."
+        ),
+    },
+    "ilga_normalization_note_scale": {
+        "es": "Escala original: {original_min} a {original_max}.",
+        "en": "Original scale: {original_min} to {original_max}.",
+    },
+    "ilga_normalization_note_caution": {
+        "es": (
+            "Los valores se muestran en una escala común para facilitar la comparación "
+            "visual entre ediciones; esto no elimina las diferencias metodológicas."
+        ),
+        "en": (
+            "Values are shown on a common scale to facilitate visual comparison between "
+            "editions; this does not remove methodological differences."
+        ),
+    },
+    "footer_attributions_title": {
+        "es": "Atribuciones",
+        "en": "Attributions",
+    },
+    "footer_attribution_fra_text": {
+        "es": (
+            "Fuente: European Union Agency for Fundamental Rights (FRA), EU "
+            "LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 y 2023. Datos procesados y "
+            "visualizados por RainbowLens DataHub. La FRA no participa en esta adaptación."
+        ),
+        "en": (
+            "Source: European Union Agency for Fundamental Rights (FRA), EU "
+            "LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 and 2023. Data processed and "
+            "visualised by RainbowLens DataHub. FRA is not involved in this adaptation."
+        ),
+    },
+    "footer_attribution_ilga_text": {
+        "es": (
+            "Agradecemos a ILGA-Europe su labor de recopilación, análisis y difusión de "
+            "información sobre la situación de los derechos LGBTI en Europa. Los datos han "
+            "sido procesados y adaptados para su visualización en RainbowLens DataHub. "
+            "RainbowLens DataHub no está afiliada ni representa oficialmente a ILGA-Europe."
+        ),
+        "en": (
+            "We thank ILGA-Europe for its work collecting, analysing and sharing information "
+            "about the situation of LGBTI rights in Europe. The data have been processed and "
+            "adapted for visualisation in RainbowLens DataHub. RainbowLens DataHub is not "
+            "affiliated with and does not officially represent ILGA-Europe."
+        ),
+    },
+    "footer_attribution_felgtbi_text": {
+        "es": (
+            "Federación Estatal de Lesbianas, Gais, Trans, Bisexuales, Intersexuales y más — "
+            "FELGTBI+. Contenido procesado y adaptado para su visualización en RainbowLens "
+            "DataHub. RainbowLens DataHub no está afiliada ni representa oficialmente a FELGTBI+."
+        ),
+        "en": (
+            "Federación Estatal de Lesbianas, Gais, Trans, Bisexuales, Intersexuales y más — "
+            "FELGTBI+. Content processed and adapted for visualisation in RainbowLens DataHub. "
+            "RainbowLens DataHub is not affiliated with and does not officially represent FELGTBI+."
+        ),
+    },
+    "source_fra_label": {"es": "FRA", "en": "FRA"},
+    "source_ilga_label": {"es": "ILGA-Europe", "en": "ILGA-Europe"},
+    "source_felgtbi_label": {"es": "FELGTBI+", "en": "FELGTBI+"},
+    "spain_year": {"es": "Año", "en": "Year"},
+    "spain_document": {"es": "Documento", "en": "Document"},
+    "spain_indicator": {"es": "Indicador", "en": "Indicator"},
+    "spain_select_year": {"es": "Selecciona un año", "en": "Select a year"},
+    "spain_select_document": {
+        "es": "Selecciona un documento",
+        "en": "Select a document",
+    },
+    "spain_select_indicator": {
+        "es": "Selecciona un indicador",
+        "en": "Select an indicator",
+    },
+    "spain_previous": {"es": "Anterior", "en": "Previous"},
+    "spain_next": {"es": "Siguiente", "en": "Next"},
+    "spain_no_documents": {
+        "es": "No hay documentos disponibles",
+        "en": "No documents available",
+    },
+    "spain_no_content": {
+        "es": "No hay contenido disponible",
+        "en": "No content available",
+    },
+    "spain_figure": {"es": "Figura", "en": "Figure"},
+    "spain_source": {"es": "Fuente", "en": "Source"},
+    "fra_survey_2012": {"es": "Encuesta FRA 2012", "en": "FRA Survey 2012"},
+    "fra_survey_2019": {"es": "Encuesta FRA 2019", "en": "FRA Survey 2019"},
+    "fra_survey_2023": {"es": "Encuesta FRA 2023", "en": "FRA Survey 2023"},
+    "about_primary_sources_title": {
+        "es": "Fuentes principales de datos y situación social",
+        "en": "Main data and social-context sources",
+    },
+    "footer_copyright": {
+        "es": "© {year} RainbowLens DataHub",
+        "en": "© {year} RainbowLens DataHub",
+    },
+    "privacy_title": {
+        "es": "Privacidad y protección de datos",
+        "en": "Privacy and data protection",
+    },
+    "privacy_data_collected": {"es": "Datos que recopilamos", "en": "Data we collect"},
+    "privacy_purposes": {"es": "Finalidades", "en": "Purposes"},
+    "privacy_legal_basis": {"es": "Base jurídica", "en": "Legal basis"},
+    "privacy_retention": {"es": "Conservación", "en": "Retention"},
+    "privacy_recipients": {"es": "Destinatarios", "en": "Recipients"},
+    "privacy_rights": {"es": "Tus derechos", "en": "Your rights"},
+    "privacy_manage_data": {"es": "Gestionar mis datos", "en": "Manage my data"},
+    "privacy_download_data": {"es": "Descargar mis datos", "en": "Download my data"},
+    "privacy_zone": {"es": "Zona de privacidad", "en": "Privacy area"},
+    "privacy_delete_my_data": {"es": "Eliminar mis datos", "en": "Delete my data"},
+    "privacy_delete_account": {"es": "Eliminar cuenta", "en": "Delete account"},
+    "privacy_confirm_deletion": {
+        "es": "Confirmar eliminación",
+        "en": "Confirm deletion",
+    },
+    "privacy_irreversible": {
+        "es": "Esta acción no se puede deshacer.",
+        "en": "This action cannot be undone.",
+    },
+    "privacy_enter_email": {"es": "Introduce tu correo", "en": "Enter your email"},
+    "privacy_enter_password": {
+        "es": "Introduce tu contraseña",
+        "en": "Enter your password",
+    },
+    "privacy_account_deleted": {
+        "es": "Tu cuenta y los datos personales asociados han sido eliminados.",
+        "en": "Your account and associated personal data have been deleted.",
+    },
+    "privacy_deletion_error": {
+        "es": "No se ha podido completar la eliminación de tus datos. Inténtalo de nuevo o contacta con el equipo responsable.",
+        "en": "Your data could not be deleted. Try again or contact the responsible team.",
+    },
+    "privacy_notice": {
+        "es": "RainbowLens DataHub utiliza los datos necesarios para gestionar tu cuenta y ofrecer las funcionalidades solicitadas. Puedes consultar qué información se conserva y solicitar la eliminación de tu cuenta en cualquier momento.",
+        "en": "RainbowLens DataHub uses the data required to manage your account and provide the requested features. You can review what information is stored and request the deletion of your account at any time.",
+    },
+    "privacy_understood": {"es": "Entendido", "en": "Got it"},
+    "privacy_deleted_heading": {"es": "Cuenta eliminada", "en": "Account deleted"},
+    "privacy_cancel": {"es": "Cancelar", "en": "Cancel"},
+    "privacy_controller": {
+        "es": "Responsable del tratamiento",
+        "en": "Data controller",
+    },
+    "privacy_security": {"es": "Cómo protegemos los datos", "en": "How we protect data"},
+    "privacy_backups": {"es": "Copias de seguridad", "en": "Backups"},
     "navigation_home": {"es": "Inicio", "en": "Home"},
     "navigation_statistics": {"es": "Estadísticas", "en": "Statistics"},
     "navigation_trends": {"es": "Tendencias", "en": "Trends"},

@@ -3,6 +3,7 @@ from typing import Any
 from unittest.mock import patch
 
 from app.dash.layouts.about import _country_criteria_panel, build_about_layout
+from app.source_attribution import FRA_SURVEYS
 
 REQUIRED_URLS = {
     "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/",
@@ -12,6 +13,7 @@ REQUIRED_URLS = {
     "https://commission.europa.eu/strategy-and-policy/policies/justice-and-fundamental-rights/combatting-discrimination/lesbian-gay-bi-trans-and-intersex-equality/lgbtiq-equality-strategy-2026-2030_en",
     "https://op.europa.eu/webpub/com/factsheets/lgbti/en/",
 }
+REQUIRED_URLS.update(url for _, url in FRA_SURVEYS.values())
 
 
 def test_about_sources_include_required_external_links() -> None:
@@ -29,8 +31,8 @@ def test_about_sources_include_required_external_links() -> None:
         link = links_by_href[url]
         assert _component_prop(link, "target") == "_blank"
         assert _component_prop(link, "rel") == "noopener noreferrer"
-        assert "Abrir" in _text_content(link)
-        assert "pestaña nueva" in _text_content(link)
+        accessible_label = _component_prop(link, "aria-label") or _text_content(link)
+        assert "pestaña nueva" in accessible_label
 
 
 def test_about_source_cards_include_integrated_context_without_about_cards() -> None:
@@ -50,21 +52,27 @@ def test_about_source_cards_include_integrated_context_without_about_cards() -> 
         for component in _walk(layout)
         if _component_prop(component, "className") == "about-resource-card"
     ]
+    translated_nodes = [
+        component for component in _walk(layout) if _component_prop(component, "data-i18n-en")
+    ]
 
     assert about_cards == []
+    assert _find_by_id_or_none(layout, "sources-attributions") is None
+    assert "Fuentes y atribuciones" not in _text_content(layout)
+    assert "Sources and attributions" not in _text_content(layout)
+    for year in FRA_SURVEYS:
+        assert f"Encuesta FRA {year}" in _text_content(layout)
+        assert any(
+            _component_prop(component, "data-i18n-en") == f"FRA Survey {year}"
+            for component in translated_nodes
+        )
     assert any(
         "ILGA Europe evalúa leyes y políticas públicas" in _text_content(card)
         and "En la aplicación, estos datos permiten comparar países" in _text_content(card)
         for card in resource_cards
     )
-    translated_nodes = [
-        component
-        for component in _walk(layout)
-        if _component_prop(component, "data-i18n-en")
-    ]
     assert any(
-        _component_prop(component, "data-i18n-en")
-        == "Recommended sources for further reading"
+        _component_prop(component, "data-i18n-en") == "Recommended sources for further reading"
         for component in translated_nodes
     )
     assert any(
@@ -154,6 +162,13 @@ def _find_by_id(component: Any, component_id: str) -> Any:
         if _component_prop(child, "id") == component_id:
             return child
     raise AssertionError(f"component not found: {component_id}")
+
+
+def _find_by_id_or_none(component: Any, component_id: str) -> Any | None:
+    for child in _walk(component):
+        if _component_prop(child, "id") == component_id:
+            return child
+    return None
 
 
 def _component_prop(component: Any, name: str) -> Any:

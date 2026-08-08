@@ -124,6 +124,7 @@ def test_summary_table_csv_uses_visible_columns_order_bom_and_safe_values() -> N
             "indicator": "Discriminaci\u00f3n",
             "year": 2024,
             "countries": [],
+            "source": "FRA",
         },
     )
 
@@ -134,6 +135,8 @@ def test_summary_table_csv_uses_visible_columns_order_bom_and_safe_values() -> N
     assert parsed[2][0].startswith("'=")
     assert parsed[2][1] == "-2.5"
     assert all("secret" not in row for row in parsed)
+    assert any("EU LGBTIQ Survey III, 2023" in " ".join(row) for row in parsed)
+    assert any("fra.europa.eu" in " ".join(row) for row in parsed)
     assert table_export.filename == (
         "rainbowlens-datahub_tabla-resumida_discriminacion_europa_2024.csv"
     )
@@ -180,7 +183,8 @@ def test_export_metadata_keeps_current_context_and_document_resolution() -> None
     assert layout.meta["export_scale"] == EXPORT_SCALE
     assert layout.meta["export_filename"].endswith("_espana-francia_2024.png")
     assert "Discriminación en el empleo" in layout.title.text
-    assert "Fuente: FRA EU LGBTIQ Survey III" in layout.title.text
+    assert "Fuente: FRA, EU LGBTIQ Survey III, 2023" in layout.title.text
+    assert "RainbowLens Datahub" in layout.title.text
     assert "Respuesta: Yes" in layout.title.text
     assert layout.margin.t >= 82
 
@@ -374,7 +378,7 @@ def test_rendered_export_metadata_tracks_visible_filters_and_country_selection()
     assert europe_meta["export_filename"].endswith("_europa_2024.png")
     assert "Respuesta: Yes" in selected_title
     assert "Age: 25-39" in selected_title
-    assert "Fuente: FRA EU LGBTIQ Survey III" in selected_title
+    assert "Fuente: FRA, EU LGBTIQ Survey III, 2023" in selected_title
     assert selected[-3] is False
     assert selected[-2] == ""
     assert selected[-1] == "stats-table-export-status is-hidden"

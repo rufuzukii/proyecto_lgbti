@@ -21,6 +21,7 @@ from app.analytics.repository import (
     get_fra_indicator_documents,
     get_ilga_analysis_rows,
     get_ilga_document_by_year,
+    get_ilga_years,
 )
 from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_A,
@@ -39,6 +40,7 @@ from app.analytics.statistics_normalizers import (
     repair_text_encoding,
 )
 from app.cache import cache
+from app.ilga_metadata import normalized_ilga_source_scale
 
 logger = logging.getLogger(__name__)
 NO_DATA_MESSAGE = (
@@ -256,6 +258,7 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
         ranking = coerce_percentage(raw_row.get("ranking"))
         if ranking is None and raw_row.get("ranking") is not None:
             discarded["invalid_ranking"] += 1
+        normalization_fields = _ilga_normalization_fields(raw_row.get("normalization"))
         normalized.append(
             {
                 "document_id": document_id,
@@ -276,6 +279,7 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
                 "value": ranking,
                 "response": "overall_score",
                 "response_order": ILGA_RESPONSE_ORDER["overall_score"],
+                **normalization_fields,
             }
         )
         criteria = raw_row.get("criteria")
@@ -315,6 +319,7 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
                     "value": raw_value * 100 if raw_value is not None else None,
                     "response": response,
                     "response_order": ILGA_RESPONSE_ORDER[response],
+                    **normalization_fields,
                 }
             )
     if not normalized:
@@ -369,6 +374,44 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
             },
         )
     return resolved[_empty_ilga_analysis_dataframe().columns.tolist()].reset_index(drop=True)
+
+
+def _ilga_normalization_fields(value: Any) -> dict[str, Any]:
+    metadata = normalized_ilga_source_scale(value)
+    if metadata is None:
+        return {
+            "normalization_applied": False,
+            "normalization_method": "",
+            "original_scale_min": None,
+            "original_scale_max": None,
+            "target_scale_min": None,
+            "target_scale_max": None,
+        }
+    return {
+        "normalization_applied": True,
+        "normalization_method": metadata["method"],
+        "original_scale_min": metadata["original_min"],
+        "original_scale_max": metadata["original_max"],
+        "target_scale_min": metadata["target_min"],
+        "target_scale_max": metadata["target_max"],
+    }
+
+
+def _ilga_result_normalization(dataframe: pd.DataFrame) -> dict[str, Any]:
+    if dataframe.empty or "normalization_applied" not in dataframe:
+        return {"applied": False}
+    normalized = dataframe[dataframe["normalization_applied"].eq(True)]
+    if normalized.empty:
+        return {"applied": False}
+    row = normalized.iloc[0]
+    return {
+        "applied": True,
+        "method": str(row.get("normalization_method") or ""),
+        "original_min": row.get("original_scale_min"),
+        "original_max": row.get("original_scale_max"),
+        "target_min": row.get("target_scale_min"),
+        "target_max": row.get("target_scale_max"),
+    }
 
 
 def build_fra_filter_type_options(
@@ -1086,6 +1129,7 @@ def _build_ilga_statistics(
         ),
         "history": history_records,
         "metrics": _metrics_from_values(ranking["value"].tolist()),
+        "normalization": _ilga_result_normalization(current_year),
         "methodology": ("ILGA-Europe Rainbow Map mide leyes, políticas y protecciones jurídicas. "),
     }
 
@@ -1096,6 +1140,7 @@ def _ilga_statistics_cache_key(
     include_history: bool,
 ) -> str:
     identity = {
+        "dataset_years": get_ilga_years(),
         "year": query.year,
         "countries": sorted(str(country) for country in query.countries),
         "category": query.category,
@@ -1261,19 +1306,55 @@ def _ilga_history_dataframe(
         "source",
         "iso",
         "country",
+        "normalization_applied",
+        "normalization_method",
+        "original_scale_min",
+        "original_scale_max",
+        "target_scale_min",
+        "target_scale_max",
     ]
     if dataframe.empty:
         return pd.DataFrame(columns=columns)
     clean_category = str(category or "Ranking total")
     if clean_category == "Ranking total":
         history = dataframe[dataframe["category"].eq("Ranking total")][
-            ["country_code", "country_name", "year", "value", "source", "iso", "country"]
+            [
+                "country_code",
+                "country_name",
+                "year",
+                "value",
+                "source",
+                "iso",
+                "country",
+                "normalization_applied",
+                "normalization_method",
+                "original_scale_min",
+                "original_scale_max",
+                "target_scale_min",
+                "target_scale_max",
+            ]
         ].copy()
         history["indicator_id"] = "Ranking total"
     elif criterion:
         history = dataframe[
             dataframe["category"].eq(clean_category) & dataframe["criterion"].eq(criterion)
-        ][["country_code", "country_name", "year", "value", "source", "iso", "country"]].copy()
+        ][
+            [
+                "country_code",
+                "country_name",
+                "year",
+                "value",
+                "source",
+                "iso",
+                "country",
+                "normalization_applied",
+                "normalization_method",
+                "original_scale_min",
+                "original_scale_max",
+                "target_scale_min",
+                "target_scale_max",
+            ]
+        ].copy()
         history["indicator_id"] = str(criterion)
     else:
         grouped_rows: list[pd.DataFrame] = []
@@ -1290,6 +1371,13 @@ def _ilga_history_dataframe(
             scores["country_name"] = scores["country"]
             scores["indicator_id"] = clean_category
             scores["source"] = "ILGA-Europe"
+            normalization = _ilga_result_normalization(year_rows)
+            scores["normalization_applied"] = bool(normalization.get("applied"))
+            scores["normalization_method"] = str(normalization.get("method") or "")
+            scores["original_scale_min"] = normalization.get("original_min")
+            scores["original_scale_max"] = normalization.get("original_max")
+            scores["target_scale_min"] = normalization.get("target_min")
+            scores["target_scale_max"] = normalization.get("target_max")
             grouped_rows.append(scores[columns])
         history = pd.concat(grouped_rows, ignore_index=True) if grouped_rows else pd.DataFrame()
     if history.empty:
@@ -1847,5 +1935,11 @@ def _empty_ilga_analysis_dataframe() -> pd.DataFrame:
             "value",
             "response",
             "response_order",
+            "normalization_applied",
+            "normalization_method",
+            "original_scale_min",
+            "original_scale_max",
+            "target_scale_min",
+            "target_scale_max",
         ]
     )

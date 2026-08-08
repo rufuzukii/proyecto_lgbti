@@ -195,6 +195,8 @@ def test_result_callback_handles_one_two_and_query_errors(monkeypatch) -> None:
     )
     assert "trend-history-graph" in _ids(exploratory)
     assert "exploratory" in str(exploratory).lower()
+    assert "ILGA-Europe's Rainbow Map 2024" in str(exploratory)
+    assert "RainbowLens Datahub" in str(exploratory)
 
     def fail(*_args, **_kwargs):
         raise RuntimeError("database unavailable")
@@ -240,6 +242,46 @@ def test_trends_styles_cover_dark_mode_and_mobile() -> None:
     assert ".trend-controls" in stylesheet
     assert "grid-template-columns: 1fr" in stylesheet
     assert "overflow-x: clip" in stylesheet
+
+
+def test_trends_discloses_normalized_ilga_years_in_both_languages(monkeypatch) -> None:
+    app = Dash("trend-normalization-note-test", suppress_callback_exceptions=True)
+    register_trend_callbacks(app)
+    callback = _callback(app, "render_trend_analysis")
+    metadata = _metadata()
+    normalized_2011 = HistoricalPoint(
+        **{
+            **_point(2011, 79.17).__dict__,
+            "normalization_applied": True,
+            "normalization_method": "linear_min_max",
+            "original_scale_min": -7,
+            "original_scale_max": 17,
+            "target_scale_min": 0,
+            "target_scale_max": 100,
+        }
+    )
+    analysis = analyze_historical_series(
+        [normalized_2011, _point(2013, 77)],
+        metadata,
+        forecast_years=0,
+    )
+    monkeypatch.setattr(
+        trend_callbacks,
+        "generate_trend_analysis",
+        lambda *_args, **_kwargs: (analysis, metadata),
+    )
+
+    spanish = callback(
+        "ilga", "Ranking total", "indicator", "default", "ES", [2011, 2013], 0, "es"
+    )
+    english = callback(
+        "ilga", "Ranking total", "indicator", "default", "ES", [2011, 2013], 0, "en"
+    )
+
+    assert "Nota metodológica" in str(spanish)
+    assert "Escala original: -7 a 17." in str(spanish)
+    assert "Methodological note" in str(english)
+    assert "Original scale: -7 to 17." in str(english)
 
 
 def test_production_trends_package_contains_no_fixture_data() -> None:

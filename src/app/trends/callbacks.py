@@ -7,6 +7,8 @@ from dash import Dash, Input, Output, dcc, html
 from dash.development.base_component import Component
 
 from app.analytics.statistics_exports import chart_graph_config
+from app.dash.components.ilga_methodology import build_ilga_series_normalization_note
+from app.dash.components.source_attribution import build_source_attribution
 from app.dash.i18n import country_labels, text, ui_text
 from app.taxonomy import taxonomy_pair
 from app.trends.charts import build_trend_figure
@@ -370,18 +372,36 @@ def _result(analysis: TrendAnalysis, metadata: Any, language: str) -> Component:
         notes.append(html.P(ui_text("trends_ilga_warning", language)))
     if analysis.exploratory:
         notes.append(html.P(ui_text("trends_exploratory", language), className="trend-exploratory"))
+    normalization_note = (
+        build_ilga_series_normalization_note(
+            analysis.points,
+            language=language,
+            class_name="trend-normalization-note",
+        )
+        if metadata.source == TrendSource.ILGA
+        else None
+    )
     return html.Div(
         [
             html.Section(cards, className="trend-metric-grid"),
             html.Section(
-                dcc.Graph(
-                    id="trend-history-graph",
-                    figure=build_trend_figure(analysis, metadata, language=language),
-                    responsive=True,
-                    config=chart_graph_config(),
-                    className="trend-graph",
-                    style={"width": "100%"},
-                ),
+                [
+                    dcc.Graph(
+                        id="trend-history-graph",
+                        figure=build_trend_figure(analysis, metadata, language=language),
+                        responsive=True,
+                        config=chart_graph_config(),
+                        className="trend-graph",
+                        style={"width": "100%"},
+                    ),
+                    build_source_attribution(
+                        metadata.source.value,
+                        year=summary.end_year,
+                        compact=True,
+                        language=language,
+                        class_name="trend-source-attribution",
+                    ),
+                ],
                 className="trend-chart-card",
             ),
             html.Section(
@@ -392,6 +412,7 @@ def _result(analysis: TrendAnalysis, metadata: Any, language: str) -> Component:
                 className="trend-quality-card",
             ),
             html.Aside(notes, className="trend-methodology"),
+            normalization_note,
         ],
         className="trend-analysis",
     )

@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from dash import Dash, Input, Output, dcc, html
+from dash.development.base_component import Component
 from flask import abort, redirect, request, send_file, session
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
 from pydantic import ValidationError
@@ -24,7 +25,8 @@ from app.auth.permissions import (
 from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
-from app.dash.i18n import dash_attrs
+from app.dash.components.source_attribution import build_footer_attributions
+from app.dash.i18n import dash_attrs, text, text_attrs, ui_text, ui_text_component
 from app.dash.layouts.about import build_about_layout, register_about_callbacks
 from app.dash.layouts.error_page import (
     build_database_unavailable_layout,
@@ -51,6 +53,7 @@ from app.dash.pages.didactica import (
     build_progress_layout,
     register_didactica_callbacks,
 )
+from app.dash.pages.privacy import build_account_deleted_layout, build_privacy_layout
 from app.dash.pages.reports import (
     build_reports_access_denied_layout,
     build_reports_layout,
@@ -74,6 +77,7 @@ from app.dash.pages.upload import (
     build_upload_layout,
     register_upload_callbacks,
 )
+from app.dates import utc_today
 from app.edu.teacher_service import generate_teacher_resource_pdf
 from app.errors import DatabaseUnavailableError
 from app.health import register_health_endpoint
@@ -86,6 +90,13 @@ from app.import_to_db.import_log import (
 from app.logging_config import configure_secure_logging
 from app.mail.service import MailDeliveryError
 from app.mongo_indexes import initialize_mongo_indexes
+from app.privacy.policy import PRIVACY_NOTICE_VERSION, get_privacy_policy_config
+from app.privacy.service import (
+    AccountDeletionError,
+    delete_user_account,
+    delete_user_account_as_admin,
+    personal_data_export_bytes,
+)
 from app.trends import build_trends_layout, register_trend_callbacks
 from app.users.account_emails import send_password_reset_email, send_verification_email
 from app.users.account_security import (
@@ -101,7 +112,6 @@ from app.users.service import (
     UserStorageError,
     authenticate_user,
     create_user,
-    delete_user_as_admin,
     get_user_record,
     get_user_record_by_email,
     list_users_page,
@@ -130,6 +140,7 @@ SAFE_NEXT_PATHS = {
     "/didactica/juegos",
     "/didactica/docentes",
     "/didactica/progreso",
+    "/privacidad",
 }
 
 PUBLIC_PAGE_PATHS = {
@@ -144,6 +155,7 @@ PUBLIC_PAGE_PATHS = {
     "/verify-email",
     "/report",
     "/stadistics",
+    "/privacidad/cuenta-eliminada",
 }
 
 DASH_INDEX_STRING = """
@@ -232,38 +244,10 @@ def create_dash_app() -> Dash:
     login_manager.init_app(app.server)
     _register_user_loader(login_manager)
     _register_auth_routes(app)
+    _register_privacy_routes(app)
     _register_docente_routes(app)
 
-    app.layout = html.Div(
-        [
-            dcc.Location(id="url"),
-            dcc.Store(id="app-language-store", storage_type="local"),
-            dcc.Interval(id="app-language-init", interval=150, max_intervals=1),
-            html.Button(
-                "",
-                id="app-language-toggle",
-                type="button",
-                style={"display": "none"},
-                **dash_attrs({"aria-hidden": "true"}),
-            ),
-            html.Div(id="page-content"),
-            html.Footer(
-                [
-                    html.Strong("RainbowLens Datahub"),
-                    html.Span(
-                        "Versión 1.0.0",
-                        **dash_attrs(
-                            {
-                                "data-i18n-es": "Versión 1.0.0",
-                                "data-i18n-en": "Version 1.0.0",
-                            }
-                        ),
-                    ),
-                ],
-                className="site-footer",
-            ),
-        ]
-    )
+    app.layout = _build_application_shell
 
     @app.callback(
         Output("page-content", "children"),
@@ -273,6 +257,10 @@ def create_dash_app() -> Dash:
     def display_page(pathname: str | None, search: str | None):
         params = _query_params(search)
         try:
+            if pathname == "/privacidad":
+                return build_privacy_layout()
+            if pathname == "/privacidad/cuenta-eliminada":
+                return build_account_deleted_layout()
             if pathname == "/statistics":
                 return build_statistics_layout()
             if pathname == "/tendencias":
@@ -342,6 +330,7 @@ def create_dash_app() -> Dash:
                         status_code=_first_param(params, "status"),
                         error_code=_first_param(params, "error"),
                         mode=_first_param(params, "mode"),
+                        privacy_error=_first_param(params, "privacy_error"),
                     )
                 return build_login_layout(
                     next_path=_safe_next(_first_param(params, "next"), "/user"),
@@ -412,6 +401,7 @@ def create_dash_app() -> Dash:
                     status_code=_first_param(params, "status"),
                     error_code=_first_param(params, "error"),
                     mode=_first_param(params, "mode"),
+                    privacy_error=_first_param(params, "privacy_error"),
                 )
             if pathname in {None, "", "/"}:
                 return build_home_layout()
@@ -434,6 +424,157 @@ def create_dash_app() -> Dash:
     register_didactica_callbacks(app)
     register_user_page_callbacks(app)
     return app
+
+
+
+def _build_application_shell() -> Component:
+    try:
+        authenticated = bool(current_user.is_authenticated)
+    except RuntimeError:
+        authenticated = False
+    config = get_privacy_policy_config()
+    footer_links: list[Component] = [
+        dcc.Link(
+            ui_text_component("privacy_title"),
+            href="/privacidad",
+            refresh=False,
+            className="site-footer-link site-footer-link--privacy",
+        )
+    ]
+    if authenticated:
+        footer_links.append(
+            dcc.Link(
+                text("Gestión de datos personales", "Personal data management"),
+                href="/user",
+                refresh=False,
+                className="site-footer-link",
+            )
+        )
+    footer_links.append(
+        html.A(
+            config.contact_email,
+            href=f"mailto:{config.contact_email}",
+            className="site-footer-link",
+        )
+    )
+    banner_links: list[Component] = [
+        dcc.Link(
+            ui_text_component("privacy_title"),
+            href="/privacidad",
+            refresh=False,
+            className="privacy-notice-link",
+        )
+    ]
+    if authenticated:
+        banner_links.append(
+            dcc.Link(
+                ui_text_component("privacy_manage_data"),
+                href="/user",
+                refresh=False,
+                className="privacy-notice-link",
+            )
+        )
+    banner_links.append(
+        html.Button(
+            ui_text("privacy_understood", "es"),
+            type="button",
+            className="privacy-notice-accept",
+            **text_attrs(
+                ui_text("privacy_understood", "es"),
+                ui_text("privacy_understood", "en"),
+            ),
+            **dash_attrs({"data-privacy-notice-accept": "true"}),
+        )
+    )
+    return html.Div(
+        [
+            dcc.Location(id="url"),
+            dcc.Store(id="app-language-store", storage_type="local"),
+            dcc.Interval(id="app-language-init", interval=150, max_intervals=1),
+            html.Button(
+                "",
+                id="app-language-toggle",
+                type="button",
+                style={"display": "none"},
+                **dash_attrs({"aria-hidden": "true"}),
+            ),
+            html.A(
+                "Saltar al contenido",
+                href="#page-content",
+                className="skip-link",
+                **text_attrs("Saltar al contenido", "Skip to content"),
+            ),
+            html.Div(id="page-content"),
+            html.Footer(
+                [
+                    build_footer_attributions(),
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.Strong("RainbowLens DataHub"),
+                                    html.Span(
+                                        "Versión 1.0.0",
+                                        **text_attrs("Versión 1.0.0", "Version 1.0.0"),
+                                    ),
+                                ],
+                                className="site-footer-brand",
+                            ),
+                            html.Nav(
+                                footer_links,
+                                className="site-footer-links",
+                                **dash_attrs(
+                                    {
+                                        "aria-label": "Enlaces de privacidad y contacto",
+                                        "data-i18n-aria-label-es": (
+                                            "Enlaces de privacidad y contacto"
+                                        ),
+                                        "data-i18n-aria-label-en": (
+                                            "Privacy and contact links"
+                                        ),
+                                    }
+                                ),
+                            ),
+                            html.Span(
+                                ui_text("footer_copyright", "es").format(
+                                    year=utc_today().year
+                                ),
+                                className="site-footer-copyright",
+                                **text_attrs(
+                                    ui_text("footer_copyright", "es").format(
+                                        year=utc_today().year
+                                    ),
+                                    ui_text("footer_copyright", "en").format(
+                                        year=utc_today().year
+                                    ),
+                                ),
+                            ),
+                        ],
+                        className="site-footer-bottom",
+                    ),
+                ],
+                className="site-footer",
+            ),
+            html.Aside(
+                [
+                    html.P(ui_text_component("privacy_notice")),
+                    html.Div(banner_links, className="privacy-notice-actions"),
+                ],
+                id="privacy-notice",
+                className="privacy-notice",
+                hidden=True,
+                role="status",
+                **dash_attrs(
+                    {
+                        "aria-label": "Aviso de privacidad",
+                        "data-privacy-notice": "true",
+                        "data-notice-version": PRIVACY_NOTICE_VERSION,
+                    }
+                ),
+            ),
+        ],
+        className="app-shell",
+    )
 
 
 def _configure_application_logging() -> None:
@@ -822,12 +963,13 @@ def _register_auth_routes(app: Dash) -> None:
             if user_id == current_user.get_id():
                 return _redirect("/admin", error="self_delete", **return_params)
             try:
-                delete_user_as_admin(
+                delete_user_account_as_admin(
                     user_id=user_id,
                     actor_user_id=current_user.get_id(),
                 )
-            except ValueError as exc:
-                return _redirect("/admin", error=str(exc), **return_params)
+            except (ValueError, AccountDeletionError) as exc:
+                error_code = exc.code if isinstance(exc, AccountDeletionError) else str(exc)
+                return _redirect("/admin", error=error_code, **return_params)
             except Exception:
                 logger.exception("admin_user_delete_failed")
                 return _redirect("/admin", error="storage", **return_params)
@@ -917,6 +1059,87 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/admin/imports", status="import_inserted")
 
         return _redirect("/admin/imports", error="storage")
+
+
+
+def _register_privacy_routes(app: Dash) -> None:
+    deletion_limiter = create_rate_limiter(
+        max_attempts=max(1, int(os.getenv("PRIVACY_DELETE_MAX_ATTEMPTS", "5"))),
+        window_seconds=max(300, int(os.getenv("PRIVACY_DELETE_WINDOW_SECONDS", "3600"))),
+        namespace="privacy-delete",
+    )
+    export_limiter = create_rate_limiter(
+        max_attempts=max(1, int(os.getenv("PRIVACY_EXPORT_MAX_ATTEMPTS", "10"))),
+        window_seconds=max(300, int(os.getenv("PRIVACY_EXPORT_WINDOW_SECONDS", "3600"))),
+        namespace="privacy-export",
+    )
+
+    @app.server.post("/privacy/delete-account")
+    def privacy_delete_account():
+        if not current_user.is_authenticated:
+            return _redirect("/login", next_path="/user")
+        if not validate_csrf_token(request.form.get("csrf_token")):
+            return _redirect("/user", mode="privacy", privacy_error="csrf")
+
+        user_id = current_user.get_id() or ""
+        limiter_key = rate_limit_key(subject=user_id, scope="privacy-delete")
+        if deletion_limiter.is_blocked(limiter_key):
+            return _redirect("/user", mode="privacy", privacy_error="rate_limited")
+        language = "en" if request.form.get("language") == "en" else "es"
+        try:
+            outcome = delete_user_account(
+                user_id=user_id,
+                email=request.form.get("email", ""),
+                password=request.form.get("password", ""),
+                confirmation_checked=(request.form.get("confirmation_checked") or "").casefold()
+                in {"1", "on", "true", "yes"},
+                confirmation_text=request.form.get("confirmation_text", ""),
+                language=language,
+            )
+        except AccountDeletionError as exc:
+            deletion_limiter.record_failure(limiter_key)
+            return _redirect("/user", mode="privacy", privacy_error=exc.code)
+        except Exception:
+            logger.exception("privacy_account_deletion_route_failed")
+            deletion_limiter.record_failure(limiter_key)
+            return _redirect("/user", mode="privacy", privacy_error="deletion_incomplete")
+
+        deletion_limiter.reset(limiter_key)
+        if outcome.status not in {"completed", "already_deleted"}:
+            return _redirect("/user", mode="privacy", privacy_error="deletion_incomplete")
+        logout_user()
+        session.clear()
+        response = redirect("/privacidad/cuenta-eliminada")
+        response.delete_cookie(app.server.config["SESSION_COOKIE_NAME"], path="/")
+        return response
+
+    @app.server.post("/privacy/export")
+    def privacy_export():
+        if not current_user.is_authenticated:
+            return _redirect("/login", next_path="/user")
+        if not validate_csrf_token(request.form.get("csrf_token")):
+            return _redirect("/user", error="csrf")
+
+        user_id = current_user.get_id() or ""
+        limiter_key = rate_limit_key(subject=user_id, scope="privacy-export")
+        if export_limiter.is_blocked(limiter_key):
+            return _redirect("/user", mode="privacy", privacy_error="rate_limited")
+        try:
+            payload = personal_data_export_bytes(user_id)
+        except Exception:
+            logger.exception("privacy_data_export_failed")
+            export_limiter.record_failure(limiter_key)
+            return _redirect("/user", mode="privacy", privacy_error="export_failed")
+        export_limiter.reset(limiter_key)
+        response = send_file(
+            BytesIO(payload),
+            mimetype="application/json",
+            as_attachment=True,
+            download_name="rainbowlens-mis-datos.json",
+            max_age=0,
+        )
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        return response
 
 
 def _register_docente_routes(app: Dash) -> None:

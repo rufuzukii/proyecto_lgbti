@@ -12,13 +12,14 @@ from dash.development.base_component import Component
 
 from app.analytics.repository import (
     get_felgtbi_document_options,
-    get_felgtbi_document_years,
     get_felgtbi_indicator_answers,
     get_felgtbi_indicators_by_document,
-    get_spain_collection_options,
+    get_felgtbi_years,
 )
+from app.dash.components.source_attribution import build_source_attribution
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.import_to_db.felgtbi.document_identity import clean_felgtbi_indicator_label
 from app.storage import supabase_public_image_url
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,10 @@ SPAIN_GRAPH_HIDDEN_CLASS = "spain-section-graph spain-content-slot is-hidden"
 
 
 def build_spain_layout() -> Component:
-    sources = _source_options()
-    initial_source = sources[0]["value"] if sources else None
-    documents = _document_options(initial_source)
-    initial_document = documents[0]["value"] if documents else None
-    years = _year_options(initial_source, initial_document)
+    years = _year_options()
     initial_year = years[0]["value"] if years else None
+    documents = _document_options(initial_year)
+    initial_document = documents[0]["value"] if len(documents) == 1 else None
 
     return html.Div(
         [
@@ -97,44 +96,6 @@ def build_spain_layout() -> Component:
                             html.Div(
                                 [
                                     html.Label(
-                                        "Fuente de datos",
-                                        htmlFor="spain-source-select",
-                                        **text_attrs("Fuente de datos", "Data source"),
-                                    ),
-                                    dcc.Dropdown(
-                                        id="spain-source-select",
-                                        options=sources,
-                                        value=initial_source,
-                                        clearable=False,
-                                        className="spain-dropdown",
-                                        disabled=not bool(sources),
-                                        placeholder="Selecciona una fuente",
-                                    ),
-                                ],
-                                className="stats-control-field spain-control-field spain-control-field-wide",
-                            ),
-                            html.Div(
-                                [
-                                    html.Label(
-                                        "Documento",
-                                        htmlFor="spain-category-select",
-                                        **text_attrs("Documento", "Document"),
-                                    ),
-                                    dcc.Dropdown(
-                                        id="spain-category-select",
-                                        options=documents,
-                                        value=initial_document,
-                                        clearable=False,
-                                        className="spain-dropdown",
-                                        disabled=not bool(documents),
-                                        placeholder="Selecciona un documento",
-                                    ),
-                                ],
-                                className="stats-control-field spain-control-field",
-                            ),
-                            html.Div(
-                                [
-                                    html.Label(
                                         "Año",
                                         htmlFor="spain-year-select",
                                         **text_attrs("Año", "Year"),
@@ -154,6 +115,24 @@ def build_spain_layout() -> Component:
                             html.Div(
                                 [
                                     html.Label(
+                                        "Documento",
+                                        htmlFor="spain-document-select",
+                                        **text_attrs("Documento", "Document"),
+                                    ),
+                                    dcc.RadioItems(
+                                        id="spain-document-select",
+                                        options=documents,
+                                        value=initial_document,
+                                        className="spain-document-radio",
+                                        inputClassName="spain-document-radio-input",
+                                        labelClassName="spain-document-radio-label",
+                                    ),
+                                ],
+                                className="stats-control-field spain-control-field spain-document-field",
+                            ),
+                            html.Div(
+                                [
+                                    html.Label(
                                         "Indicador",
                                         htmlFor="spain-topic-select",
                                         **text_attrs("Indicador", "Indicator"),
@@ -166,11 +145,7 @@ def build_spain_layout() -> Component:
                                                 value=None,
                                                 clearable=False,
                                                 className="spain-dropdown spain-topic-dropdown",
-                                                disabled=not bool(
-                                                    initial_source
-                                                    and initial_document
-                                                    and initial_year
-                                                ),
+                                                disabled=not bool(initial_document and initial_year),
                                                 placeholder="Selecciona un indicador",
                                             ),
                                             html.Div(
@@ -201,12 +176,12 @@ def build_spain_layout() -> Component:
                                 className="stats-control-field spain-control-field spain-topic-field",
                             ),
                             html.P(
-                                "Selecciona un documento para cargar sus indicadores.",
+                                "Selecciona un documento.",
                                 id="spain-indicator-summary",
                                 className="stats-control-summary",
                                 **text_attrs(
-                                    "Selecciona un documento para cargar sus indicadores.",
-                                    "Select a document to load its indicators.",
+                                    "Selecciona un documento.",
+                                    "Select a document.",
                                 ),
                             ),
                         ],
@@ -226,58 +201,35 @@ def build_spain_layout() -> Component:
 
 def register_spain_callbacks(app: Dash) -> None:
     @app.callback(
-        Output("spain-source-select", "options"),
-        Output("spain-source-select", "placeholder"),
-        Output("spain-category-select", "placeholder"),
         Output("spain-year-select", "placeholder"),
         Output("spain-topic-select", "placeholder"),
         Input("app-language-store", "data"),
     )
-    def translate_spain_controls(
-        language: str | None,
-    ) -> tuple[list[dict[str, str]], str, str, str, str]:
+    def translate_spain_controls(language: str | None) -> tuple[str, str]:
         is_english = language == "en"
         return (
-            _source_options("en" if is_english else "es"),
-            "Select a source" if is_english else "Selecciona una fuente",
-            "Select a document" if is_english else "Selecciona un documento",
             "Select a year" if is_english else "Selecciona un año",
             "Select an indicator" if is_english else "Selecciona un indicador",
         )
 
     @app.callback(
-        Output("spain-category-select", "options"),
-        Output("spain-category-select", "value"),
-        Output("spain-category-select", "disabled"),
-        Input("spain-source-select", "value"),
-        State("spain-category-select", "value"),
+        Output("spain-document-select", "options"),
+        Output("spain-document-select", "value"),
+        Input("spain-year-select", "value"),
+        State("spain-document-select", "value"),
     )
-    def update_category_selector(collection_name: str | None, current_document: str | None):
-        documents = _document_options(collection_name)
+    def update_document_selector(
+        year: int | str | None,
+        current_document: str | None,
+    ) -> tuple[list[dict[str, str]], str | None]:
+        documents = _document_options(year)
         if not documents:
-            return [], None, True
+            return [], None
         values = {option["value"] for option in documents}
-        value = current_document if current_document in values else documents[0]["value"]
-        return documents, value, False
-
-    @app.callback(
-        Output("spain-year-select", "options"),
-        Output("spain-year-select", "value"),
-        Output("spain-year-select", "disabled"),
-        Input("spain-source-select", "value"),
-        Input("spain-category-select", "value"),
-        State("spain-year-select", "value"),
-    )
-    def update_year_selector(
-        collection_name: str | None, document_id: str | None, current_year: int | str | None
-    ):
-        years = _year_options(collection_name, document_id)
-        if not years:
-            return [], None, True
-        values = {option["value"] for option in years}
-        clean_current_year = _int_or_original(current_year)
-        value = clean_current_year if clean_current_year in values else years[0]["value"]
-        return years, value, False
+        value = current_document if current_document in values else None
+        if value is None and len(documents) == 1:
+            value = documents[0]["value"]
+        return documents, value
 
     @app.callback(
         Output("spain-topic-select", "options"),
@@ -286,31 +238,29 @@ def register_spain_callbacks(app: Dash) -> None:
         Output("spain-indicator-summary", "children"),
         Output("spain-topic-prev", "disabled"),
         Output("spain-topic-next", "disabled"),
-        Input("spain-source-select", "value"),
-        Input("spain-category-select", "value"),
+        Input("spain-document-select", "value"),
         Input("spain-year-select", "value"),
         Input("spain-topic-prev", "n_clicks"),
         Input("spain-topic-next", "n_clicks"),
-        State("spain-topic-select", "value"),
+        Input("spain-topic-select", "value"),
     )
     def update_topic_selector(
-        collection_name: str | None,
         document_id: str | None,
         year: int | str | None,
         _previous_clicks: int | None,
         _next_clicks: int | None,
         current_code: str | None,
     ):
-        if not collection_name:
+        if not year:
             return (
                 [],
                 None,
                 True,
-                text("No hay fuentes de datos disponibles.", "No data sources are available."),
+                text("Selecciona un año", "Select a year"),
                 True,
                 True,
             )
-        document_options = _document_options(collection_name)
+        document_options = _document_options(year)
         if not document_options:
             return (
                 [],
@@ -326,8 +276,8 @@ def register_spain_callbacks(app: Dash) -> None:
                 None,
                 True,
                 text(
-                    "Selecciona un documento para cargar sus indicadores.",
-                    "Select a document to load its indicators.",
+                    "Selecciona un documento",
+                    "Select a document",
                 ),
                 True,
                 True,
@@ -344,21 +294,10 @@ def register_spain_callbacks(app: Dash) -> None:
                 True,
                 True,
             )
-        if not year:
-            return (
-                [],
-                None,
-                True,
-                text(
-                    "Selecciona un año para cargar sus indicadores.",
-                    "Select a year to load its indicators.",
-                ),
-                True,
-                True,
-            )
-
-        indicators = get_felgtbi_indicators_by_document(document_id, year, collection_name)
+        indicators = get_felgtbi_indicators_by_document(document_id, year)
         options = _indicator_options(indicators)
+        if ctx.triggered_id in {"spain-document-select", "spain-year-select"}:
+            current_code = None
         selected_code, selection_status = _resolve_topic_selection(
             options,
             current_code,
@@ -375,7 +314,7 @@ def register_spain_callbacks(app: Dash) -> None:
             )
         selected_index = _selected_option_index(options, selected_code)
         previous_disabled = selected_index <= 0
-        next_disabled = selected_index >= len(options) - 1
+        next_disabled = selected_index < 0 or selected_index >= len(options) - 1
         summary = _topic_summary(document_id, year, len(options), selection_status)
         return options, selected_code, False, summary, previous_disabled, next_disabled
 
@@ -389,26 +328,22 @@ def register_spain_callbacks(app: Dash) -> None:
         Output("spain-section-image", "className"),
         Output("spain-section-graph", "figure"),
         Output("spain-section-graph", "className"),
-        Input("spain-source-select", "value"),
-        Input("spain-category-select", "value"),
+        Output("spain-source-attribution", "children"),
+        Input("spain-document-select", "value"),
         Input("spain-year-select", "value"),
         Input("spain-topic-select", "value"),
     )
     def update_spain_grid(
-        collection_name: str | None,
         document_id: str | None,
         year: int | str | None,
         code: str | None,
     ):
         navigation_started_at = time.perf_counter()
-        if not collection_name:
+        if not year:
             return _spain_view_state(
-                empty=_empty_state(
-                    "No hay fuentes de datos",
-                    "No se han encontrado colecciones españolas disponibles.",
-                ),
+                empty=_empty_state("Sin año", "Selecciona un año para continuar."),
             )
-        document_options = _document_options(collection_name)
+        document_options = _document_options(year)
         if not document_options:
             return _spain_view_state(
                 empty=_empty_state(
@@ -419,7 +354,7 @@ def register_spain_callbacks(app: Dash) -> None:
             return _spain_view_state(
                 empty=_empty_state(
                     "No hay documentos disponibles",
-                    "Selecciona un documento para cargar sus indicadores.",
+                    "Selecciona un documento.",
                 ),
             )
         if document_id not in {option["value"] for option in document_options}:
@@ -429,12 +364,12 @@ def register_spain_callbacks(app: Dash) -> None:
                     "El documento seleccionado ya no está disponible",
                 ),
             )
-        if not year:
+        if not code:
             return _spain_view_state(
-                empty=_empty_state("Sin año", "Selecciona un año para continuar."),
+                empty=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
             )
 
-        indicators = get_felgtbi_indicators_by_document(document_id, year, collection_name)
+        indicators = get_felgtbi_indicators_by_document(document_id, year)
         if not indicators:
             return _spain_view_state(
                 empty=_empty_state("No hay secciones disponibles", "No hay secciones disponibles"),
@@ -450,7 +385,7 @@ def register_spain_callbacks(app: Dash) -> None:
             )
 
         document = get_felgtbi_indicator_answers(
-            code or "", collection_name, document_id=document_id
+            code or "", document_id=document_id
         )
         render_started_at = time.perf_counter()
         view_state = _spain_document_view_state(document)
@@ -458,7 +393,7 @@ def register_spain_callbacks(app: Dash) -> None:
         logger.debug(
             "spain_section_navigation_rendered",
             extra={
-                "collection": collection_name,
+                "collection": "Indicator_felgtbi",
                 "document": document_id,
                 "code": code,
                 "render_ms": round(render_ms, 2),
@@ -501,6 +436,7 @@ def _spain_visualization_shell() -> list[Any]:
                         config={"displaylogo": False},
                         className=SPAIN_GRAPH_HIDDEN_CLASS,
                     ),
+                    html.Div(id="spain-source-attribution"),
                 ],
                 className="spain-content-frame",
             ),
@@ -516,7 +452,8 @@ def _spain_view_state(
     image_src: str | None = None,
     image_alt: str = "",
     figure: go.Figure | None = None,
-) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str]:
+    attribution: Any | None = None,
+) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str, Any]:
     has_empty = empty is not None
     has_report = report is not None
     has_image = bool(image_src)
@@ -532,52 +469,101 @@ def _spain_view_state(
         SPAIN_IMAGE_CLASS if has_image else SPAIN_IMAGE_HIDDEN_CLASS,
         figure or _value_figure(None),
         SPAIN_GRAPH_CLASS if has_graph else SPAIN_GRAPH_HIDDEN_CLASS,
+        attribution or [],
     )
 
 
 def _spain_document_view_state(
     document: dict[str, Any] | None,
-) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str]:
+) -> tuple[Any, str, Any, str, str | None, str, str, go.Figure, str, Any]:
     if not document:
         return _spain_view_state(
             empty=_empty_state("Sin indicador", "Selecciona un indicador para ver sus datos."),
         )
 
+    attribution = _felgtbi_document_attribution(document)
+
     if _content_html(document) or _has_structured_report_content(document):
-        return _spain_view_state(report=_html_content_panel(document))
+        return _spain_view_state(
+            report=_html_content_panel(document),
+            attribution=attribution,
+        )
 
     image_src = _figure_url(document)
     if image_src:
         return _spain_view_state(
             image_src=image_src,
             image_alt=_figure_alt_text(document),
+            attribution=attribution,
         )
 
-    return _spain_view_state(figure=_value_figure(document))
+    return _spain_view_state(
+        figure=_value_figure(document),
+        attribution=attribution,
+    )
 
 
-def _source_options(language: str = "es") -> list[dict[str, str]]:
-    return get_spain_collection_options(language)
+def _felgtbi_document_attribution(document: dict[str, Any]) -> Component:
+    report_title = str(document.get("report_title") or "").strip() or None
+    document_name = report_title or str(document.get("original_filename") or "").strip() or None
+    raw_year = document.get("year")
+    try:
+        year = int(raw_year) if raw_year not in (None, "") else None
+    except TypeError, ValueError:
+        year = None
+
+    figure_data = document.get("figure")
+    figure = figure_data if isinstance(figure_data, dict) else {}
+    figure_number = str(figure.get("number") or "").strip()
+    figure_caption = str(figure.get("caption") or "").strip()
+    figure_source = str(figure.get("source") or "").strip()
+    figure_parts = [part for part in (figure_number, figure_caption) if part]
+    if figure_source:
+        figure_parts.append(f"Fuente original indicada en el informe: {figure_source}")
+
+    custom_text: tuple[str, str] | None = None
+    if report_title:
+        year_label = f", {year}" if year else ""
+        figure_label = f", {' · '.join(figure_parts)}" if figure_parts else ""
+        original_source_en = (
+            f" Original source cited in the report: {figure_source}." if figure_source else ""
+        )
+        figure_en = ""
+        if figure_number or figure_caption:
+            figure_en = f", {' · '.join(part for part in (figure_number, figure_caption) if part)}"
+        custom_text = (
+            (
+                f"Fuente: FELGTBI+, “{report_title}”{year_label}{figure_label}. "
+                "Visualización adaptada por RainbowLens Datahub."
+            ),
+            (
+                f"Source: FELGTBI+, “{report_title}”{year_label}{figure_en}. "
+                f"Visualisation adapted by RainbowLens Datahub.{original_source_en}"
+            ),
+        )
+
+    return build_source_attribution(
+        "felgtbi",
+        source_name=report_title,
+        year=year,
+        source_url=str(document.get("source_url") or "").strip() or None,
+        custom_text=custom_text,
+        document_id=document_name,
+        figure=" · ".join(figure_parts) or None,
+        accessed_at=str(document.get("source_accessed_at") or "").strip() or None,
+        compact=True,
+    )
 
 
-def _document_options(collection_name: str | None = None) -> list[dict[str, str]]:
-    return get_felgtbi_document_options(collection_name)
+def _document_options(year: int | str | None = None) -> list[dict[str, str]]:
+    return get_felgtbi_document_options(year=year)
 
 
-def _year_options(
-    collection_name: str | None = None, document_id: str | None = None
-) -> list[dict[str, Any]]:
+def _year_options() -> list[dict[str, Any]]:
     return [
         {"label": str(year), "value": year}
-        for year in get_felgtbi_document_years(document_id, collection_name)
+        for year in get_felgtbi_years()
     ]
-
-
-def _int_or_original(value: Any) -> Any:
-    try:
-        return int(value)
-    except TypeError, ValueError:
-        return value
 
 
 def _indicator_options(indicators: list[Any]) -> list[dict[str, str]]:
@@ -607,9 +593,11 @@ def _resolve_topic_selection(
         return None, "empty"
 
     current = str(current_code or "").strip()
+    if not current:
+        return None, "unselected"
     selection_removed = bool(current and current not in values)
     if current not in values:
-        current = values[0]
+        return None, "removed"
 
     index = values.index(current)
     if trigger_id == "spain-topic-prev":
@@ -634,6 +622,11 @@ def _topic_summary(_document_id: str, year: int | str, total: int, selection_sta
             "La sección seleccionada ya no está disponible",
             "The selected section is no longer available",
         )
+    if selection_status == "unselected":
+        return text(
+            f"{total} indicadores disponibles. Selecciona un indicador.",
+            f"{total} indicators available. Select an indicator.",
+        )
     return text(
         f"{year}: {total} indicadores disponibles.",
         f"{year}: {total} indicators available.",
@@ -647,13 +640,11 @@ def _indicator_option_label(
     *,
     report_title: str = "",
 ) -> str:
-    clean_section = title or section or "Indicador FELGTBI+"
-    report = str(report_title or "").strip()
-    value_label = f" - {_format_percent(value)}" if value is not None else ""
-    if report and report not in clean_section:
-        return f"{report} · {clean_section}{value_label}"
-    return f"{clean_section}{value_label}"
-
+    del value
+    return clean_felgtbi_indicator_label(
+        title or section or "Indicador FELGTBI+",
+        report_title,
+    )
 
 
 def _html_content_panel(document: dict[str, Any] | None) -> Any:
@@ -770,7 +761,13 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
         if caption:
             caption_children.append(html.Span(caption))
         if source:
-            caption_children.append(html.Small(source, className="report-figure-source"))
+            clean_source = re.sub(r"^\s*Fuente\s*:\s*", "", source, flags=re.IGNORECASE)
+            caption_children.append(
+                html.Small(
+                    [text("Fuente", "Source"), f": {clean_source}"],
+                    className="report-figure-source",
+                )
+            )
         children.append(html.Figcaption(caption_children))
     return html.Figure(children, className="report-figure")
 

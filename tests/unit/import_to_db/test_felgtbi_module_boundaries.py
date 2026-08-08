@@ -5,6 +5,8 @@ import pytest
 from app.import_to_db.felgtbi.document_identity import (
     attach_source_document_metadata,
     build_pdf_source_document_id,
+    clean_felgtbi_document_label,
+    clean_felgtbi_indicator_label,
 )
 from app.import_to_db.felgtbi.models import PdfExtractionError
 from app.import_to_db.felgtbi.pipeline import parse_felgtbi_pdf_bytes
@@ -64,4 +66,52 @@ def test_figure_storage_path_keeps_only_canonical_storage_path_data() -> None:
 
     result = figure_storage_path(document, "report.pdf")
 
-    assert result == "2026/estado-lgtbi/agresiones-fisicas/figura-3-1.webp"
+    assert result.startswith("2026/estado-lgtbi/agresiones-fisicas/figura-3-1-")
+    assert result.endswith(".webp")
+
+
+@pytest.mark.parametrize(
+    ("raw_label", "document_title", "expected"),
+    [
+        (
+            "Estado del odio - ¿Podría decirme cuál es su orientación sexual? - 9,60",
+            "Estado del odio",
+            "¿Podría decirme cuál es su orientación sexual?",
+        ),
+        (
+            "Estado LGTBI+ 2025 - Discriminación en el trabajo - 18,5%",
+            "Estado LGTBI+ 2025",
+            "Discriminación en el trabajo",
+        ),
+        (
+            "¿Has sufrido discriminación en los últimos 12 meses?",
+            "Estado del odio",
+            "¿Has sufrido discriminación en los últimos 12 meses?",
+        ),
+    ],
+)
+def test_indicator_label_cleanup_changes_only_display_text(
+    raw_label: str,
+    document_title: str,
+    expected: str,
+) -> None:
+    # Arrange / Act
+    cleaned = clean_felgtbi_indicator_label(raw_label, document_title)
+
+    # Assert
+    assert cleaned == expected
+
+
+def test_document_label_prefers_pdf_title_and_cleans_technical_filename() -> None:
+    # Arrange / Act
+    official = clean_felgtbi_document_label(
+        "1b845c_FINAL_2025.pdf",
+        "20 años de matrimonio igualitario",
+    )
+    fallback = clean_felgtbi_document_label(
+        "Informe-socio-economico_estado-lgrbi-2025_FINAL.pdf"
+    )
+
+    # Assert
+    assert official == "20 años de matrimonio igualitario"
+    assert fallback == "Socio economico estado"

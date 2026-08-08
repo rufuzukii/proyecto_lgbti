@@ -46,6 +46,13 @@ def test_dark_theme_renders_dash_option_text_in_white() -> None:
     assert "color: #fff !important;" in styles
 
 
+def test_europe_map_keeps_the_normal_ocean_colour_in_dark_mode() -> None:
+    theme = (ASSETS / "js" / "20_theme.js").read_text(encoding="utf-8")
+
+    assert 'geoOcean: "#dcebf2"' in theme
+    assert 'geoOcean: dark ? "#0a0e17"' not in theme
+
+
 def test_inserted_theme_controls_are_synchronized_immediately() -> None:
     bootstrap = (ASSETS / "js" / "40_bootstrap.js").read_text(encoding="utf-8")
     theme = (ASSETS / "js" / "20_theme.js").read_text(encoding="utf-8")
@@ -80,6 +87,7 @@ def test_language_is_applied_immediately_on_boot_and_route_changes() -> None:
 
 def test_dash_initial_loading_text_is_replaced_by_centered_spinner() -> None:
     styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
+    bootstrap = (ASSETS / "js" / "40_bootstrap.js").read_text(encoding="utf-8")
 
     assert "._dash-loading {" in styles
     assert "color: transparent;" in styles
@@ -87,3 +95,9 @@ def test_dash_initial_loading_text_is_replaced_by_centered_spinner() -> None:
     assert "animation: rainbowlens-loader-spin" in styles
     assert "position: fixed;" in styles
     assert "justify-content: center;" in styles
+    footer_rule = styles.split(".site-footer {", 1)[1].split("}", 1)[0]
+    assert "display: none;" in footer_rule
+    assert '.app-shell[data-page-ready="true"] .site-footer' in styles
+    assert "syncApplicationReadyState();" in bootstrap
+    assert 'pageContent.getAttribute("data-dash-is-loading") === "true"' in bootstrap
+    assert 'shell.dataset.pageReady = hasContent && !isLoading ? "true" : "false"' in bootstrap

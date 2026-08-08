@@ -62,13 +62,24 @@ def test_authenticated_navbar_keeps_i18n_attributes_out_of_dcc_link(monkeypatch)
         if getattr(component, "className", "") == "nav-link nav-account"
     )
     link_props = account_link.to_plotly_json()["props"]
-    account_child = account_link.children
-    assert account_child is not None
-    child_props = account_child.to_plotly_json()["props"]
+    account_name = next(
+        component
+        for component in _walk(account_link)
+        if getattr(component, "className", "") == "nav-account-name"
+    )
+    account_caption = next(
+        component
+        for component in _walk(account_link)
+        if getattr(component, "className", "") == "nav-account-caption"
+    )
+    name_props = account_name.to_plotly_json()["props"]
+    caption_props = account_caption.to_plotly_json()["props"]
 
     assert "data-i18n-es" not in link_props
-    assert child_props["data-i18n-es"] == "Usuario"
-    assert child_props["data-i18n-en"] == "Usuario"
+    assert name_props["data-i18n-es"] == "Usuario"
+    assert name_props["data-i18n-en"] == "Usuario"
+    assert caption_props["data-i18n-es"] == "Panel personal"
+    assert caption_props["data-i18n-en"] == "Personal dashboard"
 
 
 def test_navbar_exposes_an_accessible_collapsible_mobile_menu(monkeypatch) -> None:

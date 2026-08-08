@@ -80,7 +80,7 @@
       grid: dark ? "#2d3748" : "#e5e9eb",
       geoBg: dark ? "#111827" : "#ffffff",
       geoLand: dark ? "#1a2232" : "#edf1f4",
-      geoOcean: dark ? "#0a0e17" : "#dcebf2",
+      geoOcean: "#dcebf2",
       geoCoast: dark ? "#536176" : "#b9c0ca",
       mapbox: dark ? "carto-darkmatter" : "open-street-map",
     };

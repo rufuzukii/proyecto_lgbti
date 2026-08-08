@@ -119,6 +119,42 @@ services:
         value: "5"
       - key: CONTACT_WINDOW_SECONDS
         value: "3600"
+      - key: PRIVACY_CONTROLLER_NAME
+        sync: false
+      - key: PRIVACY_CONTACT_EMAIL
+        sync: false
+      - key: PRIVACY_CONTROLLER_ADDRESS
+        sync: false
+      - key: PRIVACY_POLICY_EFFECTIVE_DATE
+        value: "2026-08-06"
+      - key: PRIVACY_AUDIT_RETENTION_DAYS
+        value: "90"
+      - key: PRIVACY_DELETION_JOB_RETENTION_DAYS
+        value: "30"
+      - key: PRIVACY_DELETE_MAX_ATTEMPTS
+        value: "5"
+      - key: PRIVACY_DELETE_WINDOW_SECONDS
+        value: "3600"
+      - key: PRIVACY_EXPORT_MAX_ATTEMPTS
+        value: "10"
+      - key: PRIVACY_EXPORT_WINDOW_SECONDS
+        value: "3600"
+      - key: PRIVACY_BACKUP_RETENTION
+        sync: false
+      - key: PRIVACY_EMAIL_RETENTION
+        sync: false
+      - key: PRIVACY_ACCESS_LOG_RETENTION
+        sync: false
+      - key: PRIVACY_HOSTING_LOCATION
+        sync: false
+      - key: PRIVACY_POSTGRES_PROVIDER
+        sync: false
+      - key: PRIVACY_MONGO_PROVIDER
+        sync: false
+      - key: PRIVACY_EMAIL_PROVIDER
+        sync: false
+      - key: PRIVACY_TRANSFER_SAFEGUARDS
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT

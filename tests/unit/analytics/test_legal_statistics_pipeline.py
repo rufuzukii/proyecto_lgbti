@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 import app.analytics.repository as analytics_repository
+from app.analytics import statistics_service
 from app.analytics.statistics_charts import (
     build_ilga_response_details_chart,
     build_temporal_evolution_chart,
@@ -28,6 +29,7 @@ def _projected_country(
     *,
     criteria: list[dict[str, Any]] | None = None,
     document_id: str | None = None,
+    normalization: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "document_id": document_id or str(year),
@@ -37,6 +39,7 @@ def _projected_country(
         "country_name": name,
         "ranking": ranking,
         "criteria": criteria or [],
+        "normalization": normalization or {"applied": False},
     }
 
 
@@ -45,7 +48,7 @@ def test_ilga_repository_uses_one_projected_aggregate_without_limit(monkeypatch)
     collection.aggregate.return_value = []
     monkeypatch.setattr(analytics_repository, "_mongo_collection", lambda _name: collection)
 
-    analytics_repository.get_ilga_analysis_rows.uncached("Family", "Marriage equality")
+    analytics_repository.get_ilga_analysis_rows("Family", "Marriage equality")
 
     collection.aggregate.assert_called_once()
     pipeline = collection.aggregate.call_args.args[0]
@@ -56,6 +59,16 @@ def test_ilga_repository_uses_one_projected_aggregate_without_limit(monkeypatch)
     assert pipeline[-1] == {
         "$sort": {"year": 1, "country_code": 1, "document_id": -1, "country_index": 1}
     }
+
+
+def test_legal_statistics_cache_key_tracks_database_year_catalog(monkeypatch) -> None:
+    query = IlgaStatisticsQuery(year=2026, category="Ranking total")
+    monkeypatch.setattr(statistics_service, "get_ilga_years", lambda: [2026])
+    before = statistics_service._ilga_statistics_cache_key(query, include_history=True)
+    monkeypatch.setattr(statistics_service, "get_ilga_years", lambda: [2026, 2025])
+    after = statistics_service._ilga_statistics_cache_key(query, include_history=True)
+
+    assert before != after
 
 
 def test_ilga_normalization_resolves_duplicates_and_preserves_missing_values() -> None:
@@ -117,13 +130,37 @@ def test_ilga_normalization_resolves_duplicates_and_preserves_missing_values() -
         "value",
         "response",
         "response_order",
+        "normalization_applied",
+        "normalization_method",
+        "original_scale_min",
+        "original_scale_max",
+        "target_scale_min",
+        "target_scale_max",
     ]
 
 
 def test_legal_statistics_reuses_one_query_for_all_countries_and_years(monkeypatch) -> None:
     calls = 0
     rows: list[dict[str, Any]] = []
-    for year in (2025, 2026):
+    normalized_scales = {
+        2011: {
+            "applied": True,
+            "method": "linear_min_max",
+            "original_min": -7,
+            "original_max": 17,
+            "target_min": 0,
+            "target_max": 100,
+        },
+        2012: {
+            "applied": True,
+            "method": "linear_min_max",
+            "original_min": -12,
+            "original_max": 30,
+            "target_min": 0,
+            "target_max": 100,
+        },
+    }
+    for year in range(2011, 2027):
         for index in range(49):
             rows.append(
                 _projected_country(
@@ -131,6 +168,7 @@ def test_legal_statistics_reuses_one_query_for_all_countries_and_years(monkeypat
                     f"Country {index:02d}",
                     year,
                     20 + index,
+                    normalization=normalized_scales.get(year),
                 )
             )
 
@@ -148,8 +186,8 @@ def test_legal_statistics_reuses_one_query_for_all_countries_and_years(monkeypat
     assert calls == 1
     assert result["status"] == "ok"
     assert len(result["ranking"]) == 49
-    assert len(result["history"]) == 98
-    assert {row["year"] for row in result["history"]} == {2025, 2026}
+    assert len(result["history"]) == 49 * 16
+    assert {row["year"] for row in result["history"]} == set(range(2011, 2027))
     assert {row["country_code"] for row in result["history"]} == {
         f"X{index:02d}" for index in range(49)
     }
@@ -161,6 +199,10 @@ def test_legal_statistics_reuses_one_query_for_all_countries_and_years(monkeypat
         "indicator_id",
         "source",
     }.issubset(result["history"][0])
+    normalized_history = {
+        row["year"] for row in result["history"] if row["normalization_applied"]
+    }
+    assert normalized_history == {2011, 2012}
 
 
 def test_legal_details_detect_responses_and_keep_country_without_criterion(monkeypatch) -> None:

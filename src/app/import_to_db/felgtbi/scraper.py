@@ -7,8 +7,9 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from app.import_to_db.felgtbi.importer import YEAR_PATTERN
+from app.source_attribution import FELGTBI_REPORTS_URL
 
-DEFAULT_FELGTBI_STATE_URL = "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/"
+DEFAULT_FELGTBI_STATE_URL = FELGTBI_REPORTS_URL
 DEFAULT_ALLOWED_HOSTS = {"felgtbi.org", "www.felgtbi.org"}
 MEBIBYTE = 1024 * 1024
 DEFAULT_MAX_RESPONSE_MEBIBYTES = 20

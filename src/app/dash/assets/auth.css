@@ -414,43 +414,6 @@ body[data-theme="dark"] .auth-switch a {
   min-width: 140px;
 }
 
-.user-action-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 1rem;
-}
-
-.user-action-tile {
-  background: #f6fafb;
-  border: 1px solid #d9e5e9;
-  border-radius: 8px;
-  color: #24343a;
-  display: grid;
-  gap: 0.45rem;
-  min-height: 120px;
-  padding: 1rem;
-  text-decoration: none;
-  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
-}
-
-.user-action-tile:hover {
-  border-color: #75aebe;
-  box-shadow: 0 14px 24px rgba(12, 74, 95, 0.1);
-  transform: translateY(-2px);
-}
-
-.user-action-tile strong {
-  color: #0c4a5f;
-  font-size: 1rem;
-}
-
-.user-action-tile span {
-  color: #657078;
-  font-size: 0.9rem;
-  line-height: 1.45;
-}
-
 .user-contact-card > p {
   color: #657078;
   line-height: 1.5;
@@ -558,9 +521,6 @@ body[data-theme="dark"] .auth-switch a {
     justify-self: start;
   }
 
-  .user-action-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 640px) {

@@ -6,7 +6,7 @@ import logging
 from time import perf_counter
 from typing import Any
 
-from app.analytics.repository import ANALYTICS_CACHE_TIMEOUT_SECONDS
+from app.analytics.repository import ANALYTICS_CACHE_TIMEOUT_SECONDS, get_ilga_years
 from app.cache import cache
 from app.trends.analysis import analyze_historical_series
 from app.trends.data import (
@@ -182,6 +182,7 @@ def _series_cache_key(
 ) -> str:
     identity = {
         "country": country_code,
+        "dataset_years": get_ilga_years() if source == TrendSource.ILGA else None,
         "end_year": filters.end_year,
         "indicator": indicator_token,
         "series": filters.series_key,

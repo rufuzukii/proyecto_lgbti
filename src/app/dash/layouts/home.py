@@ -25,10 +25,12 @@ from app.analytics.repository import (
 from app.analytics.statistics_normalizers import normalize_country_code
 from app.auth.permissions import is_admin_user
 from app.dash.components.section_navigation import build_home_section_navigation
+from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.dates import utc_today, utc_today_iso
+from app.source_attribution import ILGA_ANNUAL_REVIEW_2026_PDF_URL
 
 EDITOR_LABELS_EN = {
     "Identificación": "Identification",
@@ -106,9 +108,32 @@ def build_home_layout() -> Component:
                                         className="home-map-intro",
                                     ),
                                     html.Div(
-                                        _ilga_metrics(ilga_document),
-                                        id="home-map-metrics",
-                                        className="home-map-metrics",
+                                        [
+                                            html.Div(
+                                                [
+                                                    html.Span(
+                                                        _ilga_copy(ilga_document),
+                                                        id="home-map-copy",
+                                                        className="home-map-copy",
+                                                    ),
+                                                    html.A(
+                                                        text(
+                                                            "Abrir estadísticas",
+                                                            "Open statistics",
+                                                        ),
+                                                        href="/statistics",
+                                                        className="home-map-link",
+                                                    ),
+                                                ],
+                                                className="home-map-summary-header",
+                                            ),
+                                            html.Div(
+                                                _ilga_metrics(ilga_document),
+                                                id="home-map-metrics",
+                                                className="home-map-metrics",
+                                            ),
+                                        ],
+                                        className="home-map-summary",
                                     ),
                                 ],
                                 className="home-map-header",
@@ -175,23 +200,13 @@ def build_home_layout() -> Component:
                                 [
                                     html.Div(
                                         [
-                                            html.Span(
+                                            html.Div(
                                                 _ilga_source(ilga_document),
                                                 id="home-map-source",
                                                 className="home-map-source",
                                             ),
-                                            html.Span(
-                                                _ilga_copy(ilga_document),
-                                                id="home-map-copy",
-                                                className="home-map-copy",
-                                            ),
                                         ],
                                         className="home-map-footer-meta",
-                                    ),
-                                    html.A(
-                                        text("Abrir estadísticas", "Open statistics"),
-                                        href="/statistics",
-                                        className="home-map-link",
                                     ),
                                 ],
                                 className="home-map-footer",
@@ -213,11 +228,7 @@ def register_home_callbacks(app: Dash) -> None:
         Input("app-language-store", "data"),
     )
     def translate_home_controls(language: str | None) -> str:
-        return (
-            "Select on the map or here"
-            if language == "en"
-            else "Selecciona en el mapa o aquí"
-        )
+        return "Select on the map or here" if language == "en" else "Selecciona en el mapa o aquí"
 
     @app.callback(
         Output("home-main-map", "figure"),
@@ -1140,7 +1151,7 @@ def _editor_initial_record(
         "positive_developments": [],
         "main_challenges": [],
         "source_name": "ILGA-Europe Annual Review 2026",
-        "source_url": "https://www.ilga-europe.org/files/uploads/2026/02/2026-ILGA-EUROPE-ANNUAL-REVIEW.pdf",
+        "source_url": ILGA_ANNUAL_REVIEW_2026_PDF_URL,
         "reviewed_at": utc_today_iso(),
         "active": True,
     }
@@ -1254,6 +1265,24 @@ def _status_source(status: dict[str, Any]) -> Component:
                 **text_attrs(f"Última revisión: {reviewed_at}", f"Last review: {reviewed_at}"),
             )
         )
+    if "ilga" in source_name.casefold():
+        year_value = status.get("year")
+        if year_value is None:
+            source_year = None
+        else:
+            try:
+                source_year = int(year_value)
+            except TypeError, ValueError:
+                source_year = None
+        children.append(
+            build_source_attribution(
+                "ilga",
+                year=source_year,
+                source_url=source_url or None,
+                compact=True,
+                class_name="country-status-card__attribution",
+            )
+        )
     return html.Footer(children, className="country-status-card__source")
 
 
@@ -1314,11 +1343,13 @@ def _ilga_copy(document: dict[str, Any] | None, language: str | None = None):
 
 def _ilga_source(document: dict[str, Any] | None, language: str | None = None):
     year = document.get("year") if isinstance(document, dict) else None
-    if year:
-        return text(
-            f"Fuente: ILGA Europe - {year}", f"Source: ILGA Europe - {year}", language=language
-        )
-    return text("Fuente: ILGA Europe", "Source: ILGA Europe", language=language)
+    return build_source_attribution(
+        "ilga",
+        year=int(year) if isinstance(year, int | float) else None,
+        compact=True,
+        language=language,
+        class_name="home-map-source-attribution",
+    )
 
 
 def _ilga_metrics(document: dict[str, Any] | None, language: str | None = None) -> list[Component]:

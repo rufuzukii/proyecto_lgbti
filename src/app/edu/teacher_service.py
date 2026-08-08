@@ -11,6 +11,7 @@ from reportlab.platypus import ListFlowable, Paragraph, SimpleDocTemplate, Space
 
 from app.edu.models import TeacherResource
 from app.edu.repository import load_json
+from app.source_attribution import source_metadata
 
 
 @lru_cache(maxsize=1)
@@ -36,6 +37,7 @@ def generate_teacher_resource_pdf(resource_id: str, language: str) -> tuple[byte
         "materials": ("Materiales", "Materials"),
         "guide": ("Guía docente", "Teacher guide"),
         "minutes": ("minutos", "minutes"),
+        "sources": ("Fuentes, metodología y atribuciones", "Sources, methodology and attributions"),
     }
     output = BytesIO()
     document = SimpleDocTemplate(
@@ -75,6 +77,42 @@ def generate_teacher_resource_pdf(resource_id: str, language: str) -> tuple[byte
         Paragraph(labels["guide"][position], styles["Heading2"]),
         Paragraph(resource.teacher_guide.get(language), styles["BodyText"]),
     ]
+    source_keys = _resource_source_keys(resource)
+    if source_keys:
+        story.extend(
+            [
+                Paragraph(labels["sources"][position], styles["Heading2"]),
+                *[
+                    Paragraph(
+                        source_metadata(source).attribution(language),
+                        styles["BodyText"],
+                    )
+                    for source in source_keys
+                ],
+                *[
+                    Paragraph(source_metadata(source).source_url, styles["BodyText"])
+                    for source in source_keys
+                ],
+            ]
+        )
     document.build(story)
     safe_id = re.sub(r"[^a-z0-9_-]+", "-", resource.id.casefold()).strip("-")
     return output.getvalue(), f"rainbowlens-datahub-{safe_id}-{language}.pdf"
+
+
+def _resource_source_keys(resource: TeacherResource) -> list[str]:
+    searchable = " ".join(
+        [
+            resource.title.es,
+            resource.title.en,
+            resource.description.es,
+            resource.description.en,
+            resource.instructions.es,
+            resource.instructions.en,
+            resource.teacher_guide.es,
+            resource.teacher_guide.en,
+            *(item.es for item in resource.materials),
+            *(item.en for item in resource.materials),
+        ]
+    ).casefold()
+    return [source for source in ("fra", "ilga", "felgtbi") if source in searchable]

@@ -11,6 +11,7 @@ class FakeCollection:
     def __init__(self, indexes: list[dict[str, Any]]) -> None:
         self.indexes = indexes
         self.created: list[IndexModel] = []
+        self.dropped: list[str] = []
 
     def list_indexes(self) -> list[dict[str, Any]]:
         return self.indexes
@@ -20,6 +21,13 @@ class FakeCollection:
         for index in indexes:
             self.indexes.append(dict(index.document))
         return [str(index.document.get("name")) for index in indexes]
+
+    def aggregate(self, _pipeline):
+        return []
+
+    def drop_index(self, name: str) -> None:
+        self.dropped.append(name)
+        self.indexes = [index for index in self.indexes if index.get("name") != name]
 
 
 def test_reuses_equivalent_index_with_a_different_name(monkeypatch) -> None:
@@ -97,4 +105,51 @@ def test_fra_category_selector_uses_a_covered_compound_index(monkeypatch) -> Non
         "docente_game_id_unique",
         "docente_games_by_owner",
     }
+    ilga_index = captured["Indicator_ilga"][0]
+    assert ilga_index.document.get("unique") is True
     mongo_indexes.initialize_mongo_indexes.cache_clear()
+
+
+def test_ilga_index_upgrade_checks_duplicates_before_replacing_non_unique(monkeypatch) -> None:
+    collection = FakeCollection(
+        [
+            {"name": "_id_", "key": {"_id": 1}},
+            {"name": "dataset_1_year_-1", "key": {"dataset": 1, "year": -1}},
+        ]
+    )
+    monkeypatch.setattr(mongo_indexes, "get_mongo_collection", lambda _name: collection)
+
+    mongo_indexes.ensure_ilga_unique_index()
+
+    assert collection.dropped == ["dataset_1_year_-1"]
+    created = collection.created[0].document
+    assert created["key"] == {"dataset": 1, "year": -1}
+    assert created["unique"] is True
+
+
+def test_felgtbi_indexes_match_catalog_navigation_and_indicator_queries() -> None:
+    # Arrange / Act
+    indexes = {
+        str(index.document["name"]): list(index.document["key"].items())
+        for index in mongo_indexes.felgtbi_index_models()
+    }
+
+    # Assert
+    assert indexes == {
+        "felgtbi_year_documents": [
+            ("source", 1),
+            ("year", -1),
+            ("source_document_id", 1),
+        ],
+        "felgtbi_document_navigation": [
+            ("source", 1),
+            ("source_document_id", 1),
+            ("page", 1),
+            ("code", 1),
+        ],
+        "felgtbi_document_indicator": [
+            ("source", 1),
+            ("source_document_id", 1),
+            ("code", 1),
+        ],
+    }

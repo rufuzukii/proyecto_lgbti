@@ -108,7 +108,6 @@ def send_role_contact_email(
             (
                 f"Usuario: {clean_name}",
                 f"Correo: {clean_email}",
-                f"ID de usuario: {user_id}",
                 f"Perfil actual: {_single_line(current_role, 40)}",
                 f"Perfil solicitado: {clean_requested or 'No indicado'}",
                 f"Asunto: {clean_subject}",

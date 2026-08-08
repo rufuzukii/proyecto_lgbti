@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
@@ -9,6 +10,7 @@ from pymongo import ASCENDING, DESCENDING, IndexModel
 from pymongo.errors import OperationFailure
 
 from app.mongo import get_mongo_collection, get_mongo_database
+from app.privacy.policy import get_privacy_policy_config
 
 logger = logging.getLogger(__name__)
 
@@ -66,41 +68,44 @@ def initialize_mongo_indexes() -> None:
     )
     _ensure_collection_indexes(
         "Indicator_ilga",
-        [IndexModel([("dataset", ASCENDING), ("year", DESCENDING)], name="ilga_dataset_year")],
+        [
+            IndexModel(
+                [("dataset", ASCENDING), ("year", DESCENDING)],
+                unique=True,
+                name="ilga_dataset_year",
+            )
+        ],
     )
-    spain_indexes = [
-        IndexModel([("code", ASCENDING)], name="felgtbi_code"),
-        IndexModel([("source_document_id", ASCENDING)], name="felgtbi_document"),
-        IndexModel([("original_filename", ASCENDING)], name="felgtbi_filename"),
+    spain_indexes = felgtbi_index_models()
+    for collection_name in spain_report_collection_names():
+        _ensure_collection_indexes(collection_name, spain_indexes)
+    _initialize_non_report_indexes()
+
+
+def felgtbi_index_models() -> list[IndexModel]:
+    """Indexes aligned with the Spain catalog, navigation and detail queries."""
+    return [
         IndexModel(
-            [("source", ASCENDING), ("category", ASCENDING), ("year", DESCENDING)],
-            name="felgtbi_source_category_year",
+            [("source", ASCENDING), ("year", DESCENDING), ("source_document_id", ASCENDING)],
+            name="felgtbi_year_documents",
         ),
         IndexModel(
             [
                 ("source", ASCENDING),
                 ("source_document_id", ASCENDING),
-                ("year", DESCENDING),
                 ("page", ASCENDING),
                 ("code", ASCENDING),
             ],
-            name="felgtbi_document_sections",
+            name="felgtbi_document_navigation",
         ),
         IndexModel(
-            [("source", ASCENDING), ("original_filename", ASCENDING), ("year", DESCENDING)],
-            name="felgtbi_source_filename_year",
-        ),
-        IndexModel(
-            [("source", ASCENDING), ("report_type", ASCENDING)],
-            name="felgtbi_source_report_type",
-        ),
-        IndexModel(
-            [("source", ASCENDING), ("question", ASCENDING), ("year", DESCENDING)],
-            name="felgtbi_source_question_year",
+            [("source", ASCENDING), ("source_document_id", ASCENDING), ("code", ASCENDING)],
+            name="felgtbi_document_indicator",
         ),
     ]
-    for collection_name in spain_report_collection_names():
-        _ensure_collection_indexes(collection_name, spain_indexes)
+
+
+def _initialize_non_report_indexes() -> None:
     _ensure_collection_indexes(
         "country_lgbti_status",
         [
@@ -140,6 +145,7 @@ def initialize_mongo_indexes() -> None:
                 [("actor_user_id", ASCENDING), ("created_at", DESCENDING)],
                 name="user_audit_by_actor",
             ),
+            IndexModel([("expires_at", ASCENDING)], expireAfterSeconds=0, name="user_audit_ttl"),
         ],
     )
     _ensure_collection_indexes(
@@ -167,9 +173,109 @@ def initialize_mongo_indexes() -> None:
             IndexModel(
                 [("user_id", ASCENDING), ("created_at", DESCENDING)],
                 name="security_audit_by_user",
-            )
+            ),
+            IndexModel(
+                [("expires_at", ASCENDING)],
+                expireAfterSeconds=0,
+                name="security_audit_ttl",
+            ),
         ],
     )
+    _ensure_collection_indexes(
+        "user_deletion_requests",
+        [
+            IndexModel(
+                [("user_id", ASCENDING)],
+                unique=True,
+                sparse=True,
+                name="deletion_request_user_unique",
+            ),
+            IndexModel(
+                [("expires_at", ASCENDING)],
+                expireAfterSeconds=0,
+                name="deletion_request_ttl",
+            ),
+        ],
+    )
+    _backfill_audit_expiry("user_admin_audit")
+    _backfill_audit_expiry("user_security_audit")
+
+
+def ensure_ilga_unique_index() -> None:
+    """Safely upgrade the annual ILGA identity index after checking legacy data."""
+    collection = get_mongo_collection("Indicator_ilga")
+    duplicates = list(
+        collection.aggregate(
+            [
+                {
+                    "$group": {
+                        "_id": {"dataset": "$dataset", "year": "$year"},
+                        "documents": {"$sum": 1},
+                    }
+                },
+                {"$match": {"documents": {"$gt": 1}}},
+                {"$limit": 1},
+            ]
+        )
+    )
+    if duplicates:
+        duplicate = duplicates[0].get("_id") or {}
+        raise ValueError(
+            "duplicate_ilga_documents:"
+            f"{duplicate.get('dataset')}:{duplicate.get('year')}"
+        )
+
+    desired = IndexModel(
+        [("dataset", ASCENDING), ("year", DESCENDING)],
+        unique=True,
+        name="ilga_dataset_year",
+    )
+    desired_key = _index_key(dict(desired.document))
+    existing = _list_indexes(collection)
+    incompatible = next(
+        (
+            index
+            for index in existing
+            if _index_key(index) == desired_key and not bool(index.get("unique", False))
+        ),
+        None,
+    )
+    if incompatible is not None:
+        collection.drop_index(str(incompatible["name"]))
+        logger.info(
+            "mongo_index_replaced collection=Indicator_ilga old_index=%s new_index=ilga_dataset_year",
+            incompatible["name"],
+        )
+    _ensure_collection_indexes("Indicator_ilga", [desired])
+
+
+def _backfill_audit_expiry(collection_name: str) -> None:
+    """Apply the configured retention to legacy audit rows once."""
+
+    retention_days = get_privacy_policy_config().audit_retention_days
+    try:
+        get_mongo_collection(collection_name).update_many(
+            {"expires_at": {"$exists": False}},
+            [
+                {
+                    "$set": {
+                        "expires_at": {
+                            "$dateAdd": {
+                                "startDate": {"$ifNull": ["$created_at", datetime.now(UTC)]},
+                                "unit": "day",
+                                "amount": retention_days,
+                            }
+                        }
+                    }
+                }
+            ],
+        )
+    except Exception:
+        logger.warning(
+            "mongo_audit_retention_backfill_failed",
+            extra={"collection": collection_name},
+            exc_info=True,
+        )
 
 
 def _ensure_collection_indexes(

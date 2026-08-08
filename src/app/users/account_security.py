@@ -9,6 +9,7 @@ from typing import Any, Literal, cast
 from pymongo import ReturnDocument
 
 from app.mongo import get_mongo_collection
+from app.privacy.policy import get_privacy_policy_config
 
 ACCOUNT_COLLECTION = "user_account_security"
 TOKEN_COLLECTION = "user_security_tokens"
@@ -189,12 +190,15 @@ def consume_security_token(token: str, purpose: TokenPurpose) -> str | None:
 
 
 def record_security_event(user_id: str, action: str) -> None:
+    now = datetime.now(UTC)
     try:
         get_mongo_collection(SECURITY_AUDIT_COLLECTION).insert_one(
             {
                 "user_id": user_id,
                 "action": action,
-                "created_at": datetime.now(UTC),
+                "created_at": now,
+                "expires_at": now
+                + timedelta(days=get_privacy_policy_config().audit_retention_days),
             }
         )
     except Exception as exc:

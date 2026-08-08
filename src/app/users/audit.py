@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.mongo import get_mongo_collection
+from app.privacy.policy import get_privacy_policy_config
 
 COLLECTION_NAME = "user_admin_audit"
 
@@ -18,6 +19,7 @@ def record_user_admin_event(
 ) -> None:
     """Persist a security audit event without passwords, hashes or tokens."""
 
+    now = datetime.now(UTC)
     get_mongo_collection(COLLECTION_NAME).insert_one(
         {
             "actor_user_id": actor_user_id,
@@ -25,7 +27,9 @@ def record_user_admin_event(
             "action": action,
             "before": _safe_snapshot(before),
             "after": _safe_snapshot(after),
-            "created_at": datetime.now(UTC),
+            "created_at": now,
+            "expires_at": now
+            + timedelta(days=get_privacy_policy_config().audit_retention_days),
         }
     )
 

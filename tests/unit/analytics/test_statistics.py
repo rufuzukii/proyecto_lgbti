@@ -58,11 +58,13 @@ from app.dash.pages.statistics import (
     _fra_controls_are_ready,
     _fra_segmentation_card_class,
     _has_valid_fra_selection,
+    _ilga_criterion_control,
     _methodology_text,
     _ranking_graph_style,
     _response_comparison_graph_style,
     _response_detail_graph_style,
     _segmentation_catalog_options,
+    _selected_category_value,
     build_statistics_layout,
 )
 
@@ -161,6 +163,35 @@ def test_statistics_category_options_exclude_hidden_categories(
     assert ilga_values == ["Ranking total", "Equality", "Family"]
 
 
+def test_legal_source_defaults_to_total_ranking() -> None:
+    options = [
+        {"label": "Ranking total", "value": "Ranking total"},
+        {"label": "Equality", "value": "Equality"},
+    ]
+
+    assert _selected_category_value("ilga", options, None) == "Ranking total"
+    assert _selected_category_value("ilga", options, "Equality") == "Equality"
+    assert (
+        _selected_category_value("ilga", options, "Equality", reset_to_default=True)
+        == "Ranking total"
+    )
+    assert _selected_category_value("fra", options, None) is None
+
+
+def test_total_ranking_disables_the_legal_criterion(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.dash.pages.statistics.get_ilga_criteria_by_year",
+        lambda _year, _category: [{"indicator": "Marriage equality"}],
+    )
+
+    assert _ilga_criterion_control("ilga", 2026, "Ranking total") == ([], None, True)
+    assert _ilga_criterion_control("ilga", 2026, "Equality") == (
+        [{"label": "Marriage equality", "value": "Marriage equality"}],
+        None,
+        False,
+    )
+
+
 def test_fra_categories_are_loaded_from_mongo_without_postgres(monkeypatch) -> None:
     class FakeCollection:
         def distinct(self, field, query):
@@ -194,6 +225,10 @@ def test_statistics_fra_selectors_start_empty() -> None:
 
     category = _component_by_id(controls, "stats-category-select")
     indicator = _component_by_id(controls, "fra-indicator-select")
+    legal_criterion = _component_by_id(controls, "ilga-criterion-select")
+    assert category is not None
+    assert indicator is not None
+    assert legal_criterion is not None
 
     category_props = category.to_plotly_json()["props"]
     indicator_props = indicator.to_plotly_json()["props"]
@@ -202,6 +237,7 @@ def test_statistics_fra_selectors_start_empty() -> None:
     assert indicator_props["value"] is None
     assert indicator_props["placeholder"] == "Selecciona primero una categoría"
     assert indicator_props["disabled"] is True
+    assert legal_criterion.to_plotly_json()["props"]["disabled"] is True
     assert not _has_valid_fra_selection(None, None)
     assert not _has_valid_fra_selection("Discrimination", None)
     assert _has_valid_fra_selection("Discrimination", "D1")
@@ -1630,7 +1666,6 @@ def test_ilga_criteria_hover_fallback_does_not_show_technical_label() -> None:
     assert "compliance level" in hover[1]
 
 
-
 def test_statistics_control_group_omits_empty_id() -> None:
     component = _control_group("Tipo de datos", [])
 
@@ -1671,10 +1706,10 @@ def test_fra_repository_merges_every_document_for_indicator_in_one_find(monkeypa
                 "_id": 0,
                 "code": 1,
                 "category": 1,
-                    "specific_category": 1,
-                    "question": 1,
-                    "survey_year": 1,
-                    "answers": 1,
+                "specific_category": 1,
+                "question": 1,
+                "survey_year": 1,
+                "answers": 1,
             },
         )
     ]

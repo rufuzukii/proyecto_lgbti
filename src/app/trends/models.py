@@ -119,6 +119,12 @@ class HistoricalPoint:
     scale_min: float | None = None
     scale_max: float | None = None
     methodology: str = ""
+    normalization_applied: bool = False
+    normalization_method: str = ""
+    original_scale_min: float | None = None
+    original_scale_max: float | None = None
+    target_scale_min: float | None = None
+    target_scale_max: float | None = None
 
 
 @dataclass(frozen=True)

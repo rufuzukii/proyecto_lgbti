@@ -277,11 +277,13 @@ class PDFExporter:
                     bullets=True,
                 )
             )
-        if _enabled(report, "sources") and report.sources:
+        # Attribution is mandatory whenever the report contains external data,
+        # even if the optional narrative sections were customised by the user.
+        if report.sources:
             section_number += 1
             story.extend(
                 _text_section(
-                    f"{section_number}. {_t(language, 'Fuentes', 'Sources')}",
+                    f"{section_number}. {_t(language, 'Fuentes, metodología y atribuciones', 'Sources, methodology and attributions')}",
                     report.sources,
                     styles,
                     bullets=True,

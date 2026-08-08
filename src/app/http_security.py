@@ -10,7 +10,7 @@ from flask import Flask, Response, abort, request, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 AUTH_REQUEST_MAX_BYTES = 64 * 1024
-SENSITIVE_PATH_PREFIXES = ("/auth/", "/admin", "/user")
+SENSITIVE_PATH_PREFIXES = ("/auth/", "/admin", "/privacy/", "/user")
 
 
 def configure_flask_security(
@@ -53,7 +53,7 @@ def configure_flask_security(
     def reject_oversized_auth_request() -> None:
         content_length = request.content_length
         if (
-            request.path.startswith("/auth/")
+            request.path.startswith(("/auth/", "/privacy/"))
             and content_length is not None
             and content_length > max_auth_request_bytes
         ):

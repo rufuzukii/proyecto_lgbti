@@ -160,6 +160,20 @@ def test_empty_series_is_not_cached(monkeypatch) -> None:
     assert calls == ["load", "load"]
 
 
+def test_ilga_series_cache_key_changes_when_database_year_catalog_changes(monkeypatch) -> None:
+    versions = iter(([2026], [2026], [2026, 2025]))
+    monkeypatch.setattr(trend_service, "get_ilga_years", lambda: next(versions))
+    token = _indicator().to_token()
+    filters = TrendFilters(series_key="default")
+
+    first = trend_service._series_cache_key(TrendSource.ILGA, token, "ES", filters)
+    same = trend_service._series_cache_key(TrendSource.ILGA, token, "ES", filters)
+    changed = trend_service._series_cache_key(TrendSource.ILGA, token, "ES", filters)
+
+    assert first == same
+    assert changed != first
+
+
 def test_scope_keeps_variants_separate(monkeypatch) -> None:
     yes = HistoricalPoint(
         year=2023,

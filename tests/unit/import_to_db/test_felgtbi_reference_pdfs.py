@@ -19,7 +19,16 @@ REFERENCE_ROOT = Path(
 )
 COLLECTION_SUFFIX = re.compile(r"estado\s+lgtbi\+?\s+20\d{2}\s*$", re.IGNORECASE)
 REFERENCE_CASES = (
+    (
+        "2024",
+        "estado-de-la-educacion-lgtbi-2024_final.pdf",
+        37,
+        "Estado de la educación LGTBI+",
+    ),
+    ("2024", "estado-politico-2024.pdf", 35, "Estado político"),
     ("2024", "informe-ddoo_24.pdf", 60, "Estado del odio"),
+    ("2024", "informe-estado-socioeconomico_24.pdf", 29, "Estado socioeconómico"),
+    ("2024", "informe-felgtbi-2024.pdf", 20, "El voto en la comunidad LGTBI+"),
     ("2023", "ano-tematico23_familias_felgtbi.pdf", 10, "Estado de la diversidad familiar"),
     ("2023", "estadopolitico.pdf", 15, "Estado político LGTBI+"),
     ("2023", "i-informe-estado-socioeconomico_felgtbi.pdf", 30, "ESTADO SOCIOECÓMICO LGTBI+"),
@@ -31,7 +40,7 @@ REFERENCE_CASES = (
         "2025",
         "informe-estado-lgtbi-2025.pdf",
         20,
-        "Estimación de voto: elecciones generales",
+        "El voto en la comunidad LGTBI+",
     ),
     ("2025", "informe-matrimonio_25.pdf", 35, "20 años de matrimonio igualitario"),
     ("2025", "informe-sexilio-2025.pdf", 20, "Sexilio"),
@@ -93,12 +102,24 @@ def test_reference_pdf_figures_have_bounded_crops_and_clean_titles(
         for document in documents
     )
 
-    for document in documents:
+    figure_documents = [
+        document
+        for document in documents
+        if isinstance(document.get("figure"), dict)
+    ]
+    assert figure_documents
+    for document in figure_documents:
         bbox = (document.get("visual_context") or {}).get("bbox")
         assert isinstance(bbox, list) and len(bbox) == 4
         page = page_by_number[int(document["page"])]
         assert 0 <= bbox[0] < bbox[2] <= float(page["width"])
         assert 0 <= bbox[1] < bbox[3] <= float(page["height"])
+
+    for document in documents:
+        if (document.get("extraction") or {}).get("method") != "narrative_section":
+            continue
+        assert document.get("figure") is None
+        assert document["paragraphs"]
 
 
 def test_ddoo_2024_reference_crops_exclude_known_following_paragraphs() -> None:

@@ -199,7 +199,7 @@ def test_builder_handles_europe_scope_and_selected_country_without_data() -> Non
 def test_custom_mode_hides_disabled_sections_and_adds_active_segmentation() -> None:
     config = _configuration(
         mode="custom",
-        sections=["metrics", "demographics", "sources"],
+        sections=["metrics", "demographics"],
         charts=["ranking"],
         filter_a_name="Age",
         filter_a_value="25-39",
@@ -305,7 +305,7 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert "Informe de diversidad" in extracted
     assert "Resumen ejecutivo" in extracted
     assert "Recomendaciones para RRHH" in extracted
-    assert "FRA EU LGBTIQ Survey III" in extracted
+    assert "EU LGBTIQ Survey III, 2023" in extracted
     assert "España" in extracted
     assert "RainbowLens Datahub" in extracted
     metadata = document.metadata

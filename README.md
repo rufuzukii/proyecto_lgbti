@@ -57,7 +57,3 @@ Los límites se configuran con `EMAIL_TOKEN_MAX_ATTEMPTS`, `EMAIL_TOKEN_WINDOW_S
 - `.env`: configuración local sensible; no debe compartirse.
 - `dash-server.out.log` y `dash-server.err.log`: salidas generadas al ejecutar el servidor, no código fuente.
 
-## Documentación interna
-
-- `registro_funcionalidades/`: inventario funcional, arquitectura, estado y limitaciones.
-- Cada carpeta de `src/` y `tests/` contiene un `README.md` con el detalle de sus archivos Python.

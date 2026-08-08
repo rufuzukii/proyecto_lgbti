@@ -14,6 +14,8 @@ from typing import Any, cast
 import plotly.graph_objects as go
 import plotly.io as pio
 
+from app.source_attribution import attribution_for_sources, source_metadata
+
 EXPORT_FORMAT = "png"
 EXPORT_WIDTH = 1600
 EXPORT_HEIGHT = 900
@@ -110,6 +112,23 @@ def export_summary_table(
     writer.writerows(
         [_csv_safe_value(row.get(field)) for field, _header in visible_columns] for row in rows
     )
+    source = str(metadata.get("source") or "").strip()
+    if source:
+        attribution = _source_label(source, language, metadata.get("year"))
+        source_url = _primary_source_url(source, metadata.get("year"))
+        writer.writerow([])
+        writer.writerow(
+            [
+                "Source and attribution" if language == "en" else "Fuente y atribución",
+                attribution,
+            ]
+        )
+        writer.writerow(
+            [
+                "Original source" if language == "en" else "Fuente original",
+                source_url,
+            ]
+        )
 
     countries = metadata.get("countries")
     country_values = countries if isinstance(countries, list) else []
@@ -157,7 +176,7 @@ def prepare_figure_for_export(
         if country_values
         else ("Europe" if language == "en" else "Europa")
     )
-    source_label = _source_label(source, language)
+    source_label = _source_label(source, language, year)
     details = [
         str(indicator or "").strip(),
         scope,
@@ -320,24 +339,41 @@ def _prepare_report_figure(figure: go.Figure) -> go.Figure:
     return prepared
 
 
-def _source_label(source: str, language: str) -> str:
-    if source == "FRA":
-        return (
-            "Source: FRA EU LGBTIQ Survey III"
-            if language == "en"
-            else "Fuente: FRA EU LGBTIQ Survey III"
+def _source_label(source: str, language: str, year: int | str | None = None) -> str:
+    sources = _source_keys(source)
+    clean_year = _safe_year(year)
+    return " | ".join(
+        attribution_for_sources(
+            sources,
+            language=language,
+            year=clean_year,
+            compact=True,
         )
-    if source == "ILGA-Europe":
-        return (
-            "Source: ILGA-Europe Rainbow Map"
-            if language == "en"
-            else "Fuente: ILGA-Europe Rainbow Map"
-        )
-    return (
-        "Source: FRA EU LGBTIQ Survey III + ILGA-Europe Rainbow Map"
-        if language == "en"
-        else "Fuente: FRA EU LGBTIQ Survey III + ILGA-Europe Rainbow Map"
     )
+
+
+def _primary_source_url(source: str, year: int | str | None = None) -> str:
+    sources = _source_keys(source)
+    return " | ".join(source_metadata(item, year=_safe_year(year)).source_url for item in sources)
+
+
+def _source_keys(source: str) -> list[str]:
+    value = str(source or "").casefold()
+    keys: list[str] = []
+    if "fra" in value:
+        keys.append("fra")
+    if "ilga" in value or "rainbow map" in value:
+        keys.append("ilga")
+    if "felgtbi" in value or "felgtb" in value:
+        keys.append("felgtbi")
+    return keys or ["fra", "ilga"]
+
+
+def _safe_year(value: int | str | None) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except TypeError, ValueError:
+        return None
 
 
 def _slug(value: str, *, fallback: str, limit: int) -> str:

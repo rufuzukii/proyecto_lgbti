@@ -6,11 +6,13 @@ from app.import_to_db.felgtbi.importer import (
     _extract_figure_segments,
     _layout_visual_bbox,
     _resolve_report_title,
+    _upload_figure_with_retries,
     extract_pdf_pages,
     parse_felgtbi_pdf_bytes,
     parse_felgtbi_text_pages,
 )
 from app.import_to_db.felgtbi.mongo import _prepare_indicator_document
+from app.import_to_db.felgtbi.pdf_reader import repair_block_text_spacing
 from app.import_to_db.felgtbi.storage import supabase_s3_client
 from app.storage import supabase_public_image_url
 
@@ -214,6 +216,20 @@ def test_pdf_page_extraction_keeps_image_bbox_without_extracting_image_bytes(mon
     assert pages[0]["figures"] == [{"kind": "figure", "bbox": [85.0, 180.0, 505.0, 495.0]}]
 
 
+def test_block_spacing_is_restored_from_the_same_page_text_layer() -> None:
+    # Arrange
+    broken = "La distribución dela población LGTBI+en función desu identidad"
+    page_text = "La distribución\nde\nla población\nLGTBI+\nen función\nde\nsu identidad."
+
+    # Act
+    restored = repair_block_text_spacing(broken, page_text)
+
+    # Assert
+    assert " ".join(restored.split()) == (
+        "La distribución de la población LGTBI+ en función de su identidad"
+    )
+
+
 def test_pdf_page_extraction_detects_vector_chart_regions() -> None:
     import fitz
 
@@ -387,6 +403,35 @@ def test_supabase_s3_client_is_reused_with_bounded_timeouts(monkeypatch) -> None
     assert config.connect_timeout == 3
     assert config.read_timeout == 10
     assert config.retries["total_max_attempts"] == 2
+
+
+def test_transient_figure_upload_is_retried_without_changing_storage_identity(monkeypatch) -> None:
+    # Arrange
+    calls: list[str] = []
+
+    def fake_upload(**kwargs):
+        calls.append(kwargs["storage_path"])
+        if len(calls) < 3:
+            return {"status": "failed", "error": "head_object:ConnectTimeoutError"}
+        return {"status": "reused", "storage_path": kwargs["storage_path"]}
+
+    monkeypatch.setattr(
+        "app.import_to_db.felgtbi.importer._upload_figure_to_supabase",
+        fake_upload,
+    )
+    monkeypatch.setattr("app.import_to_db.felgtbi.importer.time.sleep", lambda _value: None)
+
+    # Act
+    result = _upload_figure_with_retries(
+        image_bytes=b"image",
+        storage_path="2026/report/figure.webp",
+        mime_type="image/webp",
+        checksum="abc",
+    )
+
+    # Assert
+    assert result["status"] == "reused"
+    assert calls == ["2026/report/figure.webp"] * 3
 
 
 def test_felgtbi_persistence_keeps_only_storage_key_for_image_location() -> None:

@@ -21,6 +21,7 @@ from app.dash.components.didactica import (
     teacher_resource_details,
     translated,
 )
+from app.dash.components.source_attribution import build_source_attribution
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.edu.custom_game_service import (
@@ -279,6 +280,7 @@ def build_presentations_layout(lesson_id: str | None = None) -> Component:
                                 for source in lesson.sources
                             ]
                         ),
+                        *_lesson_source_attributions(lesson.sources),
                     ],
                     className="didactica-sources",
                 ),
@@ -286,6 +288,27 @@ def build_presentations_layout(lesson_id: str | None = None) -> Component:
             className="didactica-shell didactica-viewer",
         )
     )
+
+
+def _lesson_source_attributions(sources: tuple[dict[str, str], ...]) -> list[Component]:
+    attributions: list[Component] = []
+    seen: set[str] = set()
+    for source in sources:
+        label = str(source.get("label") or "")
+        normalized = label.casefold()
+        key = "fra" if "fra" in normalized else "ilga" if "ilga" in normalized else ""
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        attributions.append(
+            build_source_attribution(
+                key,
+                year=2023 if key == "fra" and "survey iii" in normalized else None,
+                source_url=str(source.get("url") or "").strip() or None,
+                compact=True,
+            )
+        )
+    return attributions
 
 
 def build_games_layout(game_id: str | None = None) -> Component:
@@ -396,6 +419,13 @@ def build_games_layout(game_id: str | None = None) -> Component:
                     ],
                     className="didactica-game-card",
                 ),
+                html.Div(
+                    [
+                        build_source_attribution("fra", compact=True),
+                        build_source_attribution("ilga", compact=True),
+                    ],
+                    className="didactica-game-attributions",
+                ),
             ],
             className="didactica-shell didactica-viewer",
         )
@@ -412,7 +442,7 @@ def build_docente_layout() -> Component:
     first = resources[0]
     try:
         custom_games = list_owned_games(current_user)
-    except (PyMongoError, RuntimeError):
+    except PyMongoError, RuntimeError:
         custom_games = []
     game_options = [
         {"label": text(item["title_es"], item["title_en"]), "value": item["id"]}
@@ -491,7 +521,10 @@ def build_docente_layout() -> Component:
                                 dcc.RadioItems(
                                     id="didactica-custom-game-type",
                                     options=[
-                                        {"label": text(*pair("multiple_choice")), "value": "multiple_choice"},
+                                        {
+                                            "label": text(*pair("multiple_choice")),
+                                            "value": "multiple_choice",
+                                        },
                                         {"label": text(*pair("guess_term")), "value": "guess_term"},
                                     ],
                                     value="multiple_choice",
@@ -806,7 +839,7 @@ def _register_custom_game_callbacks(app: Dash) -> None:
             return empty
         try:
             game = get_owned_game(current_user, game_id)
-        except (PyMongoError, RuntimeError):
+        except PyMongoError, RuntimeError:
             return empty
         if not game:
             return empty
@@ -857,9 +890,9 @@ def _register_custom_game_callbacks(app: Dash) -> None:
                 selected = saved["id"]
                 message = tr("game_saved", language)
             games = list_owned_games(current_user)
-        except (CustomGameAuthorizationError, CustomGameValidationError):
+        except CustomGameAuthorizationError, CustomGameValidationError:
             return no_update, no_update, tr("game_validation_error", language)
-        except (PyMongoError, RuntimeError):
+        except PyMongoError, RuntimeError:
             return no_update, no_update, tr("game_storage_error", language)
         options = [
             {

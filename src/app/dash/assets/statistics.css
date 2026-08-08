@@ -227,16 +227,62 @@
   grid-column: span 4;
 }
 
-.spain-control-field-wide {
-  grid-column: span 5;
-}
-
 .spain-year-field {
   grid-column: span 3;
 }
 
+.spain-document-field,
 .spain-topic-field {
   grid-column: 1 / -1;
+}
+
+.spain-document-radio {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  max-width: 100%;
+}
+
+.spain-document-radio-label {
+  align-items: center;
+  background: var(--panel-muted);
+  border: 1px solid var(--stats-card-border);
+  border-radius: 999px;
+  color: var(--color-text);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.96rem !important;
+  font-weight: 750;
+  justify-content: center;
+  margin: 0 !important;
+  min-height: 52px;
+  min-width: min(220px, 100%);
+  padding: 0.75rem 1.2rem;
+  position: relative;
+  transition: background-color var(--transition), border-color var(--transition), box-shadow var(--transition), color var(--transition), transform var(--transition);
+}
+
+.spain-document-radio-label:hover {
+  border-color: var(--link-green);
+  transform: translateY(-1px);
+}
+
+.spain-document-radio-label:has(.spain-document-radio-input:checked) {
+  background: var(--link-green);
+  border-color: var(--link-green);
+  color: #fff;
+}
+
+.spain-document-radio-label:has(.spain-document-radio-input:focus-visible) {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--link-green) 22%, transparent);
+  outline: 0;
+}
+
+.spain-document-radio-input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
 }
 
 .spain-topic-selector-row {
@@ -1544,6 +1590,18 @@ body[data-theme="dark"] .spain-nav-button {
   color: #f7f9fc;
 }
 
+body[data-theme="dark"] .spain-document-radio-label {
+  background: #203342;
+  border-color: #34485a;
+  color: #f7f9fc;
+}
+
+body[data-theme="dark"] .spain-document-radio-label:has(.spain-document-radio-input:checked) {
+  background: var(--stats-primary);
+  border-color: var(--stats-primary);
+  color: #17212a;
+}
+
 body[data-theme="dark"] .spain-nav-button:hover:not(:disabled),
 body[data-theme="dark"] .spain-nav-button:focus-visible {
   border-color: var(--stats-primary);
@@ -1603,7 +1661,6 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
 
 @media (max-width: 1180px) {
   .spain-control-field,
-  .spain-control-field-wide,
   .spain-year-field {
     grid-column: span 6;
   }
@@ -1663,7 +1720,6 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
   }
 
   .spain-control-field,
-  .spain-control-field-wide,
   .spain-year-field,
   .spain-topic-field {
     grid-column: 1 / -1;
@@ -1675,6 +1731,10 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
 
   .spain-section-navigation {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .spain-document-radio-label {
+    flex: 1 1 220px;
   }
 
   .stats-filter-card,
@@ -1903,6 +1963,17 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
 
   .spain-section-navigation {
     grid-template-columns: 1fr;
+  }
+
+  .spain-document-radio {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .spain-document-radio-label {
+    border-radius: var(--stats-radius-sm);
+    min-width: 0;
+    width: 100%;
   }
 
   .spain-nav-button {
