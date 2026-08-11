@@ -18,27 +18,31 @@ class LocalizedText:
 
 
 @dataclass(frozen=True)
+class GlossarySource:
+    name: str
+    url: str
+
+    @classmethod
+    def from_mapping(cls, value: dict[str, Any]) -> GlossarySource:
+        return cls(name=str(value.get("name", "")).strip(), url=str(value.get("url", "")).strip())
+
+
+@dataclass(frozen=True)
 class GlossaryTerm:
     id: str
-    term: LocalizedText
-    short_definition: LocalizedText
-    definition: LocalizedText
+    term: str
+    definition: str
     category: str
-    related_terms: tuple[str, ...]
-    source: str
-    source_url: str
+    sources: tuple[GlossarySource, ...]
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> GlossaryTerm:
         return cls(
-            id=str(value["id"]),
-            term=LocalizedText.from_mapping(value["term"]),
-            short_definition=LocalizedText.from_mapping(value["short_definition"]),
-            definition=LocalizedText.from_mapping(value["definition"]),
-            category=str(value["category"]),
-            related_terms=tuple(str(item) for item in value.get("related_terms", [])),
-            source=str(value.get("source", "")),
-            source_url=str(value.get("source_url", "")),
+            id=str(value["id"]).strip(),
+            term=str(value["term"]).strip(),
+            definition=str(value["definition"]).strip(),
+            category=str(value["category"]).strip(),
+            sources=tuple(GlossarySource.from_mapping(item) for item in value.get("sources", [])),
         )
 
 

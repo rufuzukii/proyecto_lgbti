@@ -1,13 +1,366 @@
 [
-  {"id":"sexual_orientation","term":{"es":"Orientación sexual","en":"Sexual orientation"},"short_definition":{"es":"Atracción afectiva, romántica o sexual de una persona.","en":"A person's emotional, romantic or sexual attraction."},"definition":{"es":"Describe hacia quién puede sentir una persona atracción. No debe confundirse con la identidad de género.","en":"It describes whom a person may feel attraction toward. It is distinct from gender identity."},"category":"sexual_orientation","related_terms":["bisexual","gender_identity"],"source":"Council of Europe – SOGIESC","source_url":"https://www.coe.int/en/web/sogi"},
-  {"id":"bisexual","term":{"es":"Bisexual","en":"Bisexual"},"short_definition":{"es":"Persona que puede sentir atracción hacia más de un género.","en":"A person who may be attracted to more than one gender."},"definition":{"es":"La atracción hacia más de un género no tiene que darse del mismo modo o con la misma intensidad.","en":"Attraction to more than one gender need not occur in the same way or degree."},"category":"sexual_orientation","related_terms":["sexual_orientation"],"source":"ILGA-Europe Glossary","source_url":"https://www.ilga-europe.org/about-us/who-we-are/glossary/"},
-  {"id":"gender_identity","term":{"es":"Identidad de género","en":"Gender identity"},"short_definition":{"es":"Vivencia interna e individual que una persona tiene sobre su género.","en":"A person's internal and individual experience of gender."},"definition":{"es":"Experiencia profunda del género, que puede o no corresponder con el sexo asignado al nacer.","en":"A deeply felt experience of gender, which may or may not correspond with sex assigned at birth."},"category":"gender_identity","related_terms":["gender_expression","trans","cisgender"],"source":"Yogyakarta Principles","source_url":"https://yogyakartaprinciples.org/"},
-  {"id":"gender_expression","term":{"es":"Expresión de género","en":"Gender expression"},"short_definition":{"es":"Forma en que una persona presenta socialmente su género.","en":"How a person presents their gender socially."},"definition":{"es":"Incluye apariencia, vestimenta, habla y gestos. No permite deducir identidad u orientación.","en":"It includes appearance, clothing, speech and gestures. It cannot reveal identity or orientation."},"category":"gender_expression","related_terms":["gender_identity","trans"],"source":"Council of Europe – SOGIESC","source_url":"https://www.coe.int/en/web/sogi"},
-  {"id":"trans","term":{"es":"Trans","en":"Trans"},"short_definition":{"es":"Término paraguas para personas cuya identidad difiere del sexo asignado al nacer.","en":"An umbrella term for people whose identity differs from sex assigned at birth."},"definition":{"es":"Incluye diversas identidades. No requiere tratamientos médicos ni cambios legales para ser válida.","en":"It includes diverse identities. Medical treatment or legal changes are not required for validity."},"category":"gender_identity","related_terms":["gender_identity","cisgender"],"source":"ILGA-Europe Glossary","source_url":"https://www.ilga-europe.org/about-us/who-we-are/glossary/"},
-  {"id":"cisgender","term":{"es":"Cisgénero","en":"Cisgender"},"short_definition":{"es":"Persona cuya identidad coincide con el sexo asignado al nacer.","en":"A person whose identity corresponds with sex assigned at birth."},"definition":{"es":"Describe a las personas cuya identidad se corresponde con el sexo asignado al nacer.","en":"It describes people whose identity corresponds with the sex assigned at birth."},"category":"gender_identity","related_terms":["gender_identity","trans"],"source":"ILGA-Europe Glossary","source_url":"https://www.ilga-europe.org/about-us/who-we-are/glossary/"},
-  {"id":"intersex","term":{"es":"Intersexual","en":"Intersex"},"short_definition":{"es":"Persona con características sexuales que no encajan en nociones binarias típicas.","en":"A person with sex characteristics that do not fit typical binary notions."},"definition":{"es":"Las variaciones pueden afectar cromosomas, gónadas, hormonas o anatomía; no designan una orientación.","en":"Variations may involve chromosomes, gonads, hormones or anatomy; they do not designate an orientation."},"category":"sex_characteristics","related_terms":["gender_identity"],"source":"OHCHR – Free & Equal","source_url":"https://www.ohchr.org/en/sexual-orientation-and-gender-identity/intersex-people"},
-  {"id":"rainbow_family","term":{"es":"Familia arcoíris","en":"Rainbow family"},"short_definition":{"es":"Familia en la que al menos una persona progenitora es LGBTIQ+.","en":"A family in which at least one parent is LGBTIQ+."},"definition":{"es":"Visibiliza estructuras familiares diversas con personas progenitoras LGBTIQ+.","en":"It makes visible diverse family structures with LGBTIQ+ parents."},"category":"family_diversity","related_terms":["inclusive_language"],"source":"NELFA","source_url":"https://nelfa.org/"},
-  {"id":"intersectionality","term":{"es":"Interseccionalidad","en":"Intersectionality"},"short_definition":{"es":"Enfoque que analiza cómo se combinan distintos ejes de desigualdad.","en":"An approach examining how different axes of inequality combine."},"definition":{"es":"Analiza cómo género, orientación, origen, discapacidad, clase u otros factores interactúan.","en":"It examines how gender, orientation, origin, disability, class and other factors interact."},"category":"intersectionality","related_terms":["discrimination"],"source":"European Institute for Gender Equality","source_url":"https://eige.europa.eu/publications-resources/thesaurus/terms/1050"},
-  {"id":"discrimination","term":{"es":"Discriminación","en":"Discrimination"},"short_definition":{"es":"Trato desfavorable sin justificación por una característica protegida.","en":"Unfavourable treatment based on a protected characteristic."},"definition":{"es":"Puede ser directa, indirecta, múltiple o adoptar la forma de acoso.","en":"It may be direct, indirect, multiple or take the form of harassment."},"category":"rights","related_terms":["intersectionality","inclusive_language"],"source":"European Union Agency for Fundamental Rights","source_url":"https://fra.europa.eu/en/themes/equality-non-discrimination-and-racism"},
-  {"id":"inclusive_language","term":{"es":"Lenguaje inclusivo","en":"Inclusive language"},"short_definition":{"es":"Uso del lenguaje que evita excluir o estereotipar.","en":"Language use that avoids excluding or stereotyping."},"definition":{"es":"Busca nombrar con respeto la diversidad y evitar suposiciones sobre género, orientación o familia.","en":"It aims to name diversity respectfully and avoid assumptions about gender, orientation or family."},"category":"inclusive_language","related_terms":["rainbow_family","discrimination"],"source":"United Nations – Gender-inclusive language","source_url":"https://www.un.org/en/gender-inclusive-language/"}
+  {
+    "id": "abrosexual",
+    "term": "Abrosexual",
+    "definition": "Persona cuya orientación sexual fluctúa hacia diferentes sujetos sexogenéricos de deseo y que no se identifica con una sexualidad fija.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "agender",
+    "term": "Agénero",
+    "definition": "Persona que no se identifica con ningún género, considera que carece de él o no desea ser percibida desde una categoría de género. Los pronombres que utilice no determinan necesariamente esa identidad.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "androsexual",
+    "term": "Androsexual",
+    "definition": "Persona que puede establecer conexiones eróticas, afectivas o sexuales con hombres, con el espectro sexogenérico de la masculinidad o con personas de apariencia masculina de distintos géneros.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "anthrosexual",
+    "term": "Antrosexual",
+    "definition": "Persona que desconoce su orientación sexual o no se identifica con ninguna orientación concreta.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "asexual",
+    "term": "Asexual",
+    "definition": "Persona que siente un interés bajo o nulo por la actividad sexual con otras personas. Esto no implica que carezca de intereses afectivos, románticos o sensoriales ni que no ejerza su sexualidad.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "biphobia",
+    "term": "Bifobia",
+    "definition": "Aversión hacia la bisexualidad o hacia las personas bisexuales, quienes son percibidas como tales o quienes las defienden.",
+    "category": "rights",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "bigender",
+    "term": "Bigénero",
+    "definition": "Identidad o expresión de género que combina dos géneros, ya sea de manera simultánea o alternada.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "gender_binary",
+    "term": "Binarismo de género",
+    "definition": "Concepción tradicional del género que lo organiza exclusivamente en dos categorías: hombre y mujer.",
+    "category": "gender_concepts",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "bisexual",
+    "term": "Bisexual",
+    "definition": "Persona que puede sentir atracción romántica, afectiva, erótica o sexual por personas de su mismo género y de otros géneros. Esta posibilidad no se limita únicamente a hombres y mujeres cisgénero.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "cisgender",
+    "term": "Cisgénero",
+    "definition": "Persona cuya identidad de género se corresponde con el género asignado al nacer a partir de sus características sexuales y que continúa identificándose con esa correspondencia.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "cisheteronormativity",
+    "term": "Cisheteronormatividad",
+    "definition": "Conjunto de creencias e ideas que presentan lo heterosexual y lo cisgénero como norma, generando opresión sobre quienes no se ajustan a ella.",
+    "category": "gender_concepts",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "cisheteropatriarchy",
+    "term": "Cisheteropatriarcado",
+    "definition": "Organización social en la que prevalece el criterio del hombre heterosexual y cisgénero.",
+    "category": "gender_concepts",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "sexed_body",
+    "term": "Cuerpo sexuado",
+    "definition": "Conjunto de características biológicas vinculadas con la reproducción a partir de las cuales se justifica la asignación de género al nacer.",
+    "category": "sex_characteristics",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "demiboy",
+    "term": "Demichico",
+    "definition": "Persona de cualquier género asignado que se identifica parcialmente con ser hombre y con características masculinas.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "demigender",
+    "term": "Demigénero",
+    "definition": "Persona que mantiene una conexión parcial, pero no plena, con una identidad de género concreta o con el concepto de género. El término puede abarcar identidades no binarias con esa conexión parcial.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "demisexual",
+    "term": "Demisexualidad",
+    "definition": "Orientación de las personas que sienten atracción sexual de manera primordial o exclusiva después de haber establecido previamente un vínculo afectivo o una conexión emocional.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "gender_dysphoria",
+    "term": "Disforia de género",
+    "definition": "Expresión médica que describe la discrepancia de una persona con el sexo o género que le fue asignado al nacer.",
+    "category": "gender_identity",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "drag_king",
+    "term": "Drag king",
+    "definition": "Mujer que adopta mediante vestuario y maquillaje una apariencia masculina para actuar en espectáculos con intención cómica, satírica o dramática.",
+    "category": "gender_expression",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "drag_queen",
+    "term": "Drag queen",
+    "definition": "Hombre que adopta mediante vestuario y maquillaje una apariencia femenina para actuar en espectáculos con intención cómica, satírica o dramática.",
+    "category": "gender_expression",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "endosex",
+    "term": "Endosex",
+    "definition": "Persona cuyas características se ajustan a la norma genital dimórfica, basada en una clasificación de dos formas biológicas vinculadas con la reproducción. Es el antónimo de intersex.",
+    "category": "sex_characteristics",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "gender_expression",
+    "term": "Expresión de género",
+    "definition": "Forma en la que cada persona se presenta ante sí misma y ante el mundo mediante recursos estéticos y gestuales con significado cultural. Puede coincidir o no con su identidad de género.",
+    "category": "gender_expression",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "gay",
+    "term": "Gay",
+    "definition": "Hombre que puede sentir atracción sexual y afectiva o establecer vínculos eróticos y afectivos con otros hombres. Se emplea como alternativa identitaria al término homosexual.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "gender",
+    "term": "Género",
+    "definition": "Conjunto de características de origen cultural relacionadas con patrones de comportamiento e identidad mediante las que socialmente se establece la distinción entre hombres y mujeres.",
+    "category": "gender_concepts",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "gender_fluid",
+    "term": "Género fluido",
+    "definition": "Identidad de una persona que no se reconoce en un único género y puede oscilar entre distintas conexiones con la masculinidad, la feminidad, lo no binario, lo cis o lo trans, a menudo según el contexto.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "non_binary",
+    "term": "Género no binario",
+    "definition": "Término que reúne identidades de género que no corresponden total o ampliamente con la estructura binaria tradicional de hombre y mujer.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "graysexual",
+    "term": "Grisexual",
+    "definition": "Orientación del espectro asexual que engloba a personas que sienten atracción sexual con poca frecuencia o únicamente en situaciones muy específicas.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "heterosexual",
+    "term": "Heterosexual",
+    "definition": "Persona que puede sentir atracción sexual y afectiva o establecer vínculos eróticos y afectivos exclusiva o mayoritariamente con personas de un género diferente al suyo.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "cis_man",
+    "term": "Hombre cisgénero",
+    "definition": "Persona asignada al nacer con el género hombre cuya identidad autopercibida se corresponde con ese género, sin que ello determine necesariamente sus vínculos, expresiones o prácticas de masculinidad.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "trans_man",
+    "term": "Hombre trans",
+    "definition": "Hombre asignado o socializado al nacer desde el género femenino que, mediante su autodeterminación, ha transitado y se identifica en algún punto de la masculinidad o de la categoría cultural hombre, con independencia de su situación legal, expresión u orientación.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "homophobia",
+    "term": "Homofobia",
+    "definition": "Aversión hacia la homosexualidad o hacia las personas homosexuales, quienes son percibidas como tales o quienes las defienden.",
+    "category": "rights",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "homoparentality",
+    "term": "Homoparentalidad",
+    "definition": "Relación entre dos madres lesbianas o dos padres gais y sus hijas e hijos derivada del vínculo jurídico de filiación; también se denomina homomaternidad u homopaternidad.",
+    "category": "family_diversity",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "homosexual",
+    "term": "Homosexual",
+    "definition": "Persona que puede sentir atracción sexual y afectiva o establecer vínculos eróticos y afectivos exclusiva o mayoritariamente con personas de su mismo género.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "gender_identity",
+    "term": "Identidad de género",
+    "definition": "Identificación, percepción y convicción de cada persona respecto del género que siente, reconoce o nombra como propio, con independencia del sexo que le fue asignado al nacer.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "intersex",
+    "term": "Intersexual",
+    "definition": "Persona que presenta variaciones de las características sexuales respecto de la norma genital dimórfica basada en dos formas biológicas vinculadas con la reproducción.",
+    "category": "sex_characteristics",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "lesbian",
+    "term": "Lesbiana",
+    "definition": "Mujer que puede sentir atracción sexual y afectiva o establecer vínculos eróticos y afectivos con otras mujeres. También constituye una expresión identitaria y política.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "lesbophobia",
+    "term": "Lesbofobia",
+    "definition": "Aversión hacia el lesbianismo o hacia las mujeres lesbianas, quienes son percibidas como tales o quienes las defienden.",
+    "category": "rights",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "lgbtiq",
+    "term": "LGTBIQ+",
+    "definition": "Siglas que reúnen los términos lesbiana, gay, trans, bisexual, intersexual y queer. El signo más incluye otras diversidades sexuales y de género; existen variantes del acrónimo que explicitan más identidades.",
+    "category": "gender_concepts",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "misgendering",
+    "term": "Malgenerización",
+    "definition": "Acto de referirse a una persona, de forma voluntaria o involuntaria, atribuyéndole una identidad de género que no corresponde con aquella con la que se autodetermina.",
+    "category": "gender_concepts",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "cis_woman",
+    "term": "Mujer cisgénero",
+    "definition": "Persona asignada al nacer con el género mujer cuya identidad autopercibida se corresponde con ese género, sin que ello determine necesariamente sus vínculos, expresiones o prácticas de feminidad.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "trans_woman",
+    "term": "Mujer trans",
+    "definition": "Mujer asignada o socializada al nacer desde el género masculino que, mediante su autodeterminación, ha transitado y se identifica en algún punto de la feminidad o de la categoría cultural mujer, con independencia de su situación legal, expresión o vínculos.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "omnisexual",
+    "term": "Omnisexual",
+    "definition": "Persona que puede sentir atracción afectiva, emocional o sexual por todas las condiciones sexogenéricas, con o sin preferencia por alguna de ellas.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "sexual_orientation",
+    "term": "Orientación sexual",
+    "definition": "Concepto referido a las distintas posibilidades de atracción y vinculación erótica, afectiva o sexual de las personas, incluida la posibilidad de no sentir atracción sexual.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "pangender",
+    "term": "Pangénero",
+    "definition": "Persona que se identifica simultáneamente con todos los géneros.",
+    "category": "gender_identity",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "pansexual",
+    "term": "Pansexual",
+    "definition": "Persona que puede sentir atracción o establecer vínculos eróticos, afectivos y sexuales con personas de cualquier condición sexogenérica, sin privilegiar una en particular.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "trans",
+    "term": "Persona trans",
+    "definition": "Término paraguas para distintas formas de transición, reafirmación o transgresión de la identidad o la expresión de género cuyo rasgo común es no corresponder con la expectativa cultural impuesta sobre el cuerpo sexuado al nacer.",
+    "category": "gender_identity",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "polysexual",
+    "term": "Polisexual",
+    "definition": "Persona que puede sentir atracción o establecer vínculos eróticos, afectivos y sexuales con personas de más de una condición sexogenérica, aunque no necesariamente con todas.",
+    "category": "sexual_orientation",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
+  },
+  {
+    "id": "queer",
+    "term": "Queer",
+    "definition": "Reivindicación política e identitaria que cuestiona el orden de género y las clasificaciones binarias. Puede nombrar a personas que rechazan limitar su experiencia mediante categorías convencionales de género o sexualidad.",
+    "category": "gender_concepts",
+    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "serophobia",
+    "term": "Serofobia",
+    "definition": "Discriminación basada en el miedo irracional hacia las personas que tienen VIH.",
+    "category": "rights",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "assigned_sex",
+    "term": "Sexo de asignación",
+    "definition": "Sexo que se atribuye al nacer mediante la observación de los genitales y a partir del cual se presupone una identidad de género.",
+    "category": "sex_characteristics",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "transphobia",
+    "term": "Transfobia",
+    "definition": "Aversión hacia las realidades trans o hacia las personas trans, quienes son percibidas como tales o quienes las defienden.",
+    "category": "rights",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "transgender",
+    "term": "Transgénero",
+    "definition": "Persona cuyo género no coincide con el sexo que le fue asignado al nacer, con independencia de que siga o no algún tratamiento.",
+    "category": "gender_identity",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "transsexual",
+    "term": "Transexual",
+    "definition": "Persona que se ha sometido a tratamiento hormonal o a una cirugía de reasignación sexual para obtener la apariencia física del sexo opuesto.",
+    "category": "gender_identity",
+    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  }
 ]

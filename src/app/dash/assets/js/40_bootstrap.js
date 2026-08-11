@@ -98,7 +98,10 @@
   });
 
   document.addEventListener("change", (event) => {
-    if (event.target && event.target.matches(".stats-segmented-input")) {
+    if (
+      event.target &&
+      event.target.matches(".stats-segmented-input, .spain-document-radio-input")
+    ) {
       app.segmentedControls.syncActiveStates();
     }
   });
@@ -297,7 +300,10 @@
           targets.language || nodeOrDescendantMatches(node, "[data-i18n-es][data-i18n-en]");
         targets.segmentedControls =
           targets.segmentedControls ||
-          nodeOrDescendantMatches(node, ".stats-segmented-input, .dash-options-list-option");
+          nodeOrDescendantMatches(
+            node,
+            ".stats-segmented-input, .dash-options-list-option, .spain-document-radio-input"
+          );
         targets.plotly =
           targets.plotly ||
           nodeOrDescendantMatches(node, ".js-plotly-plot") ||

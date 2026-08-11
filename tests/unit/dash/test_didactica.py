@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -9,10 +10,21 @@ from werkzeug.exceptions import Forbidden
 import app.dash.pages.didactica as didactica_page
 import app.dash_app as dash_app_module
 from app.auth.permissions import can_access_docente_material
+from app.dash.components.didactica import glossary_card
 from app.edu import progress_service
 from app.edu.game_service import new_game_state
-from app.edu.glossary_service import list_glossary_terms, search_glossary
+from app.edu.glossary_service import (
+    FUNDEU_SOURCE_URL,
+    PROHIBITED_TERM_KEYS,
+    UNAM_SOURCE_URL,
+    get_glossary_term,
+    list_glossary_terms,
+    normalized_term_key,
+    search_glossary,
+    validate_glossary_catalog,
+)
 from app.edu.lesson_service import list_lessons
+from app.edu.models import GlossarySource, GlossaryTerm
 from app.edu.teacher_service import generate_teacher_resource_pdf, list_teacher_resources
 from app.users.schemas import UserRole, UserType
 
@@ -99,7 +111,7 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
     monkeypatch.setattr(didactica_page, "current_user", _user(authenticated=False))
 
     terms = list_glossary_terms()
-    assert len(terms) >= 10
+    assert len(terms) == 52
     assert len({term.id for term in terms}) == len(terms)
     assert "gender_identity" in {term.id for term in search_glossary("identidad", language="es")}
     assert all(term.category == "rights" for term in search_glossary(category="rights"))
@@ -206,7 +218,7 @@ def test_dictionary_lesson_and_both_games_callbacks_work_in_english(dash_app, mo
     monkeypatch.setattr(didactica_page, "current_user", _user())
 
     glossary = _callback(dash_app, "filter_glossary")
-    cards, count = glossary("gender", "all", "en")
+    cards, count = glossary("genero", "all", "en")
     assert cards and "results" in count
 
     lesson = _callback(dash_app, "navigate_lesson")
@@ -298,3 +310,105 @@ def test_didactica_callbacks_are_registered_without_duplicate_outputs(dash_app) 
     keys = [key for key in dash_app.callback_map if "didactica" in key]
     assert len(keys) == len(set(keys))
     assert len(keys) >= 6
+
+
+def test_glossary_catalog_has_only_requested_sources_and_expected_provenance() -> None:
+    terms = list_glossary_terms()
+    unam = [term for term in terms if any(source.name == "UNAM" for source in term.sources)]
+    fundeu = [
+        term for term in terms if any(source.name == "FundéuRAE" for source in term.sources)
+    ]
+    shared = [term for term in terms if len(term.sources) == 2]
+
+    assert len(unam) == 35
+    assert len(fundeu) == 35
+    assert len(shared) == 18
+    assert {source.url for term in terms for source in term.sources} == {
+        UNAM_SOURCE_URL,
+        FUNDEU_SOURCE_URL,
+    }
+    assert {source.name for source in get_glossary_term("abrosexual").sources} == {"UNAM"}
+    assert {source.name for source in get_glossary_term("biphobia").sources} == {"FundéuRAE"}
+    assert {source.name for source in get_glossary_term("bisexual").sources} == {
+        "UNAM",
+        "FundéuRAE",
+    }
+
+
+def test_glossary_is_complete_unique_sorted_and_searches_definitions_without_accents() -> None:
+    terms = list_glossary_terms()
+    keys = [normalized_term_key(term.term) for term in terms]
+
+    assert keys == sorted(keys)
+    assert len(keys) == len(set(keys))
+    assert all(term.term and term.definition and term.sources for term in terms)
+    assert {term.id for term in search_glossary("orientacion", language="es")} >= {
+        "sexual_orientation"
+    }
+    assert {term.id for term in search_glossary("miedo irracional", language="es")} == {
+        "serophobia"
+    }
+    assert all(key not in PROHIBITED_TERM_KEYS for key in keys)
+
+
+@pytest.mark.parametrize("prohibited", ["trasvestido", "TRASVESTIDA", "Travestido/a"])
+def test_prohibited_term_cannot_enter_catalog(prohibited: str) -> None:
+    invalid = GlossaryTerm(
+        id="blocked",
+        term=prohibited,
+        definition="Definición no permitida.",
+        category="gender_expression",
+        sources=(GlossarySource("UNAM", UNAM_SOURCE_URL),),
+    )
+
+    with pytest.raises(ValueError, match="prohibited_glossary_term"):
+        validate_glossary_catalog((invalid,))
+
+
+def test_dictionary_renders_general_and_per_term_source_links(monkeypatch) -> None:
+    monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
+    layout = didactica_page.build_dictionary_layout()
+    hrefs = {getattr(item, "href", None) for item in _walk(layout)}
+    note = next(
+        item
+        for item in _walk(layout)
+        if getattr(item, "className", "") == "didactica-glossary-note"
+    )
+
+    assert {UNAM_SOURCE_URL, FUNDEU_SOURCE_URL} <= hrefs
+    assert note is not None
+
+    card = glossary_card(get_glossary_term("bisexual"), "en")
+    card_hrefs = {
+        href for item in _walk(card) if (href := getattr(item, "href", None)) is not None
+    }
+    assert card_hrefs == {UNAM_SOURCE_URL, FUNDEU_SOURCE_URL}
+    assert any(
+        getattr(item, "children", None) == get_glossary_term("bisexual").definition
+        for item in _walk(card)
+    )
+
+
+def test_both_vocabulary_games_use_only_the_glossary_catalog() -> None:
+    from app.edu.game_service import true_false_question
+
+    guess_state = new_game_state("guess_term", rounds=12)
+    assert all(get_glossary_term(identifier) for identifier in guess_state["order"])
+
+    true_false_state = new_game_state("true_false", rounds=12)
+    for identifier in true_false_state["order"]:
+        expected_id, shown_id = identifier.split("::")
+        assert get_glossary_term(expected_id) is not None
+        assert get_glossary_term(shown_id) is not None
+        question = true_false_question(identifier)
+        assert question is not None
+        assert question["source"] in {"UNAM", "FundéuRAE", "UNAM · FundéuRAE"}
+
+
+def test_dictionary_css_keeps_responsive_layout_and_theme_tokens() -> None:
+    stylesheet = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
+    assert "@media (max-width: 680px)" in stylesheet
+    assert ".didactica-glossary-grid" in stylesheet
+    assert ".didactica-glossary-sources" in stylesheet
+    assert "var(--panel-bg)" in stylesheet
+    assert "var(--color-text)" in stylesheet

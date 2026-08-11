@@ -6,7 +6,6 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.dash.i18n import dash_attrs, text_attrs
-from app.edu.glossary_service import get_glossary_term
 from app.edu.models import GlossaryTerm, Lesson, TeacherResource
 from app.edu.translations import category_name, pair, tr
 
@@ -44,37 +43,32 @@ def resource_card(title_key: str, description_key: str, href: str, icon: str) ->
 
 
 def glossary_card(term: GlossaryTerm, language: str) -> Component:
-    related = [get_glossary_term(item) for item in term.related_terms]
+    source_label = "sources" if len(term.sources) > 1 else "source"
+    source_links: list[Component | str] = []
+    for index, source in enumerate(term.sources):
+        if index:
+            source_links.append(" · ")
+        source_links.append(
+            html.A(
+                [source.name, " ↗"],
+                href=source.url,
+                target="_blank",
+                rel="noopener noreferrer",
+            )
+        )
     return html.Article(
         [
             html.Div(
                 [
                     html.Span(category_name(term.category, language), className="didactica-chip"),
-                    html.H2(term.term.get(language)),
+                    html.H2(term.term),
                 ],
                 className="didactica-card-heading",
             ),
-            html.P(term.short_definition.get(language), className="didactica-definition-short"),
-            html.Details(
-                [
-                    html.Summary(
-                        "Ver definición ampliada" if language == "es" else "View full definition"
-                    ),
-                    html.P(term.definition.get(language)),
-                    html.H3(tr("related", language)),
-                    html.Ul([html.Li(item.term.get(language)) for item in related if item]),
-                    html.P(
-                        [
-                            html.Strong(f"{tr('source', language)}: "),
-                            html.A(
-                                term.source,
-                                href=term.source_url,
-                                target="_blank",
-                                rel="noopener noreferrer",
-                            ),
-                        ]
-                    ),
-                ]
+            html.P(term.definition, className="didactica-definition"),
+            html.P(
+                [html.Strong(f"{tr(source_label, language)}: "), *source_links],
+                className="didactica-glossary-sources",
             ),
         ],
         className="didactica-glossary-card",

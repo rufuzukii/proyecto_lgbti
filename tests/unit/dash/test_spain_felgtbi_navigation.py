@@ -50,6 +50,7 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     assert year.value == 2026
     assert isinstance(document, dcc.RadioItems)
     assert document.value is None
+    assert "spain-selection-control" in document.className
     assert indicator.value is None
 
 
@@ -74,7 +75,7 @@ def test_indicator_options_keep_canonical_value_and_clean_only_label() -> None:
     }
 
 
-def test_indicator_navigation_stays_unselected_until_user_chooses_one() -> None:
+def test_indicator_navigation_selects_first_option_when_document_is_chosen() -> None:
     # Arrange
     options = [
         {"label": "Uno", "value": "one"},
@@ -95,9 +96,24 @@ def test_indicator_navigation_stays_unselected_until_user_chooses_one() -> None:
     )
 
     # Assert
-    assert initial == (None, "unselected")
+    assert initial == ("one", "ok")
     assert next_value == ("two", "ok")
     assert bounded == ("two", "ok")
+
+
+def test_indicator_navigation_selects_first_option_when_previous_value_disappears() -> None:
+    options = [
+        {"label": "Uno", "value": "one"},
+        {"label": "Dos", "value": "two"},
+    ]
+
+    selected = spain._resolve_topic_selection(
+        options,
+        "old-indicator",
+        trigger_id="spain-document-select",
+    )
+
+    assert selected == ("one", "removed")
 
 
 def test_new_spain_control_translations_exist_in_both_languages() -> None:

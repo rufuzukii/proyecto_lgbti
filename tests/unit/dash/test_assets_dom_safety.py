@@ -43,6 +43,21 @@ def test_statistics_segmented_buttons_use_outer_dash_options() -> None:
     assert "stats-data-type-control--ilga .stats-segmented-label:nth-of-type" not in css
 
 
+def test_spain_document_buttons_keep_selected_visual_state() -> None:
+    segmented_js = (ASSETS_JS / "30_segmented_controls.js").read_text(encoding="utf-8")
+    bootstrap_js = (ASSETS_JS / "40_bootstrap.js").read_text(encoding="utf-8")
+    css = (ASSETS_CSS / "statistics.css").read_text(encoding="utf-8")
+
+    assert ".spain-selection-control" in segmented_js
+    assert 'control.querySelectorAll(".dash-options-list-option")' in segmented_js
+    assert 'setActiveOption(option, Boolean(input && input.checked))' in segmented_js
+    assert ".spain-document-radio-input" in bootstrap_js
+    assert (
+        ".spain-document-radio .dash-options-list-option.is-active "
+        ".spain-document-radio-label"
+    ) in css
+
+
 def test_authenticated_navbar_keeps_i18n_attributes_out_of_dcc_link(monkeypatch) -> None:
     monkeypatch.setattr(
         navigation,

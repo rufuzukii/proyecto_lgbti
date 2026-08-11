@@ -34,6 +34,8 @@ from app.edu.custom_game_service import (
 )
 from app.edu.game_service import guess_options, new_game_state, true_false_question
 from app.edu.glossary_service import (
+    FUNDEU_SOURCE_URL,
+    UNAM_SOURCE_URL,
     get_glossary_term,
     glossary_categories,
     search_glossary,
@@ -87,6 +89,33 @@ def build_dictionary_layout() -> Component:
         html.Main(
             [
                 _subpage_header("dictionary", "dictionary_desc"),
+                html.Aside(
+                    [
+                        html.P(
+                            [
+                                text(
+                                    "Definiciones recopiladas y adaptadas a partir de los glosarios de ",
+                                    "Definitions compiled and adapted from the glossaries of ",
+                                ),
+                                html.A(
+                                    "UNAM ↗",
+                                    href=UNAM_SOURCE_URL,
+                                    target="_blank",
+                                    rel="noopener noreferrer",
+                                ),
+                                " · ",
+                                html.A(
+                                    "FundéuRAE ↗",
+                                    href=FUNDEU_SOURCE_URL,
+                                    target="_blank",
+                                    rel="noopener noreferrer",
+                                ),
+                            ]
+                        ),
+                        translated("glossary_original_language", tag=html.P),
+                    ],
+                    className="didactica-glossary-note",
+                ),
                 html.Section(
                     [
                         html.Div(
@@ -996,7 +1025,7 @@ def _game_round(state: dict[str, Any], language: str) -> tuple[str, list[dict[st
         term = get_glossary_term(identifier)
         if term is None:
             raise ValueError("unknown_glossary_term")
-        return term.short_definition.get(language), guess_options(identifier, language)
+        return term.definition, guess_options(identifier, language)
     question = true_false_question(identifier)
     if question is None:
         raise ValueError("unknown_true_false_question")
@@ -1013,7 +1042,7 @@ def _check_game_answer(
         term = get_glossary_term(identifier)
         if term is None:
             raise ValueError("unknown_glossary_term")
-        return selected == identifier, term.definition.get(language)
+        return selected == identifier, term.definition
     question = true_false_question(identifier)
     if question is None:
         raise ValueError("unknown_true_false_question")
@@ -1028,7 +1057,7 @@ def _game_hint(game_id: str, identifier: str, language: str) -> str:
         term = get_glossary_term(identifier)
         if term is None:
             raise ValueError("unknown_glossary_term")
-        return f"{tr('hint_text', language)} «{term.term.get(language)[0].upper()}»."
+        return f"{tr('hint_text', language)} «{term.term[0].upper()}»."
     question = true_false_question(identifier)
     if question is None:
         raise ValueError("unknown_true_false_question")

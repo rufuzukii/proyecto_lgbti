@@ -123,7 +123,7 @@ def build_spain_layout() -> Component:
                                         id="spain-document-select",
                                         options=documents,
                                         value=initial_document,
-                                        className="spain-document-radio",
+                                        className="spain-document-radio spain-selection-control",
                                         inputClassName="spain-document-radio-input",
                                         labelClassName="spain-document-radio-label",
                                     ),
@@ -594,10 +594,10 @@ def _resolve_topic_selection(
 
     current = str(current_code or "").strip()
     if not current:
-        return None, "unselected"
-    selection_removed = bool(current and current not in values)
-    if current not in values:
-        return None, "removed"
+        return values[0], "ok"
+    selection_removed = current not in values
+    if selection_removed:
+        return values[0], "removed"
 
     index = values.index(current)
     if trigger_id == "spain-topic-prev":

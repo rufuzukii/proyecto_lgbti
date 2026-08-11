@@ -51,6 +51,10 @@ TEXT = {
     "duration": ("Duración", "Duration"),
     "objectives": ("Objetivos", "Objectives"),
     "sources": ("Fuentes", "Sources"),
+    "glossary_original_language": (
+        "Las definiciones se presentan en español, idioma de las fuentes consultadas.",
+        "Definitions remain in Spanish, the language of the consulted sources; no unofficial English translation is attributed to them.",
+    ),
     "minutes": ("minutos", "minutes"),
     "final_activity": ("Actividad final", "Final activity"),
     "lesson_complete": (
@@ -157,6 +161,7 @@ CATEGORIES = {
     "rights": ("Discriminación y derechos", "Discrimination and rights"),
     "inclusive_language": ("Lenguaje inclusivo", "Inclusive language"),
     "intersectionality": ("Interseccionalidad", "Intersectionality"),
+    "gender_concepts": ("Género y sociedad", "Gender and society"),
 }
 
 
