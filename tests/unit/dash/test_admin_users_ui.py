@@ -134,8 +134,8 @@ def test_admin_pagination_preserves_search() -> None:
     assert not isinstance(pagination, str)
     links = [item for item in _walk(pagination) if getattr(item, "href", None)]
     assert [item.href for item in links] == [
-        "/admin?page=1&q=rainbow",
-        "/admin?page=3&q=rainbow",
+        "/es/administracion?page=1&q=rainbow",
+        "/es/administracion?page=3&q=rainbow",
     ]
 
 

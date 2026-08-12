@@ -71,6 +71,7 @@
 .reports-card h2,
 .reports-card h3,
 .reports-field > label,
+.reports-field > .reports-field-label,
 .reports-field .dash-options-list-option,
 .reports-preview-document h2,
 .reports-preview-document h3,
@@ -154,7 +155,8 @@
     line-height: 1.55;
 }
 
-.reports-field > label {
+.reports-field > label,
+.reports-field > .reports-field-label {
     font-weight: 700;
     font-size: 0.9rem;
 }

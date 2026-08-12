@@ -39,7 +39,7 @@ def test_dash_login_survives_navigation_when_proxy_identifier_changes(monkeypatc
             "csrf_token": "valid-csrf-token",
             "email": record.email,
             "password": "valid-password",
-            "next": "/",
+                "next": "/es",
         },
         headers={
             "User-Agent": "session-regression-test",
@@ -48,7 +48,7 @@ def test_dash_login_survives_navigation_when_proxy_identifier_changes(monkeypatc
     )
 
     assert login_response.status_code == 302
-    assert login_response.headers["Location"].endswith("/")
+    assert login_response.headers["Location"].endswith("/es")
     with client.session_transaction() as browser_session:
         assert browser_session.permanent is True
         assert browser_session["_user_id"] == record.id

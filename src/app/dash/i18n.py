@@ -270,12 +270,12 @@ UI_TEXT = {
     },
     "home_trends_description": {
         "es": (
-            "Analiza la evolución temporal de los indicadores disponibles y consulta tendencias "
-            "históricas cuando existan datos suficientes."
+            "Analiza la evolución histórica del ranking legal de ILGA-Europe y consulta una "
+            "proyección exploratoria cuando existan datos suficientes."
         ),
         "en": (
-            "Analyse how available indicators evolve over time and review historical trends "
-            "when sufficient data exists."
+            "Analyse the ILGA-Europe legal ranking over time and review an exploratory "
+            "projection when sufficient data exists."
         ),
     },
     "home_trends_action": {"es": "Ver Tendencias", "en": "View Trends"},
@@ -417,14 +417,19 @@ UI_TEXT = {
     "trends_name": {"es": "Tendencias", "en": "Trends"},
     "trends_eyebrow": {"es": "Análisis temporal", "en": "Temporal analysis"},
     "trends_title": {
-        "es": "Evolución histórica de indicadores",
-        "en": "Historical indicator evolution",
+        "es": "Evolución histórica del ranking legal",
+        "en": "Historical legal ranking evolution",
     },
     "trends_lead": {
-        "es": "Compara años equivalentes y explora una proyección lineal sencilla.",
-        "en": "Compare equivalent years and explore a simple linear projection.",
+        "es": "Compara el ranking de ILGA-Europe entre 2011 y 2026 y explora una proyección lineal sencilla.",
+        "en": "Compare the ILGA-Europe ranking from 2011 to 2026 and explore a simple linear projection.",
     },
     "trends_source": {"es": "Fuente de datos", "en": "Data source"},
+    "trends_source_ilga": {
+        "es": "ILGA-Europe · situación legal",
+        "en": "ILGA-Europe · legal situation",
+    },
+    "trends_total_ranking": {"es": "Ranking Total", "en": "Total ranking"},
     "trends_category": {"es": "Categoría", "en": "Category"},
     "trends_indicator": {"es": "Indicador", "en": "Indicator"},
     "trends_country": {"es": "País", "en": "Country"},
@@ -465,8 +470,8 @@ UI_TEXT = {
         "en": "The temporal analysis could not be generated.",
     },
     "trends_initial_prompt": {
-        "es": "Selecciona una fuente, una categoría, un indicador y un país para comenzar.",
-        "en": "Select a source, category, indicator and country to begin.",
+        "es": "Selecciona un país para consultar la evolución histórica del ranking legal.",
+        "en": "Select a country to review the historical evolution of the legal ranking.",
     },
     "trends_select_source": {"es": "Selecciona una fuente", "en": "Select a source"},
     "trends_select_category": {
@@ -499,10 +504,6 @@ UI_TEXT = {
         "es": "Los cambios legales pueden producir variaciones abruptas que una tendencia lineal no puede anticipar.",
         "en": "Legal changes may produce abrupt variations that a linear trend cannot anticipate.",
     },
-    "trends_fra_context": {
-        "es": "Evolución de experiencias declaradas y cambios entre ediciones comparables de la encuesta.",
-        "en": "Evolution of reported experiences and changes between comparable survey editions.",
-    },
     "trends_ilga_context": {
         "es": "Evolución de la protección legal, la puntuación jurídica y el cambio legislativo.",
         "en": "Evolution of legal protection, legal scores and legislative change.",
@@ -524,6 +525,14 @@ UI_TEXT = {
     "trends_year": {"es": "Año", "en": "Year"},
     "trends_type": {"es": "Tipo", "en": "Type"},
     "trends_source_short": {"es": "Fuente", "en": "Source"},
+    "statistics_initial_prompt": {
+        "es": "Selecciona una categoría y un indicador para comenzar.",
+        "en": "Select a category and an indicator to get started.",
+    },
+    "statistics_no_data": {
+        "es": "No hay datos disponibles para esta selección.",
+        "en": "No data is available for this selection.",
+    },
 }
 
 

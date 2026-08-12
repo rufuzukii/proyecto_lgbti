@@ -13,12 +13,12 @@ from app.users.schemas import UserRole, UserType
 from app.users.service import UserRecord
 
 PUBLIC_ROUTES = (
-    "/",
-    "/statistics",
-    "/tendencias",
-    "/spain",
-    "/didactica",
-    "/about",
+    "/es",
+    "/es/estadisticas",
+    "/es/tendencias",
+    "/es/espana",
+    "/es/didactica",
+    "/es/acerca-de",
 )
 
 
@@ -57,7 +57,7 @@ def test_public_pages_login_and_protected_route_smoke(smoke_app) -> None:
 
     protected = client.get("/didactica/docentes/descargar/rights_country_comparison")
     assert protected.status_code == 302
-    assert "/login" in protected.headers["Location"]
+    assert "/es/iniciar-sesion" in protected.headers["Location"]
 
     with client.session_transaction() as browser_session:
         browser_session["_csrf_token"] = "smoke-csrf"
@@ -67,11 +67,11 @@ def test_public_pages_login_and_protected_route_smoke(smoke_app) -> None:
             "csrf_token": "smoke-csrf",
             "email": record.email,
             "password": "valid-password",
-            "next": "/user",
+            "next": "/es/perfil",
         },
     )
     assert login.status_code == 302
-    assert login.headers["Location"].endswith("/user")
+    assert login.headers["Location"].endswith("/es/perfil")
 
 
 def test_basic_fra_catalog_query_smoke(monkeypatch) -> None:

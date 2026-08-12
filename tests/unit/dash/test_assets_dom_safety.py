@@ -29,6 +29,19 @@ def test_dash_assets_do_not_replace_react_owned_text_nodes() -> None:
     assert matches == []
 
 
+def test_dash_generated_form_fields_receive_stable_accessibility_attributes() -> None:
+    js = (ASSETS_JS / "25_form_accessibility.js").read_text(encoding="utf-8")
+
+    assert "dash-dropdown-focus-target" in js
+    assert "dash-range-slider-min-input" in js
+    assert "dash-range-slider-max-input" in js
+    assert 'field.setAttribute("name", fieldId)' in js
+    assert 'field.setAttribute("aria-label"' in js
+    assert 'attributeFilter: ["aria-label", "id", "name"]' in js
+    assert "console.warn" not in js
+    assert "console.error" not in js
+
+
 def test_statistics_segmented_buttons_use_outer_dash_options() -> None:
     js = (ASSETS_JS / "30_segmented_controls.js").read_text(encoding="utf-8")
     css = (ASSETS_CSS / "statistics.css").read_text(encoding="utf-8")
@@ -151,7 +164,7 @@ def test_navbar_logo_uses_spa_home_navigation(monkeypatch) -> None:
     )
     props = brand.to_plotly_json()["props"]
 
-    assert props["href"] == "/"
+    assert props["href"] == "/es"
     assert props["refresh"] is False
     assert props["title"] == "RainbowLens Datahub · Inicio / Home"
 

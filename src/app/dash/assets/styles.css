@@ -33,6 +33,9 @@
   --radius-md: 16px;
   --radius-lg: 20px;
   --transition: 0.2s ease;
+  --page-max-width: 1600px;
+  --page-horizontal-padding: clamp(1rem, 2.5vw, 2.5rem);
+  --readable-line-width: 80ch;
 }
 
 :root[data-theme="dark"],

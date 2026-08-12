@@ -114,9 +114,10 @@ def build_spain_layout() -> Component:
                             ),
                             html.Div(
                                 [
-                                    html.Label(
+                                    html.Span(
                                         "Documento",
-                                        htmlFor="spain-document-select",
+                                        id="spain-document-select-label",
+                                        className="stats-control-label",
                                         **text_attrs("Documento", "Document"),
                                     ),
                                     dcc.RadioItems(
@@ -129,6 +130,10 @@ def build_spain_layout() -> Component:
                                     ),
                                 ],
                                 className="stats-control-field spain-control-field spain-document-field",
+                                role="group",
+                                **dash_attrs(
+                                    {"aria-labelledby": "spain-document-select-label"}
+                                ),
                             ),
                             html.Div(
                                 [
@@ -193,7 +198,7 @@ def build_spain_layout() -> Component:
                         children=_spain_visualization_shell(),
                     ),
                 ],
-                className="stats-shell",
+                className="stats-shell app-page-container",
             ),
         ]
     )

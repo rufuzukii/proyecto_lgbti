@@ -5,9 +5,9 @@ import os
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
-from dash import Dash, Input, Output, dcc, html
+from dash import Dash, Input, Output, State, dcc, html
 from dash.development.base_component import Component
 from flask import abort, redirect, request, send_file, session
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
@@ -51,6 +51,7 @@ from app.dash.pages.didactica import (
     build_games_layout,
     build_presentations_layout,
     build_progress_layout,
+    build_word_search_layout,
     register_didactica_callbacks,
 )
 from app.dash.pages.privacy import build_account_deleted_layout, build_privacy_layout
@@ -76,6 +77,16 @@ from app.dash.pages.upload import (
     MAX_UPLOAD_REQUEST_BYTES,
     build_upload_layout,
     register_upload_callbacks,
+)
+from app.dash.routes import (
+    PUBLIC_PAGE_PATHS,
+    canonical_safe_next,
+    client_route_config,
+    language_from_path,
+    legacy_redirect_target,
+    localized_route_context,
+    match_route,
+    route_path,
 )
 from app.dates import utc_today
 from app.edu.teacher_service import generate_teacher_resource_pdf
@@ -122,45 +133,10 @@ from app.users.service import (
 )
 
 logger = logging.getLogger(__name__)
-SAFE_NEXT_PATHS = {
-    "/",
-    "/about",
-    "/admin",
-    "/admin/imports",
-    "/informes",
-    "/reports",
-    "/spain",
-    "/statistics",
-    "/tendencias",
-    "/upload",
-    "/user",
-    "/didactica",
-    "/didactica/diccionario",
-    "/didactica/presentaciones",
-    "/didactica/juegos",
-    "/didactica/docentes",
-    "/didactica/progreso",
-    "/privacidad",
-}
-
-PUBLIC_PAGE_PATHS = {
-    *SAFE_NEXT_PATHS,
-    "/didactics",
-    "/didactica/profesores",
-    "/informes",
-    "/login",
-    "/register",
-    "/forgot-password",
-    "/reset-password",
-    "/verify-email",
-    "/report",
-    "/stadistics",
-    "/privacidad/cuenta-eliminada",
-}
 
 DASH_INDEX_STRING = """
 <!DOCTYPE html>
-<html>
+<html lang="es">
     <head>
         {%metas%}
         <title>{%title%}</title>
@@ -256,162 +232,28 @@ def create_dash_app() -> Dash:
     )
     def display_page(pathname: str | None, search: str | None):
         params = _query_params(search)
+        legacy_target = legacy_redirect_target(pathname)
+        if legacy_target:
+            return dcc.Location(
+                href=f"{legacy_target}{search or ''}",
+                id="localized-route-redirect",
+                refresh=True,
+            )
+        route = match_route(pathname)
+        if route is None:
+            language = language_from_path(pathname)
+            with localized_route_context(language):
+                return build_error_layout("404", language=language)
         try:
-            if pathname == "/privacidad":
-                return build_privacy_layout()
-            if pathname == "/privacidad/cuenta-eliminada":
-                return build_account_deleted_layout()
-            if pathname == "/statistics":
-                return build_statistics_layout()
-            if pathname == "/tendencias":
-                return build_trends_layout()
-            if pathname == "/didactics":
-                return dcc.Location(href="/didactica", id="legacy-didactica-redirect")
-            if pathname == "/didactica":
-                return build_didactica_layout()
-            if pathname == "/didactica/diccionario":
-                return build_dictionary_layout()
-            if pathname == "/didactica/presentaciones":
-                return build_presentations_layout(_first_param(params, "lesson"))
-            if pathname == "/didactica/juegos":
-                if not current_user.is_authenticated:
-                    return build_login_layout(next_path="/didactica/juegos")
-                if not user_has_permission(current_user, Permission.PLAY_EDU_GAMES):
-                    return build_didactica_access_denied_layout()
-                return build_games_layout(_first_param(params, "game"))
-            if pathname == "/didactica/profesores":
-                return dcc.Location(href="/didactica/docentes", id="legacy-docente-redirect")
-            if pathname == "/didactica/docentes":
-                if not current_user.is_authenticated:
-                    return build_login_layout(next_path="/didactica/docentes")
-                if not can_access_docente_material(current_user):
-                    return build_didactica_access_denied_layout()
-                if not _is_email_verified(current_user):
-                    return build_verification_required_layout()
-                return build_docente_layout()
-            if pathname == "/didactica/progreso":
-                if not current_user.is_authenticated:
-                    return build_login_layout(next_path="/didactica/progreso")
-                return build_progress_layout()
-            if pathname in {"/informes", "/reports"}:
-                if not current_user.is_authenticated:
-                    requested_report = _safe_next(f"{pathname}{search or ''}", pathname)
-                    return dcc.Location(
-                        href=f"/login?{urlencode({'next': requested_report, 'notice': 'report_login_required'})}",
-                        id="reports-login-redirect",
-                    )
-                if not _is_email_verified(current_user):
-                    return build_verification_required_layout()
-                if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
-                    return build_reports_access_denied_layout()
-                return build_reports_layout(
-                    _report_params(params),
-                    default_language="en" if pathname == "/reports" else "es",
-                )
-            if pathname == "/report":
-                return dcc.Location(href="/informes", id="legacy-reports-redirect")
-            if pathname == "/stadistics":
-                return dcc.Location(href="/statistics", id="legacy-statistics-redirect")
-            if pathname == "/spain":
-                return build_spain_layout()
-            if pathname == "/upload":
-                if not current_user.is_authenticated:
-                    return build_login_layout(next_path="/upload")
-                if not user_has_permission(current_user, Permission.UPLOAD_DATA):
-                    return build_access_denied_layout()
-                if not _is_email_verified(current_user):
-                    return build_verification_required_layout()
-                return build_upload_layout()
-            if pathname == "/about":
-                return build_about_layout()
-            if pathname == "/login":
-                if current_user.is_authenticated:
-                    return build_user_page_layout(
-                        status_code=_first_param(params, "status"),
-                        error_code=_first_param(params, "error"),
-                        mode=_first_param(params, "mode"),
-                        privacy_error=_first_param(params, "privacy_error"),
-                    )
-                return build_login_layout(
-                    next_path=_safe_next(_first_param(params, "next"), "/user"),
-                    error_code=_first_param(params, "error"),
-                    notice_code=_first_param(params, "notice"),
-                )
-            if pathname == "/register":
-                if current_user.is_authenticated:
-                    return build_user_page_layout()
-                return build_register_layout(
-                    next_path=_safe_next(_first_param(params, "next"), "/user"),
-                    error_code=_first_param(params, "error"),
-                )
-            if pathname == "/verify-email":
-                return build_verify_email_layout(_first_param(params, "status"))
-            if pathname == "/forgot-password":
-                return build_forgot_password_layout(_first_param(params, "status"))
-            if pathname == "/reset-password":
-                return build_reset_password_layout(
-                    _first_param(params, "token"),
-                    status=_first_param(params, "status"),
-                    error=_first_param(params, "error"),
-                )
-            if pathname == "/admin":
-                if not current_user.is_authenticated:
-                    return build_login_layout(next_path="/admin")
-                if not _is_admin():
-                    return build_access_denied_layout()
-                try:
-                    search = (_first_param(params, "q") or "").strip()[:120]
-                    requested_page = _positive_int(_first_param(params, "page"), default=1)
-                    user_page = list_users_page(search=search, page=requested_page)
-                except Exception:
-                    logger.exception("admin_users_list_failed")
-                    search = ""
-                    user_page = None
-                    params["error"] = ["storage"]
-                return build_admin_users_layout(
-                    user_page.users if user_page is not None else [],
-                    status_code=_first_param(params, "status"),
-                    error_code=_first_param(params, "error"),
-                    search=search,
-                    page=user_page.page if user_page is not None else 1,
-                    page_count=user_page.page_count if user_page is not None else 1,
-                    total=user_page.total if user_page is not None else 0,
-                    current_user_id=current_user.get_id(),
-                )
-            if pathname == "/admin/imports":
-                if not current_user.is_authenticated:
-                    return build_login_layout(next_path="/admin/imports")
-                if not _is_admin():
-                    return build_access_denied_layout()
-                try:
-                    logs = list_pending_import_logs()
-                except Exception:
-                    logger.exception("admin_imports_list_failed")
-                    logs = []
-                    params["error"] = ["storage"]
-                return build_admin_imports_layout(
-                    logs,
-                    status_code=_first_param(params, "status"),
-                    error_code=_first_param(params, "error"),
-                )
-            if pathname == "/user":
-                if not current_user.is_authenticated:
-                    return build_login_layout(next_path="/user")
-                return build_user_page_layout(
-                    status_code=_first_param(params, "status"),
-                    error_code=_first_param(params, "error"),
-                    mode=_first_param(params, "mode"),
-                    privacy_error=_first_param(params, "privacy_error"),
-                )
-            if pathname in {None, "", "/"}:
-                return build_home_layout()
-            return build_error_layout("404")
+            with localized_route_context(route.language):
+                return _build_page_for_route(route.route_id, route.language, params, search)
         except DatabaseUnavailableError as exc:
             logger.warning(
                 "database_unavailable_layout",
                 extra={"path": pathname, "service": exc.service},
             )
-            return build_database_unavailable_layout(exc)
+            with localized_route_context(route.language):
+                return build_database_unavailable_layout(exc)
 
     _register_client_preferences_callbacks(app)
     register_upload_callbacks(app)
@@ -426,6 +268,162 @@ def create_dash_app() -> Dash:
     return app
 
 
+def _build_page_for_route(
+    route_id: str,
+    language: str,
+    params: dict[str, list[str]],
+    search: str | None,
+) -> Component:
+    if route_id == "home":
+        return build_home_layout()
+    if route_id == "privacy":
+        return build_privacy_layout()
+    if route_id == "privacy_deleted":
+        return build_account_deleted_layout()
+    if route_id == "statistics":
+        return build_statistics_layout()
+    if route_id == "trends":
+        return build_trends_layout()
+    if route_id == "spain":
+        return build_spain_layout()
+    if route_id == "about":
+        return build_about_layout()
+    if route_id == "didactica":
+        return build_didactica_layout()
+    if route_id == "dictionary":
+        return build_dictionary_layout()
+    if route_id == "presentations":
+        return build_presentations_layout(_first_param(params, "lesson"))
+    if route_id == "word_search":
+        return build_word_search_layout()
+    if route_id == "games":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("games", language))
+        if not user_has_permission(current_user, Permission.PLAY_EDU_GAMES):
+            return build_didactica_access_denied_layout()
+        return build_games_layout(_first_param(params, "game"))
+    if route_id == "educators":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("educators", language))
+        if not can_access_docente_material(current_user):
+            return build_didactica_access_denied_layout()
+        if not _is_email_verified(current_user):
+            return build_verification_required_layout()
+        return build_docente_layout()
+    if route_id == "progress":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("progress", language))
+        return build_progress_layout()
+    if route_id == "reports":
+        if not current_user.is_authenticated:
+            report_path = route_path("reports", language)
+            requested_report = _safe_next(f"{report_path}{search or ''}", report_path)
+            return dcc.Location(
+                href=(
+                    f"{route_path('login', language)}?"
+                    f"{urlencode({'next': requested_report, 'notice': 'report_login_required'})}"
+                ),
+                id="reports-login-redirect",
+            )
+        if not _is_email_verified(current_user):
+            return build_verification_required_layout()
+        if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
+            return build_reports_access_denied_layout()
+        return build_reports_layout(_report_params(params), default_language=language)
+    if route_id == "upload":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("upload", language))
+        if not user_has_permission(current_user, Permission.UPLOAD_DATA):
+            return build_access_denied_layout()
+        if not _is_email_verified(current_user):
+            return build_verification_required_layout()
+        return build_upload_layout()
+    if route_id == "login":
+        if current_user.is_authenticated:
+            return build_user_page_layout(
+                status_code=_first_param(params, "status"),
+                error_code=_first_param(params, "error"),
+                mode=_first_param(params, "mode"),
+                privacy_error=_first_param(params, "privacy_error"),
+            )
+        return build_login_layout(
+            next_path=_safe_next(
+                _first_param(params, "next"), route_path("profile", language)
+            ),
+            error_code=_first_param(params, "error"),
+            notice_code=_first_param(params, "notice"),
+        )
+    if route_id == "register":
+        if current_user.is_authenticated:
+            return build_user_page_layout()
+        return build_register_layout(
+            next_path=_safe_next(
+                _first_param(params, "next"), route_path("profile", language)
+            ),
+            error_code=_first_param(params, "error"),
+        )
+    if route_id == "verify_email":
+        return build_verify_email_layout(_first_param(params, "status"))
+    if route_id == "forgot_password":
+        return build_forgot_password_layout(_first_param(params, "status"))
+    if route_id == "reset_password":
+        return build_reset_password_layout(
+            _first_param(params, "token"),
+            status=_first_param(params, "status"),
+            error=_first_param(params, "error"),
+        )
+    if route_id == "admin":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("admin", language))
+        if not _is_admin():
+            return build_access_denied_layout()
+        try:
+            query = (_first_param(params, "q") or "").strip()[:120]
+            requested_page = _positive_int(_first_param(params, "page"), default=1)
+            user_page = list_users_page(search=query, page=requested_page)
+        except Exception:
+            logger.exception("admin_users_list_failed")
+            query = ""
+            user_page = None
+            params["error"] = ["storage"]
+        return build_admin_users_layout(
+            user_page.users if user_page is not None else [],
+            status_code=_first_param(params, "status"),
+            error_code=_first_param(params, "error"),
+            search=query,
+            page=user_page.page if user_page is not None else 1,
+            page_count=user_page.page_count if user_page is not None else 1,
+            total=user_page.total if user_page is not None else 0,
+            current_user_id=current_user.get_id(),
+        )
+    if route_id == "admin_imports":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("admin_imports", language))
+        if not _is_admin():
+            return build_access_denied_layout()
+        try:
+            logs = list_pending_import_logs()
+        except Exception:
+            logger.exception("admin_imports_list_failed")
+            logs = []
+            params["error"] = ["storage"]
+        return build_admin_imports_layout(
+            logs,
+            status_code=_first_param(params, "status"),
+            error_code=_first_param(params, "error"),
+        )
+    if route_id == "profile":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("profile", language))
+        return build_user_page_layout(
+            status_code=_first_param(params, "status"),
+            error_code=_first_param(params, "error"),
+            mode=_first_param(params, "mode"),
+            privacy_error=_first_param(params, "privacy_error"),
+        )
+    return build_error_layout("404", language=language)
+
+
 
 def _build_application_shell() -> Component:
     try:
@@ -436,7 +434,7 @@ def _build_application_shell() -> Component:
     footer_links: list[Component] = [
         dcc.Link(
             ui_text_component("privacy_title"),
-            href="/privacidad",
+            href=route_path("privacy"),
             refresh=False,
             className="site-footer-link site-footer-link--privacy",
         )
@@ -445,7 +443,7 @@ def _build_application_shell() -> Component:
         footer_links.append(
             dcc.Link(
                 text("Gestión de datos personales", "Personal data management"),
-                href="/user",
+                href=route_path("profile"),
                 refresh=False,
                 className="site-footer-link",
             )
@@ -460,7 +458,7 @@ def _build_application_shell() -> Component:
     banner_links: list[Component] = [
         dcc.Link(
             ui_text_component("privacy_title"),
-            href="/privacidad",
+            href=route_path("privacy"),
             refresh=False,
             className="privacy-notice-link",
         )
@@ -469,7 +467,7 @@ def _build_application_shell() -> Component:
         banner_links.append(
             dcc.Link(
                 ui_text_component("privacy_manage_data"),
-                href="/user",
+                href=route_path("profile"),
                 refresh=False,
                 className="privacy-notice-link",
             )
@@ -488,8 +486,9 @@ def _build_application_shell() -> Component:
     )
     return html.Div(
         [
-            dcc.Location(id="url"),
+            dcc.Location(id="url", refresh="callback-nav"),
             dcc.Store(id="app-language-store", storage_type="local"),
+            dcc.Store(id="app-route-config", data=client_route_config()),
             dcc.Interval(id="app-language-init", interval=150, max_intervals=1),
             html.Button(
                 "",
@@ -584,7 +583,7 @@ def _configure_application_logging() -> None:
 def _register_client_preferences_callbacks(app: Dash) -> None:
     app.clientside_callback(
         """
-        function(initTick, nClicks) {
+        function(initTick, nClicks, pathname, search, hash, routeConfig) {
             const appState = window.RainbowLens || {};
             const state = appState.state || {};
             const i18n = appState.i18n || {};
@@ -600,10 +599,16 @@ def _register_client_preferences_callbacks(app: Dash) -> None:
                 typeof state.currentLanguage === "function"
                     ? state.currentLanguage()
                     : "es";
-            const selected =
-                isToggle && typeof state.nextLanguage === "function"
-                    ? state.nextLanguage(persisted)
-                    : persisted;
+            const inferred =
+                pathname === "/en" || (typeof pathname === "string" && pathname.indexOf("/en/") === 0)
+                    ? "en"
+                    : pathname === "/es" || (typeof pathname === "string" && pathname.indexOf("/es/") === 0)
+                        ? "es"
+                        : persisted;
+            const selected = isToggle && typeof state.nextLanguage === "function"
+                ? state.nextLanguage(inferred)
+                : inferred;
+            appState.routes = routeConfig || {routes: {}, pathIndex: {}};
             if (config.LANGUAGE_KEY) {
                 window.localStorage.setItem(config.LANGUAGE_KEY, selected);
             }
@@ -613,21 +618,48 @@ def _register_client_preferences_callbacks(app: Dash) -> None:
             if (typeof theme.applyToggleLabels === "function" && typeof state.currentTheme === "function") {
                 theme.applyToggleLabels(state.currentTheme(), selected);
             }
-            return selected;
+            let nextHref = window.dash_clientside.no_update;
+            if (isToggle && routeConfig && routeConfig.pathIndex && routeConfig.routes) {
+                const routeId = routeConfig.pathIndex[pathname];
+                const route = routeConfig.routes[routeId];
+                if (route && route[selected]) {
+                    nextHref = route[selected] + (search || "") + (hash || "");
+                }
+            }
+            return [selected, nextHref];
         }
         """,
         Output("app-language-store", "data"),
+        Output("url", "href"),
         Input("app-language-init", "n_intervals"),
         Input("app-language-toggle", "n_clicks"),
+        Input("url", "pathname"),
+        Input("url", "search"),
+        Input("url", "hash"),
+        State("app-route-config", "data"),
     )
 
 
 def _register_error_routes(app: Dash) -> None:
     @app.server.before_request
+    def legacy_page_redirect():
+        if request.method not in {"GET", "HEAD"}:
+            return None
+        target = legacy_redirect_target(request.path)
+        if target is None:
+            return None
+        query = f"?{request.query_string.decode('utf-8')}" if request.query_string else ""
+        return redirect(f"{target}{query}", code=302)
+
+    @app.server.before_request
     def database_dependent_page_guard():
         if request.method != "GET":
             return None
-        if request.path.rstrip("/") not in {"/statistics", "/stadistics"}:
+        route = match_route(request.path)
+        target = legacy_redirect_target(request.path)
+        if route is None and target:
+            route = match_route(target)
+        if route is None or route.route_id != "statistics":
             return None
         try:
             assert_analytics_databases_available()
@@ -801,7 +833,11 @@ def _register_auth_routes(app: Dash) -> None:
                 "email_verification",
                 ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
             )
-            send_verification_email(str(created_user.email or payload.email), verification_token)
+            send_verification_email(
+                str(created_user.email or payload.email),
+                verification_token,
+                _navigation_language(next_path),
+            )
         except (AccountSecurityStorageError, MailDeliveryError):
             logger.exception("verification_email_delivery_failed")
             delivery_status = "delivery_failed"
@@ -840,7 +876,7 @@ def _register_auth_routes(app: Dash) -> None:
                         "email_verification",
                         ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
                     )
-                    send_verification_email(record.email, token)
+                    send_verification_email(record.email, token, _navigation_language())
                 verification_limiter.record_failure(rate_key)
             except (AccountSecurityStorageError, MailDeliveryError, UserStorageError):
                 logger.exception("verification_resend_failed")
@@ -861,7 +897,7 @@ def _register_auth_routes(app: Dash) -> None:
                         "password_reset",
                         ttl_seconds=int(os.getenv("PASSWORD_RESET_TTL_SECONDS", "3600")),
                     )
-                    send_password_reset_email(record.email, token)
+                    send_password_reset_email(record.email, token, _navigation_language())
                 recovery_limiter.record_failure(rate_key)
             except (AccountSecurityStorageError, MailDeliveryError, UserStorageError):
                 logger.exception("password_reset_request_failed")
@@ -899,7 +935,7 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/user", error="csrf")
         logout_user()
         session.clear()
-        return redirect("/")
+        return _redirect("/")
 
     @app.server.post("/auth/profile")
     def profile():
@@ -937,7 +973,7 @@ def _register_auth_routes(app: Dash) -> None:
                     "email_verification",
                     ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
                 )
-                send_verification_email(updated.email, token)
+                send_verification_email(updated.email, token, _navigation_language())
             except (AccountSecurityStorageError, MailDeliveryError):
                 logger.exception("profile_verification_email_failed")
                 delivery_status = "delivery_failed"
@@ -1109,7 +1145,7 @@ def _register_privacy_routes(app: Dash) -> None:
             return _redirect("/user", mode="privacy", privacy_error="deletion_incomplete")
         logout_user()
         session.clear()
-        response = redirect("/privacidad/cuenta-eliminada")
+        response = _redirect("/privacidad/cuenta-eliminada")
         response.delete_cookie(app.server.config["SESSION_COOKIE_NAME"], path="/")
         return response
 
@@ -1146,7 +1182,11 @@ def _register_docente_routes(app: Dash) -> None:
     @app.server.get("/didactica/docentes/descargar/<resource_id>")
     def download_docente_resource_direct(resource_id: str):
         if not current_user.is_authenticated:
-            return redirect(f"/login?{urlencode({'next': '/didactica/docentes'})}")
+            language = _navigation_language()
+            return redirect(
+                f"{route_path('login', language)}?"
+                f"{urlencode({'next': route_path('educators', language)})}"
+            )
         if not can_access_docente_material(current_user):
             abort(403)
         if not _is_email_verified(current_user):
@@ -1224,6 +1264,11 @@ def _request_language() -> str:
     explicit = (request.args.get("lang") or "").casefold()
     if explicit in {"es", "en"}:
         return explicit
+    path_language = language_from_path(request.path, fallback="")
+    if request.path == "/es" or request.path.startswith("/es/"):
+        return path_language
+    if request.path == "/en" or request.path.startswith("/en/"):
+        return path_language
     best = request.accept_languages.best_match(["es", "en"])
     return "en" if best == "en" else "es"
 
@@ -1272,20 +1317,8 @@ def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
     return values
 
 
-def _safe_next(value: str | None, default: str = "/user") -> str:
-    if not value or "\\" in value:
-        return default
-    parsed = urlsplit(value)
-    decoded_path = unquote(parsed.path)
-    if (
-        parsed.scheme
-        or parsed.netloc
-        or parsed.fragment
-        or decoded_path.startswith("//")
-        or decoded_path not in SAFE_NEXT_PATHS
-    ):
-        return default
-    return value
+def _safe_next(value: str | None, default: str = "/es/perfil") -> str:
+    return canonical_safe_next(value) or default
 
 
 def _is_admin() -> bool:
@@ -1298,8 +1331,39 @@ def _is_email_verified(user: object) -> bool:
 
 def _redirect(path: str, **params: str | None):
     clean_params = {key: value for key, value in params.items() if value}
+    next_path = clean_params.pop("next_path", None)
+    language = _navigation_language(next_path)
+    if next_path:
+        next_target = legacy_redirect_target(next_path) or next_path
+        next_route = match_route(next_target)
+        clean_params["next"] = (
+            route_path(next_route.route_id, language) if next_route else next_path
+        )
+    target = legacy_redirect_target(path) or path
+    route = match_route(target)
+    if route is not None:
+        target = route_path(route.route_id, language)
     query = f"?{urlencode(clean_params)}" if clean_params else ""
-    return redirect(f"{path}{query}")
+    return redirect(f"{target}{query}")
+
+
+def _navigation_language(next_path: str | None = None) -> str:
+    candidates = (
+        next_path,
+        request.form.get("next"),
+        request.args.get("next"),
+        request.referrer,
+    )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = urlsplit(candidate).path
+        if path == "/en" or path.startswith("/en/"):
+            return "en"
+        if path == "/es" or path.startswith("/es/"):
+            return "es"
+    explicit = (request.form.get("language") or request.args.get("lang") or "").casefold()
+    return "en" if explicit == "en" else "es"
 
 
 def _rate_key(email: str | None, *, include_email: bool = True) -> str:

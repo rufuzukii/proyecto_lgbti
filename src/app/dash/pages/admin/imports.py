@@ -11,6 +11,7 @@ from app.auth.csrf import get_csrf_token
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 from app.import_to_db.import_log import PendingImportLog
 
 STATUS_MESSAGES = {
@@ -84,7 +85,7 @@ def build_admin_imports_layout(
                                 [
                                     html.A(
                                         text("Volver a administración", "Back to administration"),
-                                        href="/admin",
+                                        href=route_path("admin"),
                                         className="profile-back-link admin-imports-back",
                                     ),
                                     html.P(
@@ -121,7 +122,7 @@ def build_admin_imports_layout(
                         className="admin-shell",
                     )
                 ],
-                className="page-shell",
+                className="page-shell app-page-container",
             ),
         ]
     )
@@ -195,7 +196,11 @@ def _build_import_modals(logs: list[PendingImportLog]) -> list[Component]:
 def _build_import_modal(log: PendingImportLog) -> Component:
     return html.Div(
         [
-            html.A("", href="/admin/imports", className="admin-import-modal-backdrop"),
+            html.A(
+                "",
+                href=route_path("admin_imports"),
+                className="admin-import-modal-backdrop",
+            ),
             html.Div(
                 [
                     html.Div(
@@ -209,7 +214,7 @@ def _build_import_modal(log: PendingImportLog) -> Component:
                             ),
                             html.A(
                                 text("Cerrar", "Close"),
-                                href="/admin/imports",
+                                href=route_path("admin_imports"),
                                 className="profile-back-link",
                             ),
                         ],

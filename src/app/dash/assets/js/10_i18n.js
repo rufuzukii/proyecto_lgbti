@@ -15,6 +15,8 @@
       setTextNodeValue(node, value);
     });
     applyTranslatedAttributes(selected);
+    applyLocalizedRoutes(selected);
+    applyRouteMetadata(selected);
     const privacyPhrase = document.getElementById("privacy-delete-phrase");
     const privacyLanguage = document.getElementById("privacy-delete-language");
     if (privacyPhrase) {
@@ -23,6 +25,9 @@
     if (privacyLanguage) {
       privacyLanguage.value = selected;
     }
+    document.querySelectorAll(".current-language-input").forEach((input) => {
+      input.value = selected;
+    });
 
     if (app.segmentedControls) {
       app.segmentedControls.syncActiveStates();
@@ -62,6 +67,64 @@
         }
       });
     });
+  }
+
+  function applyLocalizedRoutes(language) {
+    const routes = app.routes && app.routes.routes ? app.routes.routes : {};
+    const pathIndex = app.routes && app.routes.pathIndex ? app.routes.pathIndex : {};
+    document.querySelectorAll("a[href]").forEach((node) => {
+      const current = node.getAttribute("href") || "";
+      if (!current || current.startsWith("#") || current.startsWith("mailto:")) {
+        return;
+      }
+      let parsed;
+      try {
+        parsed = new URL(current, window.location.origin);
+      } catch (_error) {
+        return;
+      }
+      if (parsed.origin !== window.location.origin) {
+        return;
+      }
+      const route = routes[pathIndex[parsed.pathname]];
+      if (!route || !route[language]) {
+        return;
+      }
+      const suffix = parsed.search + parsed.hash;
+      node.setAttribute("href", route[language] + suffix);
+    });
+  }
+
+  function applyRouteMetadata(language) {
+    const routeConfig = app.routes || {};
+    const routeId = routeConfig.pathIndex ? routeConfig.pathIndex[window.location.pathname] : null;
+    const route = routeConfig.routes && routeId ? routeConfig.routes[routeId] : null;
+    if (!route) {
+      return;
+    }
+    setHeadLink("canonical", null, route[language]);
+    setHeadLink("alternate", "es", route.es);
+    setHeadLink("alternate", "en", route.en);
+    const title = routeConfig.titles && routeConfig.titles[routeId];
+    if (title && title[language]) {
+      document.title = `${title[language]} · RainbowLens DataHub`;
+    }
+  }
+
+  function setHeadLink(rel, hreflang, path) {
+    const selector = hreflang
+      ? `link[rel="${rel}"][hreflang="${hreflang}"]`
+      : `link[rel="${rel}"]:not([hreflang])`;
+    let link = document.head.querySelector(selector);
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = rel;
+      if (hreflang) {
+        link.hreflang = hreflang;
+      }
+      document.head.insertAdjacentElement("beforeend", link);
+    }
+    link.href = new URL(path, window.location.origin).href;
   }
 
   function setTextNodeValue(node, value) {

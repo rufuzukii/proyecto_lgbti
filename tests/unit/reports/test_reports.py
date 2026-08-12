@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import fitz
 import plotly.graph_objects as go
-from dash import Dash
+from dash import Dash, dcc
 from PIL import Image
 
 from app.analytics.statistics_exports import (
@@ -70,6 +70,25 @@ def _configuration(**overrides: Any) -> ReportConfiguration:
         **overrides,
     }
     return ReportConfiguration.from_mapping(values)
+
+
+def test_report_fields_associate_labels_without_targeting_composite_containers() -> None:
+    text_field = reports_page._field("TÃ­tulo", "Title", dcc.Input(id="report-title-test"))
+    group_field = reports_page._field(
+        "Formato",
+        "Format",
+        dcc.RadioItems(id="report-format-test", options=[]),
+    )
+    text_props = text_field.to_plotly_json()["props"]
+    text_label_props = text_props["children"][0].to_plotly_json()["props"]
+    group_props = group_field.to_plotly_json()["props"]
+    group_label = group_props["children"][0]
+
+    assert text_label_props["htmlFor"] == "report-title-test"
+    assert group_props["role"] == "group"
+    assert group_props["aria-labelledby"] == "report-format-test-label"
+    assert group_label.to_plotly_json()["type"] == "Span"
+    assert "htmlFor" not in group_label.to_plotly_json()["props"]
 
 
 def _ilga_result() -> dict[str, Any]:

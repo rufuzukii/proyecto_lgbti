@@ -106,7 +106,8 @@
   display: none;
 }
 
-.stats-controls label {
+.stats-controls label,
+.stats-controls .stats-control-label {
   display: block;
   font-size: 0.78rem;
   font-weight: 800;
@@ -589,6 +590,28 @@
   margin: 0 auto 1rem;
   max-width: 1500px;
   padding: 0.9rem 1rem;
+}
+
+.stats-query-state,
+.stats-results-content {
+  margin-inline: auto;
+  max-width: 1500px;
+  width: 100%;
+}
+
+.stats-query-state-card {
+  background: var(--stats-card-bg);
+  border: 1px dashed var(--stats-card-border);
+  border-radius: var(--stats-radius);
+  color: var(--stats-text);
+  padding: clamp(1.1rem, 2vw, 1.6rem);
+  text-align: center;
+}
+
+.stats-query-state-card h2 {
+  font-size: clamp(1rem, 1.7vw, 1.2rem);
+  line-height: 1.45;
+  margin: 0;
 }
 
 .stats-status p {

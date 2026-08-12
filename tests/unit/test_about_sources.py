@@ -144,6 +144,45 @@ def test_about_unknown_ilga_criterion_uses_fallback_without_warning(caplog) -> N
     assert "legal_criterion_metadata_missing" not in caplog.text
 
 
+def test_about_criterion_shows_percentage_and_effective_ranking_contribution() -> None:
+    country = {
+        "country": "Spain",
+        "country_code": "ES",
+        "ranking": 77.0,
+        "criteria": [
+            {
+                "category": "Equality & non-discrimination",
+                "indicator": "Constitution (sexual orientation)",
+                "weight": 0.16,
+                "value": 1,
+            },
+            {
+                "category": "Custom category",
+                "indicator": "Dataset-specific criterion",
+                "weight": 1.1,
+                "value": 0.5,
+            },
+        ],
+    }
+
+    panel = _country_criteria_panel(country)
+    tables = [
+        component
+        for component in _walk(panel)
+        if _component_prop(component, "className") == "ilga-indicator-card__metadata"
+    ]
+
+    assert len(tables) == 2
+    assert "Cumplimiento y aporte al ranking" in _text_content(tables[0])
+    assert "Cumplimiento" in _text_content(tables[0])
+    assert "Aporte al ranking" in _text_content(tables[0])
+    assert "100 %" in _text_content(tables[0])
+    assert "0.16 puntos" in _text_content(tables[0])
+    assert "1 / 0.16" not in _text_content(tables[0])
+    assert "50 %" in _text_content(tables[1])
+    assert "0.55 puntos" in _text_content(tables[1])
+
+
 def _walk(component: Any):
     yield component
     children = getattr(component, "children", None)

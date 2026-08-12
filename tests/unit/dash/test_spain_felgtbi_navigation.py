@@ -42,6 +42,7 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     ids = {getattr(item, "id", None) for item in _walk(layout)}
     year = _find(layout, "spain-year-select")
     document = _find(layout, "spain-document-select")
+    document_label = _find(layout, "spain-document-select-label")
     indicator = _find(layout, "spain-topic-select")
 
     # Assert
@@ -51,6 +52,18 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     assert isinstance(document, dcc.RadioItems)
     assert document.value is None
     assert "spain-selection-control" in document.className
+    assert document_label.to_plotly_json()["type"] == "Span"
+    assert "htmlFor" not in document_label.to_plotly_json()["props"]
+    document_group = next(
+        item
+        for item in _walk(layout)
+        if item is not document_label
+        and hasattr(item, "to_plotly_json")
+        and item.to_plotly_json()["props"].get("role") == "group"
+        and item.to_plotly_json()["props"].get("aria-labelledby")
+        == "spain-document-select-label"
+    )
+    assert document_group.className.endswith("spain-document-field")
     assert indicator.value is None
 
 

@@ -29,6 +29,7 @@ from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 from app.dates import utc_today, utc_today_iso
 from app.source_attribution import ILGA_ANNUAL_REVIEW_2026_PDF_URL
 
@@ -121,7 +122,7 @@ def build_home_layout() -> Component:
                                                             "Abrir estadísticas",
                                                             "Open statistics",
                                                         ),
-                                                        href="/statistics",
+                                                        href=route_path("statistics"),
                                                         className="home-map-link",
                                                     ),
                                                 ],
@@ -216,7 +217,7 @@ def build_home_layout() -> Component:
                     ),
                     build_home_section_navigation(),
                 ],
-                className="home-data-shell",
+                className="home-data-shell app-page-container",
             ),
         ]
     )
@@ -1298,9 +1299,10 @@ def _control_field(
     props: dict[str, Any] = {"className": " ".join(classes)}
     if field_id:
         props["id"] = field_id
+    control_id = getattr(control, "id", None)
     return html.Div(
         [
-            html.Label(text(label[0], label[1])),
+            html.Label(text(label[0], label[1]), htmlFor=control_id),
             control,
         ],
         **props,

@@ -6,6 +6,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.dash.i18n import dash_attrs, text_attrs
+from app.dash.routes import route_path
 from app.edu.models import GlossaryTerm, Lesson, TeacherResource
 from app.edu.translations import category_name, pair, tr
 
@@ -20,7 +21,14 @@ def translated(
     return tag(es, className=class_name, **text_attrs(es, en))
 
 
-def resource_card(title_key: str, description_key: str, href: str, icon: str) -> Component:
+def resource_card(
+    title_key: str,
+    description_key: str,
+    route_id: str,
+    icon: str,
+    *,
+    query: str = "",
+) -> Component:
     return dcc.Link(
         [
             html.Span(
@@ -36,7 +44,7 @@ def resource_card(title_key: str, description_key: str, href: str, icon: str) ->
                 **dash_attrs({"aria-hidden": "true"}),
             ),
         ],
-        href=href,
+        href=f"{route_path(route_id)}{query}",
         refresh=False,
         className="didactica-resource-card",
     )
@@ -102,7 +110,7 @@ def lesson_card(lesson: Lesson, language: str) -> Component:
             ),
             dcc.Link(
                 translated("start"),
-                href=f"/didactica/presentaciones?lesson={lesson.id}",
+                href=f"{route_path('presentations')}?lesson={lesson.id}",
                 className="didactica-button",
             ),
         ],
@@ -155,12 +163,12 @@ def access_denied() -> Component:
                         [
                             dcc.Link(
                                 translated("back_learning"),
-                                href="/didactica",
+                                href=route_path("didactica"),
                                 className="didactica-button",
                             ),
                             dcc.Link(
                                 translated("back_home"),
-                                href="/",
+                                href=route_path("home"),
                                 className="didactica-button didactica-button-secondary",
                             ),
                         ],
@@ -170,7 +178,7 @@ def access_denied() -> Component:
                 className="didactica-denied",
             )
         ],
-        className="didactica-shell",
+        className="didactica-shell app-page-container",
     )
 
 

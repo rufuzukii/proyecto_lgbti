@@ -73,7 +73,7 @@ def test_password_reset_email_never_contains_a_password(
     body = sent[0].get_body()
     assert body is not None
     content = body.get_content()
-    assert "reset-password?token=reset-token" in content
+    assert "/es/restablecer-contrasena?token=reset-token" in content
     assert "new_password=" not in content
     assert "a-secure-password" not in content
 

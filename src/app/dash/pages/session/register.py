@@ -6,6 +6,7 @@ from dash.development.base_component import Component
 from app.auth.csrf import get_csrf_token
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 
 ERROR_MESSAGES = {
     "invalid_payload": (
@@ -32,7 +33,7 @@ ERROR_MESSAGES = {
 
 
 def build_register_layout(
-    next_path: str = "/user",
+    next_path: str | None = None,
     error_code: str | None = None,
 ) -> Component:
     message = ERROR_MESSAGES.get(error_code) if error_code is not None else None
@@ -70,7 +71,13 @@ def build_register_layout(
                                             dcc.Input(
                                                 type="hidden",
                                                 name="next",
-                                                value=next_path,
+                                                value=next_path or route_path("profile"),
+                                            ),
+                                            dcc.Input(
+                                                type="hidden",
+                                                name="language",
+                                                value="es",
+                                                className="current-language-input",
                                             ),
                                             html.Label(
                                                 "Nombre visible",
@@ -180,7 +187,7 @@ def build_register_layout(
                                             ),
                                             html.A(
                                                 "Iniciar sesión",
-                                                href="/login",
+                                                href=route_path("login"),
                                                 **text_attrs("Iniciar sesión", "Sign in"),
                                             ),
                                         ],

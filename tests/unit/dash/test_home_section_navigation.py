@@ -11,7 +11,14 @@ from app.dash.components.section_navigation import (
 from app.dash.i18n import UI_TEXT
 from app.dash.layouts import navigation
 
-PRIMARY_PATHS = ["/", "/statistics", "/tendencias", "/spain", "/didactica", "/about"]
+PRIMARY_PATHS = [
+    "/es",
+    "/es/estadisticas",
+    "/es/tendencias",
+    "/es/espana",
+    "/es/didactica",
+    "/es/acerca-de",
+]
 CARD_PATHS = PRIMARY_PATHS[1:]
 
 
@@ -27,7 +34,6 @@ def _walk(component: Any):
 
 
 def test_primary_sections_share_the_requested_order_and_existing_routes() -> None:
-    assert [section.href for section in PRIMARY_SECTIONS] == PRIMARY_PATHS
     assert [section.key for section in PRIMARY_SECTIONS] == [
         "home",
         "statistics",
@@ -56,8 +62,8 @@ def test_navbar_uses_primary_section_order_without_changing_restricted_links(
     rendered_paths = [cast(Any, item.children).href for item in cast(list[Any], nav_list.children)]
 
     assert rendered_paths == PRIMARY_PATHS
-    assert "/informes" not in rendered_paths
-    assert "/upload" not in rendered_paths
+    assert "/es/informe" not in rendered_paths
+    assert "/es/importar" not in rendered_paths
 
 
 def test_navbar_keeps_report_and_upload_access_after_the_primary_sections(monkeypatch) -> None:
@@ -82,8 +88,8 @@ def test_navbar_keeps_report_and_upload_access_after_the_primary_sections(monkey
 
     assert [cast(Any, item.children).href for item in cast(list[Any], nav_list.children)] == [
         *PRIMARY_PATHS,
-        "/informes",
-        "/upload",
+        "/es/informe",
+        "/es/importar",
     ]
 
 

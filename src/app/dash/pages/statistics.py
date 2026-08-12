@@ -63,6 +63,7 @@ from app.analytics.statistics_service import (
     get_fra_statistics,
     get_ilga_statistics,
 )
+from app.dash.components.empty_state import build_empty_state
 from app.dash.components.ilga_methodology import (
     build_ilga_normalization_note,
     build_ilga_series_normalization_note,
@@ -71,6 +72,7 @@ from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import attribute_attrs, country_labels, dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import language_from_path, route_path
 from app.taxonomy import taxonomy_label, taxonomy_pair
 
 DATA_TYPE_OPTIONS = [
@@ -121,10 +123,10 @@ CHART_EXPORT_TITLES = {
 
 def build_statistics_layout() -> Component:
     assert_analytics_databases_available()
-    years = _year_options("fra")
-    initial_year = years[0]["value"] if years else None
-    categories = _category_options("fra", initial_year)
-    placeholder = empty_figure("Selecciona una categoría y un indicador para comenzar.")
+    years: list[dict[str, Any]] = []
+    initial_year = None
+    categories: list[dict[str, Any]] = []
+    placeholder = empty_figure("")
     return html.Div(
         [
             build_navbar(active="statistics"),
@@ -137,8 +139,17 @@ def build_statistics_layout() -> Component:
                 [
                     _header(),
                     _controls(years, initial_year, categories),
-                    dcc.Loading(
-                        [
+                    html.Div(
+                        build_empty_state(
+                            ui_text("statistics_initial_prompt", "es"),
+                            class_name="stats-query-state-card",
+                        ),
+                        id="stats-query-state",
+                        className="stats-query-state",
+                    ),
+                    html.Div(
+                        dcc.Loading(
+                            [
                             html.Div(
                                 id="stats-status-message",
                                 className="stats-status stats-status-warning",
@@ -418,17 +429,54 @@ def build_statistics_layout() -> Component:
                                 className="stats-panel stats-results-table-panel",
                             ),
                             html.P(id="stats-methodology", className="stats-methodology-note"),
-                        ],
-                        type="circle",
+                            ],
+                            type="circle",
+                        ),
+                        id="stats-results-content",
+                        className="stats-results-content is-hidden",
                     ),
                 ],
-                className="stats-shell",
+                className="stats-shell app-page-container",
             ),
         ]
     )
 
 
 def register_statistics_callbacks(app: Dash) -> None:
+    @app.callback(
+        Output("stats-query-state", "children"),
+        Output("stats-query-state", "className"),
+        Output("stats-results-content", "className"),
+        Input("stats-data-store", "data"),
+        Input("app-language-store", "data"),
+    )
+    def update_statistics_query_state(
+        result: dict[str, Any] | None,
+        language: str | None,
+    ) -> tuple[Component, str, str]:
+        clean_language = "en" if language == "en" else "es"
+        query_state = _statistics_query_state(result)
+        if query_state == "ready":
+            return (
+                build_empty_state(
+                    ui_text("statistics_initial_prompt", clean_language),
+                    class_name="stats-query-state-card",
+                ),
+                "stats-query-state is-hidden",
+                "stats-results-content",
+            )
+        message_key = (
+            "statistics_no_data" if query_state == "empty" else "statistics_initial_prompt"
+        )
+        return (
+            build_empty_state(
+                ui_text(message_key, clean_language),
+                class_name="stats-query-state-card",
+            ),
+            "stats-query-state",
+            "stats-results-content is-hidden",
+        )
+
     @app.callback(
         Output({"type": "stats-source-attribution", "index": ALL}, "children"),
         Input("stats-source-select", "value"),
@@ -662,7 +710,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         clean = {
             key: value for key, value in params.items() if value is not None and str(value).strip()
         }
-        path = "/reports" if language == "en" else "/informes"
+        path = route_path("reports", language)
         report_href = f"{path}?{urlencode(clean)}"
         return _report_destination(
             report_href,
@@ -749,6 +797,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         State("stats-category-select", "value"),
     )
     def update_categories_for_year(source: str | None, year: int | None, current: str | None):
+        if not source or year is None:
+            return [], None
         options = _category_options(source, year)
         return options, _selected_category_value(
             source,
@@ -872,12 +922,10 @@ def register_statistics_callbacks(app: Dash) -> None:
         identity_value: str | None,
         criterion: str | None,
         control_payload: dict[str, Any] | None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         if source == "fra":
             if not _has_valid_fra_selection(category, fra_code):
-                return _empty_data_result(
-                    "Selecciona una categoría y una pregunta para cargar las estadísticas."
-                )
+                return None
             controls_ready = _fra_controls_are_ready(
                 category,
                 fra_code,
@@ -889,7 +937,7 @@ def register_statistics_callbacks(app: Dash) -> None:
                 identity_value,
             )
             if ctx.triggered_id == "stats-category-select" or not controls_ready:
-                return _empty_data_result("Preparando los controles de la pregunta seleccionada.")
+                return None
             result = get_fra_statistics(
                 FraStatisticsQuery(
                     year=_safe_int(year),
@@ -921,9 +969,7 @@ def register_statistics_callbacks(app: Dash) -> None:
                 )
             return result
         if not category:
-            return _empty_data_result(
-                "Selecciona una categoría jurídica para cargar las estadísticas."
-            )
+            return None
         result = get_ilga_statistics(
             IlgaStatisticsQuery(year=_safe_int(year), category=category, criterion=criterion)
         )
@@ -1039,8 +1085,10 @@ def register_statistics_callbacks(app: Dash) -> None:
         language: str | None,
         ranking_page: int | None,
     ):
+        if not result:
+            raise PreventUpdate
         return _render_dashboard(
-            result or {},
+            result,
             _normalize_selected_countries(countries),
             language or "es",
             temporal_countries=_normalize_selected_countries(temporal_countries),
@@ -1149,7 +1197,7 @@ def _controls(
                     ),
                     html.A(
                         text("Restablecer filtros", "Reset filters"),
-                        href="/statistics",
+                        href=route_path("statistics"),
                         className="stats-reset-link",
                         role="button",
                     ),
@@ -1268,14 +1316,29 @@ def _field(
     element_id: str | None = None,
     class_name: str = "stats-control-field",
 ) -> Component:
-    label_node = (
-        html.Label(label[0], **text_attrs(label[0], label[1]))
-        if isinstance(label, tuple)
-        else html.Label(label, **text_attrs(label, LABELS_EN.get(label, label)))
+    label_es, label_en = (
+        label if isinstance(label, tuple) else (label, LABELS_EN.get(label, label))
     )
+    control_id = getattr(component, "id", None)
+    is_group = component.__class__.__name__ in {"RadioItems", "Checklist"}
     props: dict[str, Any] = {"className": class_name}
     if element_id:
         props["id"] = element_id
+    if is_group and control_id:
+        label_id = f"{control_id}-label"
+        label_node = html.Span(
+            label_es,
+            id=label_id,
+            className="stats-control-label",
+            **text_attrs(label_es, label_en),
+        )
+        props.update({"role": "group", "aria-labelledby": label_id})
+    else:
+        label_node = html.Label(
+            label_es,
+            htmlFor=control_id,
+            **text_attrs(label_es, label_en),
+        )
     return html.Div([label_node, component], **props)
 
 
@@ -1335,7 +1398,7 @@ def _header() -> Component:
                     "Create report from this selection",
                 ),
                 id="stats-create-report-link",
-                href="/informes",
+                href=route_path("reports"),
                 className="stats-create-report-link",
             ),
         ],
@@ -1346,7 +1409,11 @@ def _header() -> Component:
 def _report_destination(report_href: str, *, authenticated: bool) -> str:
     if authenticated:
         return report_href
-    return f"/login?{urlencode({'next': report_href, 'notice': 'report_login_required'})}"
+    language = language_from_path(report_href)
+    return (
+        f"{route_path('login', language)}?"
+        f"{urlencode({'next': report_href, 'notice': 'report_login_required'})}"
+    )
 
 
 def _dynamic_source_attribution(index: str) -> Component:
@@ -2499,6 +2566,12 @@ def _empty_data_result(message: str) -> dict[str, Any]:
         "ranking": [],
         "available_countries": [],
     }
+
+
+def _statistics_query_state(result: dict[str, Any] | None) -> str:
+    if not result:
+        return "initial"
+    return "ready" if result.get("status") == "ok" else "empty"
 
 
 def _safe_int(value: Any) -> int | None:

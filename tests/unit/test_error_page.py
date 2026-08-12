@@ -30,7 +30,7 @@ def test_statistics_route_returns_503_when_database_is_unavailable(monkeypatch) 
     )
     app = create_dash_app()
 
-    response = app.server.test_client().get("/statistics")
+    response = app.server.test_client().get("/en/statistics")
 
     assert response.status_code == 503
     body = response.get_data(as_text=True)
@@ -62,4 +62,4 @@ def test_error_pages_do_not_expose_internal_details() -> None:
         assert "MONGO_URI" not in body
         assert "postgresql://" not in body
         assert "Traceback" not in body
-        assert 'href="/"' in body
+        assert 'href="/es"' in body

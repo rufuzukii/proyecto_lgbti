@@ -7,8 +7,9 @@ from typing import Literal
 from dash import html
 from dash.development.base_component import Component
 
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import normalize_language, route_path
 from app.errors import DatabaseUnavailableError
 
 ErrorKind = Literal["401", "403", "404", "500", "503", "insufficient_data"]
@@ -83,24 +84,40 @@ ERROR_PAGES: dict[ErrorKind, ErrorPageCopy] = {
 }
 
 
-def build_error_layout(kind: ErrorKind, *, include_navigation: bool = True) -> Component:
+def build_error_layout(
+    kind: ErrorKind,
+    *,
+    include_navigation: bool = True,
+    language: str | None = None,
+) -> Component:
     copy = ERROR_PAGES[kind]
+    selected_language = normalize_language(language)
+    is_english = selected_language == "en"
     panel = html.Main(
         [
             html.P(
-                copy.code_es,
+                copy.code_en if is_english else copy.code_es,
                 className="error-page-code",
                 **text_attrs(copy.code_es, copy.code_en),
             ),
-            html.H1(text(copy.title_es, copy.title_en)),
+            html.H1(
+                copy.title_en if is_english else copy.title_es,
+                **text_attrs(copy.title_es, copy.title_en),
+            ),
             html.P(
-                text(copy.message_es, copy.message_en),
+                copy.message_en if is_english else copy.message_es,
                 className="error-page-message",
+                **text_attrs(copy.message_es, copy.message_en),
             ),
             html.A(
-                text("Volver al inicio", "Back to home"),
-                href="/",
+                "Back to home" if is_english else "Volver al inicio",
+                href=route_path("home", selected_language),
                 className="error-page-action",
+                **dash_attrs(
+                    {
+                        **text_attrs("Volver al inicio", "Back to home"),
+                    }
+                ),
             ),
         ],
         className="error-page-panel",
@@ -123,6 +140,7 @@ def render_error_response(
     message = copy.message_en if is_english else copy.message_es
     action = "Back to home" if is_english else "Volver al inicio"
     page_language = "en" if is_english else "es"
+    home_path = route_path("home", page_language)
     body = f"""<!DOCTYPE html>
 <html lang="{page_language}">
 <head>
@@ -138,7 +156,7 @@ def render_error_response(
       <p class="error-page-code">{escape(code)}</p>
       <h1>{escape(title)}</h1>
       <p class="error-page-message">{escape(message)}</p>
-      <a class="error-page-action" href="/">{escape(action)}</a>
+      <a class="error-page-action" href="{home_path}">{escape(action)}</a>
     </section>
   </main>
 </body>

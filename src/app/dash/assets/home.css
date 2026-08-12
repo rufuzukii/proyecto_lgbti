@@ -762,13 +762,13 @@
   background: var(--color-bg);
   color: var(--color-text);
   min-height: calc(100vh - 110px);
-  padding: 2rem max(1rem, 6vw) 3rem;
+  padding-block: 2rem 3rem;
 }
 
 .about-header {
   border-bottom: 1px solid var(--panel-border);
   margin: 0 auto 1.2rem;
-  max-width: 1100px;
+  max-width: none;
   padding-bottom: 1rem;
 }
 
@@ -798,13 +798,13 @@
   gap: 1rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 auto;
-  max-width: 1100px;
+  max-width: none;
 }
 
 .about-source-section,
 .about-recommended-section {
   margin: 0 auto 1.2rem;
-  max-width: 1100px;
+  max-width: none;
 }
 
 .about-source-section,
@@ -947,7 +947,7 @@
   display: grid;
   gap: 1rem;
   margin: 1.2rem auto 0;
-  max-width: 1100px;
+  max-width: none;
 }
 
 .about-section-header {
@@ -1080,41 +1080,54 @@
 }
 
 .ilga-indicator-card__metadata {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--panel-border);
+  border-collapse: separate;
+  border-radius: 8px;
+  border-spacing: 0;
+  overflow: hidden;
+  table-layout: fixed;
+  text-align: left;
+  width: 100%;
   max-width: 100%;
   min-width: 0;
 }
 
-.ilga-indicator-card__meta-item {
-  background: var(--panel-bg);
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-  padding: 0.55rem 0.65rem;
+.ilga-indicator-card__metadata caption {
+  color: var(--color-text);
+  font-size: 0.86rem;
+  font-weight: 900;
+  padding: 0 0 0.45rem;
   text-align: left;
 }
 
-.ilga-indicator-card__meta-item span {
+.ilga-indicator-card__metadata th,
+.ilga-indicator-card__metadata td {
+  background: var(--panel-bg);
+  overflow-wrap: anywhere;
+  padding: 0.55rem 0.65rem;
+  vertical-align: top;
+  white-space: normal;
+  width: 50%;
+}
+
+.ilga-indicator-card__metadata th + th,
+.ilga-indicator-card__metadata td + td {
+  border-left: 1px solid var(--panel-border);
+}
+
+.ilga-indicator-card__metadata th {
+  border-bottom: 1px solid var(--panel-border);
   color: var(--color-text-muted);
   font-size: 0.74rem;
   font-weight: 900;
-  overflow-wrap: anywhere;
   text-transform: uppercase;
-  white-space: normal;
 }
 
-.ilga-indicator-card__meta-item strong {
+.ilga-indicator-card__metadata td {
   color: var(--color-text);
   font-size: 0.9rem;
+  font-weight: 800;
   line-height: 1.3;
-  max-width: 100%;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
 }
 
 .about-criterion-row {
@@ -1214,7 +1227,9 @@ body[data-theme="dark"] .country-status-editor-panel,
 body[data-theme="dark"] .about-country-panel,
 body[data-theme="dark"] .about-empty,
 body[data-theme="dark"] .ilga-indicator-card,
-body[data-theme="dark"] .ilga-indicator-card__meta-item {
+body[data-theme="dark"] .ilga-indicator-card__metadata,
+body[data-theme="dark"] .ilga-indicator-card__metadata th,
+body[data-theme="dark"] .ilga-indicator-card__metadata td {
   background: var(--panel-bg);
   border-color: var(--panel-border);
 }
@@ -1424,8 +1439,9 @@ body[data-theme="dark"] .dash-dropdown-content .dash-dropdown-option:has(input:c
     grid-template-columns: 1fr;
   }
 
-  .ilga-indicator-card__metadata {
-    grid-template-columns: 1fr;
+  .ilga-indicator-card__metadata th,
+  .ilga-indicator-card__metadata td {
+    padding: 0.5rem;
   }
 
   .about-criterion-values {

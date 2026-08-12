@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from dash import Dash
+from dash import Dash, dcc
 
 import app.dash_app as dash_app_module
 import app.trends.callbacks as trend_callbacks
@@ -13,7 +13,14 @@ from app.dash.layouts import navigation
 from app.trends.analysis import analyze_historical_series
 from app.trends.callbacks import register_trend_callbacks
 from app.trends.charts import build_trend_figure
-from app.trends.models import HistoricalPoint, SeriesMetadata, TrendAnalysis, TrendSource
+from app.trends.data import RANKING_CATEGORY, RANKING_INDICATOR
+from app.trends.models import (
+    HistoricalPoint,
+    SeriesMetadata,
+    TrendAnalysis,
+    TrendIndicator,
+    TrendSource,
+)
 
 
 def _walk(component):
@@ -98,13 +105,29 @@ def test_layout_contains_empty_lazy_controls(monkeypatch) -> None:
     assert "trend-history-graph" not in ids
 
 
+def test_range_slider_uses_a_group_label_instead_of_label_for_a_div() -> None:
+    field = trend_layout._field(
+        "trends_period",
+        dcc.RangeSlider(id="test-trend-range", min=2020, max=2024),
+    )
+    props = field.to_plotly_json()["props"]
+    label = props["children"][0]
+    label_props = label.to_plotly_json()["props"]
+
+    assert props["role"] == "group"
+    assert props["aria-labelledby"] == "test-trend-range-label"
+    assert label.to_plotly_json()["type"] == "Span"
+    assert label_props["id"] == "test-trend-range-label"
+    assert "htmlFor" not in label_props
+
+
 def test_route_and_navigation_register_trends(monkeypatch) -> None:
     monkeypatch.setattr(dash_app_module, "initialize_mongo_indexes", lambda: None)
     monkeypatch.setattr(trend_layout, "build_navbar", lambda **_kwargs: "")
     app = dash_app_module.create_dash_app()
     display_page = app.callback_map["page-content.children"]["callback"].__wrapped__
 
-    page = display_page("/tendencias", None)
+    page = display_page("/es/tendencias", None)
 
     assert "trend-source-select" in _ids(page)
     assert any(
@@ -121,7 +144,9 @@ def test_route_and_navigation_register_trends(monkeypatch) -> None:
     )
     navbar = navigation.build_navbar(active="trends")
     trends_link = next(
-        item for item in _walk(navbar) if getattr(item, "href", None) == "/tendencias"
+        item
+        for item in _walk(navbar)
+        if getattr(item, "href", None) == "/es/tendencias"
     )
     assert "is-active" in trends_link.className
 
@@ -134,6 +159,53 @@ def test_placeholders_switch_between_spanish_and_english() -> None:
     assert callback("es")[0] == "Selecciona una fuente"
     assert callback("en")[0] == "Select a source"
     assert ui_text("trends_not_enough", "en") == "There is not enough information."
+
+
+def test_trends_only_exposes_ilga_as_projection_source(monkeypatch) -> None:
+    monkeypatch.setattr(trend_layout, "build_navbar", lambda **_kwargs: "")
+    layout = trend_layout.build_trends_layout()
+    source = next(
+        item for item in _walk(layout) if getattr(item, "id", None) == "trend-source-select"
+    )
+
+    assert [option["value"] for option in source.options] == ["ilga"]
+    assert source.value == "ilga"
+    assert source.clearable is False
+    assert "ILGA-Europe" in str(source.options[0]["label"])
+    assert "situación legal" in str(source.options[0]["label"])
+    assert "legal situation" in str(source.options[0]["label"])
+
+
+def test_legal_source_selects_total_ranking_without_loading_category_catalog() -> None:
+    app = Dash("trend-legal-controls-test", suppress_callback_exceptions=True)
+    register_trend_callbacks(app)
+    category_callback = _callback(app, "update_trend_categories")
+    indicator_callback = _callback(app, "update_trend_indicators")
+
+    categories, category, category_disabled = category_callback("ilga", "es")
+    indicators, indicator, indicator_disabled = indicator_callback(
+        "ilga", RANKING_CATEGORY, "en"
+    )
+    decoded = TrendIndicator.from_token(indicator)
+
+    assert categories == [{"label": "Ranking Total", "value": RANKING_CATEGORY}]
+    assert category == RANKING_CATEGORY
+    assert category_disabled is True
+    assert indicators[0]["label"] == "Total ranking"
+    assert decoded.indicator_id == RANKING_INDICATOR
+    assert decoded.category == RANKING_CATEGORY
+    assert indicator_disabled is True
+
+
+def test_trend_callbacks_reject_fra_as_a_projection_source() -> None:
+    app = Dash("trend-source-validation-test", suppress_callback_exceptions=True)
+    register_trend_callbacks(app)
+    category_callback = _callback(app, "update_trend_categories")
+    indicator_callback = _callback(app, "update_trend_indicators")
+
+    assert category_callback("fra", "es") == ([], None, True)
+    assert indicator_callback("fra", "Discrimination", "en") == ([], None, True)
+
 
 
 def test_projection_horizon_uses_the_selected_historical_range(monkeypatch) -> None:
@@ -242,6 +314,13 @@ def test_trends_styles_cover_dark_mode_and_mobile() -> None:
     assert ".trend-controls" in stylesheet
     assert "grid-template-columns: 1fr" in stylesheet
     assert "overflow-x: clip" in stylesheet
+    assert ".dash-range-slider-min-input" in stylesheet
+    assert ".dash-range-slider-max-input" in stylesheet
+    assert ".dash-slider-tooltip" in stylesheet
+    assert ".dash-slider-mark" in stylesheet
+    assert ".dash-slider-thumb" in stylesheet
+    assert ".dash-slider-track" in stylesheet
+    assert ".dash-slider-range" in stylesheet
 
 
 def test_trends_discloses_normalized_ilga_years_in_both_languages(monkeypatch) -> None:

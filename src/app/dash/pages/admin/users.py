@@ -8,6 +8,7 @@ from dash.development.base_component import Component
 from app.auth.csrf import get_csrf_token
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 from app.taxonomy import taxonomy_pair
 from app.users.schemas import UserRead, UserRole, UserType
 
@@ -134,7 +135,7 @@ def build_admin_users_layout(
                                                     "Revisar archivos pendientes",
                                                     "Review pending files",
                                                 ),
-                                                href="/admin/imports",
+                                                href=route_path("admin_imports"),
                                                 className="auth-button profile-edit-link",
                                             ),
                                         ],
@@ -168,7 +169,7 @@ def build_admin_users_layout(
                         className="admin-shell",
                     )
                 ],
-                className="page-shell",
+                className="page-shell app-page-container",
             ),
         ]
     )
@@ -197,7 +198,7 @@ def build_access_denied_layout() -> Component:
                                     ),
                                     html.A(
                                         text("Volver al inicio", "Back to home"),
-                                        href="/",
+                                        href=route_path("home"),
                                         className="auth-button profile-edit-link",
                                     ),
                                 ],
@@ -239,14 +240,14 @@ def _search_users_form(search: str) -> Component:
                     ),
                     html.A(
                         text("Limpiar", "Clear"),
-                        href="/admin",
+                        href=route_path("admin"),
                         className="admin-user-search-clear",
                     ),
                 ],
                 className="admin-user-search-controls",
             ),
         ],
-        action="/admin",
+        action=route_path("admin"),
         method="get",
         className="admin-user-search-form",
         role="search",
@@ -488,7 +489,7 @@ def _pagination(search: str, page: int, page_count: int) -> Component | str:
         query = {"page": str(target)}
         if search:
             query["q"] = search
-        return f"/admin?{urlencode(query)}"
+        return f"{route_path('admin')}?{urlencode(query)}"
 
     return html.Nav(
         [
@@ -496,7 +497,11 @@ def _pagination(search: str, page: int, page_count: int) -> Component | str:
                 text("Anterior", "Previous"),
                 href=page_href(page - 1) if page > 1 else None,
                 className="admin-pagination-link" + (" is-disabled" if page <= 1 else ""),
-                **dash_attrs({"aria-disabled": str(page <= 1).lower()}),
+                **dash_attrs(
+                    {
+                        "aria-disabled": str(page <= 1).lower(),
+                    }
+                ),
             ),
             html.Span(
                 f"P\u00e1gina {page} de {page_count}",
@@ -511,7 +516,11 @@ def _pagination(search: str, page: int, page_count: int) -> Component | str:
                 href=page_href(page + 1) if page < page_count else None,
                 className="admin-pagination-link"
                 + (" is-disabled" if page >= page_count else ""),
-                **dash_attrs({"aria-disabled": str(page >= page_count).lower()}),
+                **dash_attrs(
+                    {
+                        "aria-disabled": str(page >= page_count).lower(),
+                    }
+                ),
             ),
         ],
         className="admin-pagination",

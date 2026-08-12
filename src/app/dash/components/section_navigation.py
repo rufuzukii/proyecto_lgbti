@@ -6,12 +6,12 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.dash.i18n import attribute_attrs, dash_attrs, ui_text, ui_text_component
+from app.dash.routes import route_path
 
 
 @dataclass(frozen=True, slots=True)
 class PrimarySection:
     key: str
-    href: str
     label_key: str
     description_key: str | None = None
     action_key: str | None = None
@@ -19,10 +19,9 @@ class PrimarySection:
 
 
 PRIMARY_SECTIONS = (
-    PrimarySection("home", "/", "navigation_home"),
+    PrimarySection("home", "navigation_home"),
     PrimarySection(
         "statistics",
-        "/statistics",
         "navigation_statistics",
         "home_statistics_description",
         "home_statistics_action",
@@ -30,7 +29,6 @@ PRIMARY_SECTIONS = (
     ),
     PrimarySection(
         "trends",
-        "/tendencias",
         "navigation_trends",
         "home_trends_description",
         "home_trends_action",
@@ -38,7 +36,6 @@ PRIMARY_SECTIONS = (
     ),
     PrimarySection(
         "spain",
-        "/spain",
         "navigation_spain",
         "home_spain_description",
         "home_spain_action",
@@ -46,7 +43,6 @@ PRIMARY_SECTIONS = (
     ),
     PrimarySection(
         "didactica",
-        "/didactica",
         "navigation_didactics",
         "home_didactics_description",
         "home_didactics_action",
@@ -54,7 +50,6 @@ PRIMARY_SECTIONS = (
     ),
     PrimarySection(
         "about",
-        "/about",
         "navigation_about",
         "home_about_description",
         "home_about_action",
@@ -125,7 +120,7 @@ def _build_section_card(section: PrimarySection) -> Component:
                     className="home-section-card__action",
                 ),
             ],
-            href=section.href,
+            href=route_path(section.key),
             refresh=False,
             className="home-section-card__link",
         ),

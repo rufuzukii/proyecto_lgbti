@@ -13,6 +13,25 @@ main {
   min-width: 0;
 }
 
+.app-shell {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.app-page-container.app-page-container {
+  margin-inline: auto;
+  max-width: var(--page-max-width);
+  padding-inline: var(--page-horizontal-padding);
+  width: 100%;
+}
+
+.about-lead,
+.privacy-header > p,
+.privacy-card > p,
+.reports-header > p {
+  max-width: var(--readable-line-width);
+}
+
 @media (min-width: 1200px) and (max-width: 1600px) {
   .navbar {
     gap: 0.55rem;
@@ -60,6 +79,9 @@ main {
 }
 
 @media (max-width: 1199px) {
+  :root {
+    --page-horizontal-padding: clamp(1rem, 3vw, 2rem);
+  }
   .navbar {
     display: flex;
     flex-wrap: wrap;
@@ -313,6 +335,9 @@ main {
 }
 
 @media (max-width: 599px) {
+  :root {
+    --page-horizontal-padding: 0.85rem;
+  }
   .navbar {
     gap: 0.35rem;
     padding-inline: 0.75rem;

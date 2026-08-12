@@ -7,18 +7,17 @@ from dash import Dash, Input, Output, dcc, html
 from dash.development.base_component import Component
 
 from app.analytics.statistics_exports import chart_graph_config
+from app.dash.components.empty_state import build_empty_state
 from app.dash.components.ilga_methodology import build_ilga_series_normalization_note
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.i18n import country_labels, text, ui_text
-from app.taxonomy import taxonomy_pair
 from app.trends.charts import build_trend_figure
+from app.trends.data import RANKING_CATEGORY
 from app.trends.models import TrendAnalysis, TrendDirection, TrendFilters, TrendSource
 from app.trends.service import (
     generate_trend_analysis,
-    get_category_options,
     get_historical_series,
     get_indicator_options,
-    get_series_variants,
     get_trend_scope,
 )
 from app.trends.validation import max_forecast_horizon
@@ -32,30 +31,20 @@ def register_trend_callbacks(app: Dash) -> None:
         Output("trend-category-select", "value"),
         Output("trend-category-select", "disabled"),
         Input("trend-source-select", "value"),
+        Input("app-language-store", "data"),
     )
-    def update_trend_categories(source: str | None):
-        if not source:
-            return [], None, True
-        try:
-            categories = get_category_options(source)
-        except Exception:
-            logger.exception("trend_categories_load_failed", extra={"source": source})
+    def update_trend_categories(source: str | None, language: str | None):
+        if source != TrendSource.ILGA.value:
             return [], None, True
         return (
             [
                 {
-                    "label": text(
-                        *taxonomy_pair(
-                            "fra_category" if source == TrendSource.FRA.value else "ilga_category",
-                            category,
-                        )
-                    ),
-                    "value": category,
+                    "label": ui_text("trends_total_ranking", _language(language)),
+                    "value": RANKING_CATEGORY,
                 }
-                for category in categories
             ],
-            None,
-            not bool(categories),
+            RANKING_CATEGORY,
+            True,
         )
 
     @app.callback(
@@ -64,9 +53,14 @@ def register_trend_callbacks(app: Dash) -> None:
         Output("trend-indicator-select", "disabled"),
         Input("trend-source-select", "value"),
         Input("trend-category-select", "value"),
+        Input("app-language-store", "data"),
     )
-    def update_trend_indicators(source: str | None, category: str | None):
-        if not source or not category:
+    def update_trend_indicators(
+        source: str | None,
+        category: str | None,
+        language: str | None,
+    ):
+        if source != TrendSource.ILGA.value or category != RANKING_CATEGORY:
             return [], None, True
         try:
             indicators = get_indicator_options(source, category)
@@ -77,9 +71,14 @@ def register_trend_callbacks(app: Dash) -> None:
             )
             return [], None, True
         options = [
-            {"label": indicator.label, "value": indicator.to_token()} for indicator in indicators
+            {
+                "label": ui_text("trends_total_ranking", _language(language)),
+                "value": indicator.to_token(),
+            }
+            for indicator in indicators
         ]
-        return options, None, not bool(options)
+        value = options[0]["value"] if options else None
+        return options, value, True
 
     @app.callback(
         Output("trend-series-select", "options"),
@@ -88,30 +87,21 @@ def register_trend_callbacks(app: Dash) -> None:
         Output("trend-series-field", "className"),
         Input("trend-source-select", "value"),
         Input("trend-indicator-select", "value"),
+        Input("app-language-store", "data"),
     )
-    def update_trend_variants(source: str | None, indicator_token: str | None):
+    def update_trend_variants(
+        source: str | None,
+        indicator_token: str | None,
+        language: str | None,
+    ):
         if source == TrendSource.ILGA.value and indicator_token:
             return (
-                [{"label": "ILGA-Europe", "value": "default"}],
+                [{"label": ui_text("trends_source_ilga", _language(language)), "value": "default"}],
                 "default",
                 True,
                 ("trend-field is-hidden"),
             )
-        if source != TrendSource.FRA.value or not indicator_token:
-            return [], None, True, "trend-field is-hidden"
-        try:
-            variants = get_series_variants(indicator_token)
-        except Exception:
-            logger.exception("trend_variants_load_failed", extra={"source": source})
-            return [], None, True, "trend-field"
-        options = [
-            {
-                "label": _variant_label(variant.response, variant.filters),
-                "value": variant.to_token(),
-            }
-            for variant in variants
-        ]
-        return options, None, not bool(options), "trend-field"
+        return [], None, True, "trend-field is-hidden"
 
     @app.callback(
         Output("trend-country-select", "options"),
@@ -358,28 +348,16 @@ def _result(analysis: TrendAnalysis, metadata: Any, language: str) -> Component:
     if metrics.r_squared is not None:
         metric_items.extend(_quality_item("trends_r_squared", _number(metrics.r_squared), language))
     notes: list[Component] = [
-        html.P(
-            ui_text(
-                "trends_ilga_context"
-                if metadata.source == TrendSource.ILGA
-                else "trends_fra_context",
-                language,
-            )
-        ),
+        html.P(ui_text("trends_ilga_context", language)),
         html.P(ui_text("trends_method_warning", language)),
+        html.P(ui_text("trends_ilga_warning", language)),
     ]
-    if metadata.source == TrendSource.ILGA:
-        notes.append(html.P(ui_text("trends_ilga_warning", language)))
     if analysis.exploratory:
         notes.append(html.P(ui_text("trends_exploratory", language), className="trend-exploratory"))
-    normalization_note = (
-        build_ilga_series_normalization_note(
-            analysis.points,
-            language=language,
-            class_name="trend-normalization-note",
-        )
-        if metadata.source == TrendSource.ILGA
-        else None
+    normalization_note = build_ilga_series_normalization_note(
+        analysis.points,
+        language=language,
+        class_name="trend-normalization-note",
     )
     return html.Div(
         [
@@ -424,9 +402,10 @@ def _state(
     language: str,
     class_name: str = "trend-state-warning",
 ) -> Component:
-    return html.Div(
-        [html.H2(ui_text(title_key, language)), html.P(ui_text(detail_key, language))],
-        className=f"trend-state {class_name}",
+    return build_empty_state(
+        ui_text(title_key, language),
+        ui_text(detail_key, language),
+        class_name=f"trend-state {class_name}",
     )
 
 
@@ -446,13 +425,6 @@ def _horizon_options(limit: int, language: str) -> list[dict[str, Any]]:
     return [
         {"label": ui_text(keys[value], language), "value": value} for value in range(1, limit + 1)
     ]
-
-
-def _variant_label(response: str, filters: tuple[tuple[str, str], ...]) -> str:
-    active_filters = [
-        f"{name}: {value}" for name, value in filters if (name, value) != ("All", "All")
-    ]
-    return " — ".join([response or "—", *active_filters])
 
 
 def _direction_label(direction: TrendDirection, language: str) -> str:

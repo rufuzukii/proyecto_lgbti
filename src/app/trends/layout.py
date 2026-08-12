@@ -3,6 +3,7 @@ from __future__ import annotations
 from dash import dcc, html
 from dash.development.base_component import Component
 
+from app.dash.components.empty_state import build_empty_state
 from app.dash.i18n import dash_attrs, text, ui_text
 from app.dash.layouts.navigation import build_navbar
 
@@ -25,7 +26,7 @@ def build_trends_layout() -> Component:
                         type="circle",
                     ),
                 ],
-                className="trend-shell",
+                className="trend-shell app-page-container",
             ),
         ]
     )
@@ -59,11 +60,16 @@ def _controls() -> Component:
                 dcc.Dropdown(
                     id="trend-source-select",
                     options=[
-                        {"label": "ILGA-Europe", "value": "ilga"},
-                        {"label": "FRA", "value": "fra"},
+                        {
+                            "label": text(
+                                ui_text("trends_source_ilga", "es"),
+                                ui_text("trends_source_ilga", "en"),
+                            ),
+                            "value": "ilga",
+                        },
                     ],
-                    value=None,
-                    clearable=True,
+                    value="ilga",
+                    clearable=False,
                 ),
             ),
             _field(
@@ -148,28 +154,27 @@ def _field(
     props = {"className": class_name}
     if element_id:
         props["id"] = element_id
+    control_id = getattr(control, "id", None)
+    is_group = control.__class__.__name__ in {"RangeSlider", "Slider"}
+    label = text(ui_text(label_key, "es"), ui_text(label_key, "en"))
+    if is_group and control_id:
+        label_id = f"{control_id}-label"
+        label_node = html.Span(label, id=label_id, className="trend-field-label")
+        props.update({"role": "group", "aria-labelledby": label_id})
+    else:
+        label_node = html.Label(label, htmlFor=control_id)
     return html.Div(
-        [
-            html.Label(
-                text(ui_text(label_key, "es"), ui_text(label_key, "en")),
-                htmlFor=getattr(control, "id", None),
-            ),
-            control,
-        ],
+        [label_node, control],
         **dash_attrs(props),
     )
 
 
 def _initial_state() -> Component:
-    return html.Div(
-        [
-            html.H2(text(ui_text("trends_name", "es"), ui_text("trends_name", "en"))),
-            html.P(
-                text(
-                    ui_text("trends_initial_prompt", "es"),
-                    ui_text("trends_initial_prompt", "en"),
-                )
-            ),
-        ],
-        className="trend-state trend-state-info",
+    return build_empty_state(
+        text(ui_text("trends_name", "es"), ui_text("trends_name", "en")),
+        text(
+            ui_text("trends_initial_prompt", "es"),
+            ui_text("trends_initial_prompt", "en"),
+        ),
+        class_name="trend-state trend-state-info",
     )

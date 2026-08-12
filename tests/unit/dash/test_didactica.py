@@ -91,19 +91,19 @@ def test_index_only_exposes_teacher_card_to_teachers_and_admin(monkeypatch) -> N
     denied_hrefs = {
         getattr(item, "href", None) for item in _walk(didactica_page.build_didactica_layout())
     }
-    assert "/didactica/docentes" not in denied_hrefs
+    assert "/es/didactica/docentes" not in denied_hrefs
 
     monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.DOCENTE))
     teacher_hrefs = {
         getattr(item, "href", None) for item in _walk(didactica_page.build_didactica_layout())
     }
-    assert "/didactica/docentes" in teacher_hrefs
+    assert "/es/didactica/docentes" in teacher_hrefs
 
     monkeypatch.setattr(didactica_page, "current_user", _user(role=UserRole.ADMIN))
     admin_hrefs = {
         getattr(item, "href", None) for item in _walk(didactica_page.build_didactica_layout())
     }
-    assert "/didactica/docentes" in admin_hrefs
+    assert "/es/didactica/docentes" in admin_hrefs
 
 
 def test_public_modules_have_stable_content_and_functional_controls(monkeypatch) -> None:
@@ -183,7 +183,7 @@ def test_direct_download_requires_teacher_and_rechecks_changed_type(dash_app, mo
         )
         response = view("rights_country_comparison")
         assert response.status_code == 302
-        assert "/login?next=%2Fdidactica%2Fdocentes" in response.location
+        assert "/es/iniciar-sesion?next=%2Fes%2Fdidactica%2Fdocentes" in response.location
 
         monkeypatch.setattr(dash_app_module, "current_user", _user(user_type=UserType.RRHH))
         with pytest.raises(Forbidden):
@@ -275,12 +275,12 @@ def test_direct_teacher_page_is_denied_after_role_change(dash_app, monkeypatch) 
     teacher = _user(user_type=UserType.DOCENTE)
     monkeypatch.setattr(dash_app_module, "current_user", teacher)
     monkeypatch.setattr(didactica_page, "current_user", teacher)
-    assert "didactica-docente-select" in _ids(display_page("/didactica/docentes", ""))
+    assert "didactica-docente-select" in _ids(display_page("/es/didactica/docentes", ""))
 
     changed = _user(user_type=UserType.RRHH)
     monkeypatch.setattr(dash_app_module, "current_user", changed)
     monkeypatch.setattr(didactica_page, "current_user", changed)
-    denied = display_page("/didactica/docentes", "")
+    denied = display_page("/es/didactica/docentes", "")
     assert "didactica-docente-select" not in _ids(denied)
 
 
@@ -293,7 +293,9 @@ def test_games_route_and_callback_require_authenticated_general_access(dash_app,
     monkeypatch.setattr(dash_app_module, "current_user", anonymous)
     monkeypatch.setattr(didactica_page, "current_user", anonymous)
 
-    assert "login-email" in _ids(display_page("/didactica/juegos", "?game=guess_term"))
+    assert "login-email" in _ids(
+        display_page("/es/didactica/juegos", "?game=guess_term")
+    )
     state = new_game_state("guess_term")
     result = _callback(dash_app, "play_game")(1, None, None, "es", None, state)
     assert all(value is no_update for value in result)
@@ -302,7 +304,7 @@ def test_games_route_and_callback_require_authenticated_general_access(dash_app,
     monkeypatch.setattr(dash_app_module, "current_user", registered)
     monkeypatch.setattr(didactica_page, "current_user", registered)
     assert "didactica-game-state" in _ids(
-        display_page("/didactica/juegos", "?game=guess_term")
+        display_page("/es/didactica/juegos", "?game=guess_term")
     )
 
 

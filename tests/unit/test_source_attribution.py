@@ -146,7 +146,7 @@ def test_application_footer_has_sources_and_privacy_without_obsolete_links() -> 
     assert FRA_ORGANIZATION_URL in links
     assert ILGA_URL in links
     assert FELGTBI_URL in links
-    assert "/privacidad" in links
+    assert "/es/privacidad" in links
     assert "/about#sources-attributions" not in links
     assert not any("aepd.es" in str(link) for link in links)
     assert "Fuentes y atribuciones" not in _content(shell)

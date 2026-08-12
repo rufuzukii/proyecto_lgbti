@@ -11,6 +11,7 @@ from app.auth.permissions import Permission, user_has_permission
 from app.auth.rate_limit import create_rate_limiter
 from app.dash.i18n import dash_attrs, text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 from app.http_security import rate_limit_key
 from app.privacy.service import PrivacyStorageError, get_personal_data_inventory
 from app.taxonomy import taxonomy_label, taxonomy_pair
@@ -145,7 +146,7 @@ def build_user_page_layout(
                         className="user-dashboard-shell",
                     )
                 ],
-                className="user-page-grid",
+                className="user-page-grid app-page-container",
             ),
         ]
     )
@@ -257,7 +258,7 @@ def _profile_card(
                     ),
                     html.A(
                         "Editar",
-                        href="/user?mode=edit",
+                        href=f"{route_path('profile')}?mode=edit",
                         className="user-link-button",
                         **text_attrs("Editar", "Edit"),
                     ),
@@ -785,6 +786,12 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                 name="csrf_token",
                 value=get_csrf_token(),
             ),
+            dcc.Input(
+                type="hidden",
+                name="language",
+                value="es",
+                className="current-language-input",
+            ),
             html.Label(
                 "Nombre visible",
                 htmlFor="profile-username",
@@ -878,7 +885,7 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                     ),
                     html.A(
                         "Cancelar",
-                        href="/user",
+                        href=route_path("profile"),
                         className="auth-button auth-button-secondary profile-cancel-link",
                         **text_attrs("Cancelar", "Cancel"),
                     ),
@@ -899,6 +906,12 @@ def _build_logout_form() -> Component:
                 type="hidden",
                 name="csrf_token",
                 value=get_csrf_token(),
+            ),
+            dcc.Input(
+                type="hidden",
+                name="language",
+                value="es",
+                className="current-language-input",
             ),
             html.Button(
                 "Cerrar sesión",

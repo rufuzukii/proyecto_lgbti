@@ -7,6 +7,7 @@ from flask_login import current_user
 from app.auth.permissions import Permission, user_has_permission
 from app.dash.components.section_navigation import PRIMARY_SECTIONS
 from app.dash.i18n import attribute_attrs, dash_attrs, text, text_attrs, ui_text
+from app.dash.routes import route_path
 from app.users.schemas import UserRole
 
 
@@ -15,7 +16,7 @@ def build_navbar(active: str | None = None) -> Component:
         (
             ui_text(section.label_key, "es"),
             ui_text(section.label_key, "en"),
-            section.href,
+            section.key,
             section.key,
         )
         for section in PRIMARY_SECTIONS
@@ -25,10 +26,10 @@ def build_navbar(active: str | None = None) -> Component:
             (
                 ui_text("report_module_name", "es"),
                 ui_text("report_module_name", "en"),
-                "/informes",
+                "reports",
                 "reports",
             ),
-            ("Importar datos", "Import data", "/upload", "upload"),
+            ("Importar datos", "Import data", "upload", "upload"),
         ]
     )
     if not user_has_permission(current_user, Permission.UPLOAD_DATA):
@@ -53,7 +54,7 @@ def build_navbar(active: str | None = None) -> Component:
                         className="nav-brand-logo nav-brand-logo-mobile",
                     ),
                 ],
-                href="/",
+                href=route_path("home"),
                 refresh=False,
                 className="nav-brand",
                 title="RainbowLens Datahub · Inicio / Home",
@@ -100,7 +101,7 @@ def build_navbar(active: str | None = None) -> Component:
                             html.Li(
                                 dcc.Link(
                                     text(label_es, label_en),
-                                    href=href,
+                                    href=route_path(href),
                                     className=_nav_link_class(key, active),
                                 )
                             )
@@ -152,12 +153,12 @@ def _account_link() -> Component:
                 ],
                 className="nav-account-copy",
             ),
-            href="/user",
+            href=route_path("profile"),
             className="nav-link nav-account",
         )
     return dcc.Link(
         text("Entrar", "Sign in"),
-        href="/login",
+        href=route_path("login"),
         className="nav-link nav-cta nav-account",
     )
 
@@ -172,7 +173,11 @@ def _admin_link(active: str | None) -> Component | None:
     class_name = "nav-link nav-admin-cta"
     if active == "admin":
         class_name += " is-active"
-    return dcc.Link(text("Administración", "Administration"), href="/admin", className=class_name)
+    return dcc.Link(
+        text("Administración", "Administration"),
+        href=route_path("admin"),
+        className=class_name,
+    )
 
 
 def _language_toggle() -> Component:

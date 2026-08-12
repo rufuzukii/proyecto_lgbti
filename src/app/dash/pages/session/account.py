@@ -6,6 +6,7 @@ from dash.development.base_component import Component
 from app.auth.csrf import get_csrf_token
 from app.dash.i18n import text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 
 
 def build_verify_email_layout(status: str | None = None) -> Component:
@@ -17,7 +18,7 @@ def build_verify_email_layout(status: str | None = None) -> Component:
         )
         content: Component = html.A(
             text("Iniciar sesi\u00f3n", "Sign in"),
-            href="/login",
+            href=route_path("login"),
             className="auth-button auth-inline-action",
         )
     else:
@@ -88,7 +89,7 @@ def build_reset_password_layout(
             ),
             html.A(
                 text("Iniciar sesi\u00f3n", "Sign in"),
-                href="/login",
+                href=route_path("login"),
                 className="auth-button auth-inline-action",
             ),
         )
@@ -101,7 +102,7 @@ def build_reset_password_layout(
             ),
             html.A(
                 text("Solicitar enlace", "Request link"),
-                href="/forgot-password",
+                href=route_path("forgot_password"),
                 className="auth-button auth-inline-action",
             ),
         )
@@ -127,6 +128,12 @@ def build_reset_password_layout(
         [
             dcc.Input(type="hidden", name="csrf_token", value=get_csrf_token()),
             dcc.Input(type="hidden", name="token", value=token),
+            dcc.Input(
+                type="hidden",
+                name="language",
+                value="es",
+                className="current-language-input",
+            ),
             (
                 html.Div(
                     error_copy[0],
@@ -194,7 +201,7 @@ def build_verification_required_layout() -> Component:
         ),
         html.A(
             text("Solicitar otro enlace", "Request another link"),
-            href="/verify-email",
+            href=route_path("verify_email"),
             className="auth-button auth-inline-action",
         ),
     )
@@ -205,6 +212,12 @@ def _email_request_form(*, action: str, button_es: str, button_en: str) -> Compo
     return html.Form(
         [
             dcc.Input(type="hidden", name="csrf_token", value=get_csrf_token()),
+            dcc.Input(
+                type="hidden",
+                name="language",
+                value="es",
+                className="current-language-input",
+            ),
             html.Label(text("Correo electr\u00f3nico", "Email address"), htmlFor=control_id),
             dcc.Input(
                 id=control_id,
@@ -248,7 +261,7 @@ def _account_shell(
                             content,
                             html.A(
                                 text("Volver al inicio", "Back to home"),
-                                href="/",
+                                href=route_path("home"),
                                 className="auth-switch auth-security-home-link",
                             ),
                         ],

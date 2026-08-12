@@ -3,11 +3,16 @@ from __future__ import annotations
 from email.message import EmailMessage
 from urllib.parse import quote
 
+from app.dash.routes import normalize_language, route_path
 from app.mail.service import public_base_url, send_email
 
 
-def send_verification_email(email: str, token: str) -> None:
-    link = f"{public_base_url()}/account/verify-email/{quote(token, safe='')}"
+def send_verification_email(email: str, token: str, language: str = "es") -> None:
+    selected = normalize_language(language)
+    link = (
+        f"{public_base_url()}/account/verify-email/{quote(token, safe='')}"
+        f"?lang={selected}"
+    )
     message = EmailMessage()
     message["To"] = email
     message["Subject"] = "RainbowLens DataHub \u00b7 Verifica tu correo / Verify your email"
@@ -23,8 +28,12 @@ This link expires and can only be used once."""
     send_email(message)
 
 
-def send_password_reset_email(email: str, token: str) -> None:
-    link = f"{public_base_url()}/reset-password?token={quote(token, safe='')}"
+def send_password_reset_email(email: str, token: str, language: str = "es") -> None:
+    selected = normalize_language(language)
+    link = (
+        f"{public_base_url()}{route_path('reset_password', selected)}"
+        f"?token={quote(token, safe='')}"
+    )
     message = EmailMessage()
     message["To"] = email
     message["Subject"] = "RainbowLens DataHub \u00b7 Recupera tu contrase\u00f1a / Reset your password"

@@ -94,15 +94,15 @@ def test_registration_verification_and_login_complete_flow(monkeypatch) -> None:
             "csrf_token": "valid",
             "email": "e2e@example.com",
             "password": "a-secure-password",
-            "next": "/user",
+            "next": "/es/perfil",
         },
     )
-    protected_page = client.get("/user")
+    protected_page = client.get("/es/perfil")
 
     # Assert
-    assert registration.headers["Location"].endswith("/verify-email?status=sent")
-    assert verification.headers["Location"].endswith("/verify-email?status=verified")
-    assert login.headers["Location"].endswith("/user")
+    assert registration.headers["Location"].endswith("/es/verificar-correo?status=sent")
+    assert verification.headers["Location"].endswith("/es/verificar-correo?status=verified")
+    assert login.headers["Location"].endswith("/es/perfil")
     assert protected_page.status_code == 200
     assert state == {"verified": True, "token": "consumed"}
 

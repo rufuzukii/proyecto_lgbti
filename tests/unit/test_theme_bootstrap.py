@@ -70,7 +70,7 @@ def test_language_store_and_initialization_preserve_saved_language() -> None:
     assert "const persisted =" in source
     assert "Number.isFinite(nClicks)" in source
     assert "nClicks > 0" in source
-    assert "state.nextLanguage(persisted)" in source
+    assert "state.nextLanguage(inferred)" in source
     assert 'State("app-language-store", "data")' not in source
 
 

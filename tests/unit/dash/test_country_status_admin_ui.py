@@ -134,7 +134,7 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
         "home-map-copy",
         None,
     ]
-    assert summary_header.children[1].href == "/statistics"
+    assert summary_header.children[1].href == "/es/estadisticas"
     assert summary_metrics.id == "home-map-metrics"
     assert "home-map-helper-text" in callback_outputs
 

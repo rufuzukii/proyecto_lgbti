@@ -41,13 +41,13 @@ def test_registration_creates_unverified_account_and_sends_single_use_link(
         user_type=UserType.COMUN,
         email_verified=False,
     )
-    sent: list[tuple[str, str]] = []
+    sent: list[tuple[str, str, str]] = []
     monkeypatch.setattr(dash_app_module, "create_user", lambda *_args, **_kwargs: created)
     monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
     monkeypatch.setattr(
         dash_app_module,
         "send_verification_email",
-        lambda email, token: sent.append((email, token)),
+        lambda email, token, language: sent.append((email, token, language)),
     )
     app = _app(monkeypatch)
 
@@ -64,8 +64,8 @@ def test_registration_creates_unverified_account_and_sends_single_use_link(
 
     # Assert
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/verify-email?status=sent")
-    assert sent == [("new@example.com", "token")]
+    assert response.headers["Location"].endswith("/es/verificar-correo?status=sent")
+    assert sent == [("new@example.com", "token", "es")]
 
 
 def test_verification_link_marks_email_and_cannot_expose_token(
@@ -90,7 +90,7 @@ def test_verification_link_marks_email_and_cannot_expose_token(
 
     # Assert
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/verify-email?status=verified")
+    assert response.headers["Location"].endswith("/es/verificar-correo?status=verified")
     assert "valid-token" not in response.headers["Location"]
     assert marked == [_record().id]
 
@@ -119,7 +119,7 @@ def test_password_recovery_response_does_not_reveal_account_existence(
     # Assert
     assert missing.status_code == existing.status_code == 302
     assert missing.headers["Location"] == existing.headers["Location"]
-    assert missing.headers["Location"].endswith("/forgot-password?status=sent")
+    assert missing.headers["Location"].endswith("/es/recuperar-contrasena?status=sent")
 
 
 def test_password_reset_requires_matching_policy_then_invalidates_sessions(
@@ -164,7 +164,9 @@ def test_password_reset_requires_matching_policy_then_invalidates_sessions(
 
     # Assert
     assert "error=password_mismatch" in mismatch.headers["Location"]
-    assert completed.headers["Location"].endswith("/reset-password?status=completed")
+    assert completed.headers["Location"].endswith(
+        "/es/restablecer-contrasena?status=completed"
+    )
     assert changes == [(_record().id, "a-secure-password")]
 
 

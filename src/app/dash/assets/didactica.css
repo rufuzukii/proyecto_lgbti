@@ -148,7 +148,8 @@
   margin-bottom: 1rem;
 }
 
-.didactica-field label {
+.didactica-field label,
+.didactica-field .didactica-field-label {
   color: var(--color-text);
   font-weight: 800;
 }
@@ -447,6 +448,182 @@
   padding: clamp(1.3rem, 5vw, 2.8rem);
 }
 
+.word-search-page {
+  max-width: 1200px;
+}
+
+.word-search-instructions {
+  background: color-mix(in srgb, var(--color-accent) 58%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin: -0.7rem 0 1.2rem;
+  padding: 0.85rem 1rem;
+}
+
+.word-search-layout {
+  align-items: start;
+  display: grid;
+  gap: clamp(1rem, 3vw, 1.6rem);
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.36fr);
+  min-width: 0;
+}
+
+.word-search-board-panel,
+.word-search-sidebar {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  min-width: 0;
+  padding: clamp(0.75rem, 2.5vw, 1.35rem);
+}
+
+.word-search-sidebar {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.word-search-sidebar h2 {
+  color: var(--color-text);
+  margin: 0;
+}
+
+.word-search-progress {
+  color: var(--color-text);
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.85rem;
+}
+
+.word-search-progress-bar {
+  accent-color: var(--link-green);
+  height: 11px;
+  width: 100%;
+}
+
+.word-search-grid {
+  display: grid;
+  gap: clamp(2px, 0.45vw, 5px);
+  grid-template-columns: repeat(var(--word-search-columns), minmax(0, 1fr));
+  margin: 0 auto;
+  max-width: 680px;
+  touch-action: manipulation;
+  user-select: none;
+  width: 100%;
+}
+
+.word-search-cell {
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--color-surface);
+  border: 1px solid var(--panel-border);
+  border-radius: clamp(3px, 0.6vw, 7px);
+  color: var(--color-text);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: inherit;
+  font-size: clamp(0.65rem, 2.1vw, 1.05rem);
+  font-weight: 850;
+  justify-content: center;
+  line-height: 1;
+  min-width: 0;
+  padding: 0;
+  transition: background-color var(--transition), border-color var(--transition), transform var(--transition);
+}
+
+@media (hover: hover) {
+  .word-search-cell:hover {
+    background: var(--color-accent);
+    border-color: var(--link-green);
+  }
+}
+
+.word-search-cell:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--link-green) 48%, transparent);
+  outline-offset: 1px;
+  position: relative;
+  z-index: 2;
+}
+
+.word-search-cell.is-selected {
+  background: var(--color-accent-sky);
+  border-color: var(--link-green);
+  box-shadow: inset 0 0 0 2px var(--link-green);
+  transform: scale(0.92);
+}
+
+.word-search-cell.is-found {
+  background: color-mix(in srgb, #20835b 24%, var(--panel-bg));
+  border-color: #20835b;
+  box-shadow: inset 0 0 0 1px #20835b;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.word-search-word-list {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.word-search-word {
+  align-items: center;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--color-text);
+  display: flex;
+  gap: 0.55rem;
+  min-height: 34px;
+  padding: 0.25rem 0;
+}
+
+.word-search-word__status {
+  color: var(--color-text-muted);
+  flex: 0 0 1.1rem;
+  font-weight: 900;
+}
+
+.word-search-word.is-found {
+  font-weight: 850;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.word-search-word.is-found .word-search-word__status {
+  color: #20835b;
+}
+
+.word-search-feedback {
+  margin: 0;
+}
+
+.word-search-new-game {
+  width: 100%;
+}
+
+:root[data-theme="dark"] .word-search-cell.is-found {
+  background: color-mix(in srgb, #55d6a0 24%, var(--panel-bg));
+  border-color: #55d6a0;
+  box-shadow: inset 0 0 0 1px #55d6a0;
+}
+
+:root[data-theme="dark"] .word-search-word.is-found .word-search-word__status {
+  color: #55d6a0;
+}
+
+@media (max-width: 760px) {
+  .word-search-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .word-search-sidebar {
+    order: 2;
+  }
+}
+
 @media (max-width: 680px) {
   .didactica-shell {
     padding: 1rem;
@@ -470,6 +647,19 @@
   .didactica-resource-card {
     min-height: 225px;
     padding: 1.4rem;
+  }
+
+  .word-search-board-panel {
+    padding: 0.65rem;
+  }
+
+  .word-search-grid {
+    gap: 2px;
+  }
+
+  .word-search-cell {
+    border-radius: 3px;
+    font-size: clamp(0.62rem, 3vw, 0.9rem);
   }
 }
 

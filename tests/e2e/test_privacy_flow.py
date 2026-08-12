@@ -53,7 +53,7 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
     client = app.server.test_client()
 
     # Act
-    privacy_response = client.get("/privacidad")
+    privacy_response = client.get("/es/privacidad")
     anonymous_layout = client.get("/_dash-layout").get_json()
     with client.session_transaction() as browser_session:
         browser_session["_csrf_token"] = "valid"
@@ -63,7 +63,7 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
             "csrf_token": "valid",
             "email": "privacy@example.com",
             "password": "password",
-            "next": "/user",
+            "next": "/es/perfil",
         },
     )
     authenticated_layout = client.get("/_dash-layout").get_json()
@@ -71,7 +71,7 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
     # Assert
     assert privacy_response.status_code == 200
     assert "privacy-notice" in str(anonymous_layout)
-    assert "/privacidad" in str(anonymous_layout)
+    assert "/es/privacidad" in str(anonymous_layout)
     assert "Personal data management" not in str(anonymous_layout)
     assert "Personal data management" in str(authenticated_layout)
 
@@ -133,6 +133,6 @@ def test_reinforced_deletion_rejects_bad_credentials_then_closes_session(monkeyp
     # Assert
     assert "privacy_error=invalid_password" in rejected.headers["Location"]
     assert session_after_rejection == {"authenticated": True, "user_id": USER_ID}
-    assert completed.headers["Location"].endswith("/privacidad/cuenta-eliminada")
+    assert completed.headers["Location"].endswith("/es/privacidad/cuenta-eliminada")
     assert session_after_completion == {"authenticated": False, "user_id": None}
     assert "Expires=Thu, 01 Jan 1970" in completed.headers.get("Set-Cookie", "")

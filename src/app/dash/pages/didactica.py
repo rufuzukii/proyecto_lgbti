@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
+from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
 from flask_login import current_user
 from pymongo.errors import PyMongoError
@@ -22,8 +22,14 @@ from app.dash.components.didactica import (
     translated,
 )
 from app.dash.components.source_attribution import build_source_attribution
+from app.dash.components.word_search import (
+    word_search_board,
+    word_search_progress,
+    word_search_words,
+)
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 from app.edu.custom_game_service import (
     CustomGameAuthorizationError,
     CustomGameValidationError,
@@ -48,19 +54,25 @@ from app.edu.teacher_service import (
     list_teacher_resources,
 )
 from app.edu.translations import CATEGORIES, pair, tr
+from app.edu.word_search_service import (
+    apply_word_search_selection,
+    create_word_search_game,
+    is_word_search_complete,
+)
 
 
 def build_didactica_layout() -> Component:
     cards = [
-        resource_card("dictionary", "dictionary_desc", "/didactica/diccionario", "Aa"),
-        resource_card("presentations", "presentations_desc", "/didactica/presentaciones", "▤"),
+        resource_card("dictionary", "dictionary_desc", "dictionary", "Aa"),
+        resource_card("presentations", "presentations_desc", "presentations", "▤"),
+        resource_card("word_search", "word_search_desc", "word_search", "ABC"),
     ]
     if user_has_permission(current_user, Permission.PLAY_EDU_GAMES):
-        cards.append(resource_card("games", "games_desc", "/didactica/juegos", "◇"))
+        cards.append(resource_card("games", "games_desc", "games", "◇"))
     if can_access_docente_material(current_user):
-        cards.append(resource_card("docente", "docente_desc", "/didactica/docentes", "▣"))
+        cards.append(resource_card("docente", "docente_desc", "educators", "▣"))
     if current_user.is_authenticated:
-        cards.append(resource_card("progress", "progress_desc", "/didactica/progreso", "✓"))
+        cards.append(resource_card("progress", "progress_desc", "progress", "✓"))
     return _page(
         html.Main(
             [
@@ -74,7 +86,7 @@ def build_didactica_layout() -> Component:
                     **dash_attrs({"aria-label": pair("learning")[0]}),
                 ),
             ],
-            className="didactica-shell",
+            className="didactica-shell app-page-container",
         )
     )
 
@@ -163,7 +175,7 @@ def build_dictionary_layout() -> Component:
                     **dash_attrs({"aria-live": "polite"}),
                 ),
             ],
-            className="didactica-shell",
+            className="didactica-shell app-page-container",
         )
     )
 
@@ -180,7 +192,7 @@ def build_presentations_layout(lesson_id: str | None = None) -> Component:
                         className="didactica-lesson-grid",
                     ),
                 ],
-                className="didactica-shell",
+                className="didactica-shell app-page-container",
             )
         )
     activity = lesson.activity
@@ -195,7 +207,7 @@ def build_presentations_layout(lesson_id: str | None = None) -> Component:
                 dcc.Store(id="didactica-lesson-index", data=0),
                 dcc.Link(
                     text("← Todas las presentaciones", "← All presentations"),
-                    href="/didactica/presentaciones",
+                    href=route_path("presentations"),
                     className="didactica-back-link",
                 ),
                 html.Header(
@@ -314,7 +326,7 @@ def build_presentations_layout(lesson_id: str | None = None) -> Component:
                     className="didactica-sources",
                 ),
             ],
-            className="didactica-shell didactica-viewer",
+            className="didactica-shell didactica-viewer app-page-container",
         )
     )
 
@@ -349,19 +361,26 @@ def build_games_layout(game_id: str | None = None) -> Component:
                     html.Section(
                         [
                             resource_card(
-                                "guess_term", "guess_desc", "/didactica/juegos?game=guess_term", "?"
+                                "guess_term", "guess_desc", "games", "?", query="?game=guess_term"
                             ),
                             resource_card(
                                 "true_false",
                                 "true_false_desc",
-                                "/didactica/juegos?game=true_false",
+                                "games",
                                 "✓",
+                                query="?game=true_false",
+                            ),
+                            resource_card(
+                                "word_search",
+                                "word_search_desc",
+                                "word_search",
+                                "ABC",
                             ),
                         ],
                         className="didactica-resource-grid",
                     ),
                 ],
-                className="didactica-shell",
+                className="didactica-shell app-page-container",
             )
         )
     state = new_game_state(game_id)
@@ -373,7 +392,7 @@ def build_games_layout(game_id: str | None = None) -> Component:
                 dcc.Store(id="didactica-game-state", data=state),
                 dcc.Link(
                     text("← Todos los juegos", "← All games"),
-                    href="/didactica/juegos",
+                    href=route_path("games"),
                     className="didactica-back-link",
                 ),
                 html.Header(
@@ -456,7 +475,81 @@ def build_games_layout(game_id: str | None = None) -> Component:
                     className="didactica-game-attributions",
                 ),
             ],
-            className="didactica-shell didactica-viewer",
+            className="didactica-shell didactica-viewer app-page-container",
+        )
+    )
+
+
+def build_word_search_layout(*, seed: int | None = None) -> Component:
+    state = create_word_search_game(seed=seed)
+    return _page(
+        html.Main(
+            [
+                dcc.Store(id="didactica-word-search-state", data=state, storage_type="memory"),
+                dcc.Link(
+                    text("← Didáctica", "← Learning"),
+                    href=route_path("didactica"),
+                    className="didactica-back-link",
+                ),
+                html.Header(
+                    [
+                        translated("word_search", tag=html.H1),
+                        translated("word_search_desc", tag=html.P),
+                    ],
+                    className="didactica-subpage-header",
+                ),
+                html.P(
+                    translated("word_search_instructions"),
+                    className="word-search-instructions",
+                    id="didactica-word-search-instructions",
+                ),
+                html.Div(
+                    [
+                        html.Section(
+                            [
+                                html.Div(
+                                    word_search_progress(state, "es"),
+                                    id="didactica-word-search-progress",
+                                    className="word-search-progress",
+                                    **dash_attrs({"aria-live": "polite"}),
+                                ),
+                                html.Div(
+                                    word_search_board(state, "es"),
+                                    id="didactica-word-search-grid",
+                                ),
+                            ],
+                            className="word-search-board-panel",
+                            **dash_attrs(
+                                {"aria-labelledby": "didactica-word-search-instructions"}
+                            ),
+                        ),
+                        html.Aside(
+                            [
+                                translated("words", tag=html.H2),
+                                html.Div(
+                                    word_search_words(state, "es"),
+                                    id="didactica-word-search-words",
+                                ),
+                                html.P(
+                                    id="didactica-word-search-feedback",
+                                    className="didactica-feedback word-search-feedback",
+                                    **dash_attrs({"aria-live": "assertive"}),
+                                ),
+                                html.Button(
+                                    translated("new_word_search"),
+                                    id="didactica-word-search-new",
+                                    n_clicks=0,
+                                    type="button",
+                                    className="didactica-button word-search-new-game",
+                                ),
+                            ],
+                            className="word-search-sidebar",
+                        ),
+                    ],
+                    className="word-search-layout",
+                ),
+            ],
+            className="didactica-shell word-search-page app-page-container",
         )
     )
 
@@ -495,7 +588,10 @@ def build_docente_layout() -> Component:
                 translated("docente_downloads", tag=html.H2),
                 html.Div(
                     [
-                        translated("select_resource", tag=html.Label),
+                        html.Label(
+                            translated("select_resource"),
+                            htmlFor="didactica-docente-select",
+                        ),
                         dcc.Dropdown(
                             id="didactica-docente-select",
                             options=options,
@@ -532,7 +628,10 @@ def build_docente_layout() -> Component:
                         translated("game_creator_desc", tag=html.P),
                         html.Div(
                             [
-                                translated("my_games", tag=html.Label),
+                                html.Label(
+                                    translated("my_games"),
+                                    htmlFor="didactica-custom-game-select",
+                                ),
                                 dcc.Dropdown(
                                     id="didactica-custom-game-select",
                                     options=game_options,
@@ -546,18 +645,38 @@ def build_docente_layout() -> Component:
                         ),
                         html.Div(
                             [
-                                translated("game_type", tag=html.Label),
-                                dcc.RadioItems(
-                                    id="didactica-custom-game-type",
-                                    options=[
-                                        {
-                                            "label": text(*pair("multiple_choice")),
-                                            "value": "multiple_choice",
-                                        },
-                                        {"label": text(*pair("guess_term")), "value": "guess_term"},
+                                html.Div(
+                                    [
+                                        html.Span(
+                                            translated("game_type"),
+                                            id="didactica-custom-game-type-label",
+                                            className="didactica-field-label",
+                                        ),
+                                        dcc.RadioItems(
+                                            id="didactica-custom-game-type",
+                                            options=[
+                                                {
+                                                    "label": text(*pair("multiple_choice")),
+                                                    "value": "multiple_choice",
+                                                },
+                                                {
+                                                    "label": text(*pair("guess_term")),
+                                                    "value": "guess_term",
+                                                },
+                                            ],
+                                            value="multiple_choice",
+                                            inline=True,
+                                        ),
                                     ],
-                                    value="multiple_choice",
-                                    inline=True,
+                                    className="didactica-field",
+                                    role="group",
+                                    **dash_attrs(
+                                        {
+                                            "aria-labelledby": (
+                                                "didactica-custom-game-type-label"
+                                            )
+                                        }
+                                    ),
                                 ),
                                 *_bilingual_game_fields(),
                                 html.Div(
@@ -589,7 +708,7 @@ def build_docente_layout() -> Component:
                     className="didactica-docente-section",
                 ),
             ],
-            className="didactica-shell",
+            className="didactica-shell app-page-container",
         )
     )
 
@@ -637,7 +756,7 @@ def build_progress_layout() -> Component:
                     className="didactica-progress-detail",
                 ),
             ],
-            className="didactica-shell",
+            className="didactica-shell app-page-container",
         )
     )
 
@@ -663,6 +782,55 @@ def register_didactica_callbacks(app: Dash) -> None:
         return [
             glossary_card(item, language) for item in results
         ], f"{len(results)} {tr('results', language)}"
+
+    @app.callback(
+        Output("didactica-word-search-grid", "children"),
+        Output("didactica-word-search-words", "children"),
+        Output("didactica-word-search-progress", "children"),
+        Output("didactica-word-search-feedback", "children"),
+        Output("didactica-word-search-feedback", "className"),
+        Output("didactica-word-search-state", "data"),
+        Input("didactica-word-search-new", "n_clicks"),
+        Input({"type": "didactica-word-search-cell", "index": ALL}, "n_clicks"),
+        Input("app-language-store", "data"),
+        State("didactica-word-search-state", "data"),
+    )
+    def play_word_search(_new_game, _cell_clicks, language, state):
+        language = _language(language)
+        triggered = ctx.triggered_id
+        status = ""
+        if triggered == "didactica-word-search-new" or not isinstance(state, dict):
+            state = create_word_search_game()
+        elif (
+            isinstance(triggered, dict)
+            and triggered.get("type") == "didactica-word-search-cell"
+            and any(_cell_clicks or [])
+        ):
+            state, status = apply_word_search_selection(state, int(triggered["index"]))
+
+        feedback = {
+            "start": tr("select_word_end", language),
+            "found": tr("word_search_found", language),
+            "duplicate": tr("word_search_duplicate", language),
+            "incorrect": tr("word_search_incorrect", language),
+            "complete": tr("word_search_complete", language),
+        }.get(status, "")
+        if not feedback and is_word_search_complete(state):
+            feedback = tr("word_search_complete", language)
+            status = "complete"
+        feedback_class = "didactica-feedback word-search-feedback"
+        if status in {"found", "complete"}:
+            feedback_class += " is-success"
+        elif status in {"incorrect", "duplicate"}:
+            feedback_class += " is-error"
+        return (
+            word_search_board(state, language),
+            word_search_words(state, language),
+            word_search_progress(state, language),
+            feedback,
+            feedback_class,
+            state,
+        )
 
     @app.callback(
         Output("didactica-lesson-slide", "children"),
@@ -978,7 +1146,7 @@ def _subpage_header(title_key: str, description_key: str) -> Component:
         [
             dcc.Link(
                 text("← Didáctica", "← Learning"),
-                href="/didactica",
+                href=route_path("didactica"),
                 className="didactica-back-link",
             ),
             translated(title_key, tag=html.H1),

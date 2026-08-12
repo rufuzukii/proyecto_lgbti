@@ -6,6 +6,7 @@ from dash.development.base_component import Component
 from app.auth.csrf import get_csrf_token
 from app.dash.i18n import dash_attrs, text, text_attrs, ui_text_component
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 
 ERROR_MESSAGES = {
     "invalid_credentials": (
@@ -32,7 +33,7 @@ ERROR_MESSAGES = {
 
 
 def build_login_layout(
-    next_path: str = "/user",
+    next_path: str | None = None,
     error_code: str | None = None,
     notice_code: str | None = None,
 ) -> Component:
@@ -73,7 +74,13 @@ def build_login_layout(
                                             dcc.Input(
                                                 type="hidden",
                                                 name="next",
-                                                value=next_path,
+                                                value=next_path or route_path("profile"),
+                                            ),
+                                            dcc.Input(
+                                                type="hidden",
+                                                name="language",
+                                                value="es",
+                                                className="current-language-input",
                                             ),
                                             html.Label(
                                                 "Correo electrónico",
@@ -124,7 +131,7 @@ def build_login_layout(
                                             ),
                                             html.A(
                                                 "Crear cuenta",
-                                                href="/register",
+                                                href=route_path("register"),
                                                 **text_attrs("Crear cuenta", "Register"),
                                             ),
                                         ],
@@ -133,7 +140,7 @@ def build_login_layout(
                                     html.P(
                                         html.A(
                                             text("He olvidado mi contrase\u00f1a", "I forgot my password"),
-                                            href="/forgot-password",
+                                            href=route_path("forgot_password"),
                                         ),
                                         className="auth-switch",
                                     ),

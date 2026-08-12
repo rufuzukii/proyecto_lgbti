@@ -95,11 +95,11 @@ def test_client_identity_does_not_trust_forwarded_header_or_expose_pii() -> None
     ],
 )
 def test_post_auth_redirect_rejects_unsafe_targets(unsafe_target: str) -> None:
-    assert _safe_next(unsafe_target) == "/user"
+    assert _safe_next(unsafe_target) == "/es/perfil"
 
 
 def test_post_auth_redirect_allows_known_internal_target() -> None:
-    assert _safe_next("/upload?source=FRA") == "/upload?source=FRA"
+    assert _safe_next("/upload?source=FRA") == "/en/upload?source=FRA"
 
 
 def test_production_secret_has_a_minimum_length(monkeypatch: pytest.MonkeyPatch) -> None:

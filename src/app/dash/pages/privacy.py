@@ -8,6 +8,7 @@ from flask_login import current_user
 
 from app.dash.i18n import dash_attrs, text, text_attrs, ui_text_component
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 from app.privacy.policy import (
     AEPD_COMPLAINT_URL,
     AEPD_RIGHTS_URL,
@@ -56,7 +57,7 @@ def build_privacy_layout() -> Component:
                     _rights_card(config),
                     _backup_card(config),
                 ],
-                className="privacy-page",
+                className="privacy-page app-page-container",
             ),
         ]
     )
@@ -82,7 +83,7 @@ def build_account_deleted_layout() -> Component:
                             ),
                             dcc.Link(
                                 text("Volver al inicio", "Return home"),
-                                href="/",
+                                href=route_path("home"),
                                 refresh=False,
                                 className="auth-button privacy-home-link",
                             ),
@@ -90,7 +91,7 @@ def build_account_deleted_layout() -> Component:
                         className="privacy-deleted-card",
                     )
                 ],
-                className="privacy-deleted-page",
+                className="privacy-deleted-page app-page-container",
                 **dash_attrs({"data-privacy-account-deleted": "true"}),
             ),
         ]
@@ -345,14 +346,17 @@ def _rights_card(config: PrivacyPolicyConfig) -> Component:
             [
                 dcc.Link(
                     ui_text_component("privacy_manage_data"),
-                    href="/user",
+                    href=route_path("profile"),
                     refresh=False,
                     className="auth-button",
                 )
                 if current_user.is_authenticated
                 else dcc.Link(
                     text("Iniciar sesión", "Sign in"),
-                    href="/login?next=/user",
+                    href=(
+                        f"{route_path('login')}?"
+                        f"next={route_path('profile')}"
+                    ),
                     refresh=False,
                     className="auth-button",
                 ),

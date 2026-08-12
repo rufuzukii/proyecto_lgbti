@@ -36,6 +36,7 @@ from app.dash.i18n import (
     ui_text_component,
 )
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import route_path
 from app.dates import utc_today_iso
 from app.http_security import rate_limit_key
 from app.reports.models import (
@@ -253,7 +254,7 @@ def build_reports_layout(
                         type="circle",
                     ),
                 ],
-                className="reports-shell",
+                className="reports-shell app-page-container",
             ),
         ]
     )
@@ -273,7 +274,8 @@ def build_reports_access_denied_layout() -> Component:
                         )
                     ),
                     dcc.Link(
-                        text("Volver a Estadísticas", "Back to Statistics"), href="/statistics"
+                        text("Volver a Estadísticas", "Back to Statistics"),
+                        href=route_path("statistics"),
                     ),
                 ],
                 className="reports-access-denied",
@@ -1176,12 +1178,33 @@ def _field(
     props: dict[str, Any] = {"className": class_name}
     if element_id:
         props["id"] = element_id
+    control_id = getattr(component, "id", None)
+    is_group = component.__class__.__name__ in {
+        "Checklist",
+        "DatePickerRange",
+        "DatePickerSingle",
+        "RadioItems",
+        "RangeSlider",
+        "Slider",
+    }
+    if is_group and control_id:
+        label_id = f"{control_id}-label"
+        label_node = html.Span(
+            label_es,
+            id=label_id,
+            className="reports-field-label",
+            **text_attrs(label_es, label_en),
+        )
+        props.update({"role": "group", "aria-labelledby": label_id})
+    else:
+        label_node = html.Label(
+            label_es,
+            htmlFor=control_id,
+            **text_attrs(label_es, label_en),
+        )
     return html.Div(
-        [
-            html.Label(label_es, **text_attrs(label_es, label_en)),
-            component,
-        ],
-        **props,
+        [label_node, component],
+        **dash_attrs(props),
     )
 
 

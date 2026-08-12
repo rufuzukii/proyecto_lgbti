@@ -267,7 +267,8 @@ def build_upload_layout() -> Component:
                         ],
                         className="page-container upload-container",
                     ),
-                ]
+                ],
+                className="app-page-container upload-page",
             ),
         ]
     )
