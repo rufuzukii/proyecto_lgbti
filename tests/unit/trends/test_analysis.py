@@ -2,161 +2,231 @@ from __future__ import annotations
 
 import pytest
 
-from app.trends.analysis import analyze_historical_series
-from app.trends.models import (
-    HistoricalPoint,
-    SeriesMetadata,
-    TrendDirection,
-    TrendSource,
+from app.trends.forecast_metrics import mean_absolute_error, root_mean_squared_error
+from app.trends.forecast_models import fit_forecast_model
+from app.trends.forecast_validation import (
+    candidate_models,
+    evaluate_candidate_models,
+    select_best_forecasting_model,
+    walk_forward_validation,
 )
+from app.trends.forecasting_service import bounded_score, generate_forecast
+from app.trends.models import ForecastModelName, HistoricalPoint, TrendDirection
 
 
-def _metadata(**overrides) -> SeriesMetadata:
-    values = {
-        "source": TrendSource.ILGA,
-        "indicator_id": "ranking_total",
-        "indicator_label": "Ranking total",
-        "category": "Ranking total",
-        "country_code": "ES",
-        "country_name": "España",
-        "unit": "percentage_score",
-        "scale_min": 0.0,
-        "scale_max": 100.0,
-        "methodology": "ilga_rainbow_map",
-    }
-    values.update(overrides)
-    return SeriesMetadata(**values)
-
-
-def _point(year, value, **overrides) -> HistoricalPoint:
+def _point(year: int | None, value: float | None, **overrides) -> HistoricalPoint:
     values = {
         "year": year,
         "value": value,
-        "source": "ilga",
-        "indicator_id": "ranking_total",
         "country_code": "ES",
-        "country_name": "España",
-        "unit": "percentage_score",
-        "scale_min": 0.0,
-        "scale_max": 100.0,
-        "methodology": "ilga_rainbow_map",
+        "country_name": "Spain",
     }
     values.update(overrides)
     return HistoricalPoint(**values)
 
 
-@pytest.mark.parametrize("points", [[], [_point(2024, 70)]])
-def test_zero_or_one_year_is_insufficient(points) -> None:
-    result = analyze_historical_series(points, _metadata(), forecast_years=3)
-
-    assert result.status == "insufficient"
-    assert result.forecast == ()
-    assert result.metrics is None
+def _series(values: list[float], *, start: int = 2011) -> list[HistoricalPoint]:
+    return [_point(start + index, value) for index, value in enumerate(values)]
 
 
-def test_two_year_series_is_exploratory_and_limits_forecast_to_one_year() -> None:
-    result = analyze_historical_series(
-        [_point(2023, 60), _point(2024, 70)],
-        _metadata(),
-        forecast_years=3,
+def test_mae_and_rmse_use_out_of_sample_errors() -> None:
+    actual = [10.0, 20.0, 30.0]
+    predicted = [12.0, 18.0, 35.0]
+
+    assert mean_absolute_error(actual, predicted) == pytest.approx(3.0)
+    assert root_mean_squared_error(actual, predicted) == pytest.approx(3.31662479)
+
+
+@pytest.mark.parametrize(
+    ("model", "minimum"),
+    [
+        (ForecastModelName.LINEAR, 2),
+        (ForecastModelName.HOLT, 3),
+        (ForecastModelName.QUADRATIC, 4),
+    ],
+)
+def test_candidate_models_fit_deterministically(model, minimum) -> None:
+    points = _series([40, 42, 45, 49, 52, 56])[:minimum]
+    first = fit_forecast_model(model, points).predict(2020)
+    second = fit_forecast_model(model, points).predict(2020)
+
+    assert first == pytest.approx(second)
+
+
+def test_walk_forward_validation_uses_only_prior_years() -> None:
+    points = tuple(_series([30, 33, 36, 39, 42, 45, 48, 51]))
+
+    validation = walk_forward_validation(points, ForecastModelName.LINEAR)
+
+    assert validation.folds
+    assert all(fold.train_end_year < fold.target_year for fold in validation.folds)
+    assert validation.mae == pytest.approx(0.0)
+    assert validation.rmse == pytest.approx(0.0)
+
+
+def test_thirteen_observations_evaluate_all_simple_models() -> None:
+    points = tuple(_series([30 + index * 2 for index in range(13)]))
+
+    validations = evaluate_candidate_models(points)
+
+    assert candidate_models(len(points)) == (
+        ForecastModelName.LINEAR,
+        ForecastModelName.HOLT,
+        ForecastModelName.QUADRATIC,
     )
-
-    assert result.status == "ok"
-    assert result.exploratory is True
-    assert result.forecast_horizon == 1
-    assert result.forecast[0].year == 2025
-    assert result.metrics is not None and result.metrics.r_squared is None
+    assert {item.model for item in validations} == set(ForecastModelName)
+    assert all(item.folds for item in validations)
 
 
-def test_three_year_series_sorts_years_and_calculates_metrics() -> None:
-    result = analyze_historical_series(
-        [_point(2024, 30), _point(2022, 10), _point(2023, 20)],
-        _metadata(),
-        forecast_years=3,
-    )
+def test_similar_accuracy_prefers_simpler_model() -> None:
+    validations = evaluate_candidate_models(tuple(_series([20 + index * 2 for index in range(10)])))
 
-    assert [point.year for point in result.points] == [2022, 2023, 2024]
-    assert result.forecast_horizon == 2
-    assert result.summary is not None
-    assert result.summary.absolute_change == pytest.approx(20)
-    assert result.summary.percentage_change == pytest.approx(200)
-    assert result.metrics is not None
-    assert result.metrics.mae == pytest.approx(0)
-    assert result.metrics.rmse == pytest.approx(0)
-    assert result.metrics.r_squared == pytest.approx(1)
+    selected, reason = select_best_forecasting_model(validations)
+
+    assert selected is ForecastModelName.LINEAR
+    assert reason in {"lowest_validation_error", "simpler_model_with_similar_error"}
 
 
-def test_five_year_series_allows_three_year_forecast_and_ignores_nulls() -> None:
-    points = [_point(2019 + index, 40 + index * 2) for index in range(1, 6)]
-    points.extend([_point(None, 80), _point(2026, None)])
+def test_polynomial_is_not_selected_for_training_fit_when_validation_is_worse() -> None:
+    # A late reversal lets a quadratic fit the full history closely but makes its
+    # expanding-window extrapolation less stable than the baseline.
+    points = tuple(_series([20, 24, 28, 32, 36, 40, 44, 48, 43, 47, 51, 55, 59]))
+    validations = evaluate_candidate_models(points)
+    selected, _reason = select_best_forecasting_model(validations)
+    by_model = {item.model: item for item in validations}
 
-    result = analyze_historical_series(points, _metadata(), forecast_years=3)
-
-    assert result.status == "ok"
-    assert result.forecast_horizon == 3
-    assert result.summary is not None and result.summary.observations == 5
-
-
-def test_identical_duplicate_years_are_collapsed_but_conflicts_are_rejected() -> None:
-    collapsed = analyze_historical_series(
-        [_point(2022, 10), _point(2022, 10.005), _point(2023, 20)],
-        _metadata(),
-    )
-    conflicting = analyze_historical_series(
-        [_point(2022, 10), _point(2022, 12), _point(2023, 20)],
-        _metadata(),
-    )
-
-    assert collapsed.status == "ok"
-    assert len(collapsed.points) == 2
-    assert conflicting.status == "incomparable"
-    assert conflicting.reason == "conflicting_duplicate_year"
+    assert by_model[ForecastModelName.QUADRATIC].mae > by_model[ForecastModelName.LINEAR].mae
+    assert selected is not ForecastModelName.QUADRATIC
 
 
 @pytest.mark.parametrize(
     ("values", "expected"),
     [
-        ([20, 30, 40], TrendDirection.UPWARD),
-        ([40, 30, 20], TrendDirection.DOWNWARD),
-        ([40, 40.1, 40.2], TrendDirection.STABLE),
+        ([20, 24, 28, 32, 36, 40], TrendDirection.UPWARD),
+        ([60, 55, 50, 45, 40, 35], TrendDirection.DOWNWARD),
+        ([40, 40.1, 39.9, 40.0, 40.1, 40.0], TrendDirection.STABLE),
     ],
 )
-def test_trend_direction_uses_stable_tolerance(values, expected) -> None:
-    result = analyze_historical_series(
-        [_point(2022 + index, value) for index, value in enumerate(values)],
-        _metadata(stable_threshold=0.25),
+def test_robust_historical_direction(values, expected) -> None:
+    result = generate_forecast(_series(values), country_code="ES", country_name="Spain")
+
+    assert result.summary is not None
+    assert result.summary.direction is expected
+
+
+def test_missing_years_and_nulls_are_not_invented() -> None:
+    points = [
+        _point(2018, 40),
+        _point(2019, None),
+        _point(2020, 44),
+        _point(2022, 48),
+        _point(None, 50),
+        _point(2023, 50),
+        _point(2024, 52),
+        _point(2025, 54),
+    ]
+
+    result = generate_forecast(points, country_code="ES", country_name="Spain")
+
+    assert [point.year for point in result.historical] == [2018, 2020, 2022, 2023, 2024, 2025]
+    assert result.summary is not None
+    assert result.summary.missing_years == (2019, 2021)
+
+
+@pytest.mark.parametrize("observations", [0, 1, 2])
+def test_fewer_than_three_observations_never_generate_forecast(observations) -> None:
+    result = generate_forecast(
+        _series([40 + index for index in range(observations)]),
+        country_code="ES",
+        country_name="Spain",
+        horizon=3,
     )
 
-    assert result.summary is not None and result.summary.direction == expected
-
-
-def test_forecasts_are_clamped_only_to_declared_scale() -> None:
-    upper = analyze_historical_series(
-        [_point(2023, 90), _point(2024, 100)], _metadata(), forecast_years=1
-    )
-    lower = analyze_historical_series(
-        [_point(2023, 10), _point(2024, 0)], _metadata(), forecast_years=1
-    )
-    unbounded = analyze_historical_series(
-        [
-            _point(2023, 90, scale_min=None, scale_max=None, unit="count"),
-            _point(2024, 100, scale_min=None, scale_max=None, unit="count"),
-        ],
-        _metadata(scale_min=None, scale_max=None, unit="count"),
-        forecast_years=1,
-    )
-
-    assert upper.forecast[0].value == 100
-    assert lower.forecast[0].value == 0
-    assert unbounded.forecast[0].value == pytest.approx(110)
-
-
-def test_metadata_mismatch_blocks_projection() -> None:
-    result = analyze_historical_series(
-        [_point(2023, 50), _point(2024, 60, methodology="changed_method")],
-        _metadata(),
-    )
-
-    assert result.status == "incomparable"
+    assert result.status == "insufficient"
     assert result.forecast == ()
-    assert result.reason == "series_metadata_mismatch"
+
+
+def test_three_to_five_observations_are_exploratory_and_limited_to_one_year() -> None:
+    result = generate_forecast(
+        _series([40, 42, 44, 46, 48]),
+        country_code="ES",
+        country_name="Spain",
+        horizon=3,
+    )
+
+    assert result.status == "ok"
+    assert result.exploratory is True
+    assert result.forecast_horizon == 1
+    assert result.selected_model is ForecastModelName.LINEAR
+
+
+@pytest.mark.parametrize("horizon", [1, 2, 3])
+def test_supported_horizons(horizon) -> None:
+    result = generate_forecast(
+        _series([30 + index for index in range(10)]),
+        country_code="ES",
+        country_name="Spain",
+        horizon=horizon,
+    )
+
+    assert result.forecast_horizon == horizon
+    assert len(result.forecast) == horizon
+
+
+def test_forecasts_are_clipped_to_zero_and_one_hundred_but_raw_value_is_kept() -> None:
+    upper = generate_forecast(
+        _series([80, 85, 90, 95, 100, 100]),
+        country_code="ES",
+        country_name="Spain",
+        horizon=3,
+    )
+    lower = generate_forecast(
+        _series([20, 15, 10, 5, 0, 0]),
+        country_code="ES",
+        country_name="Spain",
+        horizon=3,
+    )
+
+    assert all(0 <= point.value <= 100 for point in (*upper.forecast, *lower.forecast))
+    assert bounded_score(120) == 100
+    assert bounded_score(-20) == 0
+    assert any(point.raw_value != point.value for point in (*upper.forecast, *lower.forecast))
+
+
+def test_uncertainty_uses_validation_rmse_and_is_not_labelled_confidence_interval() -> None:
+    result = generate_forecast(
+        _series([30, 31, 35, 34, 39, 41, 42, 47]),
+        country_code="ES",
+        country_name="Spain",
+        horizon=2,
+    )
+
+    assert result.uncertainty_method == "walk_forward_rmse_scaled_by_horizon"
+    assert all(point.lower is not None and point.upper is not None for point in result.forecast)
+
+
+def test_2011_and_2012_values_are_preserved_without_second_normalization() -> None:
+    points = _series([50, 60, 62, 64, 66, 68])
+    points[0] = _point(
+        2011,
+        50,
+        normalization_applied=True,
+        original_scale_min=-7,
+        original_scale_max=17,
+        target_scale_min=0,
+        target_scale_max=100,
+    )
+    points[1] = _point(
+        2012,
+        60,
+        normalization_applied=True,
+        original_scale_min=-12,
+        original_scale_max=30,
+        target_scale_min=0,
+        target_scale_max=100,
+    )
+
+    result = generate_forecast(points, country_code="ES", country_name="Spain")
+
+    assert [point.value for point in result.historical[:2]] == [50, 60]
+    assert result.normalization_years == (2011, 2012)

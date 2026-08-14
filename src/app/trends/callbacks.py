@@ -3,129 +3,61 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from dash import Dash, Input, Output, dcc, html
+from dash import Dash, Input, Output, State, dcc, html
 from dash.development.base_component import Component
 
 from app.analytics.statistics_exports import chart_graph_config
+from app.dash.components.dropdown_options import build_dropdown_options, option_value_or_none
 from app.dash.components.empty_state import build_empty_state
 from app.dash.components.ilga_methodology import build_ilga_series_normalization_note
-from app.dash.components.source_attribution import build_source_attribution
-from app.dash.i18n import country_labels, text, ui_text
+from app.dash.i18n import country_labels, ui_text
 from app.trends.charts import build_trend_figure
-from app.trends.data import RANKING_CATEGORY
-from app.trends.models import TrendAnalysis, TrendDirection, TrendFilters, TrendSource
-from app.trends.service import (
-    generate_trend_analysis,
-    get_historical_series,
-    get_indicator_options,
-    get_trend_scope,
+from app.trends.forecasting_service import forecast_horizon_limit
+from app.trends.models import (
+    ForecastModelName,
+    ForecastResult,
+    ModelValidation,
+    TrendDirection,
+    TrendFilters,
 )
-from app.trends.validation import max_forecast_horizon
+from app.trends.service import generate_trend_analysis, get_historical_series, get_trend_scope
 
 logger = logging.getLogger(__name__)
 
 
 def register_trend_callbacks(app: Dash) -> None:
     @app.callback(
-        Output("trend-category-select", "options"),
-        Output("trend-category-select", "value"),
-        Output("trend-category-select", "disabled"),
-        Input("trend-source-select", "value"),
-        Input("app-language-store", "data"),
-    )
-    def update_trend_categories(source: str | None, language: str | None):
-        if source != TrendSource.ILGA.value:
-            return [], None, True
-        return (
-            [
-                {
-                    "label": ui_text("trends_total_ranking", _language(language)),
-                    "value": RANKING_CATEGORY,
-                }
-            ],
-            RANKING_CATEGORY,
-            True,
-        )
-
-    @app.callback(
-        Output("trend-indicator-select", "options"),
-        Output("trend-indicator-select", "value"),
-        Output("trend-indicator-select", "disabled"),
-        Input("trend-source-select", "value"),
-        Input("trend-category-select", "value"),
-        Input("app-language-store", "data"),
-    )
-    def update_trend_indicators(
-        source: str | None,
-        category: str | None,
-        language: str | None,
-    ):
-        if source != TrendSource.ILGA.value or category != RANKING_CATEGORY:
-            return [], None, True
-        try:
-            indicators = get_indicator_options(source, category)
-        except Exception:
-            logger.exception(
-                "trend_indicators_load_failed",
-                extra={"source": source, "category": category},
-            )
-            return [], None, True
-        options = [
-            {
-                "label": ui_text("trends_total_ranking", _language(language)),
-                "value": indicator.to_token(),
-            }
-            for indicator in indicators
-        ]
-        value = options[0]["value"] if options else None
-        return options, value, True
-
-    @app.callback(
-        Output("trend-series-select", "options"),
-        Output("trend-series-select", "value"),
-        Output("trend-series-select", "disabled"),
-        Output("trend-series-field", "className"),
-        Input("trend-source-select", "value"),
-        Input("trend-indicator-select", "value"),
-        Input("app-language-store", "data"),
-    )
-    def update_trend_variants(
-        source: str | None,
-        indicator_token: str | None,
-        language: str | None,
-    ):
-        if source == TrendSource.ILGA.value and indicator_token:
-            return (
-                [{"label": ui_text("trends_source_ilga", _language(language)), "value": "default"}],
-                "default",
-                True,
-                ("trend-field is-hidden"),
-            )
-        return [], None, True, "trend-field is-hidden"
-
-    @app.callback(
         Output("trend-country-select", "options"),
         Output("trend-country-select", "value"),
         Output("trend-country-select", "disabled"),
-        Input("trend-indicator-select", "value"),
-        Input("trend-series-select", "value"),
+        Output("trend-country-select", "placeholder"),
+        Input("app-language-store", "data"),
+        State("trend-country-select", "value"),
     )
-    def update_trend_countries(indicator_token: str | None, series_key: str | None):
-        if not indicator_token or not series_key:
-            return [], None, True
+    def update_trend_countries(language: str | None, current: str | None):
+        clean_language = _language(language)
         try:
-            scope = get_trend_scope(indicator_token, series_key)
+            countries = get_trend_scope().countries
         except Exception:
-            logger.exception("trend_countries_load_failed")
-            return [], None, True
-        options = [
-            {
-                "label": text(*country_labels(code, name)),
-                "value": code,
-            }
-            for code, name in scope.countries
-        ]
-        return options, None, not bool(options)
+            logger.exception("trend_country_catalog_load_failed")
+            return [], None, True, ui_text("trends_select_country", clean_language)
+        options = build_dropdown_options(
+            (
+                {
+                    "label": country_labels(code, name)[1 if clean_language == "en" else 0],
+                    "value": code,
+                }
+                for code, name in countries
+            ),
+            context="trends-country",
+        )
+        selected = option_value_or_none(options, current)
+        return (
+            options,
+            selected,
+            not bool(options),
+            ui_text("trends_select_country", clean_language),
+        )
 
     @app.callback(
         Output("trend-year-range", "min"),
@@ -133,275 +65,413 @@ def register_trend_callbacks(app: Dash) -> None:
         Output("trend-year-range", "value"),
         Output("trend-year-range", "marks"),
         Output("trend-year-range", "disabled"),
-        Input("trend-source-select", "value"),
-        Input("trend-indicator-select", "value"),
-        Input("trend-series-select", "value"),
         Input("trend-country-select", "value"),
     )
-    def update_trend_range(
-        source: str | None,
-        indicator_token: str | None,
-        series_key: str | None,
-        country_code: str | None,
-    ):
-        if not source or not indicator_token or not series_key or not country_code:
-            return 0, 1, [0, 1], {}, True
+    def update_trend_range(country_code: str | None):
+        if not country_code:
+            return 2011, 2012, [2011, 2012], {2011: "2011", 2012: "2012"}, True
         try:
-            points = get_historical_series(
-                source,
-                indicator_token,
-                country_code,
-                TrendFilters(series_key=series_key),
-            )
+            points = get_historical_series(country_code)
         except Exception:
-            logger.exception(
-                "trend_range_load_failed",
-                extra={"source": source, "country": country_code},
-            )
-            return 0, 1, [0, 1], {}, True
-        years = sorted(
-            {
-                int(point.year)
-                for point in points
-                if point.year is not None and point.value is not None
-            }
-        )
+            logger.exception("trend_control_series_load_failed", extra={"country": country_code})
+            return 2011, 2012, [2011, 2012], {2011: "2011", 2012: "2012"}, True
+        years = sorted({int(point.year) for point in points if point.year is not None})
         if not years:
-            return 0, 1, [0, 1], {}, True
-        minimum = years[0]
-        maximum = years[-1]
-        range_max = maximum if maximum > minimum else minimum + 1
-        return (
-            minimum,
-            range_max,
-            [minimum, maximum],
-            {year: str(year) for year in years},
-            len(years) < 2,
-        )
+            return 2011, 2012, [2011, 2012], {2011: "2011", 2012: "2012"}, True
+        minimum, maximum = years[0], years[-1]
+        return minimum, maximum, [minimum, maximum], _year_marks(years), len(years) < 2
 
     @app.callback(
         Output("trend-horizon-select", "options"),
         Output("trend-horizon-select", "value"),
         Output("trend-horizon-select", "disabled"),
-        Input("trend-source-select", "value"),
-        Input("trend-indicator-select", "value"),
-        Input("trend-series-select", "value"),
         Input("trend-country-select", "value"),
         Input("trend-year-range", "value"),
         Input("app-language-store", "data"),
+        State("trend-horizon-select", "value"),
     )
     def update_trend_horizon(
-        source: str | None,
-        indicator_token: str | None,
-        series_key: str | None,
         country_code: str | None,
         year_range: list[int] | None,
         language: str | None,
+        current_horizon: int | None,
     ):
-        if not source or not indicator_token or not series_key or not country_code:
+        if not country_code:
             return [], None, True
-        start_year, end_year = _year_bounds(year_range)
+        clean_language = _language(language)
+        start_year, end_year = _selected_range(year_range)
         try:
             points = get_historical_series(
-                source,
-                indicator_token,
                 country_code,
-                TrendFilters(
-                    start_year=start_year,
-                    end_year=end_year,
-                    series_key=series_key,
-                ),
+                TrendFilters(start_year=start_year, end_year=end_year),
             )
         except Exception:
-            logger.exception(
-                "trend_horizon_load_failed",
-                extra={"source": source, "country": country_code},
-            )
+            logger.exception("trend_horizon_load_failed", extra={"country": country_code})
             return [], None, True
-        years = {
-            point.year for point in points if point.year is not None and point.value is not None
-        }
-        allowed = max_forecast_horizon(len(years))
-        return (
-            _horizon_options(allowed, _language(language)),
-            1 if allowed else None,
-            allowed == 0,
+        limit = forecast_horizon_limit(len(points))
+        horizon_options = [
+            {"label": _horizon_label(value, clean_language), "value": value}
+            for value in range(1, limit + 1)
+        ]
+        selected_horizon = option_value_or_none(horizon_options, current_horizon) or (
+            1 if horizon_options else None
         )
+        return horizon_options, selected_horizon, not bool(horizon_options)
 
     @app.callback(
         Output("trend-result", "children"),
-        Input("trend-source-select", "value"),
-        Input("trend-category-select", "value"),
-        Input("trend-indicator-select", "value"),
-        Input("trend-series-select", "value"),
         Input("trend-country-select", "value"),
         Input("trend-year-range", "value"),
+        Input("trend-year-range", "disabled"),
         Input("trend-horizon-select", "value"),
         Input("app-language-store", "data"),
     )
     def render_trend_analysis(
-        source: str | None,
-        category: str | None,
-        indicator_token: str | None,
-        series_key: str | None,
         country_code: str | None,
         year_range: list[int] | None,
+        range_disabled: bool | None,
         horizon: int | None,
         language: str | None,
     ) -> Component:
         clean_language = _language(language)
-        if not all((source, category, indicator_token, series_key, country_code)):
+        if not country_code:
             return _state(
                 "trends_name",
                 "trends_initial_prompt",
                 clean_language,
                 "trend-state-info",
             )
-        start_year, end_year = _year_bounds(year_range)
+        start_year, end_year = (None, None) if range_disabled else _selected_range(year_range)
         try:
-            analysis, metadata = generate_trend_analysis(
-                str(source),
-                str(indicator_token),
-                str(country_code),
-                TrendFilters(
-                    start_year=start_year,
-                    end_year=end_year,
-                    series_key=str(series_key),
-                ),
-                forecast_years=int(horizon or 0),
+            result = generate_trend_analysis(
+                country_code,
+                TrendFilters(start_year=start_year, end_year=end_year),
+                forecast_years=int(horizon or 1),
             )
         except Exception:
-            logger.exception(
-                "trend_analysis_failed",
-                extra={"source": source, "country": country_code},
-            )
+            logger.exception("trend_analysis_failed", extra={"country": country_code})
             return _state(
                 "trends_error_loading_series",
                 "trends_error_analysis",
                 clean_language,
                 "trend-state-error",
             )
-        if analysis.status == "insufficient":
-            return _state(
-                "trends_not_enough",
-                "trends_not_enough_detail",
-                clean_language,
-                "trend-state-warning",
-            )
-        if analysis.status == "incomparable":
-            return _state(
-                "trends_not_enough",
-                "trends_incomparable",
-                clean_language,
-                "trend-state-warning",
-            )
-        return _result(analysis, metadata, clean_language)
-
-    @app.callback(
-        Output("trend-source-select", "placeholder"),
-        Output("trend-category-select", "placeholder"),
-        Output("trend-indicator-select", "placeholder"),
-        Output("trend-series-select", "placeholder"),
-        Output("trend-country-select", "placeholder"),
-        Input("app-language-store", "data"),
-    )
-    def translate_trend_placeholders(language: str | None) -> tuple[str, str, str, str, str]:
-        clean_language = _language(language)
-        return (
-            ui_text("trends_select_source", clean_language),
-            ui_text("trends_select_category", clean_language),
-            ui_text("trends_select_indicator", clean_language),
-            ui_text("trends_select_series", clean_language),
-            ui_text("trends_select_country", clean_language),
-        )
+        return _render_result(result, clean_language)
 
 
-def _result(analysis: TrendAnalysis, metadata: Any, language: str) -> Component:
-    summary = analysis.summary
-    metrics = analysis.metrics
-    if summary is None or metrics is None:
-        return _state("trends_not_enough", "trends_not_enough_detail", language)
-    cards = [
-        _metric_card(
-            "trends_trend",
-            _direction_label(summary.direction, language),
+def _render_result(result: ForecastResult, language: str) -> Component:
+    if result.status == "invalid":
+        return _state(
+            "trends_error_loading_series",
+            "trends_error_analysis",
             language,
-        ),
-        _metric_card("trends_total_change", _change_label(summary), language),
-        _metric_card("trends_historical_mean", _number(summary.mean), language),
-        _metric_card("trends_years_analyzed", str(summary.observations), language),
-        _metric_card("trends_last_value", _number(summary.final_value), language),
-    ]
-    if analysis.forecast:
-        cards.append(
-            _metric_card(
-                "trends_projected_value",
-                _number(analysis.forecast[-1].value),
-                language,
-            )
+            "trend-state-error",
         )
-    metric_items: list[Component] = []
-    metric_items.extend(_quality_item("trends_observations", str(metrics.observations), language))
-    metric_items.extend(_quality_item("trends_mae", _number(metrics.mae), language))
-    metric_items.extend(_quality_item("trends_rmse", _number(metrics.rmse), language))
-    metric_items.extend(_quality_item("trends_slope", _number(metrics.slope), language))
-    if metrics.r_squared is not None:
-        metric_items.extend(_quality_item("trends_r_squared", _number(metrics.r_squared), language))
-    notes: list[Component] = [
-        html.P(ui_text("trends_ilga_context", language)),
-        html.P(ui_text("trends_method_warning", language)),
-        html.P(ui_text("trends_ilga_warning", language)),
-    ]
-    if analysis.exploratory:
-        notes.append(html.P(ui_text("trends_exploratory", language), className="trend-exploratory"))
+    if not result.historical:
+        return _state(
+            "trends_not_enough",
+            "trends_not_enough_projection",
+            language,
+            "trend-state-warning",
+        )
+    graph = dcc.Graph(
+        id="trend-history-graph",
+        figure=build_trend_figure(result, language=language),
+        responsive=True,
+        config=chart_graph_config(),
+        className="trend-graph",
+    )
     normalization_note = build_ilga_series_normalization_note(
-        analysis.points,
+        result.historical,
         language=language,
         class_name="trend-normalization-note",
     )
+    if result.status != "ok":
+        return html.Div(
+            [
+                _state(
+                    "trends_not_enough",
+                    "trends_not_enough_projection",
+                    language,
+                    "trend-state-warning",
+                ),
+                html.Section(graph, className="trend-chart-card"),
+                normalization_note,
+                _limitations(language),
+            ],
+            className="trend-analysis",
+        )
+
     return html.Div(
         [
-            html.Section(cards, className="trend-metric-grid"),
+            _summary_cards(result, language),
+            *(
+                [
+                    html.Aside(
+                        ui_text("trends_exploratory_warning", language),
+                        className="trend-exploratory-note",
+                        role="note",
+                    )
+                ]
+                if result.exploratory
+                else []
+            ),
             html.Section(
                 [
-                    dcc.Graph(
-                        id="trend-history-graph",
-                        figure=build_trend_figure(analysis, metadata, language=language),
-                        responsive=True,
-                        config=chart_graph_config(),
-                        className="trend-graph",
-                        style={"width": "100%"},
-                    ),
-                    build_source_attribution(
-                        metadata.source.value,
-                        year=summary.end_year,
-                        compact=True,
-                        language=language,
-                        class_name="trend-source-attribution",
-                    ),
+                    html.H2(ui_text("trends_chart_title", language)),
+                    graph,
+                    _source_distinction(language),
                 ],
                 className="trend-chart-card",
             ),
-            html.Section(
-                [
-                    html.H2(ui_text("trends_model_metrics", language)),
-                    html.Dl(metric_items, className="trend-quality-grid"),
-                ],
-                className="trend-quality-card",
-            ),
-            html.Aside(notes, className="trend-methodology"),
             normalization_note,
+            _methodology(result, language),
+            _limitations(language),
         ],
         className="trend-analysis",
     )
 
 
-def _state(
-    title_key: str,
-    detail_key: str,
-    language: str,
-    class_name: str = "trend-state-warning",
-) -> Component:
+def _summary_cards(result: ForecastResult, language: str) -> Component:
+    summary = result.summary
+    validation = result.selected_validation
+    if summary is None:
+        return html.Section(className="trend-metric-grid")
+    cards = [
+        _metric_card("trends_last_value", f"{summary.final_value:.1f} %", language),
+        _metric_card("trends_trend", _direction_label(summary.direction, language), language),
+        _metric_card("trends_total_change", _signed_points(summary.absolute_change, language), language),
+        _metric_card("trends_selected_model", _model_label(result.selected_model, language), language),
+        _metric_card(
+            "trends_mean_error",
+            f"±{validation.mae:.1f} {ui_text('trends_points', language)}"
+            if validation
+            else "—",
+            language,
+        ),
+    ]
+    return html.Section(cards, className="trend-metric-grid")
+
+
+def _methodology(result: ForecastResult, language: str) -> Component:
+    summary = result.summary
+    validation = result.selected_validation
+    if summary is None or validation is None:
+        return html.Section(className="trend-method-card")
+    return html.Section(
+        [
+            html.H2(ui_text("trends_projection_method", language)),
+            html.P(ui_text("trends_method_summary", language), className="trend-method-summary"),
+            html.Dl(
+                [
+                    *_definition(
+                        "trends_selected_model",
+                        _model_label(result.selected_model, language),
+                        language,
+                    ),
+                    *_definition(
+                        "trends_validation_mean_error",
+                        f"{validation.mae:.2f} {ui_text('trends_points', language)}",
+                        language,
+                    ),
+                    *_definition(
+                        "trends_years_used",
+                        f"{summary.start_year}-{summary.end_year}",
+                        language,
+                    ),
+                    *_definition("trends_observations", str(summary.observations), language),
+                    *_definition(
+                        "trends_forecast_horizon",
+                        _horizon_label(result.forecast_horizon, language),
+                        language,
+                    ),
+                ],
+                className="trend-method-facts",
+            ),
+            html.Details(
+                [
+                    html.Summary(ui_text("trends_how_calculated", language)),
+                    html.Div(
+                        [
+                            _method_step(
+                                1,
+                                "trends_data_collection",
+                                _collection_text(result, language),
+                                language,
+                            ),
+                            _method_step(
+                                2,
+                                "trends_data_validation",
+                                _validation_text(result, language),
+                                language,
+                            ),
+                            _models_step(result, language),
+                            _method_step(
+                                4,
+                                "trends_temporal_validation",
+                                ui_text("trends_temporal_validation_detail", language),
+                                language,
+                            ),
+                            _comparison_step(result.validation, language),
+                            _method_step(
+                                6,
+                                "trends_model_selection",
+                                _selection_text(result, language),
+                                language,
+                            ),
+                            _method_step(
+                                7,
+                                "trends_final_training",
+                                ui_text("trends_final_training_detail", language),
+                                language,
+                            ),
+                            _method_step(
+                                8,
+                                "trends_projection",
+                                ui_text("trends_projection_detail", language).format(
+                                    horizon=result.forecast_horizon
+                                ),
+                                language,
+                            ),
+                            _method_step(
+                                9,
+                                "trends_limits",
+                                ui_text("trends_score_limits_detail", language),
+                                language,
+                            ),
+                            _method_step(
+                                10,
+                                "trends_uncertainty",
+                                ui_text(
+                                    "trends_uncertainty_detail"
+                                    if result.uncertainty_method
+                                    else "trends_uncertainty_unavailable",
+                                    language,
+                                ),
+                                language,
+                            ),
+                        ],
+                        className="trend-method-details-body",
+                    ),
+                ],
+                className="trend-method-details",
+            ),
+        ],
+        className="trend-method-card",
+    )
+
+
+def _models_step(result: ForecastResult, language: str) -> Component:
+    return html.Section(
+        [
+            html.H3(f"3. {ui_text('trends_models_evaluated', language)}"),
+            html.Ul(
+                [html.Li(_model_label(item.model, language)) for item in result.validation]
+            ),
+        ],
+        className="trend-method-step",
+    )
+
+
+def _comparison_step(validation: tuple[ModelValidation, ...], language: str) -> Component:
+    return html.Section(
+        [
+            html.H3(f"5. {ui_text('trends_error_comparison', language)}"),
+            html.Div(
+                html.Table(
+                    [
+                        html.Thead(
+                            html.Tr(
+                                [
+                                    html.Th(ui_text("trends_model", language)),
+                                    html.Th("MAE"),
+                                    html.Th("RMSE"),
+                                    html.Th(ui_text("trends_validation_folds", language)),
+                                ]
+                            )
+                        ),
+                        html.Tbody(
+                            [
+                                html.Tr(
+                                    [
+                                        html.Td(_model_label(item.model, language)),
+                                        html.Td(f"{item.mae:.2f}"),
+                                        html.Td(f"{item.rmse:.2f}"),
+                                        html.Td(str(len(item.folds))),
+                                    ]
+                                )
+                                for item in validation
+                            ]
+                        ),
+                    ],
+                    className="trend-model-table",
+                ),
+                className="trend-table-scroll",
+            ),
+        ],
+        className="trend-method-step",
+    )
+
+
+def _method_step(number: int, title_key: str, body: str, language: str) -> Component:
+    return html.Section(
+        [html.H3(f"{number}. {ui_text(title_key, language)}"), html.P(body)],
+        className="trend-method-step",
+    )
+
+
+def _collection_text(result: ForecastResult, language: str) -> str:
+    summary = result.summary
+    if summary is None:
+        return ""
+    return ui_text("trends_data_collection_detail", language).format(
+        country=result.country_name,
+        start=summary.start_year,
+        end=summary.end_year,
+        observations=summary.observations,
+    )
+
+
+def _validation_text(result: ForecastResult, language: str) -> str:
+    summary = result.summary
+    missing = summary.missing_years if summary else ()
+    missing_label = ", ".join(str(year) for year in missing) or ui_text(
+        "trends_no_missing_years", language
+    )
+    return ui_text("trends_data_validation_detail", language).format(missing=missing_label)
+
+
+def _selection_text(result: ForecastResult, language: str) -> str:
+    model = _model_label(result.selected_model, language)
+    key = (
+        "trends_selection_simplicity"
+        if result.selection_reason == "simpler_model_with_similar_error"
+        else "trends_selection_lowest_error"
+    )
+    return ui_text(key, language).format(model=model)
+
+
+def _limitations(language: str) -> Component:
+    return html.Aside(
+        [
+            html.H2(ui_text("trends_limitations", language)),
+            html.P(ui_text("trends_limitations_detail", language)),
+        ],
+        className="trend-limitations",
+    )
+
+
+def _source_distinction(language: str) -> Component:
+    return html.Div(
+        [
+            html.P(ui_text("trends_historical_source", language)),
+            html.P(ui_text("trends_projection_source", language)),
+        ],
+        className="trend-source-distinction",
+    )
+
+
+def _state(title_key: str, detail_key: str, language: str, class_name: str) -> Component:
     return build_empty_state(
         ui_text(title_key, language),
         ui_text(detail_key, language),
@@ -411,20 +481,19 @@ def _state(
 
 def _metric_card(label_key: str, value: str, language: str) -> Component:
     return html.Article(
-        [html.Span(ui_text(label_key, language)), html.Strong(value)],
+        [html.P(ui_text(label_key, language)), html.Strong(value)],
         className="trend-metric-card",
     )
 
 
-def _quality_item(label_key: str, value: str, language: str) -> list[Component]:
+def _definition(label_key: str, value: str, language: str) -> list[Component]:
     return [html.Dt(ui_text(label_key, language)), html.Dd(value)]
 
 
-def _horizon_options(limit: int, language: str) -> list[dict[str, Any]]:
-    keys = {1: "trends_year_singular", 2: "trends_years_two", 3: "trends_years_three"}
-    return [
-        {"label": ui_text(keys[value], language), "value": value} for value in range(1, limit + 1)
-    ]
+def _model_label(model: ForecastModelName | None, language: str) -> str:
+    if model is None:
+        return "—"
+    return ui_text(f"trends_model_{model.value}", language)
 
 
 def _direction_label(direction: TrendDirection, language: str) -> str:
@@ -438,22 +507,38 @@ def _direction_label(direction: TrendDirection, language: str) -> str:
     )
 
 
-def _change_label(summary: Any) -> str:
-    absolute = f"{summary.absolute_change:+.2f}"
-    if summary.percentage_change is None:
-        return absolute
-    return f"{absolute} ({summary.percentage_change:+.2f} %)"
+def _signed_points(value: float, language: str) -> str:
+    return f"{value:+.1f} {ui_text('trends_points', language)}"
 
 
-def _number(value: float) -> str:
-    return f"{value:.2f}"
+def _horizon_label(value: int, language: str) -> str:
+    return ui_text(
+        {1: "trends_year_singular", 2: "trends_years_two", 3: "trends_years_three"}.get(
+            int(value), "trends_years_three"
+        ),
+        language,
+    )
 
 
-def _year_bounds(value: list[int] | None) -> tuple[int | None, int | None]:
-    if not value or len(value) != 2:
+def _year_marks(years: list[int]) -> dict[int, str]:
+    if len(years) <= 9:
+        return {year: str(year) for year in years}
+    return {
+        year: str(year)
+        for index, year in enumerate(years)
+        if index % 2 == 0 or year in {years[0], years[-1]}
+    }
+
+
+def _selected_range(value: list[int] | None) -> tuple[int | None, int | None]:
+    if not isinstance(value, list | tuple) or len(value) != 2:
         return None, None
-    return int(min(value)), int(max(value))
+    try:
+        start, end = sorted((int(value[0]), int(value[1])))
+    except (TypeError, ValueError):
+        return None, None
+    return start, end
 
 
-def _language(value: str | None) -> str:
+def _language(value: Any) -> str:
     return "en" if value == "en" else "es"

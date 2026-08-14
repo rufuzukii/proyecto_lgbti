@@ -9,195 +9,170 @@ from typing import Any
 from app.analytics.repository import (
     ANALYTICS_CACHE_TIMEOUT_SECONDS,
     analytics_cache_generation,
-    get_ilga_years,
     invalidate_analytics_cache,
 )
 from app.cache import cache
-from app.trends.analysis import analyze_historical_series
-from app.trends.data import (
-    list_categories,
-    list_indicators,
-    list_variants,
-    load_historical_points,
+from app.trends.forecasting_service import generate_forecast
+from app.trends.historical_series import (
+    audit_country_coverage,
+    build_trend_scope,
+    country_series,
+    load_ilga_global_history,
 )
 from app.trends.models import (
+    CountryCoverage,
+    ForecastResult,
     HistoricalPoint,
-    SeriesMetadata,
-    SeriesVariant,
-    TrendAnalysis,
     TrendFilters,
-    TrendIndicator,
     TrendScope,
-    TrendSource,
 )
 
 logger = logging.getLogger(__name__)
-TREND_CACHE_VERSION = 1
+TREND_CACHE_VERSION = 2
 
 
-def get_category_options(source: str | None) -> list[str]:
-    return list_categories(_source(source))
-
-
-def get_indicator_options(source: str | None, category: str | None) -> list[TrendIndicator]:
-    return list_indicators(_source(source), str(category or ""))
-
-
-def get_series_variants(indicator_token: str | None) -> list[SeriesVariant]:
-    if not indicator_token:
-        return []
-    indicator = TrendIndicator.from_token(indicator_token)
-    if indicator.source == TrendSource.ILGA:
-        return [SeriesVariant()]
-    return list_variants(load_historical_points(indicator))
-
-
-def get_trend_scope(indicator_token: str | None, series_key: str | None) -> TrendScope:
-    if not indicator_token:
-        return TrendScope(countries=(), years=())
-    indicator = TrendIndicator.from_token(indicator_token)
-    variant = SeriesVariant.from_token(series_key)
-    points = _filter_variant(load_historical_points(indicator), variant)
-    countries = tuple(
-        sorted(
-            {
-                (point.country_code, point.country_name or point.country_code)
-                for point in points
-                if point.country_code
-            },
-            key=lambda item: item[1].casefold(),
-        )
-    )
-    years = tuple(
-        sorted(
-            {
-                int(point.year)
-                for point in points
-                if point.year is not None and point.value is not None
-            }
-        )
-    )
-    return TrendScope(countries=countries, years=years)
+def get_trend_scope() -> TrendScope:
+    return build_trend_scope(_historical_dataset())
 
 
 def get_historical_series(
-    source: str,
-    indicator_id: str,
     country_code: str,
-    filters: TrendFilters,
+    filters: TrendFilters | None = None,
 ) -> list[HistoricalPoint]:
-    started = perf_counter()
-    indicator = TrendIndicator.from_token(indicator_id)
-    resolved_source = _source(source)
-    if indicator.source != resolved_source:
-        raise ValueError("trend_source_indicator_mismatch")
-    clean_country = str(country_code or "").strip().upper()
-    cache_key = _series_cache_key(resolved_source, indicator_id, clean_country, filters)
+    clean_code = str(country_code or "").strip().upper()
+    selected_filters = filters or TrendFilters()
+    cache_key = _series_cache_key(clean_code, selected_filters)
     cached = _cache_get(cache_key)
-    if isinstance(cached, tuple) and all(isinstance(point, HistoricalPoint) for point in cached):
+    if isinstance(cached, tuple) and all(isinstance(item, HistoricalPoint) for item in cached):
         return list(cached)
 
-    variant = SeriesVariant.from_token(filters.series_key)
-    points = [
-        point
-        for point in _filter_variant(load_historical_points(indicator), variant)
-        if point.country_code.upper() == clean_country
-        and (
-            filters.start_year is None
-            or (point.year is not None and point.year >= filters.start_year)
-        )
-        and (
-            filters.end_year is None or (point.year is not None and point.year <= filters.end_year)
-        )
-    ]
-    years = sorted({int(point.year) for point in points if point.year is not None})
-    logger.info(
-        "trend_series_loaded source=%s country=%s years=%s observations=%d",
-        resolved_source.value,
-        clean_country,
-        years,
-        len(points),
-        extra={
-            "source": resolved_source.value,
-            "indicator": indicator.indicator_id,
-            "country": clean_country,
-            "years": years,
-            "observations": len(points),
-            "query_ms": round((perf_counter() - started) * 1000, 3),
-        },
+    started = perf_counter()
+    points = country_series(
+        _historical_dataset(),
+        clean_code,
+        start_year=selected_filters.start_year,
+        end_year=selected_filters.end_year,
     )
     if points:
-        _cache_set(cache_key, tuple(points))
-    return points
+        _cache_set(cache_key, points)
+    logger.info(
+        "trend_series_loaded country=%s observations=%d years=%s load_ms=%.2f",
+        clean_code,
+        len(points),
+        [point.year for point in points],
+        (perf_counter() - started) * 1000,
+    )
+    return list(points)
 
 
 def generate_trend_analysis(
-    source: str,
-    indicator_token: str,
     country_code: str,
-    filters: TrendFilters,
+    filters: TrendFilters | None = None,
     *,
-    forecast_years: int,
-) -> tuple[TrendAnalysis, SeriesMetadata]:
-    indicator = TrendIndicator.from_token(indicator_token)
-    variant = SeriesVariant.from_token(filters.series_key)
-    points = get_historical_series(source, indicator_token, country_code, filters)
+    forecast_years: int = 1,
+) -> ForecastResult:
+    selected_filters = filters or TrendFilters()
+    points = get_historical_series(country_code, selected_filters)
     country_name = next(
-        (point.country_name for point in points if point.country_name), country_code
+        (point.country_name for point in points if point.country_name),
+        str(country_code or "").strip().upper(),
     )
-    sample = points[0] if points else None
-    metadata = SeriesMetadata(
-        source=indicator.source,
-        indicator_id=indicator.indicator_id,
-        indicator_label=indicator.label,
-        category=indicator.category,
+    cache_key = _forecast_cache_key(points, country_code, selected_filters, forecast_years)
+    cached = _cache_get(cache_key)
+    if isinstance(cached, ForecastResult):
+        return cached
+
+    started = perf_counter()
+    result = generate_forecast(
+        points,
         country_code=str(country_code or "").strip().upper(),
         country_name=country_name,
-        response=variant.response,
-        filters=variant.filters,
-        unit=sample.unit if sample else "percentage_score",
-        scale_min=sample.scale_min if sample else 0.0,
-        scale_max=sample.scale_max if sample else 100.0,
-        methodology=sample.methodology if sample else _default_methodology(indicator.source),
+        horizon=forecast_years,
     )
-    return (
-        analyze_historical_series(points, metadata, forecast_years=forecast_years),
-        metadata,
+    if result.status in {"ok", "insufficient"}:
+        _cache_set(cache_key, result)
+    logger.info(
+        "trend_forecast_completed country=%s observations=%d horizon=%d model=%s "
+        "mae=%s rmse=%s calculation_ms=%.2f cache_hit=false",
+        result.country_code,
+        len(result.historical),
+        result.forecast_horizon,
+        result.selected_model.value if result.selected_model else "none",
+        round(result.selected_validation.mae, 3) if result.selected_validation else None,
+        round(result.selected_validation.rmse, 3) if result.selected_validation else None,
+        (perf_counter() - started) * 1000,
     )
+    return result
+
+
+def get_country_coverage() -> tuple[CountryCoverage, ...]:
+    return audit_country_coverage(_historical_dataset())
 
 
 def invalidate_trend_cache() -> None:
-    """Invalidate trends together with the shared analytics cache after dataset mutations."""
+    """Invalidate series and forecasts after a Rainbow Map import."""
     invalidate_analytics_cache("ilga")
 
 
-def _filter_variant(points: list[HistoricalPoint], variant: SeriesVariant) -> list[HistoricalPoint]:
-    return [
-        point
-        for point in points
-        if point.response == variant.response and point.filters == variant.filters
-    ]
+def _historical_dataset() -> tuple[HistoricalPoint, ...]:
+    cache_key = _dataset_cache_key()
+    cached = _cache_get(cache_key)
+    if isinstance(cached, tuple) and all(isinstance(item, HistoricalPoint) for item in cached):
+        return cached
+    started = perf_counter()
+    points = load_ilga_global_history()
+    if points:
+        _cache_set(cache_key, points)
+    logger.info(
+        "trend_history_dataset_loaded rows=%d years=%d query_and_normalization_ms=%.2f",
+        len(points),
+        len({point.year for point in points if point.year is not None}),
+        (perf_counter() - started) * 1000,
+    )
+    return points
 
 
-def _series_cache_key(
-    source: TrendSource,
-    indicator_token: str,
-    country_code: str,
-    filters: TrendFilters,
-) -> str:
+def _dataset_cache_key() -> str:
     identity = {
-        "cache_generation": analytics_cache_generation(source.value),
+        "cache_generation": analytics_cache_generation("ilga"),
+        "version": TREND_CACHE_VERSION,
+    }
+    return _hashed_key("trend-history-dataset", identity)
+
+
+def _series_cache_key(country_code: str, filters: TrendFilters) -> str:
+    identity = {
+        "cache_generation": analytics_cache_generation("ilga"),
         "country": country_code,
-        "dataset_years": get_ilga_years() if source == TrendSource.ILGA else None,
         "end_year": filters.end_year,
-        "indicator": indicator_token,
-        "series": filters.series_key,
-        "source": source.value,
         "start_year": filters.start_year,
         "version": TREND_CACHE_VERSION,
     }
+    return _hashed_key("trend-country-series", identity)
+
+
+def _forecast_cache_key(
+    points: list[HistoricalPoint],
+    country_code: str,
+    filters: TrendFilters,
+    horizon: int,
+) -> str:
+    identity = {
+        "cache_generation": analytics_cache_generation("ilga"),
+        "country": str(country_code or "").strip().upper(),
+        "end_year": filters.end_year,
+        "horizon": max(1, min(3, int(horizon))),
+        "series": [(point.year, point.value) for point in points],
+        "start_year": filters.start_year,
+        "version": TREND_CACHE_VERSION,
+    }
+    return _hashed_key("trend-forecast", identity)
+
+
+def _hashed_key(prefix: str, identity: dict[str, Any]) -> str:
     serialized = json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    return f"trend-series-v{TREND_CACHE_VERSION}:{hashlib.sha256(serialized.encode()).hexdigest()}"
+    digest = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+    return f"{prefix}-v{TREND_CACHE_VERSION}:{digest}"
 
 
 def _cache_get(key: str) -> Any:
@@ -210,21 +185,10 @@ def _cache_get(key: str) -> Any:
         return None
 
 
-def _cache_set(key: str, value: tuple[HistoricalPoint, ...]) -> None:
+def _cache_set(key: str, value: Any) -> None:
     if not getattr(cache, "app", None):
         return
     try:
         cache.set(key, value, timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
     except Exception:
         logger.debug("trend_cache_write_failed", exc_info=True)
-
-
-def _source(value: str | None) -> TrendSource:
-    try:
-        return TrendSource(str(value or ""))
-    except ValueError as exc:
-        raise ValueError("invalid_trend_source") from exc
-
-
-def _default_methodology(source: TrendSource) -> str:
-    return "ilga_rainbow_map" if source == TrendSource.ILGA else "fra_lgbtiq_survey"

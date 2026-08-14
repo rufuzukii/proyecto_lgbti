@@ -1,26 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
+from typing import Any, cast
 
 from dash import Dash, dcc
 
-import app.dash_app as dash_app_module
 import app.trends.callbacks as trend_callbacks
 import app.trends.layout as trend_layout
 from app.dash.i18n import ui_text
-from app.dash.layouts import navigation
-from app.trends.analysis import analyze_historical_series
 from app.trends.callbacks import register_trend_callbacks
 from app.trends.charts import build_trend_figure
-from app.trends.data import RANKING_CATEGORY, RANKING_INDICATOR
-from app.trends.models import (
-    HistoricalPoint,
-    SeriesMetadata,
-    TrendAnalysis,
-    TrendIndicator,
-    TrendSource,
-)
+from app.trends.forecasting_service import generate_forecast
+from app.trends.models import HistoricalPoint, TrendScope
 
 
 def _walk(component):
@@ -53,318 +44,204 @@ def _callback(app, name: str):
     )
 
 
-def _metadata() -> SeriesMetadata:
-    return SeriesMetadata(
-        source=TrendSource.ILGA,
-        indicator_id="ranking_total",
-        indicator_label="Ranking total",
-        category="Ranking total",
-        country_code="ES",
-        country_name="España",
-        unit="percentage_score",
-        scale_min=0,
-        scale_max=100,
-        methodology="ilga_rainbow_map",
+def _points(count: int = 12) -> list[HistoricalPoint]:
+    return [
+        HistoricalPoint(
+            year=2011 + index,
+            value=40 + index * 2 + (index % 3),
+            country_code="ES",
+            country_name="Spain",
+            normalization_applied=index < 2,
+            normalization_method="linear_min_max" if index < 2 else "",
+            original_scale_min=(-7 if index == 0 else -12 if index == 1 else None),
+            original_scale_max=(17 if index == 0 else 30 if index == 1 else None),
+            target_scale_min=0 if index < 2 else None,
+            target_scale_max=100 if index < 2 else None,
+        )
+        for index in range(count)
+    ]
+
+
+def _result(count: int = 12):
+    return generate_forecast(
+        _points(count), country_code="ES", country_name="Spain", horizon=2
     )
 
 
-def _point(year: int, value: float) -> HistoricalPoint:
-    return HistoricalPoint(
-        year=year,
-        value=value,
-        source="ilga",
-        indicator_id="ranking_total",
-        country_code="ES",
-        country_name="España",
-        unit="percentage_score",
-        scale_min=0,
-        scale_max=100,
-        methodology="ilga_rainbow_map",
-    )
-
-
-def test_layout_contains_empty_lazy_controls(monkeypatch) -> None:
+def test_layout_only_contains_country_range_and_horizon_controls(monkeypatch) -> None:
     monkeypatch.setattr(trend_layout, "build_navbar", lambda **_kwargs: "")
     layout = trend_layout.build_trends_layout()
     ids = _ids(layout)
 
     assert {
-        "trend-source-select",
-        "trend-category-select",
-        "trend-indicator-select",
         "trend-country-select",
         "trend-year-range",
         "trend-horizon-select",
         "trend-result",
+        "trends-result-loading",
     } <= ids
-    indicator = next(
-        item for item in _walk(layout) if getattr(item, "id", None) == "trend-indicator-select"
-    )
-    assert indicator.value is None
-    assert indicator.options == []
+    assert "trend-source-select" not in ids
+    assert "trend-category-select" not in ids
+    assert "trend-indicator-select" not in ids
     assert "trend-history-graph" not in ids
 
 
-def test_range_slider_uses_a_group_label_instead_of_label_for_a_div() -> None:
+def test_initial_layout_explains_legal_score_and_not_generic_configuration(monkeypatch) -> None:
+    monkeypatch.setattr(trend_layout, "build_navbar", lambda **_kwargs: "")
+    rendered = str(trend_layout.build_trends_layout().to_plotly_json())
+
+    assert "Evoluci" in rendered
+    assert "ILGA-Europe Rainbow Map" in rendered
+    assert "Ranking Total" not in rendered
+
+
+def test_range_slider_uses_group_accessibility_label() -> None:
     field = trend_layout._field(
-        "trends_period",
+        "trends_historical_range",
         dcc.RangeSlider(id="test-trend-range", min=2020, max=2024),
     )
     props = field.to_plotly_json()["props"]
     label = props["children"][0]
-    label_props = label.to_plotly_json()["props"]
 
     assert props["role"] == "group"
     assert props["aria-labelledby"] == "test-trend-range-label"
     assert label.to_plotly_json()["type"] == "Span"
-    assert label_props["id"] == "test-trend-range-label"
-    assert "htmlFor" not in label_props
 
 
-def test_route_and_navigation_register_trends(monkeypatch) -> None:
-    monkeypatch.setattr(dash_app_module, "initialize_mongo_indexes", lambda: None)
-    monkeypatch.setattr(trend_layout, "build_navbar", lambda **_kwargs: "")
-    app = dash_app_module.create_dash_app()
-    display_page = app.callback_map["page-content.children"]["callback"].__wrapped__
-
-    page = display_page("/es/tendencias", None)
-
-    assert "trend-source-select" in _ids(page)
-    assert any(
-        callback.get("callback")
-        and getattr(callback["callback"], "__wrapped__", None)
-        and callback["callback"].__wrapped__.__name__ == "render_trend_analysis"
-        for callback in app.callback_map.values()
-    )
-
+def test_country_callback_uses_database_catalog_and_preserves_iso_value(monkeypatch) -> None:
+    app = Dash("trend-country-test", suppress_callback_exceptions=True)
+    register_trend_callbacks(app)
+    callback = _callback(app, "update_trend_countries")
     monkeypatch.setattr(
-        navigation,
-        "current_user",
-        SimpleNamespace(is_authenticated=False, role="anonymous", user_type=None),
+        trend_callbacks,
+        "get_trend_scope",
+        lambda: TrendScope(countries=(("FR", "France"), ("ES", "Spain")), years=(2024,)),
     )
-    navbar = navigation.build_navbar(active="trends")
-    trends_link = next(
-        item
-        for item in _walk(navbar)
-        if getattr(item, "href", None) == "/es/tendencias"
-    )
-    assert "is-active" in trends_link.className
+
+    options, selected, disabled, placeholder = callback("es", None)
+
+    assert {option["value"] for option in options} == {"ES", "FR"}
+    assert selected is None
+    assert disabled is False
+    assert placeholder == ui_text("trends_select_country", "es")
 
 
-def test_placeholders_switch_between_spanish_and_english() -> None:
-    app = Dash("trend-language-test", suppress_callback_exceptions=True)
+def test_country_control_loads_real_range_and_quality_based_horizons(monkeypatch) -> None:
+    app = Dash("trend-controls-test", suppress_callback_exceptions=True)
     register_trend_callbacks(app)
-    callback = _callback(app, "translate_trend_placeholders")
-
-    assert callback("es")[0] == "Selecciona una fuente"
-    assert callback("en")[0] == "Select a source"
-    assert ui_text("trends_not_enough", "en") == "There is not enough information."
-
-
-def test_trends_only_exposes_ilga_as_projection_source(monkeypatch) -> None:
-    monkeypatch.setattr(trend_layout, "build_navbar", lambda **_kwargs: "")
-    layout = trend_layout.build_trends_layout()
-    source = next(
-        item for item in _walk(layout) if getattr(item, "id", None) == "trend-source-select"
+    range_callback = _callback(app, "update_trend_range")
+    horizon_callback = _callback(app, "update_trend_horizon")
+    monkeypatch.setattr(
+        trend_callbacks,
+        "get_historical_series",
+        lambda _country, _filters=None: _points(12),
     )
 
-    assert [option["value"] for option in source.options] == ["ilga"]
-    assert source.value == "ilga"
-    assert source.clearable is False
-    assert "ILGA-Europe" in str(source.options[0]["label"])
-    assert "situación legal" in str(source.options[0]["label"])
-    assert "legal situation" in str(source.options[0]["label"])
+    minimum, maximum, value, marks, disabled = range_callback("ES")
+    horizons, horizon, horizon_disabled = horizon_callback("ES", value, "en", None)
+
+    assert (minimum, maximum, value) == (2011, 2022, [2011, 2022])
+    assert set(marks) <= set(range(2011, 2023))
+    assert disabled is False
+    assert [option["value"] for option in horizons] == [1, 2, 3]
+    assert horizon == 1
+    assert horizon_disabled is False
 
 
-def test_legal_source_selects_total_ranking_without_loading_category_catalog() -> None:
-    app = Dash("trend-legal-controls-test", suppress_callback_exceptions=True)
-    register_trend_callbacks(app)
-    category_callback = _callback(app, "update_trend_categories")
-    indicator_callback = _callback(app, "update_trend_indicators")
-
-    categories, category, category_disabled = category_callback("ilga", "es")
-    indicators, indicator, indicator_disabled = indicator_callback(
-        "ilga", RANKING_CATEGORY, "en"
-    )
-    decoded = TrendIndicator.from_token(indicator)
-
-    assert categories == [{"label": "Ranking Total", "value": RANKING_CATEGORY}]
-    assert category == RANKING_CATEGORY
-    assert category_disabled is True
-    assert indicators[0]["label"] == "Total ranking"
-    assert decoded.indicator_id == RANKING_INDICATOR
-    assert decoded.category == RANKING_CATEGORY
-    assert indicator_disabled is True
-
-
-def test_trend_callbacks_reject_fra_as_a_projection_source() -> None:
-    app = Dash("trend-source-validation-test", suppress_callback_exceptions=True)
-    register_trend_callbacks(app)
-    category_callback = _callback(app, "update_trend_categories")
-    indicator_callback = _callback(app, "update_trend_indicators")
-
-    assert category_callback("fra", "es") == ([], None, True)
-    assert indicator_callback("fra", "Discrimination", "en") == ([], None, True)
-
-
-
-def test_projection_horizon_uses_the_selected_historical_range(monkeypatch) -> None:
-    app = Dash("trend-horizon-test", suppress_callback_exceptions=True)
+def test_short_selected_range_limits_horizon_to_one_year(monkeypatch) -> None:
+    app = Dash("trend-short-range-test", suppress_callback_exceptions=True)
     register_trend_callbacks(app)
     callback = _callback(app, "update_trend_horizon")
-    all_points = [_point(year, 50 + year - 2020) for year in range(2020, 2025)]
-
-    def filtered_points(_source, _indicator, _country, filters):
-        return [
-            point
-            for point in all_points
-            if (filters.start_year is None or point.year >= filters.start_year)
-            and (filters.end_year is None or point.year <= filters.end_year)
-        ]
-
-    monkeypatch.setattr(trend_callbacks, "get_historical_series", filtered_points)
-
-    two_year_options, two_year_value, two_year_disabled = callback(
-        "ilga", "ranking", "default", "ES", [2020, 2021], "es"
+    monkeypatch.setattr(
+        trend_callbacks,
+        "get_historical_series",
+        lambda _country, _filters=None: _points(4),
     )
-    four_year_options, _, _ = callback("ilga", "ranking", "default", "ES", [2020, 2023], "en")
-    five_year_options, _, _ = callback("ilga", "ranking", "default", "ES", [2020, 2024], "en")
 
-    assert [option["value"] for option in two_year_options] == [1]
-    assert two_year_value == 1
-    assert two_year_disabled is False
-    assert [option["value"] for option in four_year_options] == [1, 2]
-    assert [option["value"] for option in five_year_options] == [1, 2, 3]
+    options, value, disabled = callback("ES", [2011, 2014], "es", 3)
+
+    assert options == [{"label": "1 año", "value": 1}]
+    assert value == 1
+    assert disabled is False
 
 
-def test_result_callback_handles_one_two_and_query_errors(monkeypatch) -> None:
-    app = Dash("trend-result-test", suppress_callback_exceptions=True)
+def test_render_callback_returns_complete_result_and_methodology(monkeypatch) -> None:
+    app = Dash("trend-render-test", suppress_callback_exceptions=True)
     register_trend_callbacks(app)
     callback = _callback(app, "render_trend_analysis")
-    metadata = _metadata()
+    monkeypatch.setattr(trend_callbacks, "generate_trend_analysis", lambda *_args, **_kwargs: _result())
 
-    monkeypatch.setattr(
-        trend_callbacks,
-        "generate_trend_analysis",
-        lambda *_args, **_kwargs: (TrendAnalysis(status="insufficient"), metadata),
+    rendered = callback("ES", [2011, 2022], False, 2, "es")
+    ids = _ids(rendered)
+    text = str(rendered.to_plotly_json())
+
+    assert "trend-history-graph" in ids
+    assert ui_text("trends_projection_method", "es") in text
+    assert ui_text("trends_how_calculated", "es") in text
+    assert "MAE" in text and "RMSE" in text
+    assert ui_text("trends_limitations", "es") in text
+
+
+def test_insufficient_data_keeps_history_but_never_draws_fake_projection(monkeypatch) -> None:
+    result = generate_forecast(
+        _points(2), country_code="ES", country_name="Spain", horizon=3
     )
-    insufficient = callback(
-        "ilga", "Ranking total", "indicator", "default", "ES", [2024, 2024], 1, "es"
+    rendered = trend_callbacks._render_result(result, "en")
+    graph = next(item for item in _walk(rendered) if getattr(item, "id", None) == "trend-history-graph")
+
+    assert result.status == "insufficient"
+    assert len(graph.figure.data) == 1
+    assert ui_text("trends_not_enough_projection", "en") in str(rendered.to_plotly_json())
+
+
+def test_short_valid_series_displays_exploratory_warning() -> None:
+    result = generate_forecast(
+        _points(4), country_code="ES", country_name="Spain", horizon=3
     )
-    assert "No hay información suficiente." in str(insufficient)
-    assert "trend-history-graph" not in _ids(insufficient)
+    rendered = trend_callbacks._render_result(result, "es")
 
-    two_year_analysis = analyze_historical_series(
-        [_point(2023, 50), _point(2024, 60)], metadata, forecast_years=1
-    )
-    monkeypatch.setattr(
-        trend_callbacks,
-        "generate_trend_analysis",
-        lambda *_args, **_kwargs: (two_year_analysis, metadata),
-    )
-    exploratory = callback(
-        "ilga", "Ranking total", "indicator", "default", "ES", [2023, 2024], 1, "en"
-    )
-    assert "trend-history-graph" in _ids(exploratory)
-    assert "exploratory" in str(exploratory).lower()
-    assert "ILGA-Europe's Rainbow Map 2024" in str(exploratory)
-    assert "RainbowLens Datahub" in str(exploratory)
-
-    def fail(*_args, **_kwargs):
-        raise RuntimeError("database unavailable")
-
-    monkeypatch.setattr(trend_callbacks, "generate_trend_analysis", fail)
-    error = callback("ilga", "Ranking total", "indicator", "default", "ES", [2023, 2024], 1, "en")
-    assert "The temporal analysis could not be generated." in str(error)
-    assert "trend-history-graph" not in _ids(error)
+    assert result.exploratory is True
+    assert ui_text("trends_exploratory_warning", "es") in str(rendered.to_plotly_json())
 
 
-def test_chart_distinguishes_observed_and_forecast_in_both_languages() -> None:
-    metadata = _metadata()
-    analysis = analyze_historical_series(
-        [_point(2022, 50), _point(2023, 60), _point(2024, 70)],
-        metadata,
-        forecast_years=2,
-    )
+def test_chart_distinguishes_history_forecast_uncertainty_and_missing_years() -> None:
+    points = _points(10)
+    del points[5]
+    result = generate_forecast(points, country_code="ES", country_name="Spain", horizon=2)
 
-    spanish = build_trend_figure(analysis, metadata, language="es")
-    english = build_trend_figure(analysis, metadata, language="en")
-    spanish_json = spanish.to_plotly_json()
-    english_json = english.to_plotly_json()
+    figure = build_trend_figure(result, language="en")
 
-    assert [trace["name"] for trace in spanish_json["data"]] == [
-        "Datos históricos",
-        "Proyección",
-    ]
-    assert [trace["name"] for trace in english_json["data"]] == [
-        "Historical data",
-        "Projection",
-    ]
-    assert spanish_json["data"][0]["line"].get("dash") in (None, "solid")
-    assert spanish_json["data"][1]["line"]["dash"] == "dash"
-    assert spanish.layout.shapes and spanish.layout.shapes[0].line.dash == "dot"
-    assert spanish.layout.yaxis.range == (0, 100)
+    figure_data = cast(Any, figure.data)
+    assert len(figure_data) == 3
+    historical = figure_data[0]
+    forecast = figure_data[2]
+    assert historical.connectgaps is False
+    assert None in historical.y
+    assert forecast.line.dash == "dash"
+    assert figure.layout.yaxis.range == (0, 100)
+    assert "RainbowLens DataHub" in str(forecast.hovertext)
 
 
-def test_trends_styles_cover_dark_mode_and_mobile() -> None:
-    stylesheet = Path("src/app/dash/assets/trends.css").read_text(encoding="utf-8")
+def test_normalization_note_is_rendered_for_2011_and_2012() -> None:
+    rendered = trend_callbacks._render_result(_result(), "es")
+    notes = [item for item in _walk(rendered) if "trend-normalization-note" in str(getattr(item, "className", ""))]
 
-    assert ':root[data-theme="dark"] .trend-shell' in stylesheet
-    assert "@media (max-width: 640px)" in stylesheet
-    assert ".trend-controls" in stylesheet
-    assert "grid-template-columns: 1fr" in stylesheet
-    assert "overflow-x: clip" in stylesheet
-    assert ".dash-range-slider-min-input" in stylesheet
-    assert ".dash-range-slider-max-input" in stylesheet
-    assert ".dash-slider-tooltip" in stylesheet
-    assert ".dash-slider-mark" in stylesheet
-    assert ".dash-slider-thumb" in stylesheet
-    assert ".dash-slider-track" in stylesheet
-    assert ".dash-slider-range" in stylesheet
+    assert notes
+    text = str(notes[0].to_plotly_json())
+    assert "2011" in text and "2012" in text
 
 
-def test_trends_discloses_normalized_ilga_years_in_both_languages(monkeypatch) -> None:
-    app = Dash("trend-normalization-note-test", suppress_callback_exceptions=True)
-    register_trend_callbacks(app)
-    callback = _callback(app, "render_trend_analysis")
-    metadata = _metadata()
-    normalized_2011 = HistoricalPoint(
-        **{
-            **_point(2011, 79.17).__dict__,
-            "normalization_applied": True,
-            "normalization_method": "linear_min_max",
-            "original_scale_min": -7,
-            "original_scale_max": 17,
-            "target_scale_min": 0,
-            "target_scale_max": 100,
-        }
-    )
-    analysis = analyze_historical_series(
-        [normalized_2011, _point(2013, 77)],
-        metadata,
-        forecast_years=0,
-    )
-    monkeypatch.setattr(
-        trend_callbacks,
-        "generate_trend_analysis",
-        lambda *_args, **_kwargs: (analysis, metadata),
-    )
-
-    spanish = callback(
-        "ilga", "Ranking total", "indicator", "default", "ES", [2011, 2013], 0, "es"
-    )
-    english = callback(
-        "ilga", "Ranking total", "indicator", "default", "ES", [2011, 2013], 0, "en"
-    )
-
-    assert "Nota metodológica" in str(spanish)
-    assert "Escala original: -7 a 17." in str(spanish)
-    assert "Methodological note" in str(english)
-    assert "Original scale: -7 to 17." in str(english)
+def test_loading_message_and_new_methodology_are_translated() -> None:
+    assert ui_text("loading_trends", "es") == "Calculando tendencia..."
+    assert ui_text("loading_trends", "en") == "Calculating trend..."
+    assert ui_text("trends_how_calculated", "en") == "How was this projection calculated?"
+    assert "official" in ui_text("trends_limitations_detail", "en")
 
 
-def test_production_trends_package_contains_no_fixture_data() -> None:
-    package = Path("src/app/trends")
-    assert not list(package.rglob("*.csv"))
-    assert not list(package.rglob("*.json"))
-    assert not list(package.rglob("*fixture*"))
+def test_css_supports_dark_mode_responsive_cards_and_local_table_scroll() -> None:
+    css = Path("src/app/dash/assets/trends.css").read_text(encoding="utf-8")
+
+    assert '[data-theme="dark"] .trend-method-details summary' in css
+    assert ".trend-table-scroll" in css and "overflow-x: auto" in css
+    assert "@media (max-width: 640px)" in css
+    assert ".trend-controls" in css and "grid-template-columns: 1fr" in css

@@ -15,6 +15,7 @@ pymongo==4.17.0
 pydantic==2.13.4
 email-validator==2.3.0
 pandas==3.0.3
+numpy==2.4.6
 geopandas==1.1.4
 PyMuPDF==1.28.0
 Pillow==12.3.0

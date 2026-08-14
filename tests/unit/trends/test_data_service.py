@@ -1,49 +1,24 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 from flask import Flask
 
 import app.analytics.repository as analytics_repository
-import app.trends.data as trend_data
 import app.trends.service as trend_service
 from app.cache import init_cache
-from app.trends.models import (
-    HistoricalPoint,
-    SeriesVariant,
-    TrendFilters,
-    TrendIndicator,
-    TrendSource,
-)
+from app.trends import historical_series
+from app.trends.models import HistoricalPoint, TrendFilters
 
 
-def _indicator(source=TrendSource.ILGA) -> TrendIndicator:
-    return TrendIndicator(
-        source=source,
-        category="Ranking total" if source == TrendSource.ILGA else "Discrimination",
-        indicator_id="ranking_total" if source == TrendSource.ILGA else "D1_1",
-        label="Ranking total" if source == TrendSource.ILGA else "Discrimination [D1_1]",
-        specific_category="" if source == TrendSource.ILGA else "Experiences",
-        question="" if source == TrendSource.ILGA else "Felt discriminated",
-    )
-
-
-def _point(year=2024, value=70.0) -> HistoricalPoint:
+def _point(year: int, value: float, code: str = "ES") -> HistoricalPoint:
     return HistoricalPoint(
         year=year,
         value=value,
-        source="ilga",
-        indicator_id="ranking_total",
-        country_code="ES",
-        country_name="Spain",
-        unit="percentage_score",
-        scale_min=0,
-        scale_max=100,
-        methodology="ilga_rainbow_map",
+        country_code=code,
+        country_name={"ES": "Spain", "FR": "France"}.get(code, code),
     )
 
 
-def test_ilga_loader_reuses_history_service_in_one_call(monkeypatch) -> None:
+def test_loader_gets_all_global_scores_with_one_projected_history_call(monkeypatch) -> None:
     calls = []
 
     def history(category, criterion):
@@ -53,148 +28,108 @@ def test_ilga_loader_reuses_history_service_in_one_call(monkeypatch) -> None:
             {"year": 2023, "country": "Spain", "iso": "ES", "value": 65},
         ]
 
-    monkeypatch.setattr(trend_data, "get_ilga_history_rows", history)
+    monkeypatch.setattr(historical_series, "get_ilga_history_rows", history)
 
-    points = trend_data.load_historical_points(_indicator())
+    points = historical_series.load_ilga_global_history()
 
     assert calls == [("Ranking total", None)]
     assert [(point.year, point.value) for point in points] == [(2022, 60), (2023, 65)]
 
 
-def test_fra_loader_preserves_exact_response_filters_and_year(monkeypatch) -> None:
+def test_loader_keeps_normalization_metadata_without_transforming_value(monkeypatch) -> None:
     monkeypatch.setattr(
-        trend_data,
-        "get_fra_historical_documents",
+        historical_series,
+        "get_ilga_history_rows",
         lambda *_args: [
             {
-                "survey_year": 2023,
-                "metadata": {"methodology_version": "survey-v3", "survey_year": 2023},
-                "answers": [
-                    {
-                        "country": "Spain",
-                        "country_code": "ES",
-                        "answer": "Yes",
-                        "percentage": 42,
-                        "survey_year": 2024,
-                        "filters": [{"type": "Age", "value": "25-39"}],
-                    },
-                    {
-                        "country": "Spain",
-                        "country_code": "ES",
-                        "answer": "No",
-                        "percentage": None,
-                        "filters": [{"type": "All", "value": "All"}],
-                    },
-                ],
+                "year": 2011,
+                "country": "Spain",
+                "iso": "ES",
+                "value": 50,
+                "normalization_applied": True,
+                "normalization_method": "linear_min_max",
+                "original_scale_min": -7,
+                "original_scale_max": 17,
+                "target_scale_min": 0,
+                "target_scale_max": 100,
             }
         ],
     )
 
-    points = trend_data.load_historical_points(_indicator(TrendSource.FRA))
+    point = historical_series.load_ilga_global_history()[0]
 
-    assert points[0].year == 2024
-    assert points[0].response == "Yes"
-    assert points[0].filters == (("Age", "25-39"),)
-    assert points[0].methodology == "survey-v3"
-    assert points[1].year == 2023
-    assert points[1].value is None
+    assert point.value == 50
+    assert point.normalization_applied is True
+    assert (point.original_scale_min, point.original_scale_max) == (-7, 17)
 
 
-def test_fra_repository_queries_exact_question_once_with_projection(monkeypatch) -> None:
-    collection = MagicMock()
-    collection.find.return_value = [{"code": "D1_1", "answers": []}]
-    monkeypatch.setattr(analytics_repository, "_mongo_collection", lambda _name: collection)
-
-    rows = analytics_repository.get_fra_historical_documents.uncached(
-        "D1_1", "Discrimination", "Experiences", "Felt discriminated"
+def test_catalog_is_derived_from_database_rows() -> None:
+    scope = historical_series.build_trend_scope(
+        (_point(2023, 60, "ES"), _point(2024, 65, "ES"), _point(2024, 70, "FR"))
     )
 
-    assert rows == [{"code": "D1_1", "answers": []}]
-    collection.find.assert_called_once()
-    query, projection = collection.find.call_args.args
-    assert query["code"] == "D1_1"
-    assert query["specific_category"] == "Experiences"
-    assert query["question"] == "Felt discriminated"
-    assert projection["answers"] == 1
-    assert projection["metadata"] == 1
+    assert set(scope.countries) == {("ES", "Spain"), ("FR", "France")}
+    assert scope.years == (2023, 2024)
 
 
-def test_series_cache_is_reused_and_shared_invalidation_clears_it(monkeypatch) -> None:
+def test_country_series_filters_real_years_without_interpolation() -> None:
+    points = (_point(2018, 50), _point(2020, 55), _point(2022, 60), _point(2024, 65))
+
+    selected = historical_series.country_series(points, "ES", start_year=2019, end_year=2023)
+
+    assert [point.year for point in selected] == [2020, 2022]
+
+
+def test_dataset_and_country_series_are_cached_until_ilga_invalidation(monkeypatch) -> None:
     app = Flask("trend-cache-test")
     init_cache(app)
     calls = []
 
-    def load(_indicator):
+    def load():
         calls.append("load")
-        return [_point(2023, 60), _point(2024, 70)]
+        return tuple(_point(2011 + index, 40 + index) for index in range(8))
 
-    monkeypatch.setattr(trend_service, "load_historical_points", load)
-    token = _indicator().to_token()
-    filters = TrendFilters(series_key="default")
+    monkeypatch.setattr(trend_service, "load_ilga_global_history", load)
     with app.app_context():
-        first = trend_service.get_historical_series("ilga", token, "ES", filters)
-        second = trend_service.get_historical_series("ilga", token, "ES", filters)
-        analytics_repository.invalidate_analytics_cache()
-        third = trend_service.get_historical_series("ilga", token, "ES", filters)
+        trend_service.invalidate_trend_cache()
+        first = trend_service.get_historical_series("ES")
+        second = trend_service.get_historical_series("ES")
+        analytics_repository.invalidate_analytics_cache("ilga")
+        third = trend_service.get_historical_series("ES")
 
     assert first == second == third
     assert calls == ["load", "load"]
 
 
-def test_empty_series_is_not_cached(monkeypatch) -> None:
-    app = Flask("trend-empty-cache-test")
+def test_forecast_cache_reuses_exact_series_country_range_and_horizon(monkeypatch) -> None:
+    app = Flask("trend-forecast-cache-test")
     init_cache(app)
+    points = tuple(_point(2011 + index, 40 + index) for index in range(10))
     calls = []
+    real_generate = trend_service.generate_forecast
 
-    def load(_indicator):
-        calls.append("load")
-        return []
+    def generate(*args, **kwargs):
+        calls.append("forecast")
+        return real_generate(*args, **kwargs)
 
-    monkeypatch.setattr(trend_service, "load_historical_points", load)
-    token = _indicator().to_token()
+    monkeypatch.setattr(trend_service, "load_ilga_global_history", lambda: points)
+    monkeypatch.setattr(trend_service, "generate_forecast", generate)
     with app.app_context():
         trend_service.invalidate_trend_cache()
-        trend_service.get_historical_series("ilga", token, "ES", TrendFilters(series_key="default"))
-        trend_service.get_historical_series("ilga", token, "ES", TrendFilters(series_key="default"))
+        first = trend_service.generate_trend_analysis("ES", TrendFilters(), forecast_years=2)
+        second = trend_service.generate_trend_analysis("ES", TrendFilters(), forecast_years=2)
+        third = trend_service.generate_trend_analysis("ES", TrendFilters(), forecast_years=3)
 
-    assert calls == ["load", "load"]
-
-
-def test_ilga_series_cache_key_changes_when_database_year_catalog_changes(monkeypatch) -> None:
-    versions = iter(([2026], [2026], [2026, 2025]))
-    monkeypatch.setattr(trend_service, "get_ilga_years", lambda: next(versions))
-    token = _indicator().to_token()
-    filters = TrendFilters(series_key="default")
-
-    first = trend_service._series_cache_key(TrendSource.ILGA, token, "ES", filters)
-    same = trend_service._series_cache_key(TrendSource.ILGA, token, "ES", filters)
-    changed = trend_service._series_cache_key(TrendSource.ILGA, token, "ES", filters)
-
-    assert first == same
-    assert changed != first
+    assert first == second
+    assert third.forecast_horizon == 3
+    assert calls == ["forecast", "forecast"]
 
 
-def test_scope_keeps_variants_separate(monkeypatch) -> None:
-    yes = HistoricalPoint(
-        year=2023,
-        value=50,
-        source="fra",
-        indicator_id="D1_1",
-        country_code="ES",
-        country_name="Spain",
-        response="Yes",
-        filters=(("All", "All"),),
-        unit="percentage",
-        scale_min=0,
-        scale_max=100,
-        methodology="fra_lgbtiq_survey",
-    )
-    no = HistoricalPoint(**{**yes.__dict__, "response": "No", "country_code": "PT"})
-    monkeypatch.setattr(trend_service, "load_historical_points", lambda _indicator: [yes, no])
-    indicator = _indicator(TrendSource.FRA)
-    variant = SeriesVariant(response="Yes", filters=(("All", "All"),))
+def test_country_coverage_reports_real_missing_years(monkeypatch) -> None:
+    points = (_point(2018, 50), _point(2020, 55), _point(2021, 56))
+    monkeypatch.setattr(trend_service, "_historical_dataset", lambda: points)
 
-    scope = trend_service.get_trend_scope(indicator.to_token(), variant.to_token())
+    coverage = trend_service.get_country_coverage()[0]
 
-    assert scope.countries == (("ES", "Spain"),)
-    assert scope.years == (2023,)
+    assert coverage.observations == 3
+    assert coverage.missing_years == (2019,)
