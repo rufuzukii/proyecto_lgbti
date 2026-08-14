@@ -10,11 +10,15 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from app.analytics.geography import (
-    EUROPE_CENTROIDS,
-    ISO2_TO_ISO3,
-    to_iso3_country_code,
+from app.analytics.fra_metadata import (
+    FraCountryState,
+    FraResponseType,
+    detect_fra_response_type,
+    fra_survey_participant_codes,
+    order_fra_responses,
 )
+from app.analytics.geography import ISO2_TO_ISO3
+from app.analytics.geography_service import europe_centroids, prepare_europe_map_data
 from app.analytics.legal_criteria import (
     get_criterion_metadata,
     get_criterion_score_label,
@@ -31,6 +35,7 @@ from app.analytics.statistics.common_layout import apply_base_layout as _apply_b
 from app.analytics.statistics.labels import chart_text as _chart_text
 from app.analytics.statistics.normalization import safe_chart_float as _safe_chart_float
 from app.analytics.statistics.normalization import safe_chart_int as _safe_chart_int
+from app.analytics.statistics_models import StatisticsFilters
 from app.analytics.statistics_normalizers import (
     normalize_country_code,
     normalize_text_key,
@@ -71,9 +76,34 @@ COUNTRY_COLORS = {
 }
 DEFAULT_COUNTRY_COLOR = "#2F6BDE"
 EUROPE_PERCENTAGE_COLORSCALE = [
-    [0.0, "#E8F1FC"],
-    [0.5, "#8AAEE5"],
-    [1.0, "#2F6BDE"],
+    [0.0, "#A9C8F0"],
+    [0.25, "#6092DC"],
+    [0.5, "#376FC5"],
+    [0.75, "#204F9F"],
+    [1.0, "#12376F"],
+]
+EUROPE_MAP_COLORSCALE = [
+    [0.0, MISSING_PERCENTAGE_COLOR],
+    [0.0098, MISSING_PERCENTAGE_COLOR],
+    [0.0099, "#A9C8F0"],
+    [0.1089, "#86AFE7"],
+    [0.2574, "#6092DC"],
+    [0.505, "#376FC5"],
+    [0.7525, "#204F9F"],
+    [1.0, "#12376F"],
+]
+FRA_NO_DATA_COLOR = MISSING_PERCENTAGE_COLOR
+FRA_OUTSIDE_SCOPE_COLOR = "#526477"
+FRA_EUROPE_MAP_COLORSCALE = [
+    [0.0, FRA_OUTSIDE_SCOPE_COLOR],
+    [0.0097, FRA_OUTSIDE_SCOPE_COLOR],
+    [0.0098, FRA_NO_DATA_COLOR],
+    [0.0195, FRA_NO_DATA_COLOR],
+    [0.0196, "#A9C8F0"],
+    [0.2647, "#6092DC"],
+    [0.5098, "#376FC5"],
+    [0.7549, "#204F9F"],
+    [1.0, "#12376F"],
 ]
 YES_RESPONSE_COLOR = "#2E8B57"
 NO_RESPONSE_COLOR = "#C62828"
@@ -191,6 +221,50 @@ def empty_figure(message: str) -> go.Figure:
     return figure
 
 
+def build_statistics_hover(
+    *,
+    country: Any,
+    value: Any,
+    filter_a_name: Any = "All",
+    filter_a_value: Any = "All",
+    filter_b_name: Any = "All",
+    filter_b_value: Any = "All",
+    response: Any = None,
+    source: str = "FRA",
+    language: str = "es",
+    missing_message: str | None = None,
+) -> str:
+    """Build the canonical map hover without changing the selected scope."""
+    value_text = format_percentage(value)
+    lines = [f"<b>{country}</b>"]
+    if value_text:
+        lines.append(f"{ui_text('chart_value', language)}: {value_text}")
+    else:
+        lines.append(missing_message or ui_text("chart_not_enough_information", language))
+
+    if str(source).casefold() == "fra":
+        filters = StatisticsFilters.from_raw(
+            filter_a_name,
+            filter_a_value,
+            filter_b_name,
+            filter_b_value,
+        )
+        if filters.demographic_active:
+            label = taxonomy_label("fra_filter", filters.demographic_type, language)
+            value_label = taxonomy_label("fra_filter_value", filters.demographic_value, language)
+            lines.append(f"{_chart_text(language, 'Filtro', 'Filter')}: {label} — {value_label}")
+        elif filters.identity_active:
+            label = taxonomy_label("fra_filter", filters.identity_type, language)
+            value_label = taxonomy_label("fra_filter_value", filters.identity_value, language)
+            lines.append(f"{_chart_text(language, 'Filtro', 'Filter')}: {label} — {value_label}")
+        else:
+            total = _chart_text(language, "Población total", "Total population")
+            lines.append(f"{_chart_text(language, 'Segmentación', 'Segmentation')}: {total}")
+    elif response:
+        lines.append(f"{_chart_text(language, 'Respuesta', 'Answer')}: {response}")
+    return "<br>".join(lines)
+
+
 def build_europe_choropleth(
     ranking_rows: list[dict[str, Any]],
     *,
@@ -198,17 +272,20 @@ def build_europe_choropleth(
     selected_iso: str | None = None,
     selected_isos: list[str] | None = None,
     language: str = "es",
+    filter_a_name: str | None = "All",
+    filter_a_value: str | None = "All",
+    filter_b_name: str | None = "All",
+    filter_b_value: str | None = "All",
+    response: str | None = None,
+    survey_year: int | None = None,
 ) -> go.Figure:
-    dataframe = pd.DataFrame(ranking_rows)
-    required_columns = {"country", "iso"}
-    if dataframe.empty or not required_columns.issubset(dataframe.columns):
-        return empty_figure("No hay datos cartografiables para los filtros seleccionados.")
-    if "value" not in dataframe.columns:
-        dataframe["value"] = None
-
-    dataframe = dataframe.copy()
-    dataframe["iso"] = dataframe["iso"].astype(str).str.strip().str.upper()
-    dataframe["iso3"] = dataframe["iso"].apply(to_iso3_country_code)
+    is_fra = str(source).casefold() == "fra"
+    has_verified_fra_scope = is_fra and fra_survey_participant_codes(survey_year) is not None
+    geography = prepare_europe_map_data(
+        ranking_rows,
+        fra_survey_year=survey_year if is_fra else None,
+    )
+    dataframe = pd.DataFrame(geography.rows)
     display_values, normalized = prepare_percentage_display_values(
         dataframe["value"].tolist(),
         normalize_when_total_is_not_100=False,
@@ -217,16 +294,28 @@ def build_europe_choropleth(
     )
     dataframe["display_value"] = display_values
     dataframe["display_value_text"] = dataframe["display_value"].apply(format_percentage)
-    valid_values = dataframe["display_value"].dropna()
-    missing_codes = sorted(
-        set(dataframe.loc[dataframe["iso3"].eq(""), "iso"].dropna()).difference(
-            NON_GEOGRAPHIC_CODES
+    if has_verified_fra_scope:
+        in_scope = ~dataframe["survey_state"].eq(
+            FraCountryState.OUTSIDE_SURVEY_SCOPE.value
         )
+        dataframe.loc[in_scope & dataframe["display_value"].isna(), "survey_state"] = (
+            FraCountryState.NO_DATA.value
+        )
+        dataframe.loc[in_scope & dataframe["display_value"].notna(), "survey_state"] = (
+            FraCountryState.HAS_DATA.value
+        )
+    dataframe["iso"] = dataframe["country_code"]
+    dataframe["country"] = dataframe.apply(
+        lambda row: country_labels(row["country_code"], row["country"])[
+            1 if language == "en" else 0
+        ],
+        axis=1,
     )
-    if missing_codes:
+    valid_values = dataframe["display_value"].dropna()
+    if geography.unmatched_codes:
         logger.warning(
             "statistics_map_missing_iso3_codes",
-            extra={"missing_codes": missing_codes, "source": source},
+            extra={"missing_codes": geography.unmatched_codes, "source": source},
         )
     logger.debug(
         "statistics_map_dataframe",
@@ -238,70 +327,98 @@ def build_europe_choropleth(
             "value_nulls": int(dataframe["display_value"].isna().sum()),
             "iso_codes": sorted(dataframe["iso"].dropna().unique().tolist()),
             "normalized": normalized,
+            "geodata_merge_ms": round(geography.merge_ms, 2),
         },
     )
 
-    drawable = dataframe[dataframe["iso3"].ne("") & dataframe["display_value"].notna()]
-    unavailable = dataframe[dataframe["iso3"].ne("") & dataframe["display_value"].isna()]
-    if drawable.empty and unavailable.empty:
-        return empty_figure("No hay países con correspondencia geográfica para esta consulta.")
-
+    unavailable = dataframe[dataframe["display_value"].isna()]
+    outside_scope = dataframe[
+        dataframe["survey_state"].eq(FraCountryState.OUTSIDE_SURVEY_SCOPE.value)
+    ]
+    no_data_message = (
+        ui_text("fra_map_no_data_selection", language)
+        if has_verified_fra_scope
+        else ui_text("chart_not_enough_information", language)
+    )
+    outside_scope_message = ui_text("fra_map_outside_scope_hover", language)
+    dataframe["map_value"] = dataframe["display_value"]
+    if has_verified_fra_scope:
+        dataframe.loc[
+            dataframe["survey_state"].eq(FraCountryState.NO_DATA.value), "map_value"
+        ] = -1.0
+        dataframe.loc[
+            dataframe["survey_state"].eq(FraCountryState.OUTSIDE_SURVEY_SCOPE.value),
+            "map_value",
+        ] = -2.0
+    else:
+        dataframe["map_value"] = dataframe["map_value"].fillna(-1.0)
+    hover_text: list[str] = []
+    for row in dataframe.itertuples(index=False):
+        if (
+            has_verified_fra_scope
+            and row.survey_state == FraCountryState.OUTSIDE_SURVEY_SCOPE.value
+        ):
+            hover_text.append(f"<b>{row.country}</b><br>{outside_scope_message}")
+            continue
+        hover_text.append(
+            build_statistics_hover(
+                country=row.country,
+                value=row.display_value if pd.notna(row.display_value) else None,
+                filter_a_name=filter_a_name,
+                filter_a_value=filter_a_value,
+                filter_b_name=filter_b_name,
+                filter_b_value=filter_b_value,
+                response=response,
+                source=source,
+                language=language,
+                missing_message=no_data_message,
+            )
+        )
+    dataframe["hover_text"] = hover_text
     figure = go.Figure()
-    if not drawable.empty:
-        drawable = drawable.assign(value_label=ui_text("chart_value", language))
-        figure.add_trace(
-            go.Choropleth(
-                locations=drawable["iso3"],
-                locationmode="ISO-3",
-                z=drawable["display_value"],
-                text=drawable["country"],
-                customdata=drawable[["iso", "value_label", "display_value_text"]]
-                .fillna("")
-                .to_numpy(),
-                zmin=0,
-                zmax=100,
-                colorscale=EUROPE_PERCENTAGE_COLORSCALE,
-                marker={"line": {"color": "#ffffff", "width": 0.75}},
-                colorbar={
-                    "title": ui_text("chart_percentage", language),
-                    "ticksuffix": "%",
-                    "thickness": 13,
-                },
-                hovertemplate=(
-                    "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
+    figure.add_trace(
+        go.Choropleth(
+            geojson=geography.geojson,
+            featureidkey="properties.country_code",
+            locations=dataframe["country_code"],
+            z=dataframe["map_value"],
+            text=dataframe["country"],
+            hovertext=dataframe["hover_text"],
+            customdata=dataframe[["iso", "display_value_text", "survey_state"]]
+            .fillna("")
+            .to_numpy(),
+            zmin=-2 if has_verified_fra_scope else -1,
+            zmax=100,
+            colorscale=(
+                FRA_EUROPE_MAP_COLORSCALE if has_verified_fra_scope else EUROPE_MAP_COLORSCALE
+            ),
+            marker={"line": {"color": "#334155", "width": 0.85}},
+            colorbar={
+                "title": ui_text(
+                    "fra_map_percentage_scale"
+                    if has_verified_fra_scope
+                    else "chart_percentage",
+                    language,
                 ),
-            )
+                "ticksuffix": "%",
+                "thickness": 13,
+                "tickvals": [0, 20, 40, 60, 80, 100],
+            },
+            hovertemplate="%{hovertext}<extra></extra>",
         )
-    if not unavailable.empty:
-        unavailable = unavailable.assign(
-            missing_message=ui_text("chart_not_enough_information", language)
-        )
-        figure.add_trace(
-            go.Choropleth(
-                locations=unavailable["iso3"],
-                locationmode="ISO-3",
-                z=[0] * len(unavailable),
-                text=unavailable["country"],
-                customdata=unavailable[["iso", "missing_message"]].fillna("").to_numpy(),
-                zmin=0,
-                zmax=1,
-                colorscale=[[0.0, MISSING_PERCENTAGE_COLOR], [1.0, MISSING_PERCENTAGE_COLOR]],
-                marker={"line": {"color": "#ffffff", "width": 0.75}},
-                showscale=False,
-                hovertemplate="<b>%{text}</b><br>%{customdata[1]}<extra></extra>",
-            )
-        )
+    )
     selected_codes = {
         str(value or "").strip().upper()
         for value in [*(selected_isos or []), selected_iso]
         if str(value or "").strip()
     }
-    selected = dataframe[dataframe["iso"].isin(selected_codes) & dataframe["iso3"].ne("")]
+    selected = dataframe[dataframe["iso"].isin(selected_codes)]
+    centroids = europe_centroids() if not selected.empty else {}
     latitudes: list[float] = []
     longitudes: list[float] = []
     labels: list[str] = []
     for row in selected.itertuples():
-        centroid = EUROPE_CENTROIDS.get(str(row.iso))
+        centroid = centroids.get(str(row.iso))
         if centroid:
             latitude, longitude = centroid
             latitudes.append(latitude)
@@ -314,9 +431,7 @@ def build_europe_choropleth(
                 lon=longitudes,
                 text=labels,
                 customdata=[
-                    [str(row.iso)]
-                    for row in selected.itertuples()
-                    if EUROPE_CENTROIDS.get(str(row.iso))
+                    [str(row.iso)] for row in selected.itertuples() if centroids.get(str(row.iso))
                 ],
                 mode="markers",
                 marker={
@@ -331,6 +446,42 @@ def build_europe_choropleth(
                 showlegend=False,
             )
         )
+    else:
+        figure.add_trace(
+            go.Scattergeo(
+                lat=[],
+                lon=[],
+                text=[],
+                customdata=[],
+                mode="markers",
+                marker={
+                    "size": 13,
+                    "color": "#111827",
+                    "line": {"color": "#ffffff", "width": 2.5},
+                },
+                hovertemplate=(
+                    f"<b>%{{text}}</b><br>"
+                    f"{_chart_text(language, 'Seleccionado', 'Selected')}<extra></extra>"
+                ),
+                showlegend=False,
+            )
+        )
+    if has_verified_fra_scope:
+        for color, label in (
+            (FRA_NO_DATA_COLOR, ui_text("fra_map_no_data", language)),
+            (FRA_OUTSIDE_SCOPE_COLOR, ui_text("fra_map_outside_scope", language)),
+        ):
+            figure.add_trace(
+                go.Scattergeo(
+                    lat=[None],
+                    lon=[None],
+                    mode="markers",
+                    marker={"size": 11, "color": color, "symbol": "square"},
+                    name=label,
+                    hoverinfo="skip",
+                    showlegend=True,
+                )
+            )
     figure.update_layout(
         dragmode=False,
         geo={
@@ -346,9 +497,20 @@ def build_europe_choropleth(
             "bgcolor": PLOTLY_TRANSPARENT,
         },
         uirevision=f"statistics-{source}",
+        legend={
+            "orientation": "h",
+            "x": 0,
+            "xanchor": "left",
+            "y": -0.02,
+            "yanchor": "top",
+            "font": {"size": 11},
+        },
     )
-    _apply_base_layout(figure, margin={"l": 0, "r": 0, "t": 12, "b": 0})
-    if not unavailable.empty:
+    _apply_base_layout(
+        figure,
+        margin={"l": 0, "r": 0, "t": 12, "b": 55 if has_verified_fra_scope else 0},
+    )
+    if not unavailable.empty and not has_verified_fra_scope:
         figure.add_annotation(
             text=ui_text("chart_no_data_grey", language),
             x=0,
@@ -363,12 +525,17 @@ def build_europe_choropleth(
             bordercolor="#d1d5db",
             borderwidth=1,
         )
+    logger.debug(
+        "fra_map_country_states has_data=%d no_data=%d outside_scope=%d",
+        int(dataframe["survey_state"].eq(FraCountryState.HAS_DATA.value).sum()),
+        int(dataframe["survey_state"].eq(FraCountryState.NO_DATA.value).sum()),
+        len(outside_scope),
+    )
     return figure
 
 
 def normalize_percentage(value: Any) -> float | None:
     return coerce_percentage(value)
-
 
 
 def build_fra_response_comparison_chart(
@@ -378,41 +545,54 @@ def build_fra_response_comparison_chart(
     selected_countries: list[str] | None = None,
     selected_response: str | None = None,
     language: str = "es",
+    prepared_data: pd.DataFrame | None = None,
 ) -> go.Figure:
-    dataframe = _response_comparison_dataframe(
-        _append_missing_response_countries(
+    dataframe = (
+        prepared_data
+        if prepared_data is not None
+        else prepare_fra_response_comparison_data(
             data_rows,
             available_countries,
             language=language,
-        ),
-        language=language,
-        localize_countries=True,
+        )
     )
     if dataframe.empty:
         return empty_figure("No hay respuestas comparables para esta pregunta y filtros.")
 
     mode = _response_comparison_mode(dataframe)
     selected_keys = _selected_country_keys(selected_countries)
+    incomplete = _incomplete_numeric_countries(dataframe)
     if mode == "stacked_percentage":
         figure = _build_stacked_response_chart(
             dataframe,
             selected_keys,
             selected_response=selected_response,
             language=language,
+            missing=incomplete,
         )
     elif mode == "missing_numeric":
-        figure = _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
+        figure = _build_missing_numeric_response_chart(
+            dataframe,
+            selected_keys,
+            language=language,
+            missing=incomplete,
+        )
     elif mode == "categorical":
         figure = _build_categorical_response_chart(dataframe, selected_keys, language=language)
     else:
-        figure = _build_numeric_response_chart(dataframe, selected_keys, language=language)
+        figure = _build_numeric_response_chart(
+            dataframe,
+            selected_keys,
+            language=language,
+            missing=incomplete,
+        )
     country_count = int(dataframe["country_key"].nunique())
     _apply_response_details_height(
         figure,
         country_count,
         response_count=int(dataframe["response_key"].nunique()),
     )
-    countries_without_data = int(_incomplete_numeric_countries(dataframe).shape[0])
+    countries_without_data = int(incomplete.shape[0])
     countries_with_data = country_count - countries_without_data
     logger.info(
         "response_details_chart countries_loaded=%d countries_rendered=%d "
@@ -434,21 +614,22 @@ def summarize_response_comparison(
     *,
     available_countries: list[dict[str, Any]] | None = None,
     language: str = "es",
+    prepared_data: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
-    dataframe = _response_comparison_dataframe(
-        _append_missing_response_countries(
+    dataframe = (
+        prepared_data
+        if prepared_data is not None
+        else prepare_fra_response_comparison_data(
             data_rows,
             available_countries,
             language=language,
-        ),
-        language=language,
-        localize_countries=True,
+        )
     )
     if dataframe.empty:
         return {"countries": 0, "responses": 0, "distribution": [], "mode": "empty"}
 
     mode = _response_comparison_mode(dataframe)
-    labels = _response_labels(dataframe)
+    labels = _response_labels(dataframe, language=language)
     distribution: list[dict[str, Any]] = []
     if mode == "stacked_percentage":
         incomplete = _incomplete_numeric_countries(dataframe)
@@ -457,7 +638,11 @@ def summarize_response_comparison(
             dataframe[~dataframe["country_key"].isin(incomplete_keys)]
         )
         normalized = _normalize_percentage_pivot(pivot)
-        means = normalized.mean(axis=0).dropna().sort_values(ascending=False)
+        means = normalized.mean(axis=0).dropna()
+        if detect_fra_response_type(means.index) is FraResponseType.RANKED_REASON:
+            means = means.reindex(order_fra_responses(means.index)).dropna()
+        else:
+            means = means.sort_values(ascending=False)
         distribution = [
             {"label": labels.get(str(key), str(key)), "value": round(float(value), 1), "unit": "%"}
             for key, value in means.items()
@@ -480,6 +665,24 @@ def summarize_response_comparison(
         "distribution": distribution,
         "mode": mode,
     }
+
+
+def prepare_fra_response_comparison_data(
+    data_rows: list[dict[str, Any]],
+    available_countries: list[dict[str, Any]] | None = None,
+    *,
+    language: str = "es",
+) -> pd.DataFrame:
+    """Normalize FRA response rows once for every dashboard consumer."""
+    return _response_comparison_dataframe(
+        _append_missing_response_countries(
+            data_rows,
+            available_countries,
+            language=language,
+        ),
+        language=language,
+        localize_countries=True,
+    )
 
 
 def _append_missing_response_countries(
@@ -515,7 +718,6 @@ def _append_missing_response_countries(
         )
         represented.add(country_key)
     return complete_rows
-
 
 
 def _response_comparison_dataframe(
@@ -559,7 +761,7 @@ def _response_comparison_dataframe(
         dataframe = dataframe[dataframe["response_key"].ne("")]
         if dataframe.empty:
             return pd.DataFrame()
-        label_by_key = _response_labels(dataframe)
+        label_by_key = _response_labels(dataframe, language=language)
         dataframe["response_label"] = dataframe["response_key"].map(label_by_key)
     else:
         dataframe["response_raw"] = "Valor"
@@ -682,14 +884,20 @@ def _build_stacked_response_chart(
     *,
     selected_response: str | None = None,
     language: str = "es",
+    missing: pd.DataFrame | None = None,
 ) -> go.Figure:
-    missing = _incomplete_numeric_countries(dataframe)
+    missing = missing if missing is not None else _incomplete_numeric_countries(dataframe)
     missing_keys = set(missing.get("country_key", pd.Series(dtype=str)).tolist())
     complete_dataframe = dataframe[~dataframe["country_key"].isin(missing_keys)]
     pivot = _response_percentage_pivot(complete_dataframe)
     if pivot.empty:
-        return _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
-    labels = _response_labels(dataframe)
+        return _build_missing_numeric_response_chart(
+            dataframe,
+            selected_keys,
+            language=language,
+            missing=missing,
+        )
+    labels = _response_labels(dataframe, language=language)
     normalized = _normalize_percentage_pivot(pivot)
 
     order = _stacked_country_order(normalized, selected_response=selected_response)
@@ -709,9 +917,11 @@ def _build_stacked_response_chart(
 
     figure = go.Figure()
     indicator_label = _response_indicator_label(dataframe)
-    response_keys = sorted(
-        normalized.columns,
-        key=lambda key: labels.get(str(key), str(key)).casefold(),
+    response_keys = order_fra_responses(
+        sorted(
+            normalized.columns,
+            key=lambda key: labels.get(str(key), str(key)).casefold(),
+        )
     )
     for response_index, response_key in enumerate(response_keys):
         values = normalized[response_key].tolist()
@@ -799,8 +1009,9 @@ def _build_numeric_response_chart(
     selected_keys: set[str],
     *,
     language: str = "es",
+    missing: pd.DataFrame | None = None,
 ) -> go.Figure:
-    missing = _incomplete_numeric_countries(dataframe)
+    missing = missing if missing is not None else _incomplete_numeric_countries(dataframe)
     missing_keys = set(missing.get("country_key", pd.Series(dtype=str)).tolist())
     grouped = dataframe.loc[
         dataframe["numeric_value"].notna() & ~dataframe["country_key"].isin(missing_keys),
@@ -817,7 +1028,12 @@ def _build_numeric_response_chart(
     ].rename(columns={"numeric_value": "value"})
     grouped = grouped.sort_values(["value", "country"], ascending=[True, False])
     if grouped.empty and not missing.empty:
-        return _build_missing_numeric_response_chart(dataframe, selected_keys, language=language)
+        return _build_missing_numeric_response_chart(
+            dataframe,
+            selected_keys,
+            language=language,
+            missing=missing,
+        )
     if grouped.empty:
         return empty_figure("No hay valores numéricos comparables para esta consulta.")
 
@@ -903,8 +1119,9 @@ def _build_missing_numeric_response_chart(
     selected_keys: set[str],
     *,
     language: str,
+    missing: pd.DataFrame | None = None,
 ) -> go.Figure:
-    missing = _incomplete_numeric_countries(dataframe)
+    missing = missing if missing is not None else _incomplete_numeric_countries(dataframe)
     if missing.empty:
         return empty_figure("No hay valores numéricos comparables para esta consulta.")
     figure = go.Figure()
@@ -1035,7 +1252,7 @@ def _add_missing_country_bars(
 def _build_categorical_response_chart(
     dataframe: pd.DataFrame, selected_keys: set[str], *, language: str
 ) -> go.Figure:
-    labels = _response_labels(dataframe)
+    labels = _response_labels(dataframe, language=language)
     country_answers = dataframe.drop_duplicates(["country_key"]).sort_values(
         ["response_label", "country"]
     )[
@@ -1178,13 +1395,21 @@ def _response_country_metadata(dataframe: pd.DataFrame) -> dict[str, dict[str, A
     )
 
 
-def _response_labels(dataframe: pd.DataFrame) -> dict[str, str]:
+def _response_labels(dataframe: pd.DataFrame, *, language: str = "es") -> dict[str, str]:
     labels: dict[str, str] = {}
-    for raw in dataframe.get("response_raw", dataframe.get("response_label", pd.Series(dtype=str))):
+    raw_values = list(
+        dataframe.get("response_raw", dataframe.get("response_label", pd.Series(dtype=str)))
+    )
+    response_type = detect_fra_response_type(raw_values)
+    for raw in raw_values:
         label = " ".join(str(raw or "").strip().split())
         key = _response_key(label)
         if key and key not in labels:
-            labels[key] = label
+            labels[key] = (
+                taxonomy_label("fra_response", label, language)
+                if response_type is FraResponseType.RANKED_REASON
+                else label
+            )
     if not labels and "response_key" in dataframe:
         labels = {str(key): str(key) for key in dataframe["response_key"].dropna().unique()}
     return labels
@@ -1515,7 +1740,6 @@ def _legal_country_universe(
         .drop_duplicates("country_key")
         .reset_index(drop=True)
     )
-
 
 
 def build_europe_distribution_chart(
@@ -1859,9 +2083,7 @@ def build_eu_average_comparison_chart(
                 y=missing["country"],
                 mode="markers",
                 marker={"color": MISSING_PERCENTAGE_COLOR, "symbol": "x", "size": 10},
-                customdata=missing[
-                    ["value_text", "absolute_text", "percentage_text"]
-                ].to_numpy(),
+                customdata=missing[["value_text", "absolute_text", "percentage_text"]].to_numpy(),
                 hovertemplate=(
                     f"<b>%{{y}}</b><br>{value_label}: %{{customdata[0]}}<extra></extra>"
                 ),
@@ -1884,10 +2106,13 @@ def build_response_country_comparison_chart(
     *,
     indicator: str | None = None,
     year: int | str | None = None,
+    prepared_data: pd.DataFrame | None = None,
 ) -> go.Figure:
     """Render dynamic responses on X and one vertical bar per country."""
-    dataframe = _response_comparison_dataframe(
-        detail_rows, language=language, localize_countries=True
+    dataframe = (
+        prepared_data
+        if prepared_data is not None
+        else _response_comparison_dataframe(detail_rows, language=language, localize_countries=True)
     )
     selected_keys = _selected_country_keys(selected_countries)
     if selected_keys and not dataframe.empty:
@@ -1901,8 +2126,10 @@ def build_response_country_comparison_chart(
             )
         )
 
-    response_order = dataframe["response_key"].drop_duplicates().tolist()
-    labels = _response_labels(dataframe)
+    response_order = order_fra_responses(
+        dataframe["response_key"].drop_duplicates().tolist()
+    )
+    labels = _response_labels(dataframe, language=language)
     x_labels = [labels.get(str(key), str(key)) for key in response_order]
     countries = (
         dataframe[["country_key", "country", "iso"]]
@@ -2656,10 +2883,20 @@ def build_combined_heatmap(
             colorbar={"title": "%", "ticksuffix": "%", "thickness": 13},
             text=[[format_percentage(value) or "" for value in row] for row in values],
             texttemplate="%{text}",
+            xgap=3,
+            ygap=2,
             hovertemplate="<b>%{y}</b><br>%{x}: %{z:.2f}%<extra></extra>",
         )
     )
-    _apply_base_layout(figure, margin={"l": 110, "r": 25, "t": 20, "b": 70})
+    figure_height = max(520, min(920, 170 + len(dataframe) * 24))
+    _apply_base_layout(figure, margin={"l": 145, "r": 52, "t": 28, "b": 80})
+    figure.update_layout(
+        autosize=True,
+        height=figure_height,
+        meta={"minimum_width": 680, "responsive": True},
+        xaxis={"automargin": True, "side": "bottom"},
+        yaxis={"automargin": True, "dtick": 1},
+    )
     return figure
 
 

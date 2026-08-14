@@ -49,7 +49,7 @@ def build_navbar(active: str | None = None) -> Component:
                         className="nav-brand-logo nav-brand-logo-desktop",
                     ),
                     html.Img(
-                        src="/assets/img/rainbow_lens_icono.ico",
+                        src="/assets/img/rainbow_lens_icono.png",
                         alt="RainbowLens Datahub",
                         className="nav-brand-logo nav-brand-logo-mobile",
                     ),

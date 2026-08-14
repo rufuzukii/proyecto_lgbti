@@ -44,10 +44,13 @@ def test_radar_fra_repository_uses_one_in_query_and_merges_duplicate_documents(
 
     monkeypatch.setattr(repository, "_mongo_collection", lambda _name: Collection())
 
-    documents = repository.get_fra_indicator_documents.__wrapped__(("G16", "D1_1"))
+    documents = repository.get_fra_indicator_documents.__wrapped__(("G16", "D1_1"), 2023)
 
     assert len(calls) == 1
-    assert calls[0][0] == {"code": {"$in": ["D1_1", "G16"]}}
+    assert calls[0][0] == {
+        "code": {"$in": ["D1_1", "G16"]},
+        "survey_year": 2023,
+    }
     assert [document["code"] for document in documents] == ["D1_1", "G16"]
     assert len(documents[0]["answers"]) == 2
 
@@ -65,8 +68,9 @@ def test_radar_service_batches_queries_and_applies_only_explicit_inversions(
         _fra_document("C20_Any_EB", "Yes", 55),
     ]
 
-    def load_fra(codes: tuple[str, ...]) -> list[dict[str, Any]]:
+    def load_fra(codes: tuple[str, ...], year: int | None) -> list[dict[str, Any]]:
         calls["fra"] += 1
+        assert year == 2024
         assert set(codes) == {"D1_1", "D1_2_f", "C9_E", "C9_C", "G16", "C20_Any_EB"}
         return documents
 
@@ -123,7 +127,7 @@ def test_radar_service_batches_queries_and_applies_only_explicit_inversions(
 def test_radar_service_does_not_turn_missing_scores_into_zero(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.analytics.statistics_service.get_fra_indicator_documents",
-        lambda _codes: [_fra_document("D1_1", "Yes", 20)],
+        lambda _codes, _year: [_fra_document("D1_1", "Yes", 20)],
     )
     monkeypatch.setattr(
         "app.analytics.statistics_service.get_ilga_document_by_year",

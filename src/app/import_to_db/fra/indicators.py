@@ -10,16 +10,37 @@ from app.import_to_db.fra.validation import (
     has_valid_fra_statistic_answer,
     is_valid_fra_category,
 )
-from app.import_to_db.import_log import _resolve_postgres_dsn
+from app.postgres import postgres_connection
 
 
 def upsert_indicators_from_json(file_json: dict[str, Any] | list[Any]) -> int:
     documents = _normalize_documents(file_json)
-    with psycopg.connect(_resolve_postgres_dsn(), row_factory=cast(Any, dict_row)) as conn:
-        for document in documents:
+    catalog_documents = _consolidate_catalog_documents(documents)
+    with postgres_connection(row_factory=cast(Any, dict_row)) as conn:
+        for document in catalog_documents:
             _upsert_indicator(conn, document)
         conn.commit()
     return len(documents)
+
+
+def _consolidate_catalog_documents(
+    documents: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Apply one catalog upsert per code while retaining every response label."""
+    consolidated: dict[str, dict[str, Any]] = {}
+    for document in documents:
+        code = str(document.get("code") or "").strip()
+        if not code:
+            continue
+        current = consolidated.get(code)
+        answers = [answer for answer in document.get("answers", []) if isinstance(answer, dict)]
+        if current is None:
+            consolidated[code] = {**document, "answers": list(answers)}
+            continue
+        combined_answers = [*current.get("answers", []), *answers]
+        current.update(document)
+        current["answers"] = combined_answers
+    return list(consolidated.values())
 
 
 def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> None:

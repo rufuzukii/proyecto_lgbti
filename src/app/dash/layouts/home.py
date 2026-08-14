@@ -215,7 +215,9 @@ def build_home_layout() -> Component:
                         ],
                         className="home-map-stage",
                     ),
-                    build_home_section_navigation(),
+                    build_home_section_navigation(
+                        authenticated=bool(getattr(current_user, "is_authenticated", False))
+                    ),
                 ],
                 className="home-data-shell app-page-container",
             ),

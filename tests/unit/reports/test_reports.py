@@ -378,13 +378,13 @@ def test_report_permissions_are_server_side() -> None:
         SimpleNamespace(is_authenticated=True, role=UserRole.COMMON),
         Permission.GENERATE_REPORTS,
     )
-    assert not user_has_permission(
+    assert user_has_permission(
         SimpleNamespace(is_authenticated=False, role=UserRole.ANONYMOUS),
         Permission.GENERATE_REPORTS,
     )
 
 
-def test_advanced_report_configuration_is_profile_and_server_protected(monkeypatch) -> None:
+def test_advanced_report_configuration_is_public_for_every_profile(monkeypatch) -> None:
     custom = {
         **_configuration().to_dict(),
         "mode": "custom",
@@ -402,10 +402,11 @@ def test_advanced_report_configuration_is_profile_and_server_protected(monkeypat
         ),
     )
     basic = reports_page._report_configuration_for_user(custom)
-    assert basic.mode == "automatic"
-    assert basic.detail_level == "standard"
+    assert basic.mode == "custom"
+    assert basic.detail_level == "detailed"
+    assert basic.sections == ("executive",)
 
-    for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG):
+    for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG, UserType.SOCIOLOGO):
         monkeypatch.setattr(
             reports_page,
             "current_user",
@@ -421,12 +422,12 @@ def test_advanced_report_configuration_is_profile_and_server_protected(monkeypat
         assert advanced.sections == ("executive",)
 
 
-def test_advanced_content_controls_are_disabled_for_common_profile() -> None:
-    panel = reports_page._content_panel(_configuration(), advanced_enabled=False)
+def test_advanced_content_controls_are_available_to_the_public() -> None:
+    panel = reports_page._content_panel(_configuration(), advanced_enabled=True)
     toggle = _component_by_id(panel, "report-advanced-toggle")
     content = _component_by_id(panel, "report-advanced-content")
 
-    assert toggle.disabled is True
+    assert toggle.disabled is False
     assert "is-collapsed" in content.className
     assert content.to_plotly_json()["props"]["aria-hidden"] == "true"
     for identifier in (
@@ -436,10 +437,10 @@ def test_advanced_content_controls_are_disabled_for_common_profile() -> None:
         "report-charts-select",
     ):
         control = _component_by_id(panel, identifier)
-        assert all(option["disabled"] is True for option in control.options)
+        assert all(option["disabled"] is False for option in control.options)
 
 
-def test_authorized_profiles_can_open_and_keep_advanced_options_stable(monkeypatch) -> None:
+def test_every_profile_can_open_and_keep_advanced_options_stable(monkeypatch) -> None:
     app = Dash(__name__, suppress_callback_exceptions=True)
     reports_page.register_reports_callbacks(app)
     callback = next(
@@ -455,7 +456,14 @@ def test_authorized_profiles_can_open_and_keep_advanced_options_stable(monkeypat
             role=UserRole.COMMON,
             user_type=profile,
         )
-        for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG)
+        for profile in (
+            UserType.COMUN,
+            UserType.RRHH,
+            UserType.DOCENTE,
+            UserType.POLITICO,
+            UserType.SOCIOLOGO,
+            UserType.ONG,
+        )
     ]
     authorized_users.append(
         SimpleNamespace(
@@ -483,18 +491,9 @@ def test_authorized_profiles_can_open_and_keep_advanced_options_stable(monkeypat
     monkeypatch.setattr(
         reports_page,
         "current_user",
-        SimpleNamespace(
-            is_authenticated=True,
-            role=UserRole.COMMON,
-            user_type=UserType.COMUN,
-        ),
+        SimpleNamespace(is_authenticated=False, role=UserRole.ANONYMOUS, user_type=None),
     )
-    assert callback(1, False) == (
-        False,
-        "reports-advanced-content is-collapsed",
-        "true",
-        "false",
-    )
+    assert callback(1, False) == (True, "reports-advanced-content", "false", "true")
 
 
 def _component_by_id(component: Any, identifier: str):
@@ -572,6 +571,36 @@ def test_reports_callbacks_register_preview_and_download() -> None:
     assert "report-preview-content.children" in keys
     assert "report-download.data" in keys
     assert "report-config-store.data" in keys
+
+
+def test_profile_template_callback_applies_the_selected_preset(monkeypatch) -> None:
+    app = Dash("profile-report-templates", suppress_callback_exceptions=True)
+    reports_page.register_reports_callbacks(app)
+    callback = next(
+        item["callback"].__wrapped__
+        for item in app.callback_map.values()
+        if getattr(item.get("callback"), "__wrapped__", None)
+        and item["callback"].__wrapped__.__name__ == "apply_selected_report_template"
+    )
+    monkeypatch.setattr(
+        reports_page,
+        "current_user",
+        SimpleNamespace(
+            is_authenticated=True,
+            role=UserRole.COMMON,
+            user_type=UserType.POLITICO,
+        ),
+    )
+
+    result = callback("policy_legal_brief", "es")
+
+    assert result[0] == "Informe de situación y política pública LGBTIQ+"
+    assert result[1] == "ilga"
+    assert result[2] == "custom"
+    assert result[3] == "detailed"
+    assert "recommendations" in result[4]
+    assert "temporal" in result[5]
+    assert "ranking legal" in result[6]
 
 
 def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None:

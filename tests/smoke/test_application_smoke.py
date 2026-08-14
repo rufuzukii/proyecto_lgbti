@@ -18,6 +18,7 @@ PUBLIC_ROUTES = (
     "/es/tendencias",
     "/es/espana",
     "/es/didactica",
+    "/es/informe",
     "/es/acerca-de",
 )
 
@@ -47,7 +48,7 @@ def smoke_app(monkeypatch):
     return dash_app_module.create_dash_app(), record
 
 
-def test_public_pages_login_and_protected_route_smoke(smoke_app) -> None:
+def test_public_pages_resources_and_login_smoke(smoke_app) -> None:
     app, record = smoke_app
     client = app.server.test_client()
 
@@ -55,9 +56,9 @@ def test_public_pages_login_and_protected_route_smoke(smoke_app) -> None:
         response = client.get(route)
         assert response.status_code == 200, route
 
-    protected = client.get("/didactica/docentes/descargar/rights_country_comparison")
-    assert protected.status_code == 302
-    assert "/es/iniciar-sesion" in protected.headers["Location"]
+    resource = client.get("/didactica/docentes/descargar/rights_country_comparison")
+    assert resource.status_code == 200
+    assert resource.mimetype == "application/pdf"
 
     with client.session_transaction() as browser_session:
         browser_session["_csrf_token"] = "smoke-csrf"

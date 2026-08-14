@@ -192,6 +192,7 @@ def test_legacy_scales_keep_json_score_and_add_annual_metadata(
         file_name=f"rainbow-map-{year}.json",
     )
 
+    assert isinstance(payload, dict)
     assert payload["countries"][0]["ranking"] == score
     assert payload["normalization"] == {
         "applied": True,

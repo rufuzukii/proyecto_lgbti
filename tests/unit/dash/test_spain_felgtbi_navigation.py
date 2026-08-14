@@ -48,10 +48,11 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     # Assert
     assert "spain-source-select" not in ids
     assert "spain-category-select" not in ids
-    assert year.value == 2026
+    assert year.to_plotly_json()["props"]["value"] == 2026
     assert isinstance(document, dcc.RadioItems)
-    assert document.value is None
-    assert "spain-selection-control" in document.className
+    document_props = document.to_plotly_json()["props"]
+    assert document_props["value"] is None
+    assert "spain-selection-control" in document_props["className"]
     assert document_label.to_plotly_json()["type"] == "Span"
     assert "htmlFor" not in document_label.to_plotly_json()["props"]
     document_group = next(

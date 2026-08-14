@@ -519,9 +519,7 @@ def build_word_search_layout(*, seed: int | None = None) -> Component:
                                 ),
                             ],
                             className="word-search-board-panel",
-                            **dash_attrs(
-                                {"aria-labelledby": "didactica-word-search-instructions"}
-                            ),
+                            **dash_attrs({"aria-labelledby": "didactica-word-search-instructions"}),
                         ),
                         html.Aside(
                             [
@@ -562,9 +560,13 @@ def build_docente_layout() -> Component:
         {"label": text(item.title.es, item.title.en), "value": item.id} for item in resources
     ]
     first = resources[0]
-    try:
-        custom_games = list_owned_games(current_user)
-    except PyMongoError, RuntimeError:
+    can_manage_games = can_manage_own_edu_games(current_user)
+    if can_manage_games:
+        try:
+            custom_games = list_owned_games(current_user)
+        except PyMongoError, RuntimeError:
+            custom_games = []
+    else:
         custom_games = []
     game_options = [
         {"label": text(item["title_es"], item["title_en"]), "value": item["id"]}
@@ -671,11 +673,7 @@ def build_docente_layout() -> Component:
                                     className="didactica-field",
                                     role="group",
                                     **dash_attrs(
-                                        {
-                                            "aria-labelledby": (
-                                                "didactica-custom-game-type-label"
-                                            )
-                                        }
+                                        {"aria-labelledby": ("didactica-custom-game-type-label")}
                                     ),
                                 ),
                                 *_bilingual_game_fields(),
@@ -703,6 +701,19 @@ def build_docente_layout() -> Component:
                                 ),
                             ],
                             className="didactica-game-editor",
+                        ),
+                    ],
+                    className="didactica-docente-section",
+                )
+                if can_manage_games
+                else html.Section(
+                    [
+                        translated("game_creator", tag=html.H2),
+                        html.P(
+                            text(
+                                "La consulta y descarga son públicas. Inicia sesión con un perfil Docente aprobado para crear y guardar juegos propios.",
+                                "Viewing and downloading are public. Sign in with an approved Educator profile to create and save your own games.",
+                            )
                         ),
                     ],
                     className="didactica-docente-section",

@@ -155,7 +155,7 @@ DASH_INDEX_STRING = """
                 document.documentElement.style.colorScheme = theme;
             })();
         </script>
-        <link rel="icon" href="/assets/img/rainbow_lens_icono.ico">
+        <link rel="icon" type="image/png" href="/assets/img/rainbow_lens_icono.png">
         {%css%}
     </head>
     <body>
@@ -209,10 +209,13 @@ def create_dash_app() -> Dash:
     )
     init_cache(app.server)
     register_health_endpoint(app.server)
-    try:
-        initialize_mongo_indexes()
-    except Exception:
-        logger.warning("mongo_index_initialization_failed", exc_info=True)
+    if _mongo_indexes_on_startup(config.local_mode):
+        try:
+            initialize_mongo_indexes()
+        except Exception:
+            logger.warning("mongo_index_initialization_failed", exc_info=True)
+    else:
+        logger.info("mongo_index_initialization_skipped run_with=python_-m_app.mongo_indexes")
     _register_error_routes(app)
 
     login_manager = LoginManager()
@@ -297,36 +300,18 @@ def _build_page_for_route(
     if route_id == "word_search":
         return build_word_search_layout()
     if route_id == "games":
-        if not current_user.is_authenticated:
-            return build_login_layout(next_path=route_path("games", language))
         if not user_has_permission(current_user, Permission.PLAY_EDU_GAMES):
             return build_didactica_access_denied_layout()
         return build_games_layout(_first_param(params, "game"))
     if route_id == "educators":
-        if not current_user.is_authenticated:
-            return build_login_layout(next_path=route_path("educators", language))
         if not can_access_docente_material(current_user):
             return build_didactica_access_denied_layout()
-        if not _is_email_verified(current_user):
-            return build_verification_required_layout()
         return build_docente_layout()
     if route_id == "progress":
         if not current_user.is_authenticated:
             return build_login_layout(next_path=route_path("progress", language))
         return build_progress_layout()
     if route_id == "reports":
-        if not current_user.is_authenticated:
-            report_path = route_path("reports", language)
-            requested_report = _safe_next(f"{report_path}{search or ''}", report_path)
-            return dcc.Location(
-                href=(
-                    f"{route_path('login', language)}?"
-                    f"{urlencode({'next': requested_report, 'notice': 'report_login_required'})}"
-                ),
-                id="reports-login-redirect",
-            )
-        if not _is_email_verified(current_user):
-            return build_verification_required_layout()
         if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
             return build_reports_access_denied_layout()
         return build_reports_layout(_report_params(params), default_language=language)
@@ -347,9 +332,7 @@ def _build_page_for_route(
                 privacy_error=_first_param(params, "privacy_error"),
             )
         return build_login_layout(
-            next_path=_safe_next(
-                _first_param(params, "next"), route_path("profile", language)
-            ),
+            next_path=_safe_next(_first_param(params, "next"), route_path("profile", language)),
             error_code=_first_param(params, "error"),
             notice_code=_first_param(params, "notice"),
         )
@@ -357,9 +340,7 @@ def _build_page_for_route(
         if current_user.is_authenticated:
             return build_user_page_layout()
         return build_register_layout(
-            next_path=_safe_next(
-                _first_param(params, "next"), route_path("profile", language)
-            ),
+            next_path=_safe_next(_first_param(params, "next"), route_path("profile", language)),
             error_code=_first_param(params, "error"),
         )
     if route_id == "verify_email":
@@ -422,7 +403,6 @@ def _build_page_for_route(
             privacy_error=_first_param(params, "privacy_error"),
         )
     return build_error_layout("404", language=language)
-
 
 
 def _build_application_shell() -> Component:
@@ -528,24 +508,16 @@ def _build_application_shell() -> Component:
                                         "data-i18n-aria-label-es": (
                                             "Enlaces de privacidad y contacto"
                                         ),
-                                        "data-i18n-aria-label-en": (
-                                            "Privacy and contact links"
-                                        ),
+                                        "data-i18n-aria-label-en": ("Privacy and contact links"),
                                     }
                                 ),
                             ),
                             html.Span(
-                                ui_text("footer_copyright", "es").format(
-                                    year=utc_today().year
-                                ),
+                                ui_text("footer_copyright", "es").format(year=utc_today().year),
                                 className="site-footer-copyright",
                                 **text_attrs(
-                                    ui_text("footer_copyright", "es").format(
-                                        year=utc_today().year
-                                    ),
-                                    ui_text("footer_copyright", "en").format(
-                                        year=utc_today().year
-                                    ),
+                                    ui_text("footer_copyright", "es").format(year=utc_today().year),
+                                    ui_text("footer_copyright", "en").format(year=utc_today().year),
                                 ),
                             ),
                         ],
@@ -838,7 +810,7 @@ def _register_auth_routes(app: Dash) -> None:
                 verification_token,
                 _navigation_language(next_path),
             )
-        except (AccountSecurityStorageError, MailDeliveryError):
+        except AccountSecurityStorageError, MailDeliveryError:
             logger.exception("verification_email_delivery_failed")
             delivery_status = "delivery_failed"
         rate_limiter.reset(rate_key)
@@ -856,7 +828,7 @@ def _register_auth_routes(app: Dash) -> None:
                 record_security_event(record.id, "email_verified")
             except AccountSecurityStorageError:
                 logger.exception("email_verification_audit_failed")
-        except (AccountSecurityStorageError, UserStorageError):
+        except AccountSecurityStorageError, UserStorageError:
             logger.exception("email_verification_failed")
             return _redirect("/verify-email", status="invalid")
         return _redirect("/verify-email", status="verified")
@@ -878,7 +850,7 @@ def _register_auth_routes(app: Dash) -> None:
                     )
                     send_verification_email(record.email, token, _navigation_language())
                 verification_limiter.record_failure(rate_key)
-            except (AccountSecurityStorageError, MailDeliveryError, UserStorageError):
+            except AccountSecurityStorageError, MailDeliveryError, UserStorageError:
                 logger.exception("verification_resend_failed")
         return _redirect("/verify-email", status="sent")
 
@@ -899,7 +871,7 @@ def _register_auth_routes(app: Dash) -> None:
                     )
                     send_password_reset_email(record.email, token, _navigation_language())
                 recovery_limiter.record_failure(rate_key)
-            except (AccountSecurityStorageError, MailDeliveryError, UserStorageError):
+            except AccountSecurityStorageError, MailDeliveryError, UserStorageError:
                 logger.exception("password_reset_request_failed")
         return _redirect("/forgot-password", status="sent")
 
@@ -923,7 +895,7 @@ def _register_auth_routes(app: Dash) -> None:
                 recovery_limiter.record_failure(rate_key)
                 return _redirect("/reset-password", error="invalid_token")
             set_user_password(user_id=user_id, new_password=password)
-        except (AccountSecurityStorageError, UserStorageError):
+        except AccountSecurityStorageError, UserStorageError:
             logger.exception("password_reset_failed")
             return _redirect("/reset-password", error="storage")
         recovery_limiter.reset(rate_key)
@@ -974,7 +946,7 @@ def _register_auth_routes(app: Dash) -> None:
                     ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
                 )
                 send_verification_email(updated.email, token, _navigation_language())
-            except (AccountSecurityStorageError, MailDeliveryError):
+            except AccountSecurityStorageError, MailDeliveryError:
                 logger.exception("profile_verification_email_failed")
                 delivery_status = "delivery_failed"
             return _redirect("/verify-email", status=delivery_status)
@@ -1081,11 +1053,11 @@ def _register_auth_routes(app: Dash) -> None:
                     return _redirect("/admin/imports", error="import_not_found")
                 if pending_import.file_json is None:
                     return _redirect("/admin/imports", error="invalid_json_payload")
-                _insert_approved_import(
+                imported_source = _insert_approved_import(
                     pending_import.file_json,
                     original_filename=pending_import.file_name,
                 )
-                invalidate_analytics_cache()
+                invalidate_analytics_cache(imported_source)
                 delete_import_log(import_id)
             except ValueError as exc:
                 return _redirect("/admin/imports", error=str(exc))
@@ -1095,7 +1067,6 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/admin/imports", status="import_inserted")
 
         return _redirect("/admin/imports", error="storage")
-
 
 
 def _register_privacy_routes(app: Dash) -> None:
@@ -1181,15 +1152,7 @@ def _register_privacy_routes(app: Dash) -> None:
 def _register_docente_routes(app: Dash) -> None:
     @app.server.get("/didactica/docentes/descargar/<resource_id>")
     def download_docente_resource_direct(resource_id: str):
-        if not current_user.is_authenticated:
-            language = _navigation_language()
-            return redirect(
-                f"{route_path('login', language)}?"
-                f"{urlencode({'next': route_path('educators', language)})}"
-            )
         if not can_access_docente_material(current_user):
-            abort(403)
-        if not _is_email_verified(current_user):
             abort(403)
         language = "en" if request.args.get("lang") == "en" else "es"
         try:
@@ -1223,7 +1186,7 @@ def _insert_approved_import(
     file_json: dict | list,
     *,
     original_filename: str | None = None,
-) -> None:
+) -> str:
     documents = file_json if isinstance(file_json, list) else [file_json]
     if not documents or not all(isinstance(document, dict) for document in documents):
         raise ValueError("invalid_json_payload")
@@ -1238,19 +1201,19 @@ def _insert_approved_import(
 
         upsert_indicators_from_json(file_json)
         insert_indicator_fra_json(file_json)
-        return
+        return "fra"
     if datasets == {"ilga_rainbow_map"}:
         from app.import_to_db.ilga import insert_indicator_ilga_json
 
         insert_indicator_ilga_json(file_json)
-        return
+        return "ilga"
     if sources == {"felgtbi_estado_lgtbi"}:
         from app.import_to_db.felgtbi import insert_indicator_felgtbi_json
         from app.import_to_db.fra import upsert_indicators_from_json
 
         upsert_indicators_from_json(file_json)
         insert_indicator_felgtbi_json(file_json, original_filename=original_filename)
-        return
+        return "felgtbi"
     raise ValueError("unsupported_import_dataset")
 
 
@@ -1281,13 +1244,21 @@ def _first_param(params: dict[str, list[str]], name: str) -> str | None:
 def _positive_int(value: str | None, *, default: int) -> int:
     try:
         return max(1, int(value or default))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
+
+
+def _mongo_indexes_on_startup(local_mode: bool) -> bool:
+    configured = os.getenv("MONGO_ENSURE_INDEXES_ON_STARTUP")
+    if configured is None:
+        return local_mode
+    return configured.strip().casefold() in {"1", "true", "yes", "on"}
 
 
 def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
     allowed = {
         "source",
+        "template_id",
         "category",
         "indicator_id",
         "indicator_label",

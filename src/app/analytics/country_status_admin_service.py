@@ -67,7 +67,7 @@ def save_country_lgbti_status(
 
     try:
         upsert_country_lgbti_status_record(record)
-        invalidate_analytics_cache()
+        invalidate_analytics_cache("country_status")
     except Exception as exc:
         logger.exception(
             "country_lgbti_status_save_failed",
@@ -101,7 +101,7 @@ def delete_country_lgbti_status(
 
     try:
         deactivate_country_lgbti_status_record(clean_code, clean_year)
-        invalidate_analytics_cache()
+        invalidate_analytics_cache("country_status")
         logger.info(
             "country_lgbti_status_deactivated",
             extra={"country_code": clean_code, "year": clean_year},

@@ -134,10 +134,16 @@ def test_navbar_exposes_an_accessible_collapsible_mobile_menu(monkeypatch) -> No
         for component in components
         if "nav-brand-logo-mobile" in getattr(component, "className", "")
     )
+    desktop_logo = next(
+        component
+        for component in components
+        if "nav-brand-logo-desktop" in getattr(component, "className", "")
+    )
 
     toggle_props = toggle.to_plotly_json()["props"]
     menu_props = menu.to_plotly_json()["props"]
     mobile_logo_props = mobile_logo.to_plotly_json()["props"]
+    desktop_logo_props = desktop_logo.to_plotly_json()["props"]
     assert toggle_props["aria-controls"] == "primary-navigation"
     assert toggle_props["aria-expanded"] == "false"
     assert toggle_props["data-nav-menu-toggle"] == "true"
@@ -145,7 +151,8 @@ def test_navbar_exposes_an_accessible_collapsible_mobile_menu(monkeypatch) -> No
     assert toggle_props["data-i18n-aria-label-en"] == "Open menu"
     assert _props(navbar)["data-i18n-aria-label-en"] == "Primary navigation"
     assert menu_props["className"] == "nav-menu"
-    assert mobile_logo_props["src"].endswith("rainbow_lens_icono.ico")
+    assert mobile_logo_props["src"].endswith("rainbow_lens_icono.png")
+    assert desktop_logo_props["src"].endswith("rainbow_lens_logo.png")
     assert mobile_logo_props["alt"] == "RainbowLens Datahub"
 
 

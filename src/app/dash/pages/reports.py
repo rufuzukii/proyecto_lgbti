@@ -26,6 +26,7 @@ from app.auth.permissions import (
     user_has_permission,
 )
 from app.auth.rate_limit import create_rate_limiter
+from app.dash.components.loading import contextual_loading
 from app.dash.i18n import (
     attribute_attrs,
     country_labels,
@@ -48,6 +49,12 @@ from app.reports.service import (
     ReportGenerationError,
     build_report,
     generate_report_pdf,
+)
+from app.reports.templates import (
+    ReportTemplate,
+    apply_template_defaults,
+    find_report_template,
+    report_templates_for_user,
 )
 from app.taxonomy import taxonomy_pair
 
@@ -130,6 +137,10 @@ def build_reports_layout(
     assert_analytics_databases_available()
     values = {**(initial_values or {})}
     values.setdefault("language", default_language)
+    language = "en" if values.get("language") == "en" else "es"
+    templates = report_templates_for_user(current_user)
+    selected_template = find_report_template(current_user, str(values.get("template_id") or ""))
+    values = apply_template_defaults(values, selected_template, language=language)
     if current_user.is_authenticated:
         values.setdefault("organization", getattr(current_user, "organization", "") or "")
         values.setdefault("author", getattr(current_user, "username", "") or "")
@@ -197,6 +208,8 @@ def build_reports_layout(
                                 category,
                                 indicators,
                                 country_options,
+                                templates,
+                                selected_template,
                             ),
                             _content_panel(
                                 config,
@@ -232,7 +245,7 @@ def build_reports_layout(
                         ],
                         className="reports-actions",
                     ),
-                    dcc.Loading(
+                    contextual_loading(
                         html.Section(
                             [
                                 html.Div(
@@ -251,7 +264,8 @@ def build_reports_layout(
                             ],
                             className="reports-preview-shell",
                         ),
-                        type="circle",
+                        "generating_report",
+                        element_id="report-preview-loading",
                     ),
                 ],
                 className="reports-shell app-page-container",
@@ -295,6 +309,32 @@ def register_reports_callbacks(app: Dash) -> None:
         window_seconds=max(60, int(os.getenv("REPORT_RATE_WINDOW_SECONDS", "3600"))),
         namespace="report-downloads",
     )
+
+    @app.callback(
+        Output("report-title-input", "value"),
+        Output("report-source-select", "value"),
+        Output("report-mode-select", "value"),
+        Output("report-detail-select", "value"),
+        Output("report-sections-select", "value"),
+        Output("report-charts-select", "value"),
+        Output("report-template-description", "children"),
+        Input("report-template-select", "value"),
+        Input("report-language-select", "value"),
+        prevent_initial_call=True,
+    )
+    def apply_selected_report_template(template_id: str | None, language: str | None):
+        clean_language = "en" if language == "en" else "es"
+        template = find_report_template(current_user, template_id)
+        defaults = template.defaults(clean_language)
+        return (
+            defaults["title"],
+            defaults["source"],
+            defaults["mode"],
+            defaults["detail_level"],
+            defaults["sections"],
+            defaults["charts"],
+            template.description(clean_language),
+        )
 
     @app.callback(
         Output("report-advanced-open-store", "data"),
@@ -390,6 +430,7 @@ def register_reports_callbacks(app: Dash) -> None:
         Output("report-download-button", "disabled"),
         Input("report-preview-button", "n_clicks"),
         State("report-title-input", "value"),
+        State("report-template-select", "value"),
         State("report-organization-input", "value"),
         State("report-author-input", "value"),
         State("report-source-select", "value"),
@@ -419,6 +460,7 @@ def register_reports_callbacks(app: Dash) -> None:
     def preview_report(
         _clicks: int | None,
         title: str | None,
+        template_id: str | None,
         organization: str | None,
         author: str | None,
         source: str | None,
@@ -449,7 +491,7 @@ def register_reports_callbacks(app: Dash) -> None:
                 no_update,
                 True,
             )
-        limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="report-preview")
+        limiter_key = rate_limit_key(subject=_current_user_id(), scope="report-preview")
         if preview_rate_limiter.is_blocked(limiter_key):
             return (
                 no_update,
@@ -471,6 +513,7 @@ def register_reports_callbacks(app: Dash) -> None:
             charts = list(DEFAULT_REPORT_CHARTS)
         config = _configuration_from_controls(
             title=title,
+            template_id=template_id,
             organization=organization,
             author=author,
             source=source,
@@ -550,7 +593,7 @@ def register_reports_callbacks(app: Dash) -> None:
                 ),
                 "reports-status reports-status-error",
             )
-        limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="report-download")
+        limiter_key = rate_limit_key(subject=_current_user_id(), scope="report-download")
         if download_rate_limiter.is_blocked(limiter_key):
             return (
                 no_update,
@@ -607,12 +650,35 @@ def _configuration_panel(
     category: str,
     indicators: list[dict[str, Any]],
     country_options: list[dict[str, Any]],
+    templates: tuple[ReportTemplate, ...],
+    selected_template: ReportTemplate,
 ) -> Component:
     return html.Section(
         [
             html.H2(
                 ui_text_component("report_configuration"),
                 className="reports-section-title",
+            ),
+            _field(
+                "Plantilla para tu perfil",
+                "Template for your profile",
+                dcc.Dropdown(
+                    id="report-template-select",
+                    options=[
+                        {
+                            "label": text(template.name_es, template.name_en),
+                            "value": template.id,
+                        }
+                        for template in templates
+                    ],
+                    value=selected_template.id,
+                    clearable=False,
+                ),
+            ),
+            html.P(
+                text(selected_template.description_es, selected_template.description_en),
+                id="report-template-description",
+                className="reports-template-description",
             ),
             _field(
                 "Título",
@@ -1088,6 +1154,11 @@ def _configuration_from_controls(**values: Any) -> ReportConfiguration:
             "countries": countries,
         }
     )
+
+
+def _current_user_id() -> str:
+    get_id = getattr(current_user, "get_id", None)
+    return str(get_id() or "") if callable(get_id) else ""
 
 
 def _year_options(source: str) -> list[dict[str, Any]]:

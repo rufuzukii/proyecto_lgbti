@@ -659,6 +659,44 @@
   grid-column: 1 / -1;
 }
 
+.stats-heatmap-panel {
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+}
+
+.stats-chart-horizontal-scroll {
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+}
+
+.stats-heatmap-panel .stats-chart-horizontal-scroll > .stats-chart-graph {
+  min-width: min(680px, 100%);
+}
+
+.stats-response-help {
+  background: color-mix(in srgb, var(--stats-card-bg) 86%, #6092dc);
+  border: 1px solid color-mix(in srgb, var(--stats-card-border) 65%, #6092dc);
+  border-radius: 0.75rem;
+  color: var(--color-text);
+  grid-column: 1 / -1;
+  line-height: 1.5;
+  margin-top: 0.25rem;
+  padding: 0.85rem 1rem;
+}
+
+.stats-response-help p {
+  margin: 0.35rem 0 0.45rem;
+}
+
+.stats-response-help ul {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
 .stats-ranking-panel,
 .stats-response-comparison-section,
 .stats-response-panel,
@@ -1092,6 +1130,18 @@
   padding-bottom: 0;
 }
 
+.stats-identity-segmentation.is-disabled {
+  background: color-mix(in srgb, var(--panel-muted) 58%, var(--panel-bg));
+  border: 1px dashed color-mix(in srgb, var(--stats-border) 84%, transparent);
+  border-radius: 14px;
+  padding: 1rem;
+}
+
+.stats-identity-segmentation.is-disabled .stats-segmentation-row-heading,
+.stats-identity-segmentation.is-disabled .stats-filter-field {
+  cursor: not-allowed;
+}
+
 .stats-segmentation-row-heading {
   padding-bottom: 0.1rem;
 }
@@ -1166,9 +1216,9 @@
 .dash-options-list-option:has(.stats-radio-card-input:disabled) .stats-radio-card-label {
   background: color-mix(in srgb, var(--panel-muted) 58%, var(--panel-bg));
   border-color: color-mix(in srgb, var(--stats-border) 68%, transparent);
-  color: color-mix(in srgb, var(--stats-text-muted) 62%, transparent);
+  color: var(--stats-text-muted);
   cursor: not-allowed;
-  opacity: 0.62;
+  opacity: 0.82;
 }
 
 .dash-options-list-option:has(.stats-radio-card-input:disabled) .stats-radio-card-label::before {
@@ -1559,6 +1609,12 @@ body[data-theme="dark"] .stats-status {
   border-color: var(--stats-card-border);
 }
 
+body[data-theme="dark"] .stats-response-help {
+  background: color-mix(in srgb, var(--stats-card-bg) 82%, #376fc5);
+  border-color: color-mix(in srgb, var(--stats-card-border) 58%, #86afe7);
+  color: var(--color-text);
+}
+
 body[data-theme="dark"] .stats-create-report-link,
 body[data-theme="dark"] .stats-create-report-link:hover,
 body[data-theme="dark"] .stats-create-report-link:focus-visible,
@@ -1802,8 +1858,13 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
 
   .stats-response-detail-scroll,
   .stats-response-comparison-scroll,
-  .stats-temporal-chart-scroll {
+  .stats-temporal-chart-scroll,
+  .stats-chart-horizontal-scroll {
     -webkit-overflow-scrolling: touch;
+  }
+
+  .stats-heatmap-panel .stats-chart-horizontal-scroll > .stats-chart-graph {
+    min-width: 680px;
   }
 
   .stats-temporal-country-list {

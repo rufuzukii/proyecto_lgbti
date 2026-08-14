@@ -10,6 +10,11 @@ from typing import Any, cast
 
 import pandas as pd
 
+from app.analytics.fra_metadata import (
+    RESPONSE_TYPES,
+    detect_fra_response_type,
+    order_fra_responses,
+)
 from app.analytics.legal_criteria import get_criterion_status
 from app.analytics.percentage_display import (
     coerce_percentage,
@@ -17,7 +22,9 @@ from app.analytics.percentage_display import (
 )
 from app.analytics.repository import (
     ANALYTICS_CACHE_TIMEOUT_SECONDS,
+    analytics_cache_generation,
     get_fra_indicator_answers,
+    get_fra_indicator_control_document,
     get_fra_indicator_documents,
     get_ilga_analysis_rows,
     get_ilga_document_by_year,
@@ -29,7 +36,10 @@ from app.analytics.statistics_models import (
     ExperienceLegalRadarQuery,
     FraStatisticsQuery,
     IlgaStatisticsQuery,
+    StatisticsFilters,
+    normalize_fra_query,
     validate_fra_query,
+    validate_statistics_filter_combination,
 )
 from app.analytics.statistics_normalizers import (
     display_option,
@@ -43,10 +53,7 @@ from app.cache import cache
 from app.ilga_metadata import normalized_ilga_source_scale
 
 logger = logging.getLogger(__name__)
-NO_DATA_MESSAGE = (
-    "No hay datos disponibles para esta combinación de país, indicador y filtros. "
-    "Prueba a seleccionar All en uno de los grupos o utiliza una segmentación menos específica."
-)
+NO_DATA_MESSAGE = "No hay datos disponibles para esta selección."
 
 RADAR_MAPPING_VERSION = "fra-ilga-v1"
 ILGA_RESPONSE_ORDER = {
@@ -163,9 +170,7 @@ def fra_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
                 "answer_label": normalize_filter_value(answer_value),
                 "percentage": percentage,
                 "year": _extract_year(
-                    answer.get("survey_year")
-                    or document.get("survey_year")
-                    or answer.get("date")
+                    answer.get("survey_year") or document.get("survey_year") or answer.get("date")
                 ),
                 "filters": filters,
                 "filter_a": _first_matching_filter(filters, FRA_FILTER_GROUP_A),
@@ -431,39 +436,6 @@ def build_fra_filter_type_options(
     return options
 
 
-def build_fra_default_filter_types(document: dict[str, Any] | None) -> tuple[str, str]:
-    dataframe = fra_document_to_dataframe(document)
-    if dataframe.empty:
-        return "All", "All"
-    if _has_exact_filter_labels(dataframe, "All", "All"):
-        return "All", "All"
-
-    for filter_type in FRA_FILTER_GROUP_B[1:]:
-        if _has_rows_with_filter_types(dataframe, filter_a_type=None, filter_b_type=filter_type):
-            return "All", filter_type
-    for filter_type in FRA_FILTER_GROUP_A[1:]:
-        if _has_rows_with_filter_types(dataframe, filter_a_type=filter_type, filter_b_type=None):
-            return filter_type, "All"
-
-    present_a = [
-        filter_type
-        for filter_type in FRA_FILTER_GROUP_A[1:]
-        if filter_type in _present_filter_types(dataframe)
-    ]
-    present_b = [
-        filter_type
-        for filter_type in FRA_FILTER_GROUP_B[1:]
-        if filter_type in _present_filter_types(dataframe)
-    ]
-    for filter_a_type in present_a:
-        for filter_b_type in present_b:
-            if _has_rows_with_filter_types(
-                dataframe, filter_a_type=filter_a_type, filter_b_type=filter_b_type
-            ):
-                return filter_a_type, filter_b_type
-    return "All", "All"
-
-
 def build_fra_filter_value_options(
     document: dict[str, Any] | None,
     filter_type: str | None,
@@ -489,11 +461,16 @@ def build_fra_filter_value_options(
     ] or [display_option("All", "All", disabled=True)]
 
 
-
 def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]:
     """Derive all FRA control options without constructing a pandas DataFrame."""
     if not isinstance(document, dict):
-        return {"answers": [], "segmentations": [], "values": {}}
+        return {
+            "answers": [],
+            "segmentations": [],
+            "values": {},
+            "response_type": "standard",
+            "response_help": None,
+        }
 
     answer_values: dict[str, str] = {}
     filter_values: dict[str, dict[str, str]] = {}
@@ -513,9 +490,17 @@ def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]
                 str(raw_value), normalize_filter_value(raw_value)
             )
 
+    response_type = detect_fra_response_type(
+        answer_values,
+        question=document.get("question"),
+        specific_category=document.get("specific_category"),
+    )
+    ordered_answer_values = order_fra_responses(
+        sorted(answer_values, key=lambda value: answer_values[value].casefold()),
+        response_type=response_type,
+    )
     answers = [
-        {"label": label, "value": value}
-        for value, label in sorted(answer_values.items(), key=lambda item: item[1].casefold())
+        {"label": answer_values[value], "value": value} for value in ordered_answer_values
     ]
     ordered_types = ["All", *FRA_FILTER_GROUP_A[1:], *FRA_FILTER_GROUP_B[1:]]
     segmentations = [
@@ -532,19 +517,43 @@ def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]
             {"label": label, "value": raw_value}
             for raw_value, label in sorted(found.items(), key=lambda item: item[1].casefold())
         ]
-    return {"answers": answers, "segmentations": segmentations, "values": values}
+    response_metadata = RESPONSE_TYPES.get(response_type)
+    return {
+        "answers": answers,
+        "segmentations": segmentations,
+        "values": values,
+        "response_type": response_type.value,
+        "response_help": response_metadata.help_key if response_metadata else None,
+    }
 
 
-def get_fra_control_payload(code: str) -> dict[str, Any]:
+def get_fra_control_payload(
+    code: str,
+    category: str | None = None,
+    year: int | None = None,
+) -> dict[str, Any]:
     clean_code = str(code or "").strip()
     if not clean_code:
-        return {"code": "", "category": "", "answers": [], "segmentations": [], "values": {}}
-    cache_key = f"fra-controls-v2:{clean_code}"
+        return {
+            "code": "",
+            "category": "",
+            "answers": [],
+            "segmentations": [],
+            "values": {},
+            "response_type": "standard",
+            "response_help": None,
+        }
+    clean_category = str(category or "").strip()
+    clean_year = str(int(year)) if year is not None else "all-years"
+    cache_key = (
+        f"fra-controls-v5:{analytics_cache_generation('fra')}:"
+        f"{clean_code}:{clean_category}:{clean_year}"
+    )
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
         return deepcopy(cached)
 
-    document = get_fra_indicator_answers(clean_code)
+    document = get_fra_indicator_control_document(clean_code, clean_category or None, year)
     payload = build_fra_control_payload(document)
     payload["code"] = clean_code
     payload["category"] = str((document or {}).get("category") or "").strip()
@@ -553,10 +562,9 @@ def get_fra_control_payload(code: str) -> dict[str, Any]:
     return payload
 
 
-
-
-
 def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
+    started_at = time.perf_counter()
+    query = normalize_fra_query(query)
     validation = validate_fra_query(query)
     if not validation.ok:
         return _status("invalid", validation.message)
@@ -564,49 +572,74 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     cache_key = _fra_statistics_cache_key(query)
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
-        logger.debug(
-            "fra_statistics_cache_hit",
-            extra={"question_code": query.question_code, "cache_key": cache_key},
+        logger.info(
+            "statistics_loaded source=fra indicator=%s total_ms=%.2f cache_hit=true",
+            query.question_code,
+            (time.perf_counter() - started_at) * 1000,
         )
         return deepcopy(cached)
 
-    started_at = time.perf_counter()
     result = _build_fra_statistics(query)
     if result.get("status") == "ok":
         _server_cache_set(cache_key, deepcopy(result))
-    logger.debug(
-        "fra_statistics_computed",
-        extra={
-            "question_code": query.question_code,
-            "processing_ms": round((time.perf_counter() - started_at) * 1000, 2),
-            "cached": False,
-        },
+    logger.info(
+        "statistics_loaded source=fra indicator=%s status=%s total_ms=%.2f cache_hit=false",
+        query.question_code,
+        result.get("status"),
+        (time.perf_counter() - started_at) * 1000,
     )
     return result
 
 
 def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
+    pipeline_started_at = time.perf_counter()
     clean_code = str(query.question_code or "").strip()
-    dataframe = _fra_dataframe_for_code(clean_code, query.category)
+    logger.info(
+        "statistics_query indicator=%s demographic=%s:%s identity=%s:%s",
+        clean_code,
+        query.filter_a_name,
+        query.filter_a_value,
+        query.filter_b_name,
+        query.filter_b_value,
+    )
+    dataframe = _fra_dataframe_for_code(clean_code, query.category, query.year)
+    load_ms = (time.perf_counter() - pipeline_started_at) * 1000
 
     if dataframe.empty:
+        logger.info(
+            "fra_statistics_pipeline status=empty load_ms=%.2f processing_ms=0 total_ms=%.2f",
+            load_ms,
+            (time.perf_counter() - pipeline_started_at) * 1000,
+        )
         return _status("empty", NO_DATA_MESSAGE)
+    filter_validation = validate_statistics_filter_combination(
+        StatisticsFilters.from_raw(
+            query.filter_a_name,
+            query.filter_a_value,
+            query.filter_b_name,
+            query.filter_b_value,
+        ),
+        available_values=_available_filter_values(dataframe),
+    )
+    if not filter_validation.ok:
+        logger.warning(
+            "statistics_query_rejected indicator=%s reason=%s",
+            clean_code,
+            filter_validation.message,
+        )
+        return _status("invalid", filter_validation.message)
+    processing_started_at = time.perf_counter()
     source_dataframe = dataframe
     effective_answer = query.answer or _default_fra_answer_from_dataframe(dataframe)
     dataframe = filter_fra_dataframe(dataframe, query, effective_answer=effective_answer)
-    effective_filter_scope = None
     if dataframe.empty:
-        effective_filter_scope = _available_filter_label_scope(
-            dataframe=source_dataframe, answer=effective_answer
+        processing_ms = (time.perf_counter() - processing_started_at) * 1000
+        logger.info(
+            "fra_statistics_pipeline status=empty load_ms=%.2f processing_ms=%.2f total_ms=%.2f",
+            load_ms,
+            processing_ms,
+            (time.perf_counter() - pipeline_started_at) * 1000,
         )
-        if effective_filter_scope is not None:
-            dataframe = filter_fra_dataframe(
-                source_dataframe,
-                query,
-                effective_answer=effective_answer,
-                filter_scope=effective_filter_scope,
-            )
-    if dataframe.empty:
         return _status("empty", NO_DATA_MESSAGE)
     detail_dataframe, country_universe, detail_diagnostics = _prepare_fra_response_details(
         source_dataframe,
@@ -629,7 +662,7 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         ),
         clean_code,
     )
-    return {
+    result = {
         "status": "ok",
         "message": "",
         "source": "FRA",
@@ -638,6 +671,29 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         "indicator": question,
         "indicator_code": clean_code,
         "answer": effective_answer,
+        "response_type": detect_fra_response_type(
+            source_dataframe["answer"].dropna().unique().tolist(),
+            question=question,
+            specific_category=next(
+                (
+                    str(value)
+                    for value in source_dataframe.get(
+                        "specific_category", pd.Series(dtype=str)
+                    )
+                    .dropna()
+                    .unique()
+                    .tolist()
+                    if str(value).strip()
+                ),
+                "",
+            ),
+        ).value,
+        "filters": StatisticsFilters.from_raw(
+            query.filter_a_name,
+            query.filter_a_value,
+            query.filter_b_name,
+            query.filter_b_value,
+        ).as_query_fields(),
         "data": dataframe.to_dict("records"),
         "detail_data": detail_dataframe.to_dict("records"),
         "country_universe": country_universe.to_dict("records"),
@@ -653,6 +709,25 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
             "Las fuentes no son directamente equivalentes."
         ),
     }
+    processing_ms = (time.perf_counter() - processing_started_at) * 1000
+    logger.info(
+        "statistics_query_resolved indicator=%s documents=%d demographic=%s:%s "
+        "identity=%s:%s total_ms=%.2f",
+        clean_code,
+        len(dataframe),
+        query.filter_a_name,
+        query.filter_a_value,
+        query.filter_b_name,
+        query.filter_b_value,
+        (time.perf_counter() - pipeline_started_at) * 1000,
+    )
+    logger.debug(
+        "fra_statistics_pipeline status=ok load_ms=%.2f processing_ms=%.2f total_ms=%.2f",
+        load_ms,
+        processing_ms,
+        (time.perf_counter() - pipeline_started_at) * 1000,
+    )
+    return result
 
 
 def _prepare_fra_response_details(
@@ -762,21 +837,44 @@ def _fra_country_universe(dataframe: pd.DataFrame, year: int | None) -> pd.DataF
     )
 
 
-def _fra_dataframe_for_code(code: str, category: str | None = None) -> pd.DataFrame:
+def _fra_dataframe_for_code(
+    code: str,
+    category: str | None = None,
+    year: int | None = None,
+) -> pd.DataFrame:
     if not code:
         return _empty_fra_dataframe()
     clean_category = str(category or "").strip()
-    cache_key = f"fra-normalized-frame-v3:{code}:{clean_category}"
+    cache_key = (
+        f"fra-normalized-frame-v5:{analytics_cache_generation('fra')}:"
+        f"{code}:{clean_category}:{year if year is not None else 'all-years'}"
+    )
     cached = _server_cache_get(cache_key)
     if isinstance(cached, pd.DataFrame):
+        logger.info(
+            "statistics_frame_loaded indicator=%s query_ms=0 normalization_ms=0 cache_hit=true",
+            code,
+        )
         return cached.copy(deep=True)
 
+    query_started_at = time.perf_counter()
     document = (
-        get_fra_indicator_answers(code, clean_category)
+        get_fra_indicator_answers(code, clean_category, year)
         if clean_category
-        else get_fra_indicator_answers(code)
+        else get_fra_indicator_answers(code, year=year)
     )
+    query_ms = (time.perf_counter() - query_started_at) * 1000
+    normalization_started_at = time.perf_counter()
     dataframe = fra_document_to_dataframe(document)
+    normalization_ms = (time.perf_counter() - normalization_started_at) * 1000
+    logger.info(
+        "statistics_frame_loaded indicator=%s rows=%d query_ms=%.2f "
+        "normalization_ms=%.2f cache_hit=false",
+        code,
+        len(dataframe),
+        query_ms,
+        normalization_ms,
+    )
     if not dataframe.empty:
         _server_cache_set(cache_key, dataframe.copy(deep=True))
     return dataframe
@@ -784,6 +882,7 @@ def _fra_dataframe_for_code(code: str, category: str | None = None) -> pd.DataFr
 
 def _fra_statistics_cache_key(query: FraStatisticsQuery) -> str:
     identity = {
+        "cache_generation": analytics_cache_generation("fra"),
         "year": query.year,
         "countries": sorted(str(country) for country in query.countries),
         "category": query.category,
@@ -797,7 +896,7 @@ def _fra_statistics_cache_key(query: FraStatisticsQuery) -> str:
         "mode": query.mode,
     }
     serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return f"fra-statistics-v5:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+    return f"fra-statistics-v7:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
 
 
 def _server_cache_get(key: str) -> Any:
@@ -831,6 +930,8 @@ def get_experience_legal_radar(
     """
     identity = {
         "mapping_version": RADAR_MAPPING_VERSION,
+        "fra_cache_generation": analytics_cache_generation("fra"),
+        "ilga_cache_generation": analytics_cache_generation("ilga"),
         "fra_year": query.fra_year,
         "ilga_year": query.ilga_year,
         "countries": sorted(query.countries),
@@ -905,19 +1006,10 @@ def _radar_dimension_metadata() -> list[dict[str, str]]:
 
 
 def _experience_radar_rows(query: ExperienceLegalRadarQuery) -> pd.DataFrame:
-    fra_configs = [
-        {"dimension": dimension, **indicator}
-        for dimension, mapping in RADAR_DIMENSION_MAPPING.items()
-        for indicator in mapping["fra"]
-    ]
-    codes = tuple(config["code"] for config in fra_configs)
-    documents = get_fra_indicator_documents(codes)
-    frames = [fra_document_to_dataframe(document) for document in documents]
-    frames = [frame for frame in frames if not frame.empty]
-    if not frames:
+    dataframe = _experience_radar_base_dataframe(query.fra_year)
+    if dataframe.empty:
         return pd.DataFrame(columns=["iso", "country", "dimension", "experience_score", "fra_year"])
 
-    dataframe = pd.concat(frames, ignore_index=True)
     filter_query = FraStatisticsQuery(
         year=query.fra_year,
         filter_a_name=query.filter_a_name,
@@ -925,10 +1017,49 @@ def _experience_radar_rows(query: ExperienceLegalRadarQuery) -> pd.DataFrame:
         filter_b_name=query.filter_b_name,
         filter_b_value=query.filter_b_value,
     )
-    dataframe = filter_fra_comparison_dataframe(dataframe, filter_query)
-    if dataframe.empty:
+    matched = filter_fra_comparison_dataframe(dataframe, filter_query)
+    if matched.empty:
         return pd.DataFrame(columns=["iso", "country", "dimension", "experience_score", "fra_year"])
 
+    matched = matched.copy()
+    matched["experience_score"] = matched["percentage"].where(
+        ~matched["invert"], 100 - matched["percentage"]
+    )
+    return matched.groupby(["iso", "dimension"], as_index=False, dropna=False).agg(
+        country=("country", "first"),
+        experience_score=("experience_score", "mean"),
+        fra_year=("year", "max"),
+    )
+
+
+def _experience_radar_base_dataframe(year: int | None) -> pd.DataFrame:
+    cache_key = (
+        f"experience-radar-frame-v2:{RADAR_MAPPING_VERSION}:"
+        f"{analytics_cache_generation('fra')}:{year if year is not None else 'all-years'}"
+    )
+    cached = _server_cache_get(cache_key)
+    if isinstance(cached, pd.DataFrame):
+        logger.info(
+            "statistics_radar_frame_loaded year=%s rows=%d normalization_ms=0 cache_hit=true",
+            year,
+            len(cached),
+        )
+        return cached.copy(deep=True)
+
+    started_at = time.perf_counter()
+    fra_configs = [
+        {"dimension": dimension, **indicator}
+        for dimension, mapping in RADAR_DIMENSION_MAPPING.items()
+        for indicator in mapping["fra"]
+    ]
+    codes = tuple(config["code"] for config in fra_configs)
+    documents = get_fra_indicator_documents(codes, year)
+    frames = [fra_document_to_dataframe(document) for document in documents]
+    frames = [frame for frame in frames if not frame.empty]
+    if not frames:
+        return pd.DataFrame()
+
+    dataframe = pd.concat(frames, ignore_index=True)
     config_frame = pd.DataFrame(fra_configs)
     config_frame["answer_key"] = config_frame["answer"].map(normalize_text_key)
     dataframe["answer_key"] = dataframe["answer"].map(normalize_text_key)
@@ -941,20 +1072,30 @@ def _experience_radar_rows(query: ExperienceLegalRadarQuery) -> pd.DataFrame:
     )
     matched["percentage"] = pd.to_numeric(matched["percentage"], errors="coerce")
     matched = matched[matched["percentage"].between(0, 100, inclusive="both")]
-    matched["experience_score"] = matched["percentage"].where(
-        ~matched["invert"], 100 - matched["percentage"]
-    )
     matched = matched[
         matched["iso"].astype(str).str.strip().ne("")
         & matched["iso"].astype(str).str.upper().ne("EU27")
     ]
-    if matched.empty:
-        return pd.DataFrame(columns=["iso", "country", "dimension", "experience_score", "fra_year"])
-    return matched.groupby(["iso", "dimension"], as_index=False, dropna=False).agg(
-        country=("country", "first"),
-        experience_score=("experience_score", "mean"),
-        fra_year=("year", "max"),
+    compact_columns = [
+        "iso",
+        "country",
+        "dimension",
+        "percentage",
+        "invert",
+        "year",
+        "filter_a",
+        "filter_b",
+    ]
+    matched = matched[compact_columns].reset_index(drop=True)
+    if not matched.empty:
+        _server_cache_set(cache_key, matched.copy(deep=True))
+    logger.info(
+        "statistics_radar_frame_loaded year=%s rows=%d normalization_ms=%.2f cache_hit=false",
+        year,
+        len(matched),
+        (time.perf_counter() - started_at) * 1000,
     )
+    return matched
 
 
 def _legal_radar_rows(
@@ -1026,14 +1167,26 @@ def get_ilga_statistics(
     *,
     include_history: bool = True,
 ) -> dict[str, Any]:
+    started_at = time.perf_counter()
     cache_key = _ilga_statistics_cache_key(query, include_history=include_history)
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
+        logger.info(
+            "statistics_loaded source=ilga category=%s total_ms=%.2f cache_hit=true",
+            query.category,
+            (time.perf_counter() - started_at) * 1000,
+        )
         return deepcopy(cached)
 
     result = _build_ilga_statistics(query, include_history=include_history)
     if result.get("status") == "ok":
         _server_cache_set(cache_key, deepcopy(result))
+    logger.info(
+        "statistics_loaded source=ilga category=%s status=%s total_ms=%.2f cache_hit=false",
+        query.category,
+        result.get("status"),
+        (time.perf_counter() - started_at) * 1000,
+    )
     return result
 
 
@@ -1140,6 +1293,7 @@ def _ilga_statistics_cache_key(
     include_history: bool,
 ) -> str:
     identity = {
+        "cache_generation": analytics_cache_generation("ilga"),
         "dataset_years": get_ilga_years(),
         "year": query.year,
         "countries": sorted(str(country) for country in query.countries),
@@ -1157,7 +1311,6 @@ def filter_fra_dataframe(
     query: FraStatisticsQuery,
     *,
     effective_answer: str | None = None,
-    filter_scope: tuple[str, str] | None = None,
 ) -> pd.DataFrame:
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
@@ -1168,20 +1321,18 @@ def filter_fra_dataframe(
     selected_answer = effective_answer if effective_answer is not None else query.answer
     if selected_answer:
         filtered = filtered[filtered["answer"] == selected_answer]
-    filtered = _apply_exact_filter_scope(filtered, query, filter_scope=filter_scope)
+    filtered = _apply_exact_filter_scope(filtered, query)
     return filtered
 
 
 def filter_fra_detail_dataframe(
     dataframe: pd.DataFrame,
     query: FraStatisticsQuery,
-    *,
-    filter_scope: tuple[str, str] | None = None,
 ) -> pd.DataFrame:
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
         filtered = filtered[filtered["year"] == query.year]
-    filtered = _apply_exact_filter_scope(filtered, query, filter_scope=filter_scope)
+    filtered = _apply_exact_filter_scope(filtered, query)
     return filtered
 
 
@@ -1200,19 +1351,7 @@ def filter_fra_comparison_dataframe(
     if filtered.empty:
         return filtered
 
-    requested_a = _selected_filter_label(query.filter_a_name, query.filter_a_value)
-    requested_b = _selected_filter_label(query.filter_b_name, query.filter_b_value)
-    if (requested_a, requested_b) != ("All", "All"):
-        return _apply_exact_filter_scope(filtered, query)
-
-    groups: list[pd.DataFrame] = []
-    for answer in filtered["answer"].dropna().drop_duplicates().tolist():
-        answer_rows = filtered[filtered["answer"] == answer]
-        scope = _available_filter_label_scope(dataframe=answer_rows, answer=str(answer))
-        if scope is not None:
-            answer_rows = _apply_exact_filter_scope(answer_rows, query, filter_scope=scope)
-        groups.append(answer_rows)
-    return pd.concat(groups, ignore_index=True) if groups else filtered.iloc[0:0]
+    return _apply_exact_filter_scope(filtered, query)
 
 
 def get_ilga_history_rows(
@@ -1515,26 +1654,22 @@ def classify_external_data_error(payload: Any) -> str:
     return "invalid_response"
 
 
-
 def _apply_exact_filter_scope(
     dataframe: pd.DataFrame,
     query: FraStatisticsQuery,
-    *,
-    filter_scope: tuple[str, str] | None = None,
 ) -> pd.DataFrame:
     if dataframe.empty:
         return dataframe
     if "filter_a" not in dataframe.columns or "filter_b" not in dataframe.columns:
         return dataframe
 
-    expected_a, expected_b = filter_scope or (
+    expected_a, expected_b = (
         _selected_filter_label(query.filter_a_name, query.filter_a_value),
         _selected_filter_label(query.filter_b_name, query.filter_b_value),
     )
-    return dataframe[
-        dataframe["filter_a"].apply(lambda value: _same_filter_label(value, expected_a))
-        & dataframe["filter_b"].apply(lambda value: _same_filter_label(value, expected_b))
-    ]
+    filter_a = dataframe["filter_a"].fillna("").astype(str)
+    filter_b = dataframe["filter_b"].fillna("").astype(str)
+    return dataframe[filter_a.eq(expected_a) & filter_b.eq(expected_b)]
 
 
 def _selected_filter_label(filter_name: str | None, filter_value: str | None) -> str:
@@ -1543,70 +1678,6 @@ def _selected_filter_label(filter_name: str | None, filter_value: str | None) ->
     if not clean_name or clean_name == "All" or not clean_value or clean_value == "All":
         return "All"
     return normalize_filter_value(clean_value)
-
-
-def _same_filter_label(value: Any, expected: str) -> bool:
-    return normalize_filter_value(repair_text_encoding(value).strip()) == expected
-
-
-def _available_filter_label_scope(
-    *,
-    dataframe: pd.DataFrame,
-    answer: str | None,
-) -> tuple[str, str] | None:
-    if dataframe.empty or "filter_a" not in dataframe or "filter_b" not in dataframe:
-        return None
-    candidates = dataframe.copy()
-    if answer:
-        candidates = candidates[candidates["answer"] == answer]
-    if candidates.empty:
-        return None
-
-    valid_candidates = (
-        candidates[candidates["percentage"].notna()] if "percentage" in candidates else candidates
-    )
-    if valid_candidates.empty:
-        valid_candidates = candidates
-
-    if _has_exact_filter_labels(valid_candidates, "All", "All"):
-        return "All", "All"
-
-    all_a = valid_candidates[
-        valid_candidates["filter_a"].apply(lambda value: _same_filter_label(value, "All"))
-    ]
-    non_all_b_values = _sorted_non_all_filter_values(all_a, "filter_b")
-    if non_all_b_values:
-        return "All", non_all_b_values[0]
-
-    all_b = valid_candidates[
-        valid_candidates["filter_b"].apply(lambda value: _same_filter_label(value, "All"))
-    ]
-    non_all_a_values = _sorted_non_all_filter_values(all_b, "filter_a")
-    if non_all_a_values:
-        return non_all_a_values[0], "All"
-
-    pairs = sorted(
-        {
-            (normalize_filter_value(row.filter_a), normalize_filter_value(row.filter_b))
-            for row in valid_candidates[["filter_a", "filter_b"]].itertuples()
-            if not _same_filter_label(row.filter_a, "All")
-            and not _same_filter_label(row.filter_b, "All")
-        },
-        key=lambda item: (item[0].casefold(), item[1].casefold()),
-    )
-    return pairs[0] if pairs else None
-
-
-def _sorted_non_all_filter_values(dataframe: pd.DataFrame, column: str) -> list[str]:
-    if dataframe.empty or column not in dataframe:
-        return []
-    values = {
-        normalize_filter_value(value)
-        for value in dataframe[column].dropna().tolist()
-        if not _same_filter_label(value, "All")
-    }
-    return sorted(values, key=str.casefold)
-
 
 
 def _filters_to_dict(filters: Any) -> dict[str, str]:
@@ -1633,53 +1704,26 @@ def _present_filter_types(dataframe: pd.DataFrame) -> set[str]:
     return present
 
 
+def _available_filter_values(dataframe: pd.DataFrame) -> dict[str, set[str]]:
+    available: dict[str, set[str]] = {"All": {"All"}}
+    if dataframe.empty or "filters" not in dataframe:
+        return available
+    for filters in dataframe["filters"]:
+        if not isinstance(filters, dict):
+            continue
+        for raw_type, raw_value in filters.items():
+            filter_type = normalize_filter_type(raw_type)
+            filter_value = normalize_filter_value(raw_value)
+            if filter_type and filter_value:
+                available.setdefault(filter_type, set()).add(filter_value)
+    return available
+
+
 def _all_filter_type_available(dataframe: pd.DataFrame, group: str) -> bool:
     if dataframe.empty or "filters" not in dataframe:
         return True
     allowed = FRA_FILTER_GROUP_A if group == "a" else FRA_FILTER_GROUP_B
     return any(not _row_has_group_filter(filters, allowed) for filters in dataframe["filters"])
-
-
-def _has_exact_filter_labels(dataframe: pd.DataFrame, filter_a: str, filter_b: str) -> bool:
-    if dataframe.empty or "filter_a" not in dataframe or "filter_b" not in dataframe:
-        return False
-    return bool(
-        (
-            dataframe["filter_a"].apply(lambda value: _same_filter_label(value, filter_a))
-            & dataframe["filter_b"].apply(lambda value: _same_filter_label(value, filter_b))
-        ).any()
-    )
-
-
-def _has_rows_with_filter_types(
-    dataframe: pd.DataFrame,
-    *,
-    filter_a_type: str | None,
-    filter_b_type: str | None,
-) -> bool:
-    if dataframe.empty or "filters" not in dataframe:
-        return False
-    return any(
-        _row_filter_scope_matches(filters, filter_a_type=filter_a_type, filter_b_type=filter_b_type)
-        for filters in dataframe["filters"]
-    )
-
-
-def _row_filter_scope_matches(
-    filters: Any,
-    *,
-    filter_a_type: str | None,
-    filter_b_type: str | None,
-) -> bool:
-    if not isinstance(filters, dict):
-        filters = {"All": "All"}
-    if filter_a_type is None and _row_has_group_filter(filters, FRA_FILTER_GROUP_A):
-        return False
-    if filter_b_type is None and _row_has_group_filter(filters, FRA_FILTER_GROUP_B):
-        return False
-    if filter_a_type is not None and not _row_has_filter_type(filters, filter_a_type):
-        return False
-    return not (filter_b_type is not None and not _row_has_filter_type(filters, filter_b_type))
 
 
 def _row_has_group_filter(filters: Any, allowed: tuple[str, ...]) -> bool:
@@ -1689,13 +1733,6 @@ def _row_has_group_filter(filters: Any, allowed: tuple[str, ...]) -> bool:
         normalize_filter_type(filter_type) for filter_type in allowed if filter_type != "All"
     }
     return any(normalize_filter_type(key) in allowed_keys for key in filters)
-
-
-def _row_has_filter_type(filters: Any, filter_type: str) -> bool:
-    if not isinstance(filters, dict):
-        return False
-    expected = normalize_filter_type(filter_type)
-    return any(normalize_filter_type(key) == expected for key in filters)
 
 
 def _first_matching_filter(filters: dict[str, str], allowed: tuple[str, ...]) -> str:

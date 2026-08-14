@@ -16,6 +16,7 @@ from app.analytics.repository import (
     get_felgtbi_indicators_by_document,
     get_felgtbi_years,
 )
+from app.dash.components.loading import contextual_loading
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
@@ -192,10 +193,14 @@ def build_spain_layout() -> Component:
                         ],
                         className="stats-controls spain-controls",
                     ),
-                    html.Section(
-                        id="spain-visualization-grid",
-                        className="stats-grid",
-                        children=_spain_visualization_shell(),
+                    contextual_loading(
+                        html.Section(
+                            id="spain-visualization-grid",
+                            className="stats-grid",
+                            children=_spain_visualization_shell(),
+                        ),
+                        "processing_document",
+                        element_id="spain-content-loading",
                     ),
                 ],
                 className="stats-shell app-page-container",

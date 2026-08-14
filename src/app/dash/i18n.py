@@ -331,6 +331,38 @@ UI_TEXT = {
         "es": "Abrir la sección Acerca de",
         "en": "Open the About section",
     },
+    "home_login_title": {"es": "Inicia sesión", "en": "Sign in"},
+    "home_login_description": {
+        "es": (
+            "Accede a tu cuenta para consultar tu perfil y utilizar tus plantillas de "
+            "informe personalizadas."
+        ),
+        "en": (
+            "Access your account to view your profile and use your personalised report "
+            "templates."
+        ),
+    },
+    "home_login_action": {"es": "Iniciar sesión", "en": "Sign in"},
+    "home_login_aria": {
+        "es": "Abrir la página de inicio de sesión",
+        "en": "Open the sign-in page",
+    },
+    "home_profile_title": {"es": "Tu perfil", "en": "Your profile"},
+    "home_profile_description": {
+        "es": (
+            "Accede directamente a tu perfil, tus datos de cuenta y las plantillas de "
+            "informe adaptadas a tu perfil profesional."
+        ),
+        "en": (
+            "Go directly to your profile, account details and report templates tailored "
+            "to your professional profile."
+        ),
+    },
+    "home_profile_action": {"es": "Ir a mi perfil", "en": "Go to my profile"},
+    "home_profile_aria": {
+        "es": "Abrir mi perfil de usuario",
+        "en": "Open my user profile",
+    },
     "report_module_name": {
         "es": "Informe",
         "en": "Report",
@@ -397,6 +429,95 @@ UI_TEXT = {
     "chart_no_data_grey": {
         "es": "Sin datos: gris",
         "en": "No data: grey",
+    },
+    "fra_map_percentage_scale": {
+        "es": "Escala porcentual",
+        "en": "Percentage scale",
+    },
+    "fra_map_no_data": {
+        "es": "Sin datos",
+        "en": "No data",
+    },
+    "fra_map_no_data_selection": {
+        "es": "No hay datos disponibles para esta selección.",
+        "en": "No data is available for this selection.",
+    },
+    "fra_map_outside_scope": {
+        "es": "Fuera del ámbito de la encuesta FRA",
+        "en": "Outside the scope of the FRA survey",
+    },
+    "fra_map_outside_scope_hover": {
+        "es": (
+            "Este país no forma parte de la Unión Europea y no está incluido "
+            "en esta encuesta FRA."
+        ),
+        "en": (
+            "This country is not part of the European Union and is not included "
+            "in this FRA survey."
+        ),
+    },
+    "fra_ranked_reason_title": {
+        "es": "¿Cómo interpretar estas respuestas?",
+        "en": "How should these responses be interpreted?",
+    },
+    "fra_ranked_reason_intro": {
+        "es": (
+            "En esta pregunta, las respuestas indican la importancia atribuida a esta causa "
+            "entre las tres razones principales seleccionadas:"
+        ),
+        "en": (
+            "For this question, the responses indicate the importance assigned to this reason "
+            "among the three main reasons selected:"
+        ),
+    },
+    "fra_ranked_reason_1st": {
+        "es": "1st: primera razón en importancia.",
+        "en": "1st: the most important reason.",
+    },
+    "fra_ranked_reason_2nd": {
+        "es": "2nd: segunda razón en importancia.",
+        "en": "2nd: the second most important reason.",
+    },
+    "fra_ranked_reason_3rd": {
+        "es": "3rd: tercera razón en importancia.",
+        "en": "3rd: the third most important reason.",
+    },
+    "fra_ranked_reason_not_selected": {
+        "es": "Not selected: la causa no fue seleccionada entre las tres razones principales.",
+        "en": (
+            "Not selected: this reason was not selected among the three most important reasons."
+        ),
+    },
+    "loading_statistics": {
+        "es": "Cargando estadísticas...",
+        "en": "Loading statistics...",
+    },
+    "loading_information": {
+        "es": "Cargando información...",
+        "en": "Loading information...",
+    },
+    "loading_indicators": {
+        "es": "Cargando indicadores...",
+        "en": "Loading indicators...",
+    },
+    "updating_visualisations": {
+        "es": "Actualizando visualizaciones...",
+        "en": "Updating visualisations...",
+    },
+    "updating_map": {"es": "Actualizando mapa...", "en": "Updating map..."},
+    "generating_chart": {"es": "Generando gráfico...", "en": "Generating chart..."},
+    "loading_trends": {"es": "Cargando tendencias...", "en": "Loading trends..."},
+    "processing_document": {
+        "es": "Procesando documento...",
+        "en": "Processing document...",
+    },
+    "generating_report": {"es": "Generando informe...", "en": "Generating report..."},
+    "uploading_file": {"es": "Subiendo archivo...", "en": "Uploading file..."},
+    "importing_data": {"es": "Importando datos...", "en": "Importing data..."},
+    "deleting_data": {"es": "Eliminando datos...", "en": "Deleting data..."},
+    "wait_updating_data": {
+        "es": "Espera mientras actualizamos los datos.",
+        "en": "Please wait while we update the data.",
     },
     "contact_success": {
         "es": "Tu mensaje se ha enviado correctamente.",
@@ -532,6 +653,10 @@ UI_TEXT = {
     "statistics_no_data": {
         "es": "No hay datos disponibles para esta selección.",
         "en": "No data is available for this selection.",
+    },
+    "statistics_error": {
+        "es": "No se han podido cargar las estadísticas. Inténtalo de nuevo.",
+        "en": "Statistics could not be loaded. Please try again.",
     },
 }
 

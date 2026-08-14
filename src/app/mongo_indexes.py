@@ -37,10 +37,41 @@ def spain_report_collection_names() -> set[str]:
 @lru_cache(maxsize=1)
 def initialize_mongo_indexes() -> None:
     """Create application indexes once at process startup or from the setup CLI."""
+    ensure_fra_indexes()
+    _ensure_collection_indexes(
+        "Indicator_ilga",
+        [
+            IndexModel(
+                [("dataset", ASCENDING), ("year", DESCENDING)],
+                unique=True,
+                name="ilga_dataset_year",
+            )
+        ],
+    )
+    spain_indexes = felgtbi_index_models()
+    for collection_name in spain_report_collection_names():
+        _ensure_collection_indexes(collection_name, spain_indexes)
+    _initialize_non_report_indexes()
+
+
+def ensure_fra_indexes() -> None:
+    """Create only the indexes required by FRA import and Statistics queries."""
     _ensure_collection_indexes(
         "Indicator_fra",
         [
             IndexModel([("code", ASCENDING)], name="fra_code"),
+            IndexModel(
+                [
+                    ("code", ASCENDING),
+                    ("category", ASCENDING),
+                    ("specific_category", ASCENDING),
+                    ("question", ASCENDING),
+                    ("survey_year", ASCENDING),
+                    ("value_bucket", ASCENDING),
+                ],
+                unique=True,
+                name="fra_question_year_bucket_unique",
+            ),
             IndexModel(
                 [("dataset", ASCENDING), ("survey_year", DESCENDING)],
                 name="fra_dataset_survey_year",
@@ -57,29 +88,23 @@ def initialize_mongo_indexes() -> None:
             IndexModel(
                 [
                     ("category", ASCENDING),
+                    ("survey_year", DESCENDING),
                     ("specific_category", ASCENDING),
                     ("question", ASCENDING),
                     ("code", ASCENDING),
-                    ("survey_year", DESCENDING),
                 ],
-                name="fra_category_question_code_year",
+                name="fra_category_year_question_code",
+            ),
+            IndexModel(
+                [("survey_year", DESCENDING), ("code", ASCENDING)],
+                name="fra_year_code",
             ),
         ],
     )
-    _ensure_collection_indexes(
-        "Indicator_ilga",
-        [
-            IndexModel(
-                [("dataset", ASCENDING), ("year", DESCENDING)],
-                unique=True,
-                name="ilga_dataset_year",
-            )
-        ],
+    _drop_obsolete_indexes(
+        "Indicator_fra",
+        {"fra_category_question_code_year", "fra_question_year_unique"},
     )
-    spain_indexes = felgtbi_index_models()
-    for collection_name in spain_report_collection_names():
-        _ensure_collection_indexes(collection_name, spain_indexes)
-    _initialize_non_report_indexes()
 
 
 def felgtbi_index_models() -> list[IndexModel]:
@@ -345,6 +370,19 @@ def _ensure_collection_indexes(
                 continue
             raise
         existing.append(desired)
+
+
+def _drop_obsolete_indexes(collection_name: str, names: set[str]) -> None:
+    """Remove only explicitly superseded indexes after replacements exist."""
+    collection = get_mongo_collection(collection_name)
+    existing_names = {str(index.get("name") or "") for index in _list_indexes(collection)}
+    for name in sorted(names.intersection(existing_names)):
+        collection.drop_index(name)
+        logger.info(
+            "mongo_obsolete_index_removed collection=%s index=%s",
+            collection_name,
+            name,
+        )
 
 
 def _list_indexes(collection: Any) -> list[dict[str, Any]]:

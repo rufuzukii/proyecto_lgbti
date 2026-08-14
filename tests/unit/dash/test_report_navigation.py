@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
+from dash import html
+
 import app.dash.pages.statistics as statistics_page
 import app.dash_app as dash_app_module
 from app.dash.layouts import navigation
@@ -96,7 +98,7 @@ def test_statistics_report_link_preserves_selection_for_authenticated_user(monke
     assert params["primary_country"] == ["ES"]
 
 
-def test_anonymous_report_flow_redirects_to_login_with_notice_and_safe_next(monkeypatch) -> None:
+def test_anonymous_report_flow_is_public_and_preserves_selection(monkeypatch) -> None:
     monkeypatch.setattr(dash_app_module, "initialize_mongo_indexes", lambda: None)
     app = dash_app_module.create_dash_app()
     anonymous = _user(authenticated=False)
@@ -107,37 +109,17 @@ def test_anonymous_report_flow_redirects_to_login_with_notice_and_safe_next(monk
         "/es/informe?source=fra&countries=ES%2CPT",
         authenticated=False,
     )
-    login_params = parse_qs(urlsplit(destination).query)
-    assert urlsplit(destination).path == "/es/iniciar-sesion"
-    assert login_params["notice"] == ["report_login_required"]
-    assert login_params["next"] == ["/es/informe?source=fra&countries=ES%2CPT"]
+    assert urlsplit(destination).path == "/es/informe"
+    assert parse_qs(urlsplit(destination).query)["countries"] == ["ES,PT"]
 
     display_page = app.callback_map["page-content.children"]["callback"].__wrapped__
-    redirect_component = display_page(
+    monkeypatch.setattr(
+        dash_app_module,
+        "build_reports_layout",
+        lambda values, **_kwargs: html.Div(id=f"public-report-{values['source']}"),
+    )
+    report_component = display_page(
         "/es/informe",
         "?source=fra&countries=ES%2CPT&indicator_id=D1_1",
     )
-    redirect_params = parse_qs(urlsplit(redirect_component.href).query)
-    assert redirect_component.id == "reports-login-redirect"
-    assert redirect_params["notice"] == ["report_login_required"]
-    assert redirect_params["next"] == [
-        "/es/informe?source=fra&countries=ES%2CPT&indicator_id=D1_1"
-    ]
-
-    monkeypatch.setattr("app.dash.pages.session.login.build_navbar", lambda **_kwargs: "")
-    monkeypatch.setattr("app.dash.pages.session.login.get_csrf_token", lambda: "csrf")
-    login_layout = display_page(
-        "/es/iniciar-sesion",
-        redirect_component.href.partition("?")[2],
-    )
-    assert "login-email" in _ids(login_layout)
-    next_input = next(
-        component for component in _walk(login_layout) if getattr(component, "name", None) == "next"
-    )
-    assert next_input.value == "/es/informe?source=fra&countries=ES%2CPT&indicator_id=D1_1"
-    assert any(
-        "auth-toast" in str(getattr(component, "className", ""))
-        and component.to_plotly_json()["props"].get("data-auto-dismiss-ms") == "5000"
-        for component in _walk(login_layout)
-        if hasattr(component, "to_plotly_json")
-    )
+    assert report_component.id == "public-report-fra"

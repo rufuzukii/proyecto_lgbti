@@ -45,6 +45,17 @@ La pagina `/statistics` usa una capa modular nueva:
 - `statistics_service.py`: conversión de documentos Mongo a `DataFrame`, filtrado, agregación y estados sin datos.
 - `statistics_charts.py`: generación centralizada de gráficos Plotly para mapa, ranking, distribución, comparador, heatmap ILGA y scatter FRA/ILGA.
 
+El dashboard ejecuta una consulta analítica principal por selección y reutiliza el
+resultado normalizado para mapa, ranking, detalle y tabla. En producción los
+catálogos, marcos FRA por indicador/año y resultados agregados usan Redis con
+caducidad; las claves incluyen la generación de la fuente para que una importación
+invalide solo sus datos. La geometría del mapa se conserva como GeoJSON estático y
+GeoPandas se carga de forma diferida únicamente cuando hacen falta centroides.
+
+La interfaz distingue `INITIAL`, `LOADING`, `READY`, `NO_DATA` y `ERROR`. Durante
+una consulta completa el contenido anterior permanece oculto y no se construyen
+figuras iniciales vacías.
+
 El mapa mantiene Plotly `Choropleth`: no necesita token privado de Mapbox, se integra con
 `clickData` y evita una dependencia geoespacial que no participaba en el flujo real.
 

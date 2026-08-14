@@ -4,8 +4,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from dash import no_update
-from werkzeug.exceptions import Forbidden
 
 import app.dash.pages.didactica as didactica_page
 import app.dash_app as dash_app_module
@@ -76,22 +74,22 @@ def dash_app(monkeypatch):
     return dash_app_module.create_dash_app()
 
 
-def test_teacher_permission_is_explicit_and_admin_inherits_all_roles() -> None:
+def test_teacher_resources_are_public_and_authoring_remains_profile_specific() -> None:
     assert can_access_docente_material(_user(user_type=UserType.DOCENTE))
-    assert not can_access_docente_material(_user(user_type=UserType.RRHH))
-    assert not can_access_docente_material(_user(user_type=UserType.ONG))
-    assert not can_access_docente_material(_user(user_type=UserType.COMUN))
+    assert can_access_docente_material(_user(user_type=UserType.RRHH))
+    assert can_access_docente_material(_user(user_type=UserType.ONG))
+    assert can_access_docente_material(_user(user_type=UserType.COMUN))
     assert can_access_docente_material(_user(role=UserRole.ADMIN))
-    assert not can_access_docente_material(_user(authenticated=False, user_type=UserType.DOCENTE))
+    assert can_access_docente_material(_user(authenticated=False, user_type=UserType.DOCENTE))
 
 
-def test_index_only_exposes_teacher_card_to_teachers_and_admin(monkeypatch) -> None:
+def test_index_exposes_public_teacher_resources_to_every_profile(monkeypatch) -> None:
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
     monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.RRHH))
-    denied_hrefs = {
+    rrhh_hrefs = {
         getattr(item, "href", None) for item in _walk(didactica_page.build_didactica_layout())
     }
-    assert "/es/didactica/docentes" not in denied_hrefs
+    assert "/es/didactica/docentes" in rrhh_hrefs
 
     monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.DOCENTE))
     teacher_hrefs = {
@@ -171,7 +169,7 @@ def test_teacher_resources_have_metadata_and_generate_in_memory_pdf() -> None:
     assert "/" not in filename and "\\" not in filename
 
 
-def test_direct_download_requires_teacher_and_rechecks_changed_type(dash_app, monkeypatch) -> None:
+def test_direct_teacher_resource_download_is_public(dash_app, monkeypatch) -> None:
     view = dash_app.server.view_functions["download_docente_resource_direct"]
     with dash_app.server.test_request_context(
         "/didactica/docentes/descargar/rights_country_comparison"
@@ -182,12 +180,11 @@ def test_direct_download_requires_teacher_and_rechecks_changed_type(dash_app, mo
             _user(authenticated=False, user_type=UserType.DOCENTE),
         )
         response = view("rights_country_comparison")
-        assert response.status_code == 302
-        assert "/es/iniciar-sesion?next=%2Fes%2Fdidactica%2Fdocentes" in response.location
+        assert response.status_code == 200
+        assert response.mimetype == "application/pdf"
 
         monkeypatch.setattr(dash_app_module, "current_user", _user(user_type=UserType.RRHH))
-        with pytest.raises(Forbidden):
-            view("rights_country_comparison")
+        assert view("rights_country_comparison").status_code == 200
 
         monkeypatch.setattr(dash_app_module, "current_user", _user(user_type=UserType.DOCENTE))
         response = view("rights_country_comparison")
@@ -200,18 +197,15 @@ def test_direct_download_requires_teacher_and_rechecks_changed_type(dash_app, mo
         assert admin_response.mimetype == "application/pdf"
 
         monkeypatch.setattr(dash_app_module, "current_user", _user(user_type=UserType.COMUN))
-        with pytest.raises(Forbidden):
-            view("rights_country_comparison")
+        assert view("rights_country_comparison").status_code == 200
 
 
-def test_teacher_callback_rejects_direct_invocation_without_permission(
-    dash_app, monkeypatch
-) -> None:
+def test_teacher_resource_callback_is_public(dash_app, monkeypatch) -> None:
     callback = _callback(dash_app, "download_docente_resource")
     monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.ONG))
     result = callback(1, "rights_country_comparison", "en")
-    assert result[0] is no_update
-    assert "not allowed" in result[1]
+    assert result[0]["type"] == "application/pdf"
+    assert result[1] == ""
 
 
 def test_dictionary_lesson_and_both_games_callbacks_work_in_english(dash_app, monkeypatch) -> None:
@@ -268,7 +262,9 @@ def test_progress_is_stored_as_summary_not_individual_answers(monkeypatch) -> No
     assert all("answers" not in str(update) for _, update, _ in collection.updates)
 
 
-def test_direct_teacher_page_is_denied_after_role_change(dash_app, monkeypatch) -> None:
+def test_teacher_page_stays_public_but_hides_authoring_after_role_change(
+    dash_app, monkeypatch
+) -> None:
     display_page = dash_app.callback_map["page-content.children"]["callback"].__wrapped__
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
 
@@ -280,11 +276,12 @@ def test_direct_teacher_page_is_denied_after_role_change(dash_app, monkeypatch) 
     changed = _user(user_type=UserType.RRHH)
     monkeypatch.setattr(dash_app_module, "current_user", changed)
     monkeypatch.setattr(didactica_page, "current_user", changed)
-    denied = display_page("/es/didactica/docentes", "")
-    assert "didactica-docente-select" not in _ids(denied)
+    public_page = display_page("/es/didactica/docentes", "")
+    assert "didactica-docente-select" in _ids(public_page)
+    assert "didactica-custom-game-save" not in _ids(public_page)
 
 
-def test_games_route_and_callback_require_authenticated_general_access(dash_app, monkeypatch) -> None:
+def test_games_route_is_public(dash_app, monkeypatch) -> None:
     display_page = dash_app.callback_map["page-content.children"]["callback"].__wrapped__
     monkeypatch.setattr("app.dash.pages.session.login.build_navbar", lambda **_kwargs: "")
     monkeypatch.setattr("app.dash.pages.session.login.get_csrf_token", lambda: "csrf")
@@ -293,19 +290,12 @@ def test_games_route_and_callback_require_authenticated_general_access(dash_app,
     monkeypatch.setattr(dash_app_module, "current_user", anonymous)
     monkeypatch.setattr(didactica_page, "current_user", anonymous)
 
-    assert "login-email" in _ids(
-        display_page("/es/didactica/juegos", "?game=guess_term")
-    )
-    state = new_game_state("guess_term")
-    result = _callback(dash_app, "play_game")(1, None, None, "es", None, state)
-    assert all(value is no_update for value in result)
+    assert "didactica-game-state" in _ids(display_page("/es/didactica/juegos", "?game=guess_term"))
 
     registered = _user(user_type=UserType.COMUN)
     monkeypatch.setattr(dash_app_module, "current_user", registered)
     monkeypatch.setattr(didactica_page, "current_user", registered)
-    assert "didactica-game-state" in _ids(
-        display_page("/es/didactica/juegos", "?game=guess_term")
-    )
+    assert "didactica-game-state" in _ids(display_page("/es/didactica/juegos", "?game=guess_term"))
 
 
 def test_didactica_callbacks_are_registered_without_duplicate_outputs(dash_app) -> None:
@@ -317,9 +307,7 @@ def test_didactica_callbacks_are_registered_without_duplicate_outputs(dash_app) 
 def test_glossary_catalog_has_only_requested_sources_and_expected_provenance() -> None:
     terms = list_glossary_terms()
     unam = [term for term in terms if any(source.name == "UNAM" for source in term.sources)]
-    fundeu = [
-        term for term in terms if any(source.name == "FundéuRAE" for source in term.sources)
-    ]
+    fundeu = [term for term in terms if any(source.name == "FundéuRAE" for source in term.sources)]
     shared = [term for term in terms if len(term.sources) == 2]
 
     assert len(unam) == 35
@@ -329,9 +317,15 @@ def test_glossary_catalog_has_only_requested_sources_and_expected_provenance() -
         UNAM_SOURCE_URL,
         FUNDEU_SOURCE_URL,
     }
-    assert {source.name for source in get_glossary_term("abrosexual").sources} == {"UNAM"}
-    assert {source.name for source in get_glossary_term("biphobia").sources} == {"FundéuRAE"}
-    assert {source.name for source in get_glossary_term("bisexual").sources} == {
+    abrosexual = get_glossary_term("abrosexual")
+    biphobia = get_glossary_term("biphobia")
+    bisexual = get_glossary_term("bisexual")
+    assert abrosexual is not None
+    assert biphobia is not None
+    assert bisexual is not None
+    assert {source.name for source in abrosexual.sources} == {"UNAM"}
+    assert {source.name for source in biphobia.sources} == {"FundéuRAE"}
+    assert {source.name for source in bisexual.sources} == {
         "UNAM",
         "FundéuRAE",
     }
@@ -380,13 +374,13 @@ def test_dictionary_renders_general_and_per_term_source_links(monkeypatch) -> No
     assert {UNAM_SOURCE_URL, FUNDEU_SOURCE_URL} <= hrefs
     assert note is not None
 
-    card = glossary_card(get_glossary_term("bisexual"), "en")
-    card_hrefs = {
-        href for item in _walk(card) if (href := getattr(item, "href", None)) is not None
-    }
+    bisexual = get_glossary_term("bisexual")
+    assert bisexual is not None
+    card = glossary_card(bisexual, "en")
+    card_hrefs = {href for item in _walk(card) if (href := getattr(item, "href", None)) is not None}
     assert card_hrefs == {UNAM_SOURCE_URL, FUNDEU_SOURCE_URL}
     assert any(
-        getattr(item, "children", None) == get_glossary_term("bisexual").definition
+        getattr(item, "children", None) == bisexual.definition
         for item in _walk(card)
     )
 

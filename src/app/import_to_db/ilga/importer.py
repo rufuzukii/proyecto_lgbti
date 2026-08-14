@@ -7,7 +7,7 @@ import re
 from collections.abc import Iterable
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from bson import ObjectId
 
@@ -222,7 +222,7 @@ def _ranking_from_country(country: dict[str, Any]) -> float | None:
     return None
 
 
-def _is_finite_number(value: Any) -> bool:
+def _is_finite_number(value: Any) -> TypeGuard[int | float]:
     return (
         isinstance(value, (int, float))
         and not isinstance(value, bool)

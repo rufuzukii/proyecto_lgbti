@@ -294,12 +294,15 @@ def _parse_normalized_fra_dataframe(
             }
 
         filters = row.get("filters")
+        percentage = row.get("percentage")
+        if percentage is None or pd.isna(percentage):
+            percentage = None
         answer_entry = {
             "country": str(row.get("country_name") or ""),
             "country_code": str(row.get("country_code") or ""),
             "country_scope": str(row.get("country_scope") or "country"),
             "answer": str(row.get("response") or context.answer),
-            "percentage": row.get("percentage"),
+            "percentage": percentage,
             "raw_percentage": str(row.get("raw_percentage") or ""),
             "notes": str(row.get("notes") or ""),
             "note_text": str(row.get("notes") or ""),

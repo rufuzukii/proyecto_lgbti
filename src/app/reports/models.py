@@ -59,6 +59,7 @@ def normalize_report_countries(values: Any) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class ReportConfiguration:
+    template_id: str = ""
     source: str = "fra"
     category: str = ""
     indicator_id: str = ""
@@ -112,6 +113,7 @@ class ReportConfiguration:
                 DEFAULT_REPORT_CHARTS,
             )
         return cls(
+            template_id=sanitize_report_text(payload.get("template_id"), maximum=80),
             source=source,
             category=sanitize_report_text(payload.get("category"), maximum=180),
             indicator_id=sanitize_report_text(payload.get("indicator_id"), maximum=120),

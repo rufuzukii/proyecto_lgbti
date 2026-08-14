@@ -29,8 +29,9 @@ Genera un token aleatorio por sesión y lo valida mediante comparación constant
 ### `permissions.py`
 
 Declara la matriz central por rol técnico y perfil funcional. `ADMIN` funciona como
-comodín y hereda automáticamente cualquier permiso nuevo. Importación, informes
-avanzados, juegos y herramientas docentes reutilizan esta matriz en rutas y callbacks.
+comodín y hereda automáticamente cualquier permiso nuevo. Las herramientas de consulta,
+informes, juegos y recursos docentes son públicas. Importación, administración de
+usuarios, datos de cuenta y creación persistente de juegos propios siguen protegidas.
 
 ### `__init__.py`
 

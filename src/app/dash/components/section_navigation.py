@@ -16,6 +16,7 @@ class PrimarySection:
     description_key: str | None = None
     action_key: str | None = None
     aria_key: str | None = None
+    route_id: str | None = None
 
 
 PRIMARY_SECTIONS = (
@@ -57,8 +58,29 @@ PRIMARY_SECTIONS = (
     ),
 )
 
+ANONYMOUS_ACCOUNT_SECTION = PrimarySection(
+    "login",
+    "home_login_title",
+    "home_login_description",
+    "home_login_action",
+    "home_login_aria",
+    "login",
+)
 
-def build_home_section_navigation() -> Component:
+AUTHENTICATED_ACCOUNT_SECTION = PrimarySection(
+    "profile",
+    "home_profile_title",
+    "home_profile_description",
+    "home_profile_action",
+    "home_profile_aria",
+    "profile",
+)
+
+
+def build_home_section_navigation(*, authenticated: bool = False) -> Component:
+    account_section = (
+        AUTHENTICATED_ACCOUNT_SECTION if authenticated else ANONYMOUS_ACCOUNT_SECTION
+    )
     return html.Section(
         [
             html.Header(
@@ -75,7 +97,7 @@ def build_home_section_navigation() -> Component:
             html.Div(
                 [
                     _build_section_card(section)
-                    for section in PRIMARY_SECTIONS
+                    for section in (*PRIMARY_SECTIONS, account_section)
                     if section.key != "home"
                 ],
                 className="home-sections-grid",
@@ -120,7 +142,7 @@ def _build_section_card(section: PrimarySection) -> Component:
                     className="home-section-card__action",
                 ),
             ],
-            href=route_path(section.key),
+            href=route_path(section.route_id or section.key),
             refresh=False,
             className="home-section-card__link",
         ),

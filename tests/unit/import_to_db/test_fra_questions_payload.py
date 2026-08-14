@@ -2,7 +2,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from app.import_to_db.fra import parse_fra_csv_text
-from app.import_to_db.fra.indicators import _normalize_documents
+from app.import_to_db.fra.indicators import _consolidate_catalog_documents, _normalize_documents
 from app.import_to_db.fra.mongo import (
     _prepare_indicator_document,
     insert_indicator_fra_json,
@@ -76,6 +76,19 @@ def test_indicator_normalizer_accepts_grouped_fra_payload() -> None:
     }
 
     assert _normalize_documents(payload) == [payload]
+
+
+def test_catalog_consolidates_repeated_code_without_losing_answers() -> None:
+    documents = [
+        {"code": "D1", "question": "Old", "answers": [{"answer": "Yes"}]},
+        {"code": "D1", "question": "Current", "answers": [{"answer": "No"}]},
+    ]
+
+    consolidated = _consolidate_catalog_documents(documents)
+
+    assert len(consolidated) == 1
+    assert consolidated[0]["question"] == "Current"
+    assert [answer["answer"] for answer in consolidated[0]["answers"]] == ["Yes", "No"]
 
 
 def test_fra_question_split_uses_text_before_greater_than_as_specific_category() -> None:
@@ -164,7 +177,7 @@ def test_mongo_preparation_converts_json_id_to_object_id() -> None:
     assert "id" not in prepared
 
 
-def test_mongo_upsert_does_not_update_answers_in_set_on_insert() -> None:
+def test_mongo_upsert_uses_atomic_answer_replacement_pipeline() -> None:
     payload = {
         "id": "665f1f3f9b9f7a2f4b7a0b11",
         "code": "D1_1",
@@ -197,10 +210,15 @@ def test_mongo_upsert_does_not_update_answers_in_set_on_insert() -> None:
         "specific_category": "Discrimination in areas of life",
         "question": "Felt discriminated at work",
         "survey_year": 2023,
+        "value_bucket": collection.update_one.call_args.args[0]["value_bucket"],
     }
-    assert "answers" not in update.get("$setOnInsert", {})
-    assert "$addToSet" in update
-    assert "answers" in update["$addToSet"]
+    assert isinstance(update, list)
+    answer_update = update[0]["$set"]["answers"]
+    assert "$let" in answer_update
+    incoming = answer_update["$let"]["vars"]["incoming"]["$literal"]
+    assert len(incoming) == 1
+    assert incoming[0]["identity_key"]
+    assert "survey_year" not in incoming[0]
 
 
 def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> None:
@@ -229,3 +247,43 @@ def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> Non
         2019,
         2023,
     ]
+
+
+def test_mongo_groups_same_question_files_into_one_atomic_operation() -> None:
+    base = {
+        "code": "D1_1",
+        "dataset": "eu_lgbtiq_survey_iii",
+        "survey_year": 2023,
+        "category": "Discrimination",
+        "specific_category": "Area",
+        "question": "Question",
+    }
+    documents = [
+        {
+            **base,
+            "answers": [
+                {
+                    "country": country,
+                    "country_code": code,
+                    "answer": "Yes",
+                    "percentage": percentage,
+                    "filters": [{"type": "All", "value": "All"}],
+                }
+            ],
+        }
+        for country, code, percentage in (("Spain", "ES", 42), ("France", "FR", 38))
+    ]
+    collection = MagicMock()
+    with patch("app.import_to_db.fra.mongo.get_mongo_collection", return_value=collection):
+        assert insert_indicator_fra_json(documents) == 2
+
+    collection.update_one.assert_called_once()
+    operation_filter, operation_update = collection.update_one.call_args.args
+    incoming = [
+        answer
+        for answer in operation_update[0]["$set"]["answers"]["$let"]["vars"]["incoming"][
+            "$literal"
+        ]
+    ]
+    assert {answer["country_code"] for answer in incoming} == {"ES", "FR"}
+    assert "value_bucket" in operation_filter

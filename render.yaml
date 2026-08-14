@@ -8,8 +8,8 @@ services:
   - type: web
     name: proyecto-lgbti
     runtime: python
-    buildCommand: python -m pip install -e . -r requirements.txt && plotly_get_chrome -y
-    startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --access-logfile - --error-logfile -
+    buildCommand: python -m pip install -e . && plotly_get_chrome -y
+    startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --worker-class gthread --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile -
     healthCheckPath: /health
     envVars:
       - key: APP_ENV
@@ -81,8 +81,22 @@ services:
         value: "30"
       - key: DB_CONNECT_TIMEOUT_SECONDS
         value: "3"
+      - key: POSTGRES_POOL_MAX_SIZE
+        value: "6"
+      - key: POSTGRES_POOL_MAX_IDLE_SECONDS
+        value: "60"
+      - key: POSTGRES_POOL_WAIT_TIMEOUT_SECONDS
+        value: "3"
       - key: MONGO_SERVER_SELECTION_TIMEOUT_MS
         value: "2500"
+      - key: MONGO_MAX_POOL_SIZE
+        value: "12"
+      - key: MONGO_MAX_IDLE_TIME_MS
+        value: "60000"
+      - key: MONGO_WAIT_QUEUE_TIMEOUT_MS
+        value: "2000"
+      - key: MONGO_ENSURE_INDEXES_ON_STARTUP
+        value: "false"
       - key: ANALYTICS_CACHE_TIMEOUT_SECONDS
         value: "3600"
       - key: ANALYTICS_HEALTH_CHECK_TTL_SECONDS

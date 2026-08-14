@@ -5,6 +5,8 @@ from typing import Any, cast
 from dash.development.base_component import Component
 
 from app.dash.components.section_navigation import (
+    ANONYMOUS_ACCOUNT_SECTION,
+    AUTHENTICATED_ACCOUNT_SECTION,
     PRIMARY_SECTIONS,
     build_home_section_navigation,
 )
@@ -19,7 +21,7 @@ PRIMARY_PATHS = [
     "/es/didactica",
     "/es/acerca-de",
 ]
-CARD_PATHS = PRIMARY_PATHS[1:]
+CARD_PATHS = [*PRIMARY_PATHS[1:], "/es/iniciar-sesion"]
 
 
 def _walk(component: Any):
@@ -44,7 +46,7 @@ def test_primary_sections_share_the_requested_order_and_existing_routes() -> Non
     ]
 
 
-def test_navbar_uses_primary_section_order_without_changing_restricted_links(
+def test_navbar_keeps_public_report_after_primary_sections_and_hides_import(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
@@ -61,8 +63,7 @@ def test_navbar_uses_primary_section_order_without_changing_restricted_links(
     )
     rendered_paths = [cast(Any, item.children).href for item in cast(list[Any], nav_list.children)]
 
-    assert rendered_paths == PRIMARY_PATHS
-    assert "/es/informe" not in rendered_paths
+    assert rendered_paths == [*PRIMARY_PATHS, "/es/informe"]
     assert "/es/importar" not in rendered_paths
 
 
@@ -95,7 +96,7 @@ def test_navbar_keeps_report_and_upload_access_after_the_primary_sections(monkey
 
 def test_home_cards_are_static_internal_links_with_translated_accessible_names() -> None:
     section = build_home_section_navigation()
-    cards = [
+    cards: list[Any] = [
         component
         for component in _walk(section)
         if "home-section-card " in getattr(component, "className", "")
@@ -108,12 +109,31 @@ def test_home_cards_are_static_internal_links_with_translated_accessible_names()
 
     assert [link.href for link in links] == CARD_PATHS
     assert all(link.refresh is False for link in links)
-    assert len(cards) == 5
+    assert len(cards) == 6
     for card in cards:
         props = card.to_plotly_json()["props"]
         assert props["aria-label"]
         assert props["data-i18n-aria-label-es"]
         assert props["data-i18n-aria-label-en"]
+
+
+def test_home_account_card_links_to_profile_for_authenticated_users() -> None:
+    section = build_home_section_navigation(authenticated=True)
+    links: list[Any] = [
+        component
+        for component in _walk(section)
+        if getattr(component, "className", "") == "home-section-card__link"
+    ]
+    cards: list[Any] = [
+        component
+        for component in _walk(section)
+        if "home-section-card " in getattr(component, "className", "")
+    ]
+
+    assert len(cards) == 6
+    assert links[-1].href == "/es/perfil"
+    assert "home-section-card--profile" in cards[-1].className
+    assert "Tu perfil" in str(cards[-1].to_plotly_json())
 
 
 def test_old_ilga_presentation_block_is_removed_from_home() -> None:
@@ -133,7 +153,11 @@ def test_home_card_copy_is_complete_in_both_languages() -> None:
         "home_sections_lead",
         *[
             key
-            for section in PRIMARY_SECTIONS[1:]
+            for section in (
+                *PRIMARY_SECTIONS[1:],
+                ANONYMOUS_ACCOUNT_SECTION,
+                AUTHENTICATED_ACCOUNT_SECTION,
+            )
             for key in (
                 section.label_key,
                 section.description_key,

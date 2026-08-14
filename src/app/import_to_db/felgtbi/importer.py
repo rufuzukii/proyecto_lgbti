@@ -10,7 +10,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from bson import ObjectId
 
@@ -475,7 +475,7 @@ def _run_felgtbi_pdf_pipeline(
             file_name=file_name,
             phase=phase,
             started_at=started_at,
-            **discarded,
+            **cast(dict[str, Any], discarded),
         )
         del pages
         _attach_source_document_metadata(

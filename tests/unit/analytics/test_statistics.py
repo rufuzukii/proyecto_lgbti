@@ -9,7 +9,7 @@ from app.analytics import statistics_service
 from app.analytics.percentage_display import normalize_percentage_values
 from app.analytics.statistics_charts import (
     COUNTRY_COLORS,
-    EUROPE_PERCENTAGE_COLORSCALE,
+    EUROPE_MAP_COLORSCALE,
     NO_RESPONSE_COLOR,
     YES_RESPONSE_COLOR,
     _legal_hover_data,
@@ -19,6 +19,7 @@ from app.analytics.statistics_charts import (
     build_fra_response_comparison_chart,
     build_ilga_criteria_heatmap,
     build_response_country_comparison_chart,
+    build_statistics_hover,
     normalize_percentage,
     summarize_response_comparison,
 )
@@ -27,7 +28,9 @@ from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_B,
     FraStatisticsQuery,
     IlgaStatisticsQuery,
+    StatisticsFilters,
     validate_fra_query,
+    validate_statistics_filter_combination,
 )
 from app.analytics.statistics_normalizers import (
     normalize_country_code,
@@ -36,8 +39,6 @@ from app.analytics.statistics_normalizers import (
 )
 from app.analytics.statistics_service import (
     aggregate_fra_data,
-    build_fra_default_filter_types,
-    build_fra_filter_type_options,
     build_fra_filter_value_options,
     classify_external_data_error,
     filter_fra_dataframe,
@@ -55,12 +56,14 @@ from app.dash.pages.statistics import (
     _controls,
     _detail_summary,
     _effective_query_mode,
+    _explicit_filter_value,
     _fra_controls_are_ready,
     _fra_segmentation_card_class,
     _has_valid_fra_selection,
     _ilga_criterion_control,
     _methodology_text,
     _ranking_graph_style,
+    _resolved_ui_filters,
     _response_comparison_graph_style,
     _response_detail_graph_style,
     _segmentation_catalog_options,
@@ -296,9 +299,15 @@ def test_fra_segmentation_catalog_keeps_missing_options_disabled() -> None:
     assert not by_value["Age"]["disabled"]
     assert by_value["Education"]["disabled"]
     assert by_value["Employment status"]["disabled"]
-    age_label = by_value["Age"]["label"].to_plotly_json()["props"]
-    assert age_label["children"] == "Edad"
-    assert age_label["data-i18n-en"] == "Age"
+    assert by_value["Age"]["label"] == "Edad"
+    assert (
+        _segmentation_catalog_options(
+            FRA_FILTER_GROUP_A,
+            [{"label": "All", "value": "All"}, {"label": "Age", "value": "Age"}],
+            "en",
+        )[1]["label"]
+        == "Age"
+    )
 
 
 def test_fra_query_rejects_two_group_a_filters_represented_as_group_b() -> None:
@@ -446,33 +455,16 @@ def test_filter_value_options_show_normalized_label_but_keep_raw_value() -> None
     assert options == [{"label": "Fairly open", "value": "Rairly open"}]
 
 
-def test_fra_default_filters_use_available_scope_when_all_all_is_missing() -> None:
-    document = {
-        "answers": [
-            {
-                "country": "Spain",
-                "country_code": "ES",
-                "answer": "Yes",
-                "percentage": 63,
-                "filters": [{"type": "Sexual Orientation", "value": "Gay"}],
-            },
-            {
-                "country": "Portugal",
-                "country_code": "PT",
-                "answer": "Yes",
-                "percentage": 37,
-                "filters": [{"type": "Sexual Orientation", "value": "Gay"}],
-            },
-        ]
-    }
+def test_fra_filters_never_replace_missing_all_with_an_available_identity() -> None:
+    filters = StatisticsFilters.from_raw(None, None, None, None)
 
-    filter_a, filter_b = build_fra_default_filter_types(document)
-    filter_b_options = build_fra_filter_type_options(document, "b")
-
-    assert (filter_a, filter_b) == ("All", "Sexual Orientation")
-    assert (
-        next(option for option in filter_b_options if option["value"] == "All")["disabled"] is True
+    validation = validate_statistics_filter_combination(
+        filters,
+        available_values={"All": set(), "Sexual Orientation": {"Asexual"}},
     )
+
+    assert filters == StatisticsFilters()
+    assert validation.ok is False
 
 
 def test_classifies_fra_no_data_payload_without_exposing_500() -> None:
@@ -576,18 +568,21 @@ def test_europe_choropleth_uses_percentage_values_with_a_uniform_blue_scale() ->
     )
     trace = _trace(figure, 0)
 
-    assert trace.locationmode == "ISO-3"
-    assert list(trace.locations) == ["ESP", "PRT"]
-    assert list(trace.z) == [63.0, 37.0]
-    assert trace.zmin == 0
+    values = dict(zip(trace.locations, trace.z, strict=True))
+    assert trace.locationmode is None
+    assert trace.featureidkey == "properties.country_code"
+    assert len(trace.locations) == 49
+    assert values["ES"] == 63.0
+    assert values["PT"] == 37.0
+    assert values["FR"] == -1.0
+    assert trace.zmin == -1
     assert trace.zmax == 100
-    assert trace.colorscale == tuple(
-        (position, color) for position, color in EUROPE_PERCENTAGE_COLORSCALE
-    )
-    assert trace.customdata.tolist() == [["ES", "Valor", "63%"], ["PT", "Valor", "37%"]]
-    assert (
-        trace.hovertemplate == "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
-    )
+    assert trace.colorscale == tuple((position, color) for position, color in EUROPE_MAP_COLORSCALE)
+    customdata = {row[0]: row[1] for row in trace.customdata.tolist()}
+    assert customdata["ES"] == "63%"
+    assert customdata["PT"] == "37%"
+    assert trace.hovertemplate == "%{hovertext}<extra></extra>"
+    assert len(trace.geojson["features"]) == 49
     assert figure.layout.dragmode is False
 
 
@@ -601,8 +596,12 @@ def test_europe_choropleth_preserves_real_decimals_and_numeric_strings() -> None
     )
     trace = _trace(figure, 0)
 
-    assert list(trace.z) == [63.5, 36.5]
-    assert trace.customdata.tolist() == [["ES", "Valor", "63.5%"], ["PT", "Valor", "36.5%"]]
+    values = dict(zip(trace.locations, trace.z, strict=True))
+    customdata = {row[0]: row[1] for row in trace.customdata.tolist()}
+    assert values["ES"] == 63.5
+    assert values["PT"] == 36.5
+    assert customdata["ES"] == "63.5%"
+    assert customdata["PT"] == "36.5%"
 
 
 def test_europe_choropleth_preserves_country_percentages_when_total_is_not_100() -> None:
@@ -614,13 +613,16 @@ def test_europe_choropleth_preserves_country_percentages_when_total_is_not_100()
         ],
         source="FRA",
     )
-    valid_trace = _trace(figure, 0)
-    missing_trace = _trace(figure, 1)
+    trace = _trace(figure, 0)
+    values = dict(zip(trace.locations, trace.z, strict=True))
+    customdata = {row[0]: row[1] for row in trace.customdata.tolist()}
 
-    assert list(valid_trace.z) == [10.0, 30.0]
-    assert valid_trace.customdata.tolist() == [["ES", "Valor", "10%"], ["PT", "Valor", "30%"]]
-    assert list(missing_trace.locations) == ["FRA"]
-    assert missing_trace.customdata.tolist() == [["FR", "No hay suficiente información"]]
+    assert values["ES"] == 10.0
+    assert values["PT"] == 30.0
+    assert values["FR"] == -1.0
+    assert customdata["ES"] == "10%"
+    assert customdata["PT"] == "30%"
+    assert customdata["FR"] == ""
 
 
 def test_europe_choropleth_marks_null_missing_absent_and_invalid_values_grey(
@@ -634,15 +636,15 @@ def test_europe_choropleth_marks_null_missing_absent_and_invalid_values_grey(
         ],
         source="FRA",
     )
-    missing_trace = _trace(figure, 0)
+    trace = _trace(figure, 0)
+    values = dict(zip(trace.locations, trace.z, strict=True))
+    hover = dict(zip(trace.locations, trace.hovertext, strict=True))
 
-    assert list(missing_trace.locations) == ["ESP", "PRT", "FRA"]
-    assert missing_trace.colorscale == ((0.0, "#9ca3af"), (1.0, "#9ca3af"))
-    assert missing_trace.customdata.tolist() == [
-        ["ES", "No hay suficiente información"],
-        ["PT", "No hay suficiente información"],
-        ["FR", "No hay suficiente información"],
-    ]
+    assert len(values) == 49
+    assert values["ES"] == values["PT"] == values["FR"] == -1.0
+    assert all(value == -1.0 for value in values.values())
+    assert trace.colorscale[0] == (0.0, "#9ca3af")
+    assert "No hay suficiente información" in hover["ES"]
     assert caplog.text.count("invalid_percentage_values") == 1
     assert "count=1" in caplog.text
     assert "value='not-a-number'" not in caplog.text
@@ -659,8 +661,10 @@ def test_europe_choropleth_translates_value_and_missing_hover_texts() -> None:
         language="en",
     )
 
-    assert _trace(figure, 0).customdata.tolist() == [["ES", "Value", "63%"]]
-    assert _trace(figure, 1).customdata.tolist() == [["PT", "There is not enough information"]]
+    trace = _trace(figure, 0)
+    hover = dict(zip(trace.locations, trace.hovertext, strict=True))
+    assert "Value: 63%" in hover["ES"]
+    assert "There is not enough information" in hover["PT"]
 
 
 def test_ilga_filter_applies_countries_even_when_mode_is_all() -> None:
@@ -806,7 +810,8 @@ def test_get_fra_statistics_exposes_detail_data_without_country_or_answer_filter
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+        "app.analytics.statistics_service.get_fra_indicator_answers",
+        lambda *_args, **_kwargs: document,
     )
 
     result = get_fra_statistics(
@@ -872,7 +877,8 @@ def test_get_fra_statistics_uses_exact_all_filter_rows_for_map_ranking(monkeypat
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+        "app.analytics.statistics_service.get_fra_indicator_answers",
+        lambda *_args, **_kwargs: document,
     )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1", answer="Yes", year=2023))
@@ -928,7 +934,8 @@ def test_get_fra_statistics_uses_default_answer_instead_of_averaging_all_answers
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+        "app.analytics.statistics_service.get_fra_indicator_answers",
+        lambda *_args, **_kwargs: document,
     )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1", answer=None, year=2023))
@@ -940,7 +947,7 @@ def test_get_fra_statistics_uses_default_answer_instead_of_averaging_all_answers
     ]
 
 
-def test_get_fra_statistics_falls_back_to_available_scope_for_selected_answer(monkeypatch) -> None:
+def test_get_fra_statistics_does_not_fall_back_to_available_scope(monkeypatch) -> None:
     document = {
         "code": "D1",
         "category": "Discrimination",
@@ -982,22 +989,14 @@ def test_get_fra_statistics_falls_back_to_available_scope_for_selected_answer(mo
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+        "app.analytics.statistics_service.get_fra_indicator_answers",
+        lambda *_args, **_kwargs: document,
     )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1", answer="Yes"))
 
-    assert result["status"] == "ok"
-    assert [(row["country"], row["value"]) for row in result["ranking"]] == [
-        ("Spain", 14.0),
-        ("Portugal", 10.0),
-    ]
-    assert {(row["country"], row["answer"]) for row in result["detail_data"]} == {
-        ("Spain", "Yes"),
-        ("Portugal", "Yes"),
-        ("Spain", "No"),
-        ("Portugal", "No"),
-    }
+    assert result["status"] == "empty"
+    assert result["ranking"] == []
 
 
 def test_response_details_compare_all_answers_when_no_is_selected(monkeypatch) -> None:
@@ -1042,7 +1041,8 @@ def test_response_details_compare_all_answers_when_no_is_selected(monkeypatch) -
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+        "app.analytics.statistics_service.get_fra_indicator_answers",
+        lambda *_args, **_kwargs: document,
     )
 
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1_8", answer="No", year=2023))
@@ -1089,7 +1089,8 @@ def test_response_details_uses_filtered_dynamic_country_universe_and_canonical_c
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers", lambda _code: document
+        "app.analytics.statistics_service.get_fra_indicator_answers",
+        lambda *_args, **_kwargs: document,
     )
     caplog.set_level("INFO")
 
@@ -1154,12 +1155,13 @@ def test_fra_controls_dataframe_and_query_results_are_reused_from_server_cache(m
     }
     calls = 0
 
-    def load_document(_code):
+    def load_document(*_args, **_kwargs):
         nonlocal calls
         calls += 1
         return document
 
     monkeypatch.setattr(statistics_service, "get_fra_indicator_answers", load_document)
+    monkeypatch.setattr(statistics_service, "get_fra_indicator_control_document", load_document)
     app = Flask("statistics-cache-test")
     init_cache(app)
     with app.app_context():
@@ -1884,3 +1886,143 @@ def _component_by_id(component, component_id: str):
     elif children is not None:
         return _component_by_id(children, component_id)
     return None
+
+
+def test_filter_contract_canonicalizes_all_without_using_the_first_option() -> None:
+    filters = StatisticsFilters.from_raw(None, "", "ALL", None)
+    options = [
+        {"label": "Asexual", "value": "Asexual"},
+        {"label": "Gay", "value": "Gay"},
+    ]
+
+    assert filters == StatisticsFilters()
+    assert _explicit_filter_value("Sexual Orientation", options, None) is None
+
+
+def test_demographic_filter_resets_incompatible_identity_to_all() -> None:
+    filters = _resolved_ui_filters(
+        "Age",
+        "25-39",
+        "Sexual Orientation",
+        "Asexual",
+    )
+
+    assert filters == StatisticsFilters(
+        demographic_type="Age",
+        demographic_value="25-39",
+        identity_type="All",
+        identity_value="All",
+    )
+
+
+@pytest.mark.parametrize(
+    ("filter_a_name", "filter_a_value", "filter_b_name", "filter_b_value", "expected"),
+    [
+        ("All", "All", "All", "All", "Segmentación: Población total"),
+        ("Age", "25-39", "All", "All", "Filtro: Edad — 25\u201339"),
+        (
+            "All",
+            "All",
+            "Sexual Orientation",
+            "Asexual",
+            "Filtro: Orientación sexual — Asexual",
+        ),
+    ],
+)
+def test_statistics_map_hover_prioritizes_selected_segmentation(
+    filter_a_name: str,
+    filter_a_value: str,
+    filter_b_name: str,
+    filter_b_value: str,
+    expected: str,
+) -> None:
+    hover = build_statistics_hover(
+        country="España",
+        value=42,
+        filter_a_name=filter_a_name,
+        filter_a_value=filter_a_value,
+        filter_b_name=filter_b_name,
+        filter_b_value=filter_b_value,
+        response="Yes",
+        language="es",
+    )
+
+    assert "Valor: 42%" in hover
+    assert expected in hover
+    assert "Respuesta" not in hover
+
+
+def test_percentage_choropleth_distinguishes_zero_low_values_and_null() -> None:
+    samples = [0, 1, 5, 10, 25, 50, 75, 100, None]
+    codes = ["ES", "PT", "FR", "DE", "IT", "BE", "NL", "LU", "AT"]
+    figure = build_europe_choropleth(
+        [
+            {"country": code, "iso": code, "value": value}
+            for code, value in zip(codes, samples, strict=True)
+        ],
+        source="FRA",
+    )
+    trace = _trace(figure)
+    values = dict(zip(trace.locations, trace.z, strict=True))
+
+    assert [values[code] for code in codes] == [0, 1, 5, 10, 25, 50, 75, 100, -1]
+    assert trace.colorscale[0][1] == "#9ca3af"
+    assert trace.colorscale[2][1] == "#A9C8F0"
+    assert trace.colorscale[0][1] != trace.colorscale[2][1]
+    assert trace.marker.line.color == "#334155"
+    assert trace.marker.line.width >= 0.85
+    assert list(trace.colorbar.tickvals) == [0, 20, 40, 60, 80, 100]
+
+
+def test_social_attitudes_email_regression_keeps_all_all(monkeypatch) -> None:
+    selected_answer = "I received an email from any other organisation or online network"
+    document = {
+        "code": "I1",
+        "category": "Social attitudes and government response",
+        "question": "How did you come to know about this survey?",
+        "answers": [
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": selected_answer,
+                "percentage": 2,
+                "date": "2023",
+                "filters": [{"type": "All", "value": "All"}],
+            },
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "answer": selected_answer,
+                "percentage": 1,
+                "date": "2023",
+                "filters": [{"type": "Sexual Orientation", "value": "Asexual"}],
+            },
+        ],
+    }
+    monkeypatch.setattr(
+        "app.analytics.statistics_service.get_fra_indicator_answers",
+        lambda *_args: document,
+    )
+
+    result = get_fra_statistics(
+        FraStatisticsQuery(
+            year=2023,
+            category="Social attitudes and government response",
+            question_code="I1",
+            answer=selected_answer,
+            filter_a_name="All",
+            filter_a_value="All",
+            filter_b_name="All",
+            filter_b_value="All",
+        )
+    )
+
+    assert result["status"] == "ok"
+    assert result["filters"] == {
+        "filter_a_name": "All",
+        "filter_a_value": "All",
+        "filter_b_name": "All",
+        "filter_b_value": "All",
+    }
+    assert {(row["filter_a"], row["filter_b"]) for row in result["data"]} == {("All", "All")}
+    assert result["ranking"][0]["value"] == 2

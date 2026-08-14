@@ -86,6 +86,16 @@
     margin-bottom: 1rem;
 }
 
+.reports-template-description {
+    margin: -0.25rem 0 1.25rem;
+    padding: 0.8rem 0.95rem;
+    color: var(--reports-muted-text);
+    border-left: 4px solid var(--reports-primary);
+    border-radius: 0 10px 10px 0;
+    background: var(--reports-surface-soft);
+    line-height: 1.55;
+}
+
 .reports-card-configuration .reports-field:last-child {
     margin-bottom: 0;
 }

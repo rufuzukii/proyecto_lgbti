@@ -10,10 +10,10 @@ from app.cache import redis_health_status
 from app.config import (
     get_app_config,
     get_mongo_config,
-    get_postgres_connect_timeout,
     get_postgres_dsn,
 )
 from app.mongo import get_mongo_client
+from app.postgres import postgres_connection
 
 ServiceStatus = Literal["ok", "degraded", "unavailable"]
 
@@ -52,22 +52,17 @@ def build_health_report() -> HealthReport:
 
 def _configuration_status() -> ServiceStatus:
     try:
-        config = get_app_config()
+        get_app_config()
         get_postgres_dsn()
         get_mongo_config()
     except (RuntimeError, TypeError, ValueError):
         return "unavailable"
-    if not config.local_mode and redis_health_status() == "unavailable":
-        return "degraded"
     return "ok"
 
 
 def _postgresql_status() -> ServiceStatus:
     try:
-        with psycopg.connect(
-            get_postgres_dsn(),
-            connect_timeout=get_postgres_connect_timeout(),
-        ) as connection, connection.cursor() as cursor:
+        with postgres_connection() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT 1")
             cursor.fetchone()
         return "ok"

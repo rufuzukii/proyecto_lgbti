@@ -326,7 +326,7 @@ def test_fra_result_keeps_country_without_selected_answer_as_missing(monkeypatch
     }
     monkeypatch.setattr(
         "app.analytics.statistics_service.get_fra_indicator_answers",
-        lambda _code: document,
+        lambda *_args, **_kwargs: document,
     )
 
     result = get_fra_statistics(

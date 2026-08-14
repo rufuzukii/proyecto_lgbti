@@ -25,21 +25,29 @@ ROLE_PERMISSIONS = {
         Permission.EXPORT_DATA,
         Permission.EXPORT_CHARTS,
         Permission.GENERATE_REPORTS,
+        Permission.CONFIGURE_ADVANCED_REPORTS,
         Permission.ACCESS_EDU,
         Permission.PLAY_EDU_GAMES,
+        Permission.ACCESS_DOCENTE_RESOURCES,
     },
     UserRole.ANONYMOUS: {
         Permission.VIEW_PUBLIC_CONTENT,
+        Permission.VIEW_DASHBOARD,
+        Permission.EXPORT_DATA,
+        Permission.EXPORT_CHARTS,
+        Permission.GENERATE_REPORTS,
+        Permission.CONFIGURE_ADVANCED_REPORTS,
         Permission.ACCESS_EDU,
+        Permission.PLAY_EDU_GAMES,
+        Permission.ACCESS_DOCENTE_RESOURCES,
     },
 }
 
 USER_TYPE_PERMISSIONS = {
-    UserType.RRHH: {Permission.CONFIGURE_ADVANCED_REPORTS},
-    UserType.POLITICO: {Permission.CONFIGURE_ADVANCED_REPORTS},
-    UserType.ONG: {Permission.CONFIGURE_ADVANCED_REPORTS},
+    UserType.RRHH: set(),
+    UserType.POLITICO: set(),
+    UserType.ONG: set(),
     UserType.DOCENTE: {
-        Permission.ACCESS_DOCENTE_RESOURCES,
         Permission.MANAGE_OWN_EDU_GAMES,
     },
     UserType.ADMIN: set(),

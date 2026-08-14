@@ -83,7 +83,31 @@ def test_fra_category_selector_uses_a_covered_compound_index(monkeypatch) -> Non
         lambda name, indexes: captured.setdefault(name, list(indexes)),
     )
     monkeypatch.setattr(mongo_indexes, "spain_report_collection_names", lambda: set())
+    monkeypatch.setattr(mongo_indexes, "_drop_obsolete_indexes", lambda *_args: None)
     mongo_indexes.initialize_mongo_indexes.cache_clear()
+
+
+def test_fra_unique_identity_includes_value_bucket(monkeypatch) -> None:
+    captured: dict[str, list[IndexModel]] = {}
+    monkeypatch.setattr(
+        mongo_indexes,
+        "_ensure_collection_indexes",
+        lambda name, indexes: captured.setdefault(name, list(indexes)),
+    )
+    monkeypatch.setattr(mongo_indexes, "_drop_obsolete_indexes", lambda *_args: None)
+
+    mongo_indexes.ensure_fra_indexes()
+
+    unique = next(
+        index
+        for index in captured["Indicator_fra"]
+        if index.document.get("name") == "fra_question_year_bucket_unique"
+    )
+    assert list(unique.document["key"].items())[-2:] == [
+        ("survey_year", 1),
+        ("value_bucket", 1),
+    ]
+    assert unique.document.get("unique") is True
 
     mongo_indexes.initialize_mongo_indexes()
 
@@ -91,15 +115,15 @@ def test_fra_category_selector_uses_a_covered_compound_index(monkeypatch) -> Non
     category_index = next(
         index
         for index in fra_indexes
-        if index.document.get("name") == "fra_category_question_code_year"
+        if index.document.get("name") == "fra_category_year_question_code"
     )
     assert list(category_index.document["key"].items()) == [
         ("category", 1),
+        ("survey_year", -1),
         ("specific_category", 1),
-            ("question", 1),
-            ("code", 1),
-            ("survey_year", -1),
-        ]
+        ("question", 1),
+        ("code", 1),
+    ]
     docente_indexes = captured["didactica_docente_games"]
     assert {index.document.get("name") for index in docente_indexes} == {
         "docente_game_id_unique",
@@ -108,6 +132,27 @@ def test_fra_category_selector_uses_a_covered_compound_index(monkeypatch) -> Non
     ilga_index = captured["Indicator_ilga"][0]
     assert ilga_index.document.get("unique") is True
     mongo_indexes.initialize_mongo_indexes.cache_clear()
+
+
+def test_removes_only_explicitly_obsolete_indexes(monkeypatch) -> None:
+    collection = FakeCollection(
+        [
+            {"name": "_id_", "key": {"_id": 1}},
+            {
+                "name": "fra_category_question_code_year",
+                "key": {"category": 1, "question": 1, "code": 1, "survey_year": -1},
+            },
+            {"name": "fra_category_year_question_code", "key": {"category": 1}},
+        ]
+    )
+    monkeypatch.setattr(mongo_indexes, "get_mongo_collection", lambda _name: collection)
+
+    mongo_indexes._drop_obsolete_indexes(
+        "Indicator_fra", {"fra_category_question_code_year"}
+    )
+
+    assert collection.dropped == ["fra_category_question_code_year"]
+    assert any(index["name"] == "fra_category_year_question_code" for index in collection.indexes)
 
 
 def test_ilga_index_upgrade_checks_duplicates_before_replacing_non_unique(monkeypatch) -> None:

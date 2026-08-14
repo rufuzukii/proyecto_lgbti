@@ -15,7 +15,7 @@ from psycopg.rows import dict_row
 from pymongo.errors import AutoReconnect, ConfigurationError, NetworkTimeout
 
 from app.cache import cache
-from app.config import get_mongo_config, get_postgres_connect_timeout, get_postgres_dsn
+from app.config import get_mongo_config
 from app.errors import DatabaseUnavailableError
 from app.import_to_db.felgtbi.document_identity import clean_felgtbi_document_label
 from app.import_to_db.felgtbi.semantics import sanitize_report_document
@@ -24,6 +24,7 @@ from app.import_to_db.fra.validation import (
     is_valid_fra_category,
 )
 from app.mongo import get_mongo_client
+from app.postgres import postgres_connection
 
 logger = logging.getLogger(__name__)
 ANALYTICS_CACHE_TIMEOUT_SECONDS = int(os.getenv("ANALYTICS_CACHE_TIMEOUT_SECONDS", "3600"))
@@ -177,10 +178,7 @@ def assert_analytics_databases_available() -> None:
 
 def _assert_analytics_databases_available_uncached() -> None:
     try:
-        with psycopg.connect(
-            get_postgres_dsn(),
-            connect_timeout=get_postgres_connect_timeout(),
-        ) as conn:
+        with postgres_connection() as conn:
             conn.execute("SELECT 1").fetchone()
     except psycopg.OperationalError as exc:
         raise DatabaseUnavailableError("PostgreSQL") from exc
@@ -200,11 +198,7 @@ def get_categories() -> list[str]:
         ORDER BY name
     """
     try:
-        with psycopg.connect(
-            get_postgres_dsn(),
-            row_factory=cast(Any, dict_row),
-            connect_timeout=get_postgres_connect_timeout(),
-        ) as conn:
+        with postgres_connection(row_factory=cast(Any, dict_row)) as conn:
             rows = conn.execute(query).fetchall()
     except Exception:
         logger.exception("categories_read_failed")
@@ -247,11 +241,7 @@ def get_fra_indicators() -> list[FraIndicator]:
         ORDER BY c.name, i.specific_category, i.question
     """
     try:
-        with psycopg.connect(
-            get_postgres_dsn(),
-            row_factory=cast(Any, dict_row),
-            connect_timeout=get_postgres_connect_timeout(),
-        ) as conn:
+        with postgres_connection(row_factory=cast(Any, dict_row)) as conn:
             rows = conn.execute(query).fetchall()
     except Exception:
         logger.exception("fra_indicator_catalog_read_failed")
@@ -281,16 +271,31 @@ def get_fra_mongo_indicators_by_category(
         query = _fra_statistic_document_filter(category=clean_category)
         if year is not None:
             query["survey_year"] = year
-        rows = _mongo_collection("Indicator_fra").find(
-            query,
-            {
-                "_id": 0,
-                "code": 1,
-                "category": 1,
-                "specific_category": 1,
-                "question": 1,
-            },
-            sort=[("specific_category", 1), ("question", 1), ("code", 1)],
+        rows = _mongo_collection("Indicator_fra").aggregate(
+            [
+                {"$match": query},
+                {
+                    "$group": {
+                        "_id": {
+                            "code": "$code",
+                            "category": "$category",
+                            "specific_category": "$specific_category",
+                            "question": "$question",
+                        }
+                    }
+                },
+                {
+                    "$project": {
+                        "_id": 0,
+                        "code": "$_id.code",
+                        "category": "$_id.category",
+                        "specific_category": "$_id.specific_category",
+                        "question": "$_id.question",
+                    }
+                },
+                {"$sort": {"specific_category": 1, "question": 1, "code": 1}},
+            ],
+            allowDiskUse=True,
         )
         return [
             FraIndicator(
@@ -338,14 +343,21 @@ def _fra_statistic_document_filter(*, category: str | None = None) -> dict[str, 
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_fra_indicator_answers(code: str, category: str | None = None) -> dict[str, Any] | None:
+def get_fra_indicator_answers(
+    code: str,
+    category: str | None = None,
+    year: int | None = None,
+) -> dict[str, Any] | None:
     clean_code = str(code or "").strip()
     if not clean_code:
         return None
+    started_at = time.perf_counter()
     query: dict[str, Any] = {"code": clean_code}
     clean_category = str(category or "").strip()
     if clean_category:
         query["category"] = clean_category
+    if year is not None:
+        query["survey_year"] = int(year)
     try:
         documents = list(
             _mongo_collection("Indicator_fra").find(
@@ -355,9 +367,9 @@ def get_fra_indicator_answers(code: str, category: str | None = None) -> dict[st
                     "code": 1,
                     "category": 1,
                     "specific_category": 1,
-                "question": 1,
-                "survey_year": 1,
-                "answers": 1,
+                    "question": 1,
+                    "survey_year": 1,
+                    "answers": 1,
                 },
             )
         )
@@ -371,6 +383,13 @@ def get_fra_indicator_answers(code: str, category: str | None = None) -> dict[st
             for answer in (item.get("answers") or [])
             if isinstance(answer, dict)
         ]
+        logger.info(
+            "fra_indicator_query_completed code=%s documents=%d answers=%d query_ms=%.2f",
+            clean_code,
+            len(documents),
+            len(document["answers"]),
+            (time.perf_counter() - started_at) * 1000,
+        )
         if len(documents) > 1:
             logger.info(
                 "fra_indicator_documents_merged code=%s documents=%d answers=%d",
@@ -390,7 +409,98 @@ def get_fra_indicator_answers(code: str, category: str | None = None) -> dict[st
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_fra_indicator_documents(codes: tuple[str, ...]) -> list[dict[str, Any]]:
+def get_fra_indicator_control_document(
+    code: str,
+    category: str | None = None,
+    year: int | None = None,
+) -> dict[str, Any] | None:
+    """Return the distinct FRA control values without transferring the full answer array."""
+    clean_code = str(code or "").strip()
+    if not clean_code:
+        return None
+    started_at = time.perf_counter()
+    match: dict[str, Any] = {"code": clean_code}
+    clean_category = str(category or "").strip()
+    if clean_category:
+        match["category"] = clean_category
+    if year is not None:
+        match["survey_year"] = int(year)
+    pipeline = [
+        {"$match": match},
+        {"$unwind": "$answers"},
+        {
+            "$unwind": {
+                "path": "$answers.filters",
+                "preserveNullAndEmptyArrays": True,
+            }
+        },
+        {
+            "$group": {
+                "_id": "$code",
+                "category": {"$first": "$category"},
+                "specific_category": {"$first": "$specific_category"},
+                "question": {"$first": "$question"},
+                "answers": {"$addToSet": "$answers.answer"},
+                "filters": {"$addToSet": "$answers.filters"},
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "code": "$_id",
+                "category": 1,
+                "specific_category": 1,
+                "question": 1,
+                "answers": 1,
+                "filters": 1,
+            }
+        },
+    ]
+    try:
+        result = next(iter(_mongo_collection("Indicator_fra").aggregate(pipeline)), None)
+    except Exception:
+        logger.exception("fra_indicator_controls_read_failed", extra={"code": clean_code})
+        return None
+    if not isinstance(result, dict):
+        return None
+
+    answers = sorted(
+        {str(value).strip() for value in result.get("answers", []) if str(value or "").strip()},
+        key=str.casefold,
+    )
+    control_rows: list[dict[str, Any]] = [
+        {"answer": answer, "country": "catalog"} for answer in answers
+    ]
+    fallback_answer = answers[0] if answers else "catalog"
+    control_rows.extend(
+        {
+            "answer": fallback_answer,
+            "country": "catalog",
+            "filters": [filter_value],
+        }
+        for filter_value in result.get("filters", [])
+        if isinstance(filter_value, dict)
+    )
+    logger.info(
+        "fra_control_query_completed code=%s answers=%d filters=%d query_ms=%.2f",
+        clean_code,
+        len(answers),
+        len(control_rows) - len(answers),
+        (time.perf_counter() - started_at) * 1000,
+    )
+    return {
+        "code": clean_code,
+        "category": str(result.get("category") or "").strip(),
+        "specific_category": str(result.get("specific_category") or "").strip(),
+        "question": str(result.get("question") or "").strip(),
+        "answers": control_rows,
+    }
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
+def get_fra_indicator_documents(
+    codes: tuple[str, ...], year: int | None = None
+) -> list[dict[str, Any]]:
     """Load and merge several FRA indicators with one MongoDB query."""
     clean_codes = tuple(
         sorted({str(code or "").strip() for code in codes if str(code or "").strip()})
@@ -398,9 +508,12 @@ def get_fra_indicator_documents(codes: tuple[str, ...]) -> list[dict[str, Any]]:
     if not clean_codes:
         return []
     try:
+        query: dict[str, Any] = {"code": {"$in": list(clean_codes)}}
+        if year is not None:
+            query["survey_year"] = int(year)
         documents = list(
             _mongo_collection("Indicator_fra").find(
-                {"code": {"$in": list(clean_codes)}},
+                query,
                 {
                     "_id": 0,
                     "code": 1,
@@ -1160,9 +1273,58 @@ def deactivate_country_lgbti_status_record(country_code: str, year: int) -> bool
     return bool(result.matched_count)
 
 
-def invalidate_analytics_cache() -> None:
+def analytics_cache_generation(source: str) -> int:
+    clean_source = str(source or "all").strip().casefold() or "all"
+    if not getattr(cache, "app", None):
+        return 0
+    value = cache.get(f"analytics-generation:{clean_source}")
+    try:
+        return int(value or 0)
+    except TypeError, ValueError:
+        return 0
+
+
+def invalidate_analytics_cache(source: str | None = None) -> None:
     global _section_cache_hits, _section_cache_requests
-    cache.clear()
+    clean_source = str(source or "").strip().casefold()
+    if not clean_source:
+        cache.clear()
+    else:
+        generation_key = f"analytics-generation:{clean_source}"
+        cache.set(
+            generation_key,
+            analytics_cache_generation(clean_source) + 1,
+            timeout=0,
+        )
+        functions_by_source = {
+            "fra": (
+                get_fra_categories,
+                get_fra_indicator_answers,
+                get_fra_indicator_control_document,
+                get_fra_indicator_documents,
+                get_fra_historical_documents,
+                get_fra_mongo_indicators_by_category,
+                get_fra_years,
+            ),
+            "ilga": (
+                get_ilga_analysis_rows,
+                get_ilga_criteria_by_year,
+                get_ilga_criteria_categories_by_year,
+                get_ilga_document_by_year,
+                get_ilga_years,
+            ),
+            "felgtbi": (
+                get_felgtbi_document_options,
+                get_felgtbi_document_years,
+                get_felgtbi_documents,
+                get_felgtbi_indicators_by_document,
+                get_spain_available_collections,
+                get_spain_collection_options,
+            ),
+            "country_status": (get_country_lgbti_status_records,),
+        }
+        for function in functions_by_source.get(clean_source, ()):
+            cache.delete_memoized(function)
     with _section_cache_metrics_lock:
         _section_cache_requests = 0
         _section_cache_hits = 0
@@ -1175,7 +1337,7 @@ def _felgtbi_section_cache_key(
 ) -> str:
     identity = f"{collection_name}\0{document_id or ''}\0{code}"
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-    return f"felgtbi-section-v2:{digest}"
+    return f"felgtbi-section-v2:{analytics_cache_generation('felgtbi')}:{digest}"
 
 
 def _record_section_cache_request(*, hit: bool) -> float:

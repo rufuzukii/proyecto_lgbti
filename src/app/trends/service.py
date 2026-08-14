@@ -6,7 +6,12 @@ import logging
 from time import perf_counter
 from typing import Any
 
-from app.analytics.repository import ANALYTICS_CACHE_TIMEOUT_SECONDS, get_ilga_years
+from app.analytics.repository import (
+    ANALYTICS_CACHE_TIMEOUT_SECONDS,
+    analytics_cache_generation,
+    get_ilga_years,
+    invalidate_analytics_cache,
+)
 from app.cache import cache
 from app.trends.analysis import analyze_historical_series
 from app.trends.data import (
@@ -163,7 +168,7 @@ def generate_trend_analysis(
 
 def invalidate_trend_cache() -> None:
     """Invalidate trends together with the shared analytics cache after dataset mutations."""
-    cache.clear()
+    invalidate_analytics_cache("ilga")
 
 
 def _filter_variant(points: list[HistoricalPoint], variant: SeriesVariant) -> list[HistoricalPoint]:
@@ -181,6 +186,7 @@ def _series_cache_key(
     filters: TrendFilters,
 ) -> str:
     identity = {
+        "cache_generation": analytics_cache_generation(source.value),
         "country": country_code,
         "dataset_years": get_ilga_years() if source == TrendSource.ILGA else None,
         "end_year": filters.end_year,

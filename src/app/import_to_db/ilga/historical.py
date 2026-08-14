@@ -18,7 +18,6 @@ from app.import_to_db.ilga.importer import (
 )
 from app.import_to_db.ilga.mongo import IlgaWriteOutcome, write_indicator_ilga_json
 from app.mongo_indexes import ensure_ilga_unique_index
-from app.trends.service import invalidate_trend_cache
 
 logger = logging.getLogger(__name__)
 PROTECTED_ILGA_YEAR = 2026
@@ -160,7 +159,13 @@ def import_ilga_historical_directory(
         ensure_ilga_unique_index()
         write_summary = write_indicator_ilga_json(valid_documents)
         outcomes = {outcome.year: outcome for outcome in write_summary.outcomes}
-        rows = [_apply_write_outcome(row, outcomes.get(row.year)) for row in rows]
+        rows = [
+            _apply_write_outcome(
+                row,
+                outcomes.get(row.year) if row.year is not None else None,
+            )
+            for row in rows
+        ]
         if write_summary.inserted_documents:
             cache_invalidated = _invalidate_ilga_caches()
 
@@ -231,8 +236,7 @@ def _invalidate_ilga_caches() -> bool:
     try:
         if context is not None:
             context.push()
-        invalidate_analytics_cache()
-        invalidate_trend_cache()
+        invalidate_analytics_cache("ilga")
     except Exception:
         logger.exception("ilga_cache_invalidation_failed")
         return False

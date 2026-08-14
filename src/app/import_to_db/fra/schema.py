@@ -15,6 +15,8 @@ from typing import Any, Literal, cast
 import pandas as pd
 
 from app.import_to_db.fra.validation import (
+    FRA_FOOTNOTE_MOJIBAKE,
+    FRA_FOOTNOTE_SYMBOLS,
     fra_metadata_key,
     is_fra_footnote_symbol,
     is_valid_fra_category,
@@ -33,6 +35,7 @@ PercentageScale = Literal["percentage_points", "proportion"]
 
 MISSING_PERCENTAGE_VALUES = frozenset({"", "null", "none", "n/a", "na", ":", "-", "..", "‡", "¹"})
 HTML_PREFIXES = ("<html", "<!doctype html", "<?xml")
+FRA_DUPLICATE_COLUMN_SUFFIX = "__fra_duplicate_"
 
 NORMALIZED_FRA_COLUMNS = (
     "source",
@@ -88,6 +91,12 @@ FILTER_TYPE_TO_KEY = {
     "sex characteristic": "sex_characteristics",
     "sc": "sex_characteristics",
 }
+
+
+def _fra_response_comparison_key(value: Any) -> str:
+    """Compare response labels while tolerating harmless punctuation loss in FRA exports."""
+    normalized = unicodedata.normalize("NFKD", normalize_header(value)).casefold()
+    return "".join(character for character in normalized if character.isalnum())
 
 FILTER_KEY_TO_LABEL = {
     "age_group": "Age",
@@ -467,18 +476,21 @@ def normalize_current_fra_csv(
             continue
         specific_category, question = split_fra_question(question_text, fallback_category=topic)
         for percentage_column in current_schema.percentage_columns:
-            response = _clean(percentage_column)
+            response = _fra_column_label(percentage_column)
+            if normalize_header(response) == "value":
+                response = "Mean"
             if (
                 metadata.response
                 and len(current_schema.percentage_columns) == 1
-                and normalize_header(metadata.response) != normalize_header(response)
+                and _fra_response_comparison_key(metadata.response)
+                != _fra_response_comparison_key(response)
             ):
                 raise FraMetadataMismatchError(
                     f"fra_answer_metadata_mismatch:header={response}:metadata={metadata.response}"
                 )
             raw_percentage = _clean(record.get(percentage_column))
             percentage = parse_fra_percentage(raw_percentage, scale=current_schema.percentage_scale)
-            if percentage is None or is_fra_footnote_symbol(response):
+            if is_fra_footnote_symbol(response):
                 continue
             rows.append(
                 _normalized_row(
@@ -549,7 +561,7 @@ def normalize_legacy_fra_csv(
         )
         raw_percentage = record.get("proportion") or record.get("percentage", "")
         percentage = parse_fra_percentage(raw_percentage, scale=legacy_schema.percentage_scale)
-        if percentage is None or is_fra_footnote_symbol(response):
+        if is_fra_footnote_symbol(response):
             continue
         rows.append(
             _normalized_row(
@@ -611,19 +623,28 @@ def extract_fra_csv_metadata(
         (_clean(row[0]) if row else "", _clean(row[1]) if len(row) > 1 else "")
         for row in dataframe.attrs.get("fra_preamble_rows", [])
     ]
+    records = dataframe.to_dict(orient="records")
     metadata_pairs.extend(
         (
             _clean(record.get(label_column)),
             _clean(record.get(value_column)),
         )
-        for record in dataframe.to_dict(orient="records")
+        for record in records
+    )
+    metadata_pairs.extend(
+        (nonempty[0], "")
+        for record in records
+        if len(nonempty := [_clean(value) for value in record.values() if _clean(value)]) == 1
     )
 
     for raw_label, raw_value in metadata_pairs:
         label = normalize_header(raw_label.rstrip(":"))
         if not raw_label:
             continue
-        if label in {"filters", "filtros"}:
+        if not raw_value and _is_unlabeled_fra_source(raw_label):
+            source = raw_label
+            source_year = extract_fra_survey_year(raw_label) or source_year
+        elif label in {"filters", "filtros"}:
             response, filters = parse_fra_filter_metadata(raw_value)
         elif label in {"source", "fuente"}:
             source = raw_value or source
@@ -642,6 +663,11 @@ def extract_fra_csv_metadata(
             disclaimer = raw_value
         elif _looks_like_footnote_label(raw_label) and raw_value:
             footnotes[raw_label.strip()] = raw_value
+        elif not raw_value:
+            raw_filter_type, separator, raw_filter_value = raw_label.partition(":")
+            filter_key = FILTER_TYPE_TO_KEY.get(_filter_type_key(raw_filter_type))
+            if separator and filter_key and raw_filter_value.strip().casefold() != "all":
+                filters[filter_key] = raw_filter_value.strip()
     explicit_year = _explicit_fra_year(dataframe, schema.year_column)
     filename_year = extract_fra_survey_year(Path(file_name).stem) if file_name else None
     return FraCsvMetadata(
@@ -690,7 +716,8 @@ def parse_fra_percentage(
     text = _clean(value).replace("\u00a0", " ")
     if text.casefold() in MISSING_PERCENTAGE_VALUES:
         return None
-    cleaned = text.replace(" ", "")
+    numeric_text, _footnote = _split_percentage_footnote(text)
+    cleaned = numeric_text.replace(" ", "")
     had_percent_sign = cleaned.endswith("%")
     cleaned = cleaned.removesuffix("%").replace(",", ".")
     try:
@@ -708,6 +735,21 @@ def parse_fra_percentage(
     if not 0 <= number <= 100:
         raise InvalidFraCsvError(f"fra_percentage_out_of_range:{text}")
     return int(number) if number.is_integer() else number
+
+
+def _split_percentage_footnote(value: str) -> tuple[str, str]:
+    """Separate FRA significance markers appended to an otherwise numeric value."""
+    clean = str(value or "").strip()
+    if not clean:
+        return clean, ""
+    had_percent_sign = clean.endswith("%")
+    body = clean.removesuffix("%").rstrip()
+    for suffix_length in range(1, min(4, len(body) - 1) + 1):
+        suffix = body[-suffix_length:]
+        prefix = body[:-suffix_length].rstrip()
+        if prefix and suffix in FRA_FOOTNOTE_SYMBOLS | FRA_FOOTNOTE_MOJIBAKE:
+            return f"{prefix}{'%' if had_percent_sign else ''}", suffix
+    return clean, ""
 
 
 def validate_normalized_fra(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -983,6 +1025,9 @@ def _is_footnote_record(record: Mapping[str, str]) -> bool:
 
 
 def _note_for_percentage(raw_percentage: str, metadata: FraCsvMetadata) -> str:
+    _numeric_text, footnote = _split_percentage_footnote(raw_percentage)
+    if footnote:
+        return metadata.footnotes.get(footnote, metadata.note)
     if parse_fra_percentage(raw_percentage, scale="percentage_points") is not None:
         return ""
     return metadata.footnotes.get(raw_percentage.strip(), metadata.note)
@@ -1011,6 +1056,11 @@ def _explicit_fra_year(dataframe: pd.DataFrame, year_column: str | None) -> int 
 
 def _looks_like_footnote_label(value: str) -> bool:
     return is_fra_footnote_symbol(value)
+
+
+def _is_unlabeled_fra_source(value: str) -> bool:
+    normalized = normalize_header(value)
+    return normalized.startswith("eu_lgbtiq_survey") and extract_fra_survey_year(value) is not None
 
 
 def _filter_type_key(value: Any) -> str:
@@ -1112,8 +1162,21 @@ def _dataframe_from_fra_rows(rows: list[list[str]], *, header_row: int) -> pd.Da
     if not columns or any(not column for column in columns):
         raise UnsupportedFraCsvSchemaError("fra_csv_header_contains_empty_columns")
     normalized_columns = [normalize_header(column) for column in columns]
-    if len(set(normalized_columns)) != len(normalized_columns):
+    protected_duplicates = {"topic", "question", "question_code", "location", "country"}
+    repeated = {
+        column for column in normalized_columns if normalized_columns.count(column) > 1
+    }
+    if repeated & protected_duplicates:
         raise UnsupportedFraCsvSchemaError("fra_csv_header_contains_duplicate_columns")
+    unique_columns: list[str] = []
+    occurrences: dict[str, int] = {}
+    for column, normalized in zip(columns, normalized_columns, strict=True):
+        occurrence = occurrences.get(normalized, 0) + 1
+        occurrences[normalized] = occurrence
+        unique_columns.append(
+            column if occurrence == 1 else f"{column}{FRA_DUPLICATE_COLUMN_SUFFIX}{occurrence}"
+        )
+    columns = unique_columns
 
     records: list[list[str]] = []
     for row in rows[header_row + 1 :]:
@@ -1124,6 +1187,10 @@ def _dataframe_from_fra_rows(rows: list[list[str]], *, header_row: int) -> pd.Da
             values = values[: len(columns)]
         records.append(values + [""] * (len(columns) - len(values)))
     return pd.DataFrame(records, columns=columns, dtype=str)
+
+
+def _fra_column_label(column: str) -> str:
+    return str(column).split(FRA_DUPLICATE_COLUMN_SUFFIX, 1)[0].strip()
 
 
 def _log_fra_import_summary(

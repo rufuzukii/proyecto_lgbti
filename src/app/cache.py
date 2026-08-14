@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import lru_cache
 from threading import Lock
 from time import monotonic
 from typing import Any, ClassVar
@@ -159,20 +160,21 @@ def redis_health_status() -> str:
     if not redis_url:
         return "unavailable" if _is_production() else "degraded"
 
-    client: Redis | None = None
     try:
-        client = Redis.from_url(
-            redis_url,
-            socket_connect_timeout=_env_float("REDIS_CONNECT_TIMEOUT_SECONDS", 1.0),
-            socket_timeout=_env_float("REDIS_SOCKET_TIMEOUT_SECONDS", 1.0),
-            health_check_interval=_env_int("REDIS_HEALTH_CHECK_INTERVAL_SECONDS", 30),
-        )
+        client = _redis_health_client(redis_url)
         return "ok" if client.ping() else "unavailable"
     except (RedisError, OSError, ValueError):
         return "unavailable"
-    finally:
-        if client is not None:
-            client.close()
+
+
+@lru_cache(maxsize=1)
+def _redis_health_client(redis_url: str) -> Redis:
+    return Redis.from_url(
+        redis_url,
+        socket_connect_timeout=_env_float("REDIS_CONNECT_TIMEOUT_SECONDS", 1.0),
+        socket_timeout=_env_float("REDIS_SOCKET_TIMEOUT_SECONDS", 1.0),
+        health_check_interval=_env_int("REDIS_HEALTH_CHECK_INTERVAL_SECONDS", 30),
+    )
 
 
 def _redis_url() -> str:

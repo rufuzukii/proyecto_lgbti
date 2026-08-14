@@ -7,7 +7,13 @@ from app.import_to_db.ilga import historical
 from app.import_to_db.ilga.mongo import IlgaWriteOutcome, IlgaWriteSummary
 
 
-def _write_payload(path: Path, *, year: int, code: str = "ES", value=75) -> None:
+def _write_payload(
+    path: Path,
+    *,
+    year: int,
+    code: str = "ES",
+    value: float = 75,
+) -> None:
     path.write_text(
         json.dumps(
             {
@@ -80,13 +86,8 @@ def test_ilga_cache_invalidation_covers_analytics_and_trends(monkeypatch) -> Non
     monkeypatch.setattr(
         historical,
         "invalidate_analytics_cache",
-        lambda: events.append("analytics"),
-    )
-    monkeypatch.setattr(
-        historical,
-        "invalidate_trend_cache",
-        lambda: events.append("trends"),
+        lambda source: events.append(f"analytics:{source}"),
     )
 
     assert historical._invalidate_ilga_caches() is True
-    assert events == ["analytics", "trends"]
+    assert events == ["analytics:ilga"]

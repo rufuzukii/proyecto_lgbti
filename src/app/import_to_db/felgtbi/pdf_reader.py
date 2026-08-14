@@ -25,7 +25,8 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
             text_dict_flags = fitz.TEXTFLAGS_DICT & ~fitz.TEXT_PRESERVE_IMAGES
             text_page = page.get_textpage(flags=text_dict_flags)
             text_blocks = page.get_text("blocks", textpage=text_page)
-            page_text = page.get_text("text", textpage=text_page)
+            raw_page_text = page.get_text("text", textpage=text_page)
+            page_text = raw_page_text if isinstance(raw_page_text, str) else ""
             page_dict = page.get_text("dict", textpage=text_page)
             dict_blocks = page_dict.get("blocks", []) if isinstance(page_dict, dict) else []
             image_blocks = [
@@ -56,7 +57,15 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
                     "height": page_height,
                 }
             )
-            del text_page, page_dict, dict_blocks, image_blocks, text_blocks, visual_regions, page
+            del (
+                text_page,
+                page_dict,
+                dict_blocks,
+                image_blocks,
+                text_blocks,
+                visual_regions,
+                page,
+            )
     return pages
 
 

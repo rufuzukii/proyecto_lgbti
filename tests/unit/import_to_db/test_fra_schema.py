@@ -118,6 +118,37 @@ def test_current_filter_combinations(metadata: str, expected_a: str, expected_b:
     assert row["filter_b_value"] == expected_b
 
 
+def test_current_response_metadata_tolerates_lost_punctuation() -> None:
+    header = "By healthcare personnel (e.g. a nurse)"
+    csv_text = CURRENT_CSV.replace("Yes", header).replace(
+        f"Answer: {header}", "Answer: By healthcare personnel (e.ga nurse)"
+    )
+    payload = payload_dict(parse_fra_csv_text(csv_text))
+    assert payload["answers"][0]["answer"] == header
+
+
+def test_current_response_metadata_still_rejects_different_answer() -> None:
+    inconsistent = CURRENT_CSV.replace("Answer: Yes", "Answer: No")
+    with pytest.raises(FraMetadataMismatchError, match="fra_answer_metadata_mismatch"):
+        parse_fra_csv_text(inconsistent)
+
+
+def test_unlabeled_fra_source_footer_supplies_survey_year() -> None:
+    csv_text = """Location,country,topic,question,question_code,value,notes
+Spain,ES,Health and mental health,Mental health > Satisfaction with life,H1,6.7,
+Place of residence: A village,,,,,,
+\"EU LGBTIQ Survey III, 2023\",,,,,,
+2026-08-12,,,,,,
+"""
+    payload = payload_dict(parse_fra_csv_text(csv_text, file_name="No-filters.csv"))
+    assert payload["survey_year"] == 2023
+    assert payload["answers"][0]["answer"] == "Mean"
+    assert payload["answers"][0]["percentage"] == 6.7
+    assert payload["answers"][0]["filters"] == [
+        {"type": "Place of residence", "value": "A village"}
+    ]
+
+
 def test_all_all_filename_rejects_explicit_endosex_metadata() -> None:
     inconsistent = CURRENT_CSV.replace("Answer: Yes", "Answer: Yes; Sex Characteristics: Endosex")
     with pytest.raises(FraMetadataMismatchError, match="fra_metadata_mismatch"):
@@ -190,6 +221,68 @@ def test_percentage_points_variants(value: str, expected: float | None) -> None:
     assert parse_fra_percentage(value, scale="percentage_points") == expected
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("54\u2021", 54),
+        ("42,5 \u2021", 42.5),
+        ("42.5%\u2021", 42.5),
+        ("\u0105", None),
+    ],
+)
+def test_percentage_points_support_fra_footnote_suffixes(
+    value: str, expected: float | None
+) -> None:
+    assert parse_fra_percentage(value, scale="percentage_points") == expected
+
+
+def test_current_csv_preserves_null_percentages_and_numeric_footnotes() -> None:
+    csv_text = """topic,question,question_code,Location,country,Place of residence,Yes
+Families,Families > Raising children,G12,Austria,AT,A village,54\u2021
+Families,Families > Raising children,G12,Bulgaria,BG,A village,\u0105
+\u2021,small sample size,,,,,
+\u0105,not available due to small sample size,,,,,
+Filters:,Answer: Yes; Place of residence: A village,,,,,
+Source:,"EU LGBTIQ Survey III, 2023",,,,,
+"""
+
+    payload = payload_dict(parse_fra_csv_text(csv_text, file_name="No-filters.csv"))
+
+    assert [answer["percentage"] for answer in payload["answers"]] == [54, None]
+    assert payload["survey_year"] == 2023
+    assert payload["answers"][0]["filters"] == [
+        {"type": "Place of residence", "value": "A village"}
+    ]
+
+
+def test_age_55_plus_column_is_a_filter_not_an_answer_column() -> None:
+    csv_text = """topic,question,question_code,Location,country,Age,Yes
+Families,Families > Question,G9,Spain,ES,55+,42
+Filters:,Answer: Yes; Age: 55+,,,,
+Source:,"EU LGBTIQ Survey III, 2023",,,,,
+"""
+
+    payload = payload_dict(parse_fra_csv_text(csv_text, file_name="No-filters.csv"))
+
+    assert {answer["answer"] for answer in payload["answers"]} == {"Yes"}
+    assert payload["answers"][0]["filters"] == [{"type": "Age", "value": "55+"}]
+
+
+def test_duplicate_age_headers_keep_filter_and_answer_roles_separate() -> None:
+    csv_text = """topic,question,question_code,Location,country,Age,Age
+Discrimination,Area > Reasons,C2,Albania,AL,15-17,\u00b9
+Discrimination,Area > Reasons,C2,Spain,ES,15-17,31
+Filters:,Answer: Age; Age: 15-17,,,,
+Source:,"EU LGBTIQ Survey III, 2023",,,,,
+"""
+
+    payload = payload_dict(parse_fra_csv_text(csv_text, file_name="No-filters.csv"))
+
+    assert {answer["answer"] for answer in payload["answers"]} == {"Age"}
+    assert [answer["percentage"] for answer in payload["answers"]] == [None, 31]
+    assert payload["answers"][1]["filters"] == [{"type": "Age", "value": "15-17"}]
+
+
 def test_proportion_scale_is_schema_specific() -> None:
     assert parse_fra_percentage("0.425", scale="percentage_points") == 0.425
     assert parse_fra_percentage("0.425", scale="proportion") == 42.5
@@ -223,7 +316,7 @@ def test_exact_duplicate_is_idempotent_but_conflicting_duplicate_is_rejected() -
         normalize_fra_csv(dataframe, schema)
 
 
-def test_repeated_persistence_uses_set_semantics_for_answer_batches() -> None:
+def test_repeated_persistence_uses_atomic_natural_key_replacement() -> None:
     payload = payload_dict(parse_fra_csv_text(CURRENT_CSV, file_name="fra.csv"))
     collection = MagicMock()
     with patch("app.import_to_db.fra.mongo.get_mongo_collection", return_value=collection):
@@ -231,9 +324,10 @@ def test_repeated_persistence_uses_set_semantics_for_answer_batches() -> None:
         insert_indicator_fra_json(payload)
     assert collection.update_one.call_count == 2
     for call in collection.update_one.call_args_list:
-        update = call.args[1]
-        assert "$addToSet" in update
-        assert "$each" in update["$addToSet"]["answers"]
+        answer_update = call.args[1][0]["$set"]["answers"]
+        assert "$let" in answer_update
+        incoming = answer_update["$let"]["vars"]["incoming"]["$literal"]
+        assert all(answer.get("identity_key") for answer in incoming)
 
 
 def test_current_csv_detects_header_after_leading_metadata_and_keeps_it_separate() -> None:

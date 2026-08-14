@@ -86,13 +86,10 @@ def is_valid_fra_answer(answer: Mapping[str, Any]) -> bool:
     country_code = _clean(answer.get("country_code"))
     response = _clean(answer.get("answer"))
     percentage = answer.get("percentage")
-    if (
-        not (country or country_code)
-        or not response
-        or percentage is None
-        or isinstance(percentage, bool)
-    ):
+    if not (country or country_code) or not response or isinstance(percentage, bool):
         return False
+    if percentage is None:
+        return True
     try:
         numeric = float(percentage)
     except TypeError, ValueError:

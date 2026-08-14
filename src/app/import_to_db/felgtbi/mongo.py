@@ -108,7 +108,7 @@ def _invalidate_catalog_cache() -> None:
     from app.analytics.repository import invalidate_analytics_cache
 
     try:
-        invalidate_analytics_cache()
+        invalidate_analytics_cache("felgtbi")
     except (AttributeError, RuntimeError):
         logger.info("felgtbi_cache_invalidation_deferred no_flask_context=true")
 

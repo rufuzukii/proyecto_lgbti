@@ -4,6 +4,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.dash.components.empty_state import build_empty_state
+from app.dash.components.loading import contextual_loading
 from app.dash.i18n import dash_attrs, text, ui_text
 from app.dash.layouts.navigation import build_navbar
 
@@ -16,14 +17,15 @@ def build_trends_layout() -> Component:
                 [
                     _header(),
                     _controls(),
-                    dcc.Loading(
+                    contextual_loading(
                         html.Div(
                             _initial_state(),
                             id="trend-result",
                             className="trend-result",
                             role="status",
                         ),
-                        type="circle",
+                        "loading_trends",
+                        element_id="trends-result-loading",
                     ),
                 ],
                 className="trend-shell app-page-container",
@@ -123,6 +125,7 @@ def _controls() -> Component:
                     value=[0, 1],
                     marks={},
                     step=1,
+                    updatemode="mouseup",
                     disabled=True,
                     allowCross=False,
                     tooltip={"placement": "bottom", "always_visible": False},
