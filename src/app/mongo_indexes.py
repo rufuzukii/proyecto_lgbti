@@ -9,6 +9,7 @@ from typing import Any
 from pymongo import ASCENDING, DESCENDING, IndexModel
 from pymongo.errors import OperationFailure
 
+from app.fra_surveys import FRA_SURVEYS
 from app.mongo import get_mongo_collection, get_mongo_database
 from app.privacy.policy import get_privacy_policy_config
 
@@ -16,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 NON_REPORT_COLLECTIONS = {
     "country_lgbti_status",
-    "Indicator_fra",
     "Indicator_ilga",
+    *(survey.collection for survey in FRA_SURVEYS),
 }
 
 
@@ -56,9 +57,7 @@ def initialize_mongo_indexes() -> None:
 
 def ensure_fra_indexes() -> None:
     """Create only the indexes required by FRA import and Statistics queries."""
-    _ensure_collection_indexes(
-        "Indicator_fra",
-        [
+    indexes = [
             IndexModel([("code", ASCENDING)], name="fra_code"),
             IndexModel(
                 [
@@ -99,12 +98,15 @@ def ensure_fra_indexes() -> None:
                 [("survey_year", DESCENDING), ("code", ASCENDING)],
                 name="fra_year_code",
             ),
-        ],
-    )
-    _drop_obsolete_indexes(
-        "Indicator_fra",
-        {"fra_category_question_code_year", "fra_question_year_unique"},
-    )
+        ]
+    for survey in FRA_SURVEYS:
+        if not survey.enabled:
+            continue
+        _ensure_collection_indexes(survey.collection, indexes)
+        _drop_obsolete_indexes(
+            survey.collection,
+            {"fra_category_question_code_year", "fra_question_year_unique"},
+        )
 
 
 def felgtbi_index_models() -> list[IndexModel]:

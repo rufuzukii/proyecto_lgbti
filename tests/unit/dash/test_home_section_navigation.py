@@ -2,8 +2,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+from dash import Dash
 from dash.development.base_component import Component
 
+import app.dash.layouts.home as home_layout
 from app.dash.components.section_navigation import (
     ANONYMOUS_ACCOUNT_SECTION,
     AUTHENTICATED_ACCOUNT_SECTION,
@@ -173,6 +175,18 @@ def test_home_card_copy_is_complete_in_both_languages() -> None:
         assert UI_TEXT[key]["en"].strip()
 
 
+def test_home_cards_describe_the_current_user_facing_features() -> None:
+    assert (
+        "mapas, rankings, comparaciones y segmentaciones"
+        in UI_TEXT["home_statistics_description"]["es"]
+    )
+    assert "no son predicciones oficiales" in UI_TEXT["home_trends_description"]["es"]
+    assert "not official predictions" in UI_TEXT["home_trends_description"]["en"]
+    assert "FELGTBI+" in UI_TEXT["home_spain_description"]["es"]
+    assert "glosario" in UI_TEXT["home_didactics_description"]["es"]
+    assert "sources, methodology and purpose" in UI_TEXT["home_about_description"]["en"]
+
+
 def test_home_card_css_covers_themes_responsive_layout_focus_and_motion() -> None:
     styles = (
         Path(__file__).resolve().parents[3] / "src" / "app" / "dash" / "assets" / "home.css"
@@ -183,4 +197,101 @@ def test_home_card_css_covers_themes_responsive_layout_focus_and_motion() -> Non
     assert ".home-sections-grid," in styles
     assert ".home-section-card__link:focus-visible" in styles
     assert 'body[data-theme="dark"] .home-section-card' in styles
+    assert 'body[data-theme="dark"] .home-legal-details-panel' in styles
+    assert ".home-ilga-country-summary" in styles
+    assert "#home-legal-details-loading" in styles
     assert "@media (prefers-reduced-motion: reduce)" in styles
+
+
+def test_home_places_ilga_detail_between_map_and_navigation(monkeypatch) -> None:
+    document = {"year": 2026, "countries": []}
+    monkeypatch.setattr(home_layout, "get_latest_ilga_document", lambda: document)
+    monkeypatch.setattr(home_layout, "get_ilga_years", lambda: [2026])
+    monkeypatch.setattr(home_layout, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr(
+        home_layout,
+        "current_user",
+        SimpleNamespace(is_authenticated=False),
+    )
+
+    layout = home_layout.build_home_layout()
+    ordered_ids_or_classes = [
+        getattr(component, "id", None) or getattr(component, "className", None)
+        for component in cast(Any, cast(Any, layout.children)[1]).children
+    ]
+
+    assert ordered_ids_or_classes.index("home-map-stage") < ordered_ids_or_classes.index(
+        "home-legal-section"
+    )
+    assert ordered_ids_or_classes.index("home-legal-section") < ordered_ids_or_classes.index(
+        "home-sections"
+    )
+    panel = next(
+        component
+        for component in _walk(layout)
+        if getattr(component, "id", None) == "home-legal-details"
+    )
+    loading = next(
+        component
+        for component in _walk(layout)
+        if getattr(component, "id", None) == "home-legal-details-loading"
+    )
+    assert "Selecciona un país para consultar su situación legal en 2026" in str(panel)
+    assert cast(Any, loading).target_components == {
+        "home-legal-details": "children",
+        "home-legal-country-status": "children",
+    }
+
+
+def test_home_legal_detail_uses_only_its_own_country_selector(monkeypatch) -> None:
+    document = {
+        "year": 2026,
+        "countries": [
+            {
+                "country": "Spain",
+                "country_code": "ES",
+                "ranking": 77.0,
+                "criteria": [
+                    {
+                        "category": "Family",
+                        "indicator": "Marriage equality",
+                        "weight": 1,
+                        "value": 1,
+                    }
+                ],
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        home_layout,
+        "get_home_legal_country_detail",
+        lambda code: document["countries"][0] if code == "ES" else None,
+    )
+    app = Dash("home-ilga-detail-test", suppress_callback_exceptions=True)
+    home_layout.register_home_callbacks(app)
+    callback = next(
+        entry["callback"].__wrapped__
+        for entry in app.callback_map.values()
+        if getattr(entry.get("callback"), "__wrapped__", None)
+        and entry["callback"].__wrapped__.__name__ == "update_home_legal_country_details"
+    )
+
+    initial, initial_state = callback(None, "es")
+    selected, ready_state = callback("ES", "es")
+
+    assert "Selecciona un país" in str(initial)
+    assert "España" in str(selected)
+    assert "matrimonio con los mismos derechos" in str(selected)
+    assert initial_state["status"] == "INITIAL"
+    assert ready_state == {"status": "READY", "country_code": "ES", "year": 2026}
+    callback_entry = next(
+        entry
+        for entry in app.callback_map.values()
+        if getattr(entry.get("callback"), "__wrapped__", None)
+        and entry["callback"].__wrapped__.__name__ == "update_home_legal_country_details"
+    )
+    assert {item["id"] for item in callback_entry["inputs"]} == {
+        "home-legal-country-select",
+        "app-language-store",
+    }
+    assert all(item["property"] != "clickData" for item in callback_entry["inputs"])

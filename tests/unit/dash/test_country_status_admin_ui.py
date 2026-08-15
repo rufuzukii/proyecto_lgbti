@@ -82,7 +82,7 @@ def test_home_country_status_editor_callbacks_use_existing_store_ids(monkeypatch
         if isinstance(output.component_id, str)
     }
 
-    assert "home-country-status-editor-state" in layout_ids
+    assert "home-legal-status-editor-state" in layout_ids
     assert "country-status-editor-state" not in callback_outputs
     assert callback_outputs.issubset(layout_ids)
     callback_inputs = {
@@ -107,6 +107,7 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
     register_home_callbacks(app)
 
     helper = _find_component_by_id(app.layout, "home-map-helper-text")
+    explanation = _find_component_by_class(app.layout, "home-map-explanation")
     footer_meta = _find_component_by_class(app.layout, "home-map-footer-meta")
     summary = _find_component_by_class(app.layout, "home-map-summary")
     helper_props = helper.to_plotly_json()["props"]
@@ -117,13 +118,20 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
         if isinstance(output.component_id, str)
     }
 
-    assert "Selecciona un país para consultar la situación legal actual" in _text_content(helper)
+    assert "Explora Europa y consulta la puntuación global" in _text_content(helper)
     assert (
         helper_props["data-i18n-en"]
-        == "Select a country to view the current legal situation of LGBTIQ+ people."
+        == "Explore Europe and view the overall LGBTIQ+ legal protection score."
     )
     assert helper_props["className"] == "home-map-helper-text"
     assert type(helper).__name__ == "H2"
+    assert "escala de 0 a 100" in _text_content(explanation)
+    assert (
+        explanation.to_plotly_json()["props"]["data-i18n-en"]
+        == "The map shows each country's overall LGBTIQ+ legal protection score on a scale "
+        "from 0 to 100. Higher values indicate greater legal recognition and protection "
+        "in the available data."
+    )
     footer_children = footer_meta.to_plotly_json()["props"]["children"]
     assert [child.id for child in footer_children] == ["home-map-source"]
     summary_children = summary.to_plotly_json()["props"]["children"]
@@ -136,7 +144,7 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
     ]
     assert summary_header.children[1].href == "/es/estadisticas"
     assert summary_metrics.id == "home-map-metrics"
-    assert "home-map-helper-text" in callback_outputs
+    assert "home-map-graph" in callback_outputs
 
 
 def test_home_map_contains_only_legal_controls(monkeypatch) -> None:
@@ -149,11 +157,13 @@ def test_home_map_contains_only_legal_controls(monkeypatch) -> None:
 
     layout = build_home_layout()
     layout_ids = _component_ids(layout)
-    map_graph = _find_component_by_id(layout, "home-main-map")
+    map_graph = _find_component_by_id(layout, "home-map-graph")
     map_props = map_graph.to_plotly_json()["props"]
 
-    assert "home-ilga-year" in layout_ids
-    assert "home-country-select" in layout_ids
+    assert "home-map-year-select" in layout_ids
+    assert "home-legal-country-select" in layout_ids
+    assert "home-legal-country-state" in layout_ids
+    assert "home-country-select" not in layout_ids
     assert "home-map-mode" not in layout_ids
     assert "home-fra-category" not in layout_ids
     assert "home-fra-indicator" not in layout_ids

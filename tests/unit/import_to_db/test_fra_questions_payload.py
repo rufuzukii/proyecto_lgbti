@@ -223,6 +223,7 @@ def test_mongo_upsert_uses_atomic_answer_replacement_pipeline() -> None:
 
 def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> None:
     collection = MagicMock()
+    requested_collections: list[str] = []
     payload = {
         "code": "D1_1",
         "dataset": "eu_lgbtiq_survey_iii",
@@ -239,7 +240,10 @@ def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> Non
             }
         ],
     }
-    with patch("app.import_to_db.fra.mongo.get_mongo_collection", return_value=collection):
+    with patch(
+        "app.import_to_db.fra.mongo.get_mongo_collection",
+        side_effect=lambda name: requested_collections.append(name) or collection,
+    ):
         insert_indicator_fra_json({**payload, "survey_year": 2019})
         insert_indicator_fra_json({**payload, "survey_year": 2023})
 
@@ -247,6 +251,12 @@ def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> Non
         2019,
         2023,
     ]
+    assert requested_collections == ["Indicador_fra_2019", "Indicator_fra"]
+    datasets = [
+        call.args[1][0]["$set"]["dataset"]["$literal"]
+        for call in collection.update_one.call_args_list
+    ]
+    assert datasets == ["eu_lgbti_survey_ii", "eu_lgbtiq_survey_iii"]
 
 
 def test_mongo_groups_same_question_files_into_one_atomic_operation() -> None:

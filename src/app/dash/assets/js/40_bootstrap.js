@@ -155,7 +155,6 @@
   });
 
   document.addEventListener("DOMContentLoaded", () => {
-    syncApplicationReadyState();
     app.i18n.applyLanguage(state.currentLanguage());
     app.theme.applyTheme(state.currentTheme());
     app.segmentedControls.syncActiveStates();
@@ -179,7 +178,6 @@
   let pendingRefresh = null;
   let pendingRefreshTargets = emptyRefreshTargets();
   const observer = new MutationObserver((mutations) => {
-    syncApplicationReadyState();
     const targets = refreshTargetsFromMutations(mutations);
     if (targets.language) {
       app.i18n.applyLanguage(state.currentLanguage());
@@ -216,10 +214,9 @@
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ["data-i18n-es", "data-i18n-en", "data-dash-is-loading"],
+    attributeFilter: ["data-i18n-es", "data-i18n-en"],
   });
 
-  syncApplicationReadyState();
   app.i18n.applyLanguage(state.currentLanguage());
   app.theme.applyTheme(state.currentTheme());
 
@@ -242,21 +239,6 @@
       plotly: false,
       themeControls: false,
     };
-  }
-
-  function syncApplicationReadyState() {
-    const shell = document.querySelector(".app-shell");
-    const pageContent = document.getElementById("page-content");
-    if (!shell || !pageContent) {
-      return;
-    }
-    const hasContent = Array.from(pageContent.childNodes).some((node) => {
-      return node.nodeType === 1 || Boolean(node.textContent && node.textContent.trim());
-    });
-    const isLoading =
-      pageContent.getAttribute("data-dash-is-loading") === "true" ||
-      Boolean(pageContent.querySelector("[data-dash-is-loading='true']"));
-    shell.dataset.pageReady = hasContent && !isLoading ? "true" : "false";
   }
 
   function mergeRefreshTargets(first, second) {

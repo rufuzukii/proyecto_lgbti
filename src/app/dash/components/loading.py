@@ -16,9 +16,14 @@ def contextual_loading(
     target_components: dict[str, str | list[str]] | None = None,
     hide_content_while_loading: bool = False,
     message_id: str | None = None,
+    show_message: bool = True,
 ) -> Component:
-    """Accessible delayed loading overlay with a contextual bilingual message."""
+    """Accessible delayed loading overlay with optional visible context."""
     id_props: Any = {"id": element_id} if element_id else {}
+    loading_label = text(ui_text(message_key, "es"), ui_text(message_key, "en"))
+    label_props: dict[str, Any] = {"id": message_id} if message_id else {}
+    if not show_message:
+        label_props["className"] = "sr-only"
     return dcc.Loading(
         children,
         **id_props,
@@ -32,11 +37,11 @@ def contextual_loading(
                 ),
                 (
                     html.Span(
-                        text(ui_text(message_key, "es"), ui_text(message_key, "en")),
-                        id=message_id,
+                        loading_label,
+                        **label_props,
                     )
-                    if message_id
-                    else text(ui_text(message_key, "es"), ui_text(message_key, "en"))
+                    if message_id or not show_message
+                    else loading_label
                 ),
             ],
             className="context-loading-message",

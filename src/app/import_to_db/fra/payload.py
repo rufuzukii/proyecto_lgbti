@@ -8,13 +8,14 @@ from typing import Any
 
 from bson import ObjectId
 
+from app.fra_surveys import default_fra_survey, get_fra_survey_by_year
 from app.import_to_db.fra.importer import (
     parse_answer_survey_csv,
     parse_answer_survey_csv_text,
 )
 
 JsonPayload = dict[str, Any] | list[dict[str, Any]]
-FRA_DATASET_CODE = "eu_lgbtiq_survey_iii"
+FRA_DATASET_CODE = default_fra_survey().dataset_code
 
 FILTER_LABELS: dict[str, str] = {
     "age_group": "Age",
@@ -111,17 +112,19 @@ def count_fra_questions(payload: Any) -> int:
 def _build_question_document(document: dict[str, Any], code: str) -> dict[str, Any]:
     specific_category = _specific_category(document)
     question_text = str(document.get("question") or "").strip()
+    survey_year = _document_survey_year(document)
+    survey = get_fra_survey_by_year(survey_year)
 
     output = {
         "id": str(ObjectId()),
         "code": code,
-        "dataset": FRA_DATASET_CODE,
+        "dataset": survey.dataset_code if survey else FRA_DATASET_CODE,
         "record_type": "statistic",
         "source": str(document.get("source") or "").strip(),
         "category": _category(document),
         "specific_category": specific_category,
         "question": question_text,
-        "survey_year": _document_survey_year(document),
+        "survey_year": survey_year,
         "answers": [],
     }
     metadata = document.get("metadata")

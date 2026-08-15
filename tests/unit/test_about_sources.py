@@ -2,7 +2,10 @@ import logging
 from typing import Any
 from unittest.mock import patch
 
-from app.dash.layouts.about import _country_criteria_panel, build_about_layout
+from dash import Dash
+
+from app.dash.components.ilga_criteria import build_ilga_country_criteria_panel
+from app.dash.layouts.about import build_about_layout, register_about_callbacks
 from app.source_attribution import FRA_SURVEYS
 
 REQUIRED_URLS = {
@@ -17,10 +20,7 @@ REQUIRED_URLS.update(url for _, url in FRA_SURVEYS.values())
 
 
 def test_about_sources_include_required_external_links() -> None:
-    with (
-        patch("app.dash.layouts.about.get_latest_ilga_document", return_value=None),
-        patch("app.dash.layouts.about.build_navbar", return_value=""),
-    ):
+    with patch("app.dash.layouts.about.build_navbar", return_value=""):
         layout = build_about_layout()
 
     links = [component for component in _walk(layout) if _component_prop(component, "href")]
@@ -36,10 +36,7 @@ def test_about_sources_include_required_external_links() -> None:
 
 
 def test_about_source_cards_include_integrated_context_without_about_cards() -> None:
-    with (
-        patch("app.dash.layouts.about.get_latest_ilga_document", return_value=None),
-        patch("app.dash.layouts.about.build_navbar", return_value=""),
-    ):
+    with patch("app.dash.layouts.about.build_navbar", return_value=""):
         layout = build_about_layout()
 
     about_cards = [
@@ -83,68 +80,38 @@ def test_about_source_cards_include_integrated_context_without_about_cards() -> 
     )
 
 
-def test_about_ilga_breakdown_starts_empty_without_default_country() -> None:
-    document = {
-        "year": 2026,
-        "countries": [
-            {
-                "country": "Spain",
-                "country_code": "ES",
-                "ranking": 77.0,
-                "criteria": [
-                    {
-                        "category": "Equality & non-discrimination",
-                        "indicator": "Constitution (sexual orientation)",
-                        "weight": 1,
-                        "value": 1,
-                    }
-                ],
-            }
-        ],
-    }
-    with (
-        patch("app.dash.layouts.about.get_latest_ilga_document", return_value=document),
-        patch("app.dash.layouts.about.build_navbar", return_value=""),
-    ):
+def test_about_no_longer_contains_interactive_ilga_explorer() -> None:
+    with patch("app.dash.layouts.about.build_navbar", return_value=""):
         layout = build_about_layout()
 
-    dropdown = _find_by_id(layout, "about-ilga-country")
-    panel = _find_by_id(layout, "about-ilga-criteria")
-
-    assert _component_prop(dropdown, "value") is None
-    assert _component_prop(dropdown, "clearable") is True
-    assert _component_prop(dropdown, "placeholder") == "Selecciona un criterio"
-    assert "Selecciona un criterio para consultar su detalle jurídico." in _text_content(panel)
-    assert "Constitution (sexual orientation)" not in _text_content(panel)
+    assert _find_by_id_or_none(layout, "about-ilga-country") is None
+    assert _find_by_id_or_none(layout, "about-ilga-criteria") is None
+    assert "Indicadores registrados en" not in _text_content(layout)
+    assert "ILGA Europe evalúa leyes y políticas públicas" in _text_content(layout)
 
 
-def test_about_unknown_ilga_criterion_uses_fallback_without_warning(caplog) -> None:
-    document = {
-        "year": 2026,
-        "countries": [
+def test_shared_ilga_criterion_uses_specific_or_neutral_metadata_without_warning(caplog) -> None:
+    country = {
+        "country": "Spain",
+        "country_code": "ES",
+        "ranking": 77.0,
+        "criteria": [
             {
-                "country": "Spain",
-                "country_code": "ES",
-                "ranking": 77.0,
-                "criteria": [
-                    {
-                        "category": "Custom category",
-                        "indicator": "Dataset-specific criterion",
-                        "weight": 1,
-                        "value": 0.5,
-                    }
-                ],
+                "category": "Custom category",
+                "indicator": "Dataset-specific criterion",
+                "weight": 1,
+                "value": 0.5,
             }
         ],
     }
     with caplog.at_level(logging.WARNING):
-        panel = _country_criteria_panel(document["countries"][0])
+        panel = build_ilga_country_criteria_panel(country)
 
     assert "Criterio jurídico" in _text_content(panel)
     assert "legal_criterion_metadata_missing" not in caplog.text
 
 
-def test_about_criterion_shows_percentage_and_effective_ranking_contribution() -> None:
+def test_shared_ilga_criterion_shows_percentage_and_ranking_contribution() -> None:
     country = {
         "country": "Spain",
         "country_code": "ES",
@@ -165,7 +132,7 @@ def test_about_criterion_shows_percentage_and_effective_ranking_contribution() -
         ],
     }
 
-    panel = _country_criteria_panel(country)
+    panel = build_ilga_country_criteria_panel(country)
     tables = [
         component
         for component in _walk(panel)
@@ -173,14 +140,17 @@ def test_about_criterion_shows_percentage_and_effective_ranking_contribution() -
     ]
 
     assert len(tables) == 2
-    assert "Cumplimiento y aporte al ranking" in _text_content(tables[0])
-    assert "Cumplimiento" in _text_content(tables[0])
-    assert "Aporte al ranking" in _text_content(tables[0])
     assert "100 %" in _text_content(tables[0])
     assert "0.16 puntos" in _text_content(tables[0])
-    assert "1 / 0.16" not in _text_content(tables[0])
     assert "50 %" in _text_content(tables[1])
     assert "0.55 puntos" in _text_content(tables[1])
+
+
+def test_about_registers_no_local_ilga_callbacks() -> None:
+    app = Dash("about-no-interactive-ilga", suppress_callback_exceptions=True)
+    register_about_callbacks(app)
+
+    assert all("about-ilga" not in key for key in app.callback_map)
 
 
 def _walk(component: Any):

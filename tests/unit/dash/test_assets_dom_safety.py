@@ -49,11 +49,10 @@ def test_statistics_segmented_buttons_use_outer_dash_options() -> None:
     assert ".dash-options-list-option" in js
     assert "markClickedLabel" not in js
     assert (
-        ".stats-data-type-control .dash-options-list-option:has(.stats-segmented-input:checked)"
+        ".stats-survey-control .dash-options-list-option:has(.stats-segmented-input:checked)"
         in css
     )
-    assert "stats-data-type-control--fra .stats-segmented-label:nth-of-type" not in css
-    assert "stats-data-type-control--ilga .stats-segmented-label:nth-of-type" not in css
+    assert "stats-data-type-control" not in css
 
 
 def test_spain_document_buttons_keep_selected_visual_state() -> None:
@@ -313,6 +312,18 @@ def test_report_figure_error_is_hidden_after_a_successful_image_load() -> None:
     assert "fallback.hidden = true;" in bootstrap
     assert "fallback.hidden = false;" in bootstrap
     assert "image.hidden = false;" in bootstrap
+
+
+def test_plotly_theme_waits_for_a_real_initial_plot_before_relayout() -> None:
+    theme = (ASSETS_JS / "20_theme.js").read_text(encoding="utf-8")
+
+    assert "function isPlotlyInitialized(graph)" in theme
+    assert "graph._fullLayout" in theme
+    assert "Array.isArray(graph.data)" in theme
+    assert "graph.data.length > 0" in theme
+    guard = theme.index("if (!isPlotlyInitialized(graph))")
+    relayout = theme.index("window.Plotly.relayout(graph, layout)")
+    assert guard < relayout
 
 
 def _walk(component):

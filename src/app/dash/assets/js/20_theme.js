@@ -100,7 +100,7 @@
     };
 
     document.querySelectorAll(".js-plotly-plot").forEach((graph) => {
-      if (!graph.isConnected) {
+      if (!isPlotlyInitialized(graph)) {
         return;
       }
       bindPlotlyThemeEvents(graph);
@@ -111,6 +111,17 @@
       graph.dataset.themeApplied = theme;
       window.Plotly.relayout(graph, layout).catch(() => {});
     });
+  }
+
+  function isPlotlyInitialized(graph) {
+    return Boolean(
+      graph &&
+      graph.isConnected &&
+      graph._fullLayout &&
+      Array.isArray(graph.data) &&
+      graph.data.length > 0 &&
+      typeof graph.on === "function"
+    );
   }
 
   function bindPlotlyThemeEvents(graph) {

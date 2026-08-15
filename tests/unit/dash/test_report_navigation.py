@@ -75,8 +75,7 @@ def test_statistics_report_link_preserves_selection_for_authenticated_user(monke
     monkeypatch.setattr(statistics_page, "current_user", _user(authenticated=True))
 
     href = _callback(app, "update_create_report_link")(
-        "fra",
-        2024,
+        "fra_survey_iii",
         "Discrimination",
         "D1_1",
         "Yes",
@@ -84,7 +83,6 @@ def test_statistics_report_link_preserves_selection_for_authenticated_user(monke
         "25-39",
         "All",
         "All",
-        None,
         ["ES", "PT"],
         "es",
     )
@@ -93,6 +91,7 @@ def test_statistics_report_link_preserves_selection_for_authenticated_user(monke
     params = parse_qs(parsed.query)
     assert parsed.path == "/es/informe"
     assert params["indicator_id"] == ["D1_1"]
+    assert params["year"] == ["2023"]
     assert params["filter_a_value"] == ["25-39"]
     assert params["countries"] == ["ES,PT"]
     assert params["primary_country"] == ["ES"]

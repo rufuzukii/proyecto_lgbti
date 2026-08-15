@@ -54,6 +54,14 @@ from app.ilga_metadata import normalized_ilga_source_scale
 
 logger = logging.getLogger(__name__)
 NO_DATA_MESSAGE = "No hay datos disponibles para esta selección."
+DEFAULT_FRA_ANSWER_PRIORITY = (
+    "Yes",
+    "Often",
+    "Always",
+    "Very often",
+    "Never",
+    "No",
+)
 
 RADAR_MAPPING_VERSION = "fra-ilga-v1"
 ILGA_RESPONSE_ORDER = {
@@ -499,6 +507,7 @@ def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]
         sorted(answer_values, key=lambda value: answer_values[value].casefold()),
         response_type=response_type,
     )
+    global_answers = _global_answers_from_control_document(document)
     answers = [
         {"label": answer_values[value], "value": value} for value in ordered_answer_values
     ]
@@ -520,6 +529,8 @@ def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]
     response_metadata = RESPONSE_TYPES.get(response_type)
     return {
         "answers": answers,
+        "default_answer": _preferred_fra_answer(ordered_answer_values, global_answers),
+        "global_answers": sorted(global_answers, key=str.casefold),
         "segmentations": segmentations,
         "values": values,
         "response_type": response_type.value,
@@ -630,7 +641,7 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         return _status("invalid", filter_validation.message)
     processing_started_at = time.perf_counter()
     source_dataframe = dataframe
-    effective_answer = query.answer or _default_fra_answer_from_dataframe(dataframe)
+    effective_answer = query.answer or _default_fra_answer_from_dataframe(dataframe, query)
     dataframe = filter_fra_dataframe(dataframe, query, effective_answer=effective_answer)
     if dataframe.empty:
         processing_ms = (time.perf_counter() - processing_started_at) * 1000
@@ -1890,17 +1901,57 @@ def _answer_percentage_value(answer: dict[str, Any]) -> Any:
     return answer.get("value")
 
 
-def _default_fra_answer_from_dataframe(dataframe: pd.DataFrame) -> str | None:
+def _default_fra_answer_from_dataframe(
+    dataframe: pd.DataFrame,
+    query: FraStatisticsQuery,
+) -> str | None:
     if dataframe.empty or "answer" not in dataframe:
+        return None
+    scoped = _apply_exact_filter_scope(dataframe, query)
+    if scoped.empty:
         return None
     values = {
         str(row.answer): normalize_filter_value(row.answer)
-        for row in dataframe[["answer"]].drop_duplicates().itertuples()
+        for row in scoped[["answer"]].drop_duplicates().itertuples()
         if str(row.answer or "").strip()
     }
     if not values:
         return None
-    return min(values.items(), key=lambda item: item[1])[0]
+    ordered = order_fra_responses(
+        sorted(values, key=lambda value: values[value].casefold()),
+        response_type=detect_fra_response_type(values),
+    )
+    return _preferred_fra_answer(ordered, set(ordered))
+
+
+def _global_answers_from_control_document(document: dict[str, Any]) -> set[str]:
+    declared = {
+        str(value).strip()
+        for value in document.get("global_answers", [])
+        if str(value or "").strip()
+    }
+    if declared:
+        return declared
+    return {
+        repair_text_encoding(answer.get("answer")).strip()
+        for answer in document.get("answers", [])
+        if isinstance(answer, dict)
+        and _filters_to_dict(answer.get("filters")).get("All") == "All"
+        and repair_text_encoding(answer.get("answer")).strip()
+    }
+
+
+def _preferred_fra_answer(ordered_answers: list[str], available_answers: set[str]) -> str | None:
+    available_by_key = {
+        normalize_text_key(answer): answer
+        for answer in ordered_answers
+        if answer in available_answers
+    }
+    for preferred in DEFAULT_FRA_ANSWER_PRIORITY:
+        found = available_by_key.get(normalize_text_key(preferred))
+        if found:
+            return found
+    return next((answer for answer in ordered_answers if answer in available_answers), None)
 
 
 def _status(status: str, message: str) -> dict[str, Any]:

@@ -1,4 +1,5 @@
 from app.analytics.legal_criteria import (
+    ILGA_CRITERION_SOURCE_ALIASES,
     get_criterion_id,
     get_criterion_metadata,
     get_criterion_score_label,
@@ -55,3 +56,17 @@ def test_get_criterion_score_label_is_readable_and_translated() -> None:
     assert get_criterion_score_label(0.5, 1, "es") == "Puntuación: 0.5 / 1"
     assert get_criterion_score_label(0.5, 1, "en") == "Score: 0.5 / 1"
     assert get_criterion_score_label(None, 1, "es") == ""
+
+
+def test_current_ilga_source_aliases_all_resolve_to_specific_bilingual_copy() -> None:
+    assert len(ILGA_CRITERION_SOURCE_ALIASES) == 26
+    for category, source_label, expected_id in ILGA_CRITERION_SOURCE_ALIASES:
+        criterion = {"category": category, "indicator": source_label}
+        spanish = get_criterion_metadata(criterion, "es")
+        english = get_criterion_metadata(criterion, "en")
+
+        assert spanish["id"] == expected_id
+        assert spanish["known"] == "true"
+        assert english["known"] == "true"
+        assert spanish["summary"] != "Consulta el grado de cumplimiento de este indicador en el país seleccionado."
+        assert english["summary"] != "View this indicator's compliance level for the selected country."

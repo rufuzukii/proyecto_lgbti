@@ -4,7 +4,7 @@
 }
 
 .stats-dashboard-region .context-loading-hide-content {
-  min-height: clamp(9rem, 22vh, 15rem);
+  min-height: clamp(32rem, 72vh, 58rem);
 }
 
 .stats-dashboard-region .context-loading-message {

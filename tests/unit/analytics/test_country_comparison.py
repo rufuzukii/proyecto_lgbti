@@ -3,10 +3,12 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import pytest
 from dash import Dash, html
 
 from app.analytics.statistics_charts import (
     build_combined_heatmap,
+    build_combined_scatter,
     build_comparative_ranking_chart,
     build_eu_average_comparison_chart,
     build_experience_legal_radar,
@@ -185,6 +187,8 @@ def test_response_comparison_keeps_all_46_countries_without_map_selection(
     assert _layout(figure).autosize is True
     assert _layout(figure).xaxis.automargin is True
     assert _layout(figure).yaxis.automargin is True
+    assert _layout(figure).showlegend is False
+    assert _layout(figure).margin.b == 96
     assert "Indicator" in _trace(figure).hovertemplate
     assert _layout(figure).meta["minimum_width"] > 2000
     assert "countries_rendered=46 responses=2 missing_values=2" in caplog.text
@@ -214,9 +218,63 @@ def test_combined_heatmap_renders_one_complete_percentage_matrix() -> None:
     assert trace.z.tolist() == [[70.0, 58.0], [75.0, 62.0]]
     assert trace.zmin == 0
     assert trace.zmax == 100
+    assert _layout(figure).height == 720
+    assert _layout(figure).meta["row_height"] == 50
+    assert _layout(figure).meta["column_width"] == 260
+    assert _layout(figure).meta["minimum_width"] == 900
+    assert len(_layout(figure).annotations) == 4
+    annotation_colors = {
+        annotation.text: annotation.font.color for annotation in _layout(figure).annotations
+    }
+    assert annotation_colors["75 %"] == "#ffffff"
+    assert annotation_colors["58 %"] == "#ffffff"
 
 
-def test_average_chart_exposes_value_mean_absolute_and_percentage_differences() -> None:
+def test_combined_heatmap_height_grows_with_country_rows() -> None:
+    figure = build_combined_heatmap(
+        [
+            {
+                "country": f"Country {index}",
+                "iso": f"X{index}",
+                "ilga_value": float(index),
+                "fra_value": float(index + 1),
+            }
+            for index in range(30)
+        ]
+    )
+
+    assert _layout(figure).height == 1690
+    assert _layout(figure).meta["row_count"] == 30
+    assert _trace(figure).xgap == 8
+    assert _trace(figure).ygap == 6
+
+
+@pytest.mark.parametrize(
+    ("row_count", "expected_height"),
+    [(10, 720), (20, 1190), (30, 1690), (36, 1990)],
+)
+def test_combined_heatmap_preserves_readable_row_height_at_scale(
+    row_count: int, expected_height: int
+) -> None:
+    figure = build_combined_heatmap(
+        [
+            {
+                "country": f"Country {index}",
+                "iso": f"X{index}",
+                "ilga_value": float(index),
+                "fra_value": float(index + 1),
+            }
+            for index in range(row_count)
+        ]
+    )
+
+    assert _layout(figure).height == expected_height
+    assert _layout(figure).meta["row_height"] == 50
+    assert _layout(figure).meta["minimum_width"] >= 900
+    assert all(annotation.font.size == 16 for annotation in _layout(figure).annotations)
+
+
+def test_average_chart_renders_selected_countries_and_a_distinct_european_average() -> None:
     figure = build_eu_average_comparison_chart(
         [
             {"country": "Spain", "iso": "ES", "value": 60.0},
@@ -226,14 +284,51 @@ def test_average_chart_exposes_value_mean_absolute_and_percentage_differences() 
         ["ES", "PT"],
     )
 
-    trace = _trace(figure)
-    spain = list(trace.y).index("Spain")
-    portugal = list(trace.y).index("Portugal")
-    assert trace.customdata[spain].tolist() == ["60.00%", "10.00 pp", "+20.00%"]
-    assert trace.customdata[portugal].tolist() == ["Sin datos", "Sin datos", "Sin datos"]
-    values = dict(zip(trace.y, trace.x, strict=True))
+    countries_trace, mean_trace, missing_trace = _traces(figure)
+    spain = list(countries_trace.y).index("Spain")
+    portugal = list(countries_trace.y).index("Portugal")
+    assert countries_trace.customdata[spain].tolist() == [
+        "60 %",
+        "+10 puntos porcentuales respecto a la media europea",
+    ]
+    assert countries_trace.customdata[portugal].tolist() == ["Sin datos", "Sin datos"]
+    assert "+10 pp" in countries_trace.text[spain]
+    values = dict(zip(countries_trace.y, countries_trace.x, strict=True))
     assert values["Portugal"] is None
-    assert list(_traces(figure)[1].y) == ["Portugal"]
+    assert list(mean_trace.y) == ["Media europea"]
+    assert list(mean_trace.x) == [50.0]
+    assert mean_trace.marker.pattern.shape == "/"
+    assert list(missing_trace.y) == ["Portugal"]
+
+
+def test_average_chart_supports_multiple_countries_and_keeps_real_zero_in_mean() -> None:
+    figure = build_eu_average_comparison_chart(
+        [
+            {"country": "Spain", "iso": "ES", "value": 60.0},
+            {"country": "France", "iso": "FR", "value": 40.0},
+            {"country": "Germany", "iso": "DE", "value": 0.0},
+            {"country": "Portugal", "iso": "PT", "value": None},
+        ],
+        ["ES", "FR"],
+        "en",
+    )
+
+    countries_trace, mean_trace = _traces(figure)
+    assert set(countries_trace.y) == {"Spain", "France"}
+    assert list(mean_trace.x) == [100 / 3]
+    assert any(
+        "percentage points compared with the European average" in row[1]
+        for row in countries_trace.customdata
+    )
+
+
+def test_combined_scatter_avoids_numpy_warning_for_one_pair() -> None:
+    figure = build_combined_scatter(
+        [{"country": "Spain", "iso": "ES", "ilga_value": 75.0, "fra_value": 62.0}],
+        "en",
+    )
+
+    assert "Correlation unavailable" in _layout(figure).annotations[0].text
 
 
 def test_experience_legal_radar_renders_country_and_european_means() -> None:

@@ -96,8 +96,7 @@ def test_dash_initial_loading_text_is_replaced_by_centered_spinner() -> None:
     assert "position: fixed;" in styles
     assert "justify-content: center;" in styles
     footer_rule = styles.split(".site-footer {", 1)[1].split("}", 1)[0]
-    assert "display: none;" in footer_rule
-    assert '.app-shell[data-page-ready="true"] .site-footer' in styles
-    assert "syncApplicationReadyState();" in bootstrap
-    assert 'pageContent.getAttribute("data-dash-is-loading") === "true"' in bootstrap
-    assert 'shell.dataset.pageReady = hasContent && !isLoading ? "true" : "false"' in bootstrap
+    assert "display: grid;" in footer_rule
+    assert '.app-shell[data-page-ready="true"] .site-footer' not in styles
+    assert "syncApplicationReadyState" not in bootstrap
+    assert "data-dash-is-loading" not in bootstrap

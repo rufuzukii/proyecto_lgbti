@@ -252,12 +252,12 @@ UI_TEXT = {
     },
     "home_statistics_description": {
         "es": (
-            "Explora indicadores sociodemográficos y legales del colectivo LGBTIQ+ en Europa "
-            "mediante mapas interactivos, gráficos comparativos y paneles estadísticos."
+            "Explora datos sociodemográficos y legales de Europa mediante mapas, rankings, "
+            "comparaciones y segmentaciones."
         ),
         "en": (
-            "Explore sociodemographic and legal indicators for LGBTIQ+ people in Europe "
-            "through interactive maps, comparative charts and statistical dashboards."
+            "Explore European sociodemographic and legal data through maps, rankings, "
+            "comparisons and segmentations."
         ),
     },
     "home_statistics_action": {
@@ -270,12 +270,14 @@ UI_TEXT = {
     },
     "home_trends_description": {
         "es": (
-            "Analiza la evolución histórica del ranking legal de ILGA-Europe y consulta una "
-            "proyección exploratoria cuando existan datos suficientes."
+            "Analiza la evolución histórica de la situación legal LGBTIQ+ y consulta "
+            "proyecciones estadísticas exploratorias basadas en los datos disponibles; "
+            "no son predicciones oficiales."
         ),
         "en": (
-            "Analyse the ILGA-Europe legal ranking over time and review an exploratory "
-            "projection when sufficient data exists."
+            "Analyse the historical evolution of the LGBTIQ+ legal situation and review "
+            "exploratory statistical projections based on available data; they are not "
+            "official predictions."
         ),
     },
     "home_trends_action": {"es": "Ver Tendencias", "en": "View Trends"},
@@ -285,12 +287,12 @@ UI_TEXT = {
     },
     "home_spain_description": {
         "es": (
-            "Consulta informes nacionales, documentación procesada automáticamente y gráficos "
-            "extraídos de publicaciones sobre la situación LGBTIQ+ en España."
+            "Consulta informes y análisis de FELGTBI+ por año, documento e indicador, con "
+            "textos y figuras extraídos de las publicaciones originales."
         ),
         "en": (
-            "Browse national reports, automatically processed documents and charts extracted "
-            "from publications on the situation of LGBTIQ+ people in Spain."
+            "Browse FELGTBI+ reports and analyses by year, document and indicator, including "
+            "text and figures extracted from the original publications."
         ),
     },
     "home_spain_action": {"es": "Explorar España", "en": "Explore Spain"},
@@ -300,12 +302,12 @@ UI_TEXT = {
     },
     "home_didactics_description": {
         "es": (
-            "Accede al glosario LGBTIQ+, recursos educativos, materiales docentes y juegos "
-            "interactivos para aprender de forma sencilla."
+            "Aprende conceptos LGBTIQ+ mediante el glosario, juegos interactivos y recursos "
+            "educativos."
         ),
         "en": (
-            "Access the LGBTIQ+ glossary, educational resources, teaching materials and "
-            "interactive games for an approachable learning experience."
+            "Learn LGBTIQ+ concepts through the glossary, interactive games and educational "
+            "resources."
         ),
     },
     "home_didactics_action": {
@@ -317,14 +319,62 @@ UI_TEXT = {
         "en": "Open the Learning section",
     },
     "home_about_description": {
+        "es": "Conoce las fuentes, la metodología y el objetivo de RainbowLens DataHub.",
+        "en": "Learn about RainbowLens DataHub's sources, methodology and purpose.",
+    },
+    "home_legal_map_explanation": {
         "es": (
-            "Conoce el proyecto RainbowLens DataHub, las fuentes oficiales utilizadas, la "
-            "metodología y los objetivos de la plataforma."
+            "El mapa muestra la puntuación global de protección legal LGBTIQ+ de cada país "
+            "en una escala de 0 a 100. Los valores más altos indican mayor reconocimiento y "
+            "protección legal según los datos disponibles."
         ),
         "en": (
-            "Discover the RainbowLens DataHub project, its official sources, methodology and "
-            "the platform's goals."
+            "The map shows each country's overall LGBTIQ+ legal protection score on a scale "
+            "from 0 to 100. Higher values indicate greater legal recognition and protection "
+            "in the available data."
         ),
+    },
+    "home_legal_map_helper": {
+        "es": "Explora Europa y consulta la puntuación global de protección legal LGBTIQ+.",
+        "en": "Explore Europe and view the overall LGBTIQ+ legal protection score.",
+    },
+    "home_ilga_country_eyebrow": {
+        "es": "Detalle de criterios ILGA",
+        "en": "ILGA criteria detail",
+    },
+    "home_ilga_country_title": {
+        "es": "Situación legal por país en 2026",
+        "en": "Legal situation by country in 2026",
+    },
+    "home_ilga_country_intro": {
+        "es": (
+            "Selecciona un país para consultar qué medidas de protección y reconocimiento "
+            "legal LGBTIQ+ recoge ILGA-Europe en el Rainbow Map 2026."
+        ),
+        "en": (
+            "Select a country to review the LGBTIQ+ legal protection and recognition "
+            "measures reflected in ILGA-Europe's 2026 Rainbow Map."
+        ),
+    },
+    "home_ilga_country_empty": {
+        "es": "Selecciona un país para consultar su situación legal en 2026.",
+        "en": "Select a country to view its legal situation in 2026.",
+    },
+    "home_legal_country_label": {
+        "es": "País",
+        "en": "Country",
+    },
+    "home_legal_country_placeholder": {
+        "es": "Selecciona un país",
+        "en": "Select a country",
+    },
+    "home_legal_country_no_data": {
+        "es": "No hay información legal disponible para este país en 2026.",
+        "en": "No legal information is available for this country in 2026.",
+    },
+    "home_legal_country_error": {
+        "es": "No se ha podido cargar la información legal. Inténtalo de nuevo.",
+        "en": "The legal information could not be loaded. Please try again.",
     },
     "home_about_action": {"es": "Más información", "en": "More information"},
     "home_about_aria": {
@@ -338,8 +388,7 @@ UI_TEXT = {
             "informe personalizadas."
         ),
         "en": (
-            "Access your account to view your profile and use your personalised report "
-            "templates."
+            "Access your account to view your profile and use your personalised report templates."
         ),
     },
     "home_login_action": {"es": "Iniciar sesión", "en": "Sign in"},
@@ -448,12 +497,10 @@ UI_TEXT = {
     },
     "fra_map_outside_scope_hover": {
         "es": (
-            "Este país no forma parte de la Unión Europea y no está incluido "
-            "en esta encuesta FRA."
+            "Este país no forma parte de la Unión Europea y no está incluido en esta encuesta FRA."
         ),
         "en": (
-            "This country is not part of the European Union and is not included "
-            "in this FRA survey."
+            "This country is not part of the European Union and is not included in this FRA survey."
         ),
     },
     "fra_ranked_reason_title": {
@@ -492,17 +539,9 @@ UI_TEXT = {
         "es": "Cargando estadísticas...",
         "en": "Loading statistics...",
     },
-    "loading_information": {
-        "es": "Cargando información...",
-        "en": "Loading information...",
-    },
     "loading_indicators": {
         "es": "Cargando indicadores...",
         "en": "Loading indicators...",
-    },
-    "updating_visualisations": {
-        "es": "Actualizando visualizaciones...",
-        "en": "Updating visualisations...",
     },
     "updating_map": {"es": "Actualizando mapa...", "en": "Updating map..."},
     "generating_chart": {"es": "Generando gráfico...", "en": "Generating chart..."},
@@ -553,7 +592,10 @@ UI_TEXT = {
         "es": "Selecciona un país para analizar su puntuación legal global.",
         "en": "Select a country to analyse its overall legal score.",
     },
-    "trends_not_enough": {"es": "No hay información suficiente.", "en": "There is not enough information."},
+    "trends_not_enough": {
+        "es": "No hay información suficiente.",
+        "en": "There is not enough information.",
+    },
     "trends_not_enough_projection": {
         "es": "No hay información suficiente para generar una proyección fiable. Se muestra únicamente la serie histórica disponible.",
         "en": "There is not enough information to generate a reliable projection. Only the available historical series is shown.",
@@ -562,7 +604,10 @@ UI_TEXT = {
         "es": "Estimación exploratoria: la serie contiene entre tres y cinco observaciones, por lo que solo se aplica una regresión lineal y el horizonte se limita a un año.",
         "en": "Exploratory estimate: the series contains three to five observations, so only linear regression is applied and the horizon is limited to one year.",
     },
-    "trends_error_loading_series": {"es": "Error al cargar la serie.", "en": "Error loading the series."},
+    "trends_error_loading_series": {
+        "es": "Error al cargar la serie.",
+        "en": "Error loading the series.",
+    },
     "trends_error_analysis": {
         "es": "No se ha podido generar el análisis temporal.",
         "en": "The temporal analysis could not be generated.",
@@ -603,7 +648,10 @@ UI_TEXT = {
         "es": "La proyección se calcula comparando modelos estadísticos sencillos sobre los datos históricos disponibles. Se simulan predicciones sobre años ya conocidos para medir su precisión y se selecciona el modelo con menor error sin introducir complejidad innecesaria.",
         "en": "The projection compares simple statistical models using the available historical data. Predictions are simulated for years already known to measure accuracy, and the model with the lowest error is selected without introducing unnecessary complexity.",
     },
-    "trends_validation_mean_error": {"es": "Error medio de validación", "en": "Validation mean error"},
+    "trends_validation_mean_error": {
+        "es": "Error medio de validación",
+        "en": "Validation mean error",
+    },
     "trends_years_used": {"es": "Años utilizados", "en": "Years used"},
     "trends_observations": {"es": "Observaciones", "en": "Observations"},
     "trends_how_calculated": {
@@ -680,6 +728,10 @@ UI_TEXT = {
         "es": "Selecciona una categoría y un indicador para comenzar.",
         "en": "Select a category and an indicator to get started.",
     },
+    "statistics_survey_empty": {
+        "es": "Todavía no hay datos disponibles para esta encuesta.",
+        "en": "No data is available for this survey yet.",
+    },
     "statistics_no_data": {
         "es": "No hay datos disponibles para esta selección.",
         "en": "No data is available for this selection.",
@@ -687,6 +739,26 @@ UI_TEXT = {
     "statistics_error": {
         "es": "No se han podido cargar las estadísticas. Inténtalo de nuevo.",
         "en": "Statistics could not be loaded. Please try again.",
+    },
+    "statistics_countries_compared": {
+        "es": "Países comparados",
+        "en": "Countries compared",
+    },
+    "statistics_distribution": {
+        "es": "Distribución",
+        "en": "Distribution",
+    },
+    "statistics_european_average": {
+        "es": "Media europea",
+        "en": "European average",
+    },
+    "statistics_european_average_comparison": {
+        "es": "Comparación con la media europea",
+        "en": "Comparison with the European average",
+    },
+    "statistics_percentage_points_compared": {
+        "es": "puntos porcentuales respecto a la media europea",
+        "en": "percentage points compared with the European average",
     },
 }
 

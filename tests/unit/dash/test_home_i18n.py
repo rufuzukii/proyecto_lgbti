@@ -1,5 +1,5 @@
 from app.dash.i18n import text
-from app.dash.layouts.home import _ilga_copy, _ilga_country_options, _ilga_metrics
+from app.dash.layouts.home import _home_legal_country_options, _ilga_copy, _ilga_metrics
 
 
 def _children(component):
@@ -33,19 +33,13 @@ def test_home_legal_summary_is_built_in_english_after_language_callback() -> Non
     assert metric_labels == ["Year", "Countries", "Legal average"]
 
 
-def test_country_options_keep_codes_and_translate_visible_names() -> None:
-    options = _ilga_country_options(
-        {
-            "countries": [
-                {
-                    "country": "Spain",
-                    "country_code": "ES",
-                }
-            ]
-        }
-    )
+def test_country_options_reuse_catalog_keep_iso_and_support_accentless_search() -> None:
+    option = next(option for option in _home_legal_country_options() if option["value"] == "ES")
 
-    label = options[0]["label"].to_plotly_json()["props"]
-    assert options[0]["value"] == "ES"
+    label = option["label"].to_plotly_json()["props"]
+    assert option["value"] == "ES"
     assert label["children"] == "España (ES)"
     assert label["data-i18n-en"] == "Spain (ES)"
+    assert "españa" in option["search"]
+    assert "espana" in option["search"]
+    assert "spain" in option["search"]

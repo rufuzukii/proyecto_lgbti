@@ -21,7 +21,7 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
     social = "Social attitudes and government response"
     app = Dash("social-attitudes-state-e2e", suppress_callback_exceptions=True)
     statistics_page.register_statistics_callbacks(app)
-    categories_callback = _callback(app, "update_categories_for_year")
+    categories_callback = _callback(app, "update_categories_for_survey")
     indicators_callback = _callback(app, "update_fra_indicators")
     controls_callback = _callback(app, "update_fra_controls")
     demographic_values_callback = _callback(app, "update_demographic_values")
@@ -67,23 +67,28 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
     monkeypatch.setattr(
         statistics_page,
         "ctx",
-        type("Context", (), {"triggered_id": "stats-category-select"})(),
+        type("Context", (), {"triggered_id": "app-language-store"})(),
     )
 
-    category_options, category_value = categories_callback("fra", 2023, "en", social)
+    category_options, category_value, catalog = categories_callback(
+        "fra_survey_iii", "en", social
+    )
     assert category_value == social
+    assert catalog["year"] == 2023
     assert all(isinstance(option["label"], str) for option in category_options)
     assert all(isinstance(option["value"], str) for option in category_options)
 
     social_options, social_value, social_disabled, cleared_result = indicators_callback(
-        "fra", social, 2023
+        "fra_survey_iii", social
     )
     assert social_options == [{"label": "Effectiveness of government", "value": "D5"}]
     assert social_value is None
     assert social_disabled is False
     assert cleared_result is None
 
-    answer_options, answer_value, *_rest = controls_callback("D5", "en", social, 2023)
+    answer_options, answer_value, *_rest = controls_callback(
+        "D5", "en", social, "fra_survey_iii"
+    )
     assert answer_options == [{"label": "Yes", "value": "Yes"}]
     assert answer_value == "Yes"
 
@@ -123,20 +128,18 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
         type("Context", (), {"triggered_id": "fra-demographic-type"})(),
     )
     base_arguments = (
-        "fra",
-        2023,
+        "fra_survey_iii",
         social,
         "D5",
         "Yes",
     )
-    load_callback(*base_arguments, "All", "All", "All", "All", None, payload)
+    load_callback(*base_arguments, "All", "All", "All", "All", payload)
     load_callback(
         *base_arguments,
         "All",
         "All",
         "Sexual Orientation",
         "Asexual",
-        None,
         payload,
     )
     load_callback(
@@ -145,7 +148,6 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
         "25-39",
         "Sexual Orientation",
         "Asexual",
-        None,
         payload,
     )
     assert [
@@ -162,12 +164,12 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
         ("Age", "25-39", "All", "All"),
     ]
 
-    other_options, other_value, _, _ = indicators_callback("fra", "Discrimination", 2023)
+    other_options, other_value, _, _ = indicators_callback("fra_survey_iii", "Discrimination")
     assert other_options == [{"label": "Discrimination", "value": "D1"}]
     assert other_value is None
 
     returned_options, returned_value, returned_disabled, _ = indicators_callback(
-        "fra", social, 2023
+        "fra_survey_iii", social
     )
     assert returned_options == social_options
     assert returned_value is None
@@ -190,8 +192,12 @@ def test_ranked_reason_indicator_shows_ordered_answers_and_methodology(monkeypat
     )
     monkeypatch.setattr(statistics_page, "get_fra_control_payload", lambda *_args: payload)
 
-    spanish = controls_callback("G22_I", "es", "Living openly as LGBTIQ", 2023)
-    english = controls_callback("G22_I", "en", "Living openly as LGBTIQ", 2023)
+    spanish = controls_callback(
+        "G22_I", "es", "Living openly as LGBTIQ", "fra_survey_iii"
+    )
+    english = controls_callback(
+        "G22_I", "en", "Living openly as LGBTIQ", "fra_survey_iii"
+    )
 
     assert [option["value"] for option in spanish[0]] == [
         "1st",

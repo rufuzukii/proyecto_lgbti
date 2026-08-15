@@ -44,7 +44,7 @@ se detecta dentro del JSON y se omite antes de invocar cualquier escritura.
 ```powershell
 $env:PYTHONPATH='src'
 .\.venv\Scripts\python.exe -m app.import_to_db.ilga.historical `
-  'C:\ruta\a\Datos_ILGA' --dry-run
+  '<ruta-datos-ilga>' --dry-run
 ```
 
 Sin `--dry-run`, crea/verifica el índice único, inserta todos los años nuevos en un lote e invalida

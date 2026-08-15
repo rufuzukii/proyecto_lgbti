@@ -41,3 +41,19 @@ def test_contextual_loading_can_hide_stale_content_during_a_global_refresh() -> 
     assert loading.overlay_style == {"visibility": "hidden"}
     assert "context-loading-hide-content" in loading.parent_className
     assert loading.target_components == {"stats-data-store": "data"}
+
+
+def test_contextual_loading_can_render_spinner_without_visible_copy() -> None:
+    loading = cast(
+        Any,
+        contextual_loading(
+            html.Div("content"),
+            "loading_statistics",
+            show_message=False,
+        ),
+    )
+
+    accessible_label = loading.custom_spinner.children[1]
+    assert accessible_label.className == "sr-only"
+    assert accessible_label.children.children == "Cargando estadísticas..."
+    assert loading.custom_spinner.children[0].className == "context-loading-spinner"

@@ -11,12 +11,8 @@ from app.import_to_db.felgtbi.importer import (
     parse_felgtbi_text_pages,
 )
 
-REFERENCE_ROOT = Path(
-    os.getenv(
-        "FELGTBI_REFERENCE_PDF_DIR",
-        str(Path.home() / "Desktop" / "Datos_FELGBT"),
-    )
-)
+_REFERENCE_ROOT_VALUE = os.getenv("FELGTBI_REFERENCE_PDF_DIR")
+REFERENCE_ROOT = Path(_REFERENCE_ROOT_VALUE) if _REFERENCE_ROOT_VALUE else None
 COLLECTION_SUFFIX = re.compile(r"estado\s+lgtbi\+?\s+20\d{2}\s*$", re.IGNORECASE)
 REFERENCE_CASES = (
     (
@@ -66,6 +62,8 @@ def _ascii_name(value: str) -> str:
 
 
 def _reference_pdf(year: str, normalized_name: str) -> Path:
+    if REFERENCE_ROOT is None:
+        pytest.skip("FELGTBI_REFERENCE_PDF_DIR no configurado")
     directory = REFERENCE_ROOT / year
     if directory.is_dir():
         for candidate in directory.glob("*.pdf"):

@@ -26,23 +26,6 @@
   color: var(--color-text-muted);
 }
 
-.stats-ilga-normalization-note {
-  grid-column: 1 / -1;
-  min-width: 0;
-}
-
-.stats-ilga-normalization-note.is-hidden {
-  display: none;
-}
-
-.stats-temporal-normalization-note {
-  margin-bottom: 0.75rem;
-}
-
-.stats-temporal-normalization-note.is-hidden {
-  display: none;
-}
-
 .trend-normalization-note {
   box-shadow: none;
   margin-top: 0.65rem;

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import plotly.graph_objects as go
 from dash import no_update
 
@@ -20,64 +22,59 @@ def _result() -> dict:
     }
 
 
-def test_map_selection_patch_does_not_resend_geojson() -> None:
-    # Arrange
-    figure = go.Figure(
-        [
-            go.Choropleth(
-                geojson={"type": "FeatureCollection", "features": []},
-                locations=["ES"],
-                z=[1],
-            ),
-            go.Scattergeo(lat=[40.0], lon=[-3.0], text=["España"], customdata=[["ES"]]),
-        ]
+def test_complete_map_figure_updates_the_stable_graph_and_reveals_it() -> None:
+    outputs: list[Any] = [no_update] * 29
+    figure = go.Figure(go.Scattergeo(locations=["ES"]))
+    outputs[2] = figure
+
+    converted = statistics._dashboard_component_outputs(outputs)
+
+    assert converted[2] is figure
+    assert converted[3] == {"width": "100%"}
+    assert all(output is no_update for index, output in enumerate(converted) if index not in {2, 3})
+
+
+def test_partial_dashboard_update_does_not_touch_the_stable_map() -> None:
+    converted = statistics._dashboard_component_outputs([no_update] * 29)
+
+    assert converted[2] is no_update
+    assert converted[3] is no_update
+
+
+def test_map_country_selection_ignores_missing_click_data() -> None:
+    result = statistics._next_country_selection(
+        "stats-map-graph", click_data=None, data=None, current=[]
     )
 
-    # Act
-    payload = statistics._map_selection_patch(figure).to_plotly_json()
-
-    # Assert
-    locations = [operation["location"] for operation in payload["operations"]]
-    assert locations == [
-        ["data", 1, "lat"],
-        ["data", 1, "lon"],
-        ["data", 1, "text"],
-        ["data", 1, "customdata"],
-    ]
-    assert "geojson" not in str(payload)
+    assert result is no_update
 
 
-def test_map_data_patch_updates_values_without_resending_static_geometry() -> None:
-    # Arrange
-    geojson = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {"country_code": "ES"},
-                "geometry": {"type": "Polygon", "coordinates": []},
-            }
-        ],
-    }
-    figure = go.Figure(
-        [
-            go.Choropleth(
-                geojson=geojson,
-                featureidkey="properties.country_code",
-                locations=["ES"],
-                z=[72],
-            ),
-            go.Scattergeo(lat=[], lon=[], text=[], customdata=[]),
-        ]
+def test_map_country_selection_toggles_repeated_clicks() -> None:
+    spain_click = {"points": [{"customdata": ["ES", "42 %"]}]}
+
+    selected = statistics._next_country_selection(
+        "stats-map-graph", click_data=spain_click, data=None, current=[]
+    )
+    deselected = statistics._next_country_selection(
+        "stats-map-graph", click_data=spain_click, data=None, current=selected
     )
 
-    # Act
-    payload = statistics._map_data_patch(figure).to_plotly_json()
+    assert selected == ["ES"]
+    assert deselected == []
 
-    # Assert
-    assert statistics._map_contains_static_geojson({"data": [{"geojson": geojson}]})
-    assert any(operation["location"] == ["data", 0, "z"] for operation in payload["operations"])
-    assert "geojson" not in str(payload)
+
+def test_map_country_selection_supports_multiple_countries_and_clear() -> None:
+    france_click = {"points": [{"customdata": ["FR"]}]}
+
+    selected = statistics._next_country_selection(
+        "stats-map-graph", click_data=france_click, data=None, current=["ES"]
+    )
+    cleared = statistics._next_country_selection(
+        "stats-clear-countries", click_data=None, data=None, current=selected
+    )
+
+    assert selected == ["ES", "FR"]
+    assert cleared == []
 
 
 def test_ranking_pagination_updates_only_ranking_outputs(monkeypatch) -> None:
@@ -99,10 +96,11 @@ def test_ranking_pagination_updates_only_ranking_outputs(monkeypatch) -> None:
     # Assert
     assert len(outputs) == 29
     assert outputs[7] is ranking_figure
-    assert outputs[9] is average_figure
+    assert outputs[8] is average_figure
+    assert "is-hidden" not in outputs[9]
     assert outputs[24] == {"display": "block"}
     assert all(
-        output is no_update for index, output in enumerate(outputs) if index not in {7, 9, 24}
+        output is no_update for index, output in enumerate(outputs) if index not in {7, 8, 9, 24}
     )
 
 

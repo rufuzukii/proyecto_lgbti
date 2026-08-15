@@ -207,12 +207,8 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
         lambda: None,
     )
     monkeypatch.setattr(
-        "app.dash.pages.statistics._year_options",
-        lambda _source: [],
-    )
-    monkeypatch.setattr(
         "app.dash.pages.statistics._category_options",
-        lambda _source, _year: [],
+        lambda _year: [],
     )
     monkeypatch.setattr(
         "app.dash.pages.statistics.build_navbar",
@@ -234,7 +230,6 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
         "stats-map-graph",
         "stats-temporal-graph",
         "stats-ranking-graph",
-        "stats-distribution-graph",
         "stats-average-graph",
         "stats-response-comparison-graph",
         "stats-experience-legal-radar-graph",
@@ -382,9 +377,8 @@ def test_rendered_export_metadata_tracks_visible_filters_and_country_selection()
     assert selected[-3] is False
     assert selected[-2] == ""
     assert selected[-1] == "stats-table-export-status is-hidden"
-    empty = _render_dashboard({}, [], "en")
-    assert empty[-3] is True
-    assert empty[-2] == "No data available to export"
+    with pytest.raises(ValueError, match="statistics_dashboard_requires_ready_result"):
+        _render_dashboard({}, [], "en")
 
 
 def _walk(component):

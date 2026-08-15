@@ -87,3 +87,13 @@ def test_mail_service_rejects_missing_configuration(monkeypatch: pytest.MonkeyPa
     # Act / Assert
     with pytest.raises(mail_service.MailDeliveryError, match="smtp_not_configured"):
         mail_service.send_email(EmailMessage())
+
+
+def test_public_email_links_require_an_explicit_deployment_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("RENDER_EXTERNAL_URL", raising=False)
+
+    with pytest.raises(mail_service.MailDeliveryError, match="public_base_url_not_configured"):
+        mail_service.public_base_url()

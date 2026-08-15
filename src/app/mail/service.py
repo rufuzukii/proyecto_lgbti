@@ -53,11 +53,9 @@ def send_email(message: EmailMessage) -> None:
 
 
 def public_base_url() -> str:
-    configured = (
-        os.getenv("PUBLIC_BASE_URL")
-        or os.getenv("RENDER_EXTERNAL_URL")
-        or "http://localhost:5001"
-    ).strip()
+    configured = (os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip()
+    if not configured:
+        raise MailDeliveryError("public_base_url_not_configured")
     if not configured.startswith(("http://", "https://")):
         raise MailDeliveryError("invalid_public_base_url")
     return configured.rstrip("/")

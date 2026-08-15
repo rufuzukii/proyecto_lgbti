@@ -10,6 +10,7 @@ from app.analytics.geography_service import (
     europe_bounds,
     europe_centroids,
     europe_geojson,
+    europe_view_bounds,
     load_europe_geodataframe,
     prepare_europe_map_data,
 )
@@ -72,6 +73,18 @@ def test_geography_metadata_and_geojson_are_cached_and_complete() -> None:
     path = Path("src/app/analytics/data/europe_countries.geojson")
     assert path.stat().st_size < 250_000
     assert all("country_code" in feature["properties"] for feature in first_geojson["features"])
+
+
+def test_selected_country_bounds_gently_focus_and_reset_to_europe() -> None:
+    europe = europe_view_bounds()
+    spain = europe_view_bounds(["ES"])
+    multiple = europe_view_bounds(["ES", "FR", "DE"])
+
+    assert europe == europe_bounds()
+    assert spain[2] - spain[0] < europe[2] - europe[0]
+    assert spain[3] - spain[1] < europe[3] - europe[1]
+    assert multiple[2] - multiple[0] < europe[2] - europe[0]
+    assert europe_view_bounds([]) == europe
 
 
 def test_warm_country_merge_has_a_non_fragile_performance_budget() -> None:

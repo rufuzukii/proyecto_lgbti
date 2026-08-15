@@ -17,6 +17,7 @@ from pymongo.errors import AutoReconnect, ConfigurationError, NetworkTimeout
 from app.cache import cache
 from app.config import get_mongo_config
 from app.errors import DatabaseUnavailableError
+from app.fra_surveys import FRA_SURVEYS, fra_collection_for_year
 from app.import_to_db.felgtbi.document_identity import clean_felgtbi_document_label
 from app.import_to_db.felgtbi.semantics import sanitize_report_document
 from app.import_to_db.fra.validation import (
@@ -211,10 +212,13 @@ def get_categories() -> list[str]:
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS, source_check=True)
 def get_fra_categories(year: int | None = None) -> list[str]:
     try:
+        collection_name = fra_collection_for_year(year)
+        if collection_name is None:
+            return []
         query = _fra_statistic_document_filter()
         if year is not None:
             query["survey_year"] = year
-        categories = _mongo_collection("Indicator_fra").distinct(
+        categories = _mongo_collection(collection_name).distinct(
             "category",
             query,
         )
@@ -268,10 +272,13 @@ def get_fra_mongo_indicators_by_category(
     if not is_valid_fra_category(clean_category):
         return []
     try:
+        collection_name = fra_collection_for_year(year)
+        if collection_name is None:
+            return []
         query = _fra_statistic_document_filter(category=clean_category)
         if year is not None:
             query["survey_year"] = year
-        rows = _mongo_collection("Indicator_fra").aggregate(
+        rows = _mongo_collection(collection_name).aggregate(
             [
                 {"$match": query},
                 {
@@ -359,8 +366,11 @@ def get_fra_indicator_answers(
     if year is not None:
         query["survey_year"] = int(year)
     try:
+        collection_name = fra_collection_for_year(year)
+        if collection_name is None:
+            return None
         documents = list(
-            _mongo_collection("Indicator_fra").find(
+            _mongo_collection(collection_name).find(
                 query,
                 {
                     "_id": 0,
@@ -425,6 +435,9 @@ def get_fra_indicator_control_document(
         match["category"] = clean_category
     if year is not None:
         match["survey_year"] = int(year)
+    collection_name = fra_collection_for_year(year)
+    if collection_name is None:
+        return None
     pipeline = [
         {"$match": match},
         {"$unwind": "$answers"},
@@ -442,6 +455,13 @@ def get_fra_indicator_control_document(
                 "question": {"$first": "$question"},
                 "answers": {"$addToSet": "$answers.answer"},
                 "filters": {"$addToSet": "$answers.filters"},
+                "answer_filters": {
+                    "$addToSet": {
+                        "answer": "$answers.answer",
+                        "type": "$answers.filters.type",
+                        "value": "$answers.filters.value",
+                    }
+                },
             }
         },
         {
@@ -453,11 +473,12 @@ def get_fra_indicator_control_document(
                 "question": 1,
                 "answers": 1,
                 "filters": 1,
+                "answer_filters": 1,
             }
         },
     ]
     try:
-        result = next(iter(_mongo_collection("Indicator_fra").aggregate(pipeline)), None)
+        result = next(iter(_mongo_collection(collection_name).aggregate(pipeline)), None)
     except Exception:
         logger.exception("fra_indicator_controls_read_failed", extra={"code": clean_code})
         return None
@@ -468,18 +489,53 @@ def get_fra_indicator_control_document(
         {str(value).strip() for value in result.get("answers", []) if str(value or "").strip()},
         key=str.casefold,
     )
-    control_rows: list[dict[str, Any]] = [
-        {"answer": answer, "country": "catalog"} for answer in answers
+    answer_filters = [
+        item
+        for item in result.get("answer_filters", [])
+        if isinstance(item, dict)
+        and str(item.get("answer") or "").strip()
+        and str(item.get("type") or "").strip()
+        and str(item.get("value") or "").strip()
     ]
-    fallback_answer = answers[0] if answers else "catalog"
-    control_rows.extend(
+    control_rows: list[dict[str, Any]]
+    if answer_filters:
+        control_rows = [
+            {
+                "answer": str(item["answer"]).strip(),
+                "country": "catalog",
+                "filters": [
+                    {
+                        "type": str(item["type"]).strip(),
+                        "value": str(item["value"]).strip(),
+                    }
+                ],
+            }
+            for item in answer_filters
+        ]
+    else:
+        control_rows = [{"answer": answer, "country": "catalog"} for answer in answers]
+        fallback_answer = answers[0] if answers else "catalog"
+        control_rows.extend(
+            {
+                "answer": fallback_answer,
+                "country": "catalog",
+                "filters": [filter_value],
+            }
+            for filter_value in result.get("filters", [])
+            if isinstance(filter_value, dict)
+        )
+    global_answers = sorted(
         {
-            "answer": fallback_answer,
-            "country": "catalog",
-            "filters": [filter_value],
-        }
-        for filter_value in result.get("filters", [])
-        if isinstance(filter_value, dict)
+            str(row.get("answer") or "").strip()
+            for row in control_rows
+            if any(
+                str(item.get("type") or "").strip() == "All"
+                and str(item.get("value") or "").strip() == "All"
+                for item in row.get("filters", [])
+                if isinstance(item, dict)
+            )
+        },
+        key=str.casefold,
     )
     logger.info(
         "fra_control_query_completed code=%s answers=%d filters=%d query_ms=%.2f",
@@ -494,6 +550,7 @@ def get_fra_indicator_control_document(
         "specific_category": str(result.get("specific_category") or "").strip(),
         "question": str(result.get("question") or "").strip(),
         "answers": control_rows,
+        "global_answers": global_answers,
     }
 
 
@@ -508,11 +565,14 @@ def get_fra_indicator_documents(
     if not clean_codes:
         return []
     try:
+        collection_name = fra_collection_for_year(year)
+        if collection_name is None:
+            return []
         query: dict[str, Any] = {"code": {"$in": list(clean_codes)}}
         if year is not None:
             query["survey_year"] = int(year)
         documents = list(
-            _mongo_collection("Indicator_fra").find(
+            _mongo_collection(collection_name).find(
                 query,
                 {
                     "_id": 0,
@@ -569,24 +629,24 @@ def get_fra_historical_documents(
     query = _fra_statistic_document_filter(category=clean_category)
     query.update({"code": clean_code, "question": clean_question})
     query["specific_category"] = clean_specific_category or {"$in": [None, ""]}
+    projection = {
+        "_id": 0,
+        "answers": 1,
+        "category": 1,
+        "code": 1,
+        "dataset": 1,
+        "metadata": 1,
+        "question": 1,
+        "source": 1,
+        "specific_category": 1,
+        "survey_year": 1,
+    }
     try:
-        return list(
-            _mongo_collection("Indicator_fra").find(
-                query,
-                {
-                    "_id": 0,
-                    "answers": 1,
-                    "category": 1,
-                    "code": 1,
-                    "dataset": 1,
-                    "metadata": 1,
-                    "question": 1,
-                    "source": 1,
-                    "specific_category": 1,
-                    "survey_year": 1,
-                },
-            )
-        )
+        documents: list[dict[str, Any]] = []
+        for survey in FRA_SURVEYS:
+            if survey.enabled:
+                documents.extend(_mongo_collection(survey.collection).find(query, projection))
+        return documents
     except Exception:
         logger.exception(
             "fra_historical_series_read_failed",
@@ -602,7 +662,12 @@ def get_fra_years(code: str | None = None) -> list[int]:
     if clean_code:
         query["code"] = clean_code
     try:
-        raw_years = _mongo_collection("Indicator_fra").distinct("survey_year", query)
+        raw_years = [
+            raw_year
+            for survey in FRA_SURVEYS
+            if survey.enabled
+            for raw_year in _mongo_collection(survey.collection).distinct("survey_year", query)
+        ]
     except Exception:
         logger.exception("fra_years_read_failed", extra={"code": clean_code})
         return []
@@ -1004,7 +1069,11 @@ def get_ilga_years() -> list[int]:
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
+def get_ilga_document_by_year(
+    year: int | str | None,
+    *,
+    raise_on_error: bool = False,
+) -> dict[str, Any] | None:
     try:
         clean_year = int(year) if year is not None and str(year).strip() else None
     except TypeError, ValueError:
@@ -1024,8 +1093,10 @@ def get_ilga_document_by_year(year: int | str | None) -> dict[str, Any] | None:
                 "countries": 1,
             },
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("ilga_year_read_failed", extra={"year": clean_year})
+        if raise_on_error:
+            raise DatabaseUnavailableError("MongoDB") from exc
         return None
 
 

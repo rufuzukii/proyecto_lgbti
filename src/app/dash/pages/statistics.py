@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any
@@ -7,20 +8,16 @@ from urllib.parse import urlencode
 
 import dash_ag_grid as dag
 import pandas as pd
-from dash import ALL, Dash, Input, Output, Patch, State, ctx, dcc, html, no_update
+from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
 from flask_login import current_user
 
+from app.analytics.percentage_display import format_percentage
 from app.analytics.repository import (
     assert_analytics_databases_available,
     get_fra_categories,
     get_fra_mongo_indicators_by_category,
-    get_fra_years,
-    get_ilga_criteria_by_year,
-    get_ilga_criteria_categories_by_year,
-    get_ilga_document_by_year,
-    get_ilga_years,
 )
 from app.analytics.statistics.ranking import paginate_ranking
 from app.analytics.statistics_charts import (
@@ -29,14 +26,11 @@ from app.analytics.statistics_charts import (
     build_comparative_ranking_chart,
     build_eu_average_comparison_chart,
     build_europe_choropleth,
-    build_europe_distribution_chart,
     build_experience_legal_radar,
     build_fra_response_comparison_chart,
-    build_ilga_response_details_chart,
     build_legal_reality_gap_chart,
     build_response_country_comparison_chart,
     build_temporal_evolution_chart,
-    empty_figure,
     prepare_fra_response_comparison_data,
     summarize_response_comparison,
 )
@@ -74,10 +68,6 @@ from app.dash.components.dropdown_options import (
     option_value_or_none,
 )
 from app.dash.components.empty_state import build_empty_state
-from app.dash.components.ilga_methodology import (
-    build_ilga_normalization_note,
-    build_ilga_series_normalization_note,
-)
 from app.dash.components.loading import contextual_loading
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
@@ -85,17 +75,27 @@ from app.dash.i18n import attribute_attrs, country_labels, dash_attrs, text, tex
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 from app.dash.statistics_state import StatisticsViewState, resolve_statistics_view_state
-from app.taxonomy import taxonomy_label, taxonomy_pair
+from app.fra_surveys import FRA_SURVEYS, default_fra_survey, get_fra_survey
+from app.taxonomy import taxonomy_pair
 
 logger = logging.getLogger(__name__)
 
-DATA_TYPE_OPTIONS = [
+FRA_SURVEY_OPTIONS = [
     {
-        "label": html.Span(label_es, **text_attrs(label_es, label_en)),
-        "value": value,
+        "label": html.Span(
+            [
+                html.Strong(
+                    f"Encuesta {survey.sequence}",
+                    **text_attrs(f"Encuesta {survey.sequence}", f"Survey {survey.sequence}"),
+                ),
+                html.Span(str(survey.year)),
+            ],
+            className="stats-survey-option",
+        ),
+        "value": survey.survey_id,
     }
-    for value in ("fra", "ilga")
-    for label_es, label_en in [taxonomy_pair("data_type", value)]
+    for survey in FRA_SURVEYS
+    if survey.enabled
 ]
 
 EXCLUDED_CATEGORY_KEYS = {
@@ -105,11 +105,10 @@ EXCLUDED_CATEGORY_KEYS = {
 }
 
 LABELS_EN = {
-    "Tipo de datos": "Data type",
+    "Encuesta": "Survey",
     "Indicador": "Indicator",
     "Pregunta o indicador": "Question or indicator",
     "Respuesta": "Answer",
-    "Criterio jurídico": "Legal criterion",
     "Segmentación sociodemográfica": "Sociodemographic segmentation",
     "Valores del filtro activo": "Active filter values",
 }
@@ -118,8 +117,7 @@ CHART_EXPORT_TITLES = {
     "map": ("Mapa de Europa", "Map of Europe"),
     "temporal": ("Evolución temporal", "Temporal evolution"),
     "ranking": ("Ranking comparativo", "Comparative ranking"),
-    "distribution": ("Distribución europea", "European distribution"),
-    "average": ("Comparación con la media de la UE", "EU average comparison"),
+    "average": ("Comparación con la media europea", "Comparison with the European average"),
     "response_comparison": ("Comparación de respuestas", "Response comparison"),
     "experience_legal_radar": (
         "Experiencia real y protección legal",
@@ -137,10 +135,7 @@ CHART_EXPORT_TITLES = {
 
 def build_statistics_layout() -> Component:
     assert_analytics_databases_available()
-    years: list[dict[str, Any]] = []
-    initial_year = None
     categories: list[dict[str, Any]] = []
-    placeholder: dict[str, Any] = {}
     return html.Div(
         [
             build_navbar(active="statistics"),
@@ -151,18 +146,17 @@ def build_statistics_layout() -> Component:
             html.Main(
                 [
                     _header(),
-                    _controls(years, initial_year, categories),
+                    _controls(categories),
                     html.Div(
                         contextual_loading(
                             [
                                 dcc.Store(id="stats-data-store", storage_type="memory"),
+                                dcc.Store(id="stats-dashboard-ready-store", storage_type="memory"),
+                                dcc.Store(id="stats-active-query-store", storage_type="memory"),
+                                dcc.Store(id="stats-survey-catalog-store", storage_type="memory"),
                                 html.Div(
-                                    build_empty_state(
-                                        ui_text("statistics_initial_prompt", "es"),
-                                        class_name="stats-query-state-card",
-                                    ),
                                     id="stats-query-state",
-                                    className="stats-query-state",
+                                    className="stats-query-state is-hidden",
                                 ),
                                 html.Div(
                                     [
@@ -170,7 +164,7 @@ def build_statistics_layout() -> Component:
                                             id="stats-status-message",
                                             className="stats-status stats-status-warning",
                                         ),
-                                        _map_panel(placeholder),
+                                        _map_panel(),
                                         _block_header(
                                             "Bloque A",
                                             "Estadísticas del conjunto de datos seleccionado",
@@ -183,7 +177,7 @@ def build_statistics_layout() -> Component:
                                         html.Section(
                                             [
                                                 html.Div(
-                                                    _temporal_panel(placeholder),
+                                                    _temporal_panel(),
                                                     id="stats-temporal-panel",
                                                     className=(
                                                         "stats-panel-wrapper stats-temporal-wrapper is-hidden"
@@ -193,24 +187,11 @@ def build_statistics_layout() -> Component:
                                                     "Ranking comparativo",
                                                     "Comparative ranking",
                                                     "stats-ranking-graph",
-                                                    placeholder,
                                                     panel_id="stats-ranking-panel",
                                                     panel_class_name=(
                                                         "stats-panel stats-panel-wide stats-ranking-panel"
                                                     ),
                                                     footer=_ranking_pagination_controls(),
-                                                ),
-                                                _graph_panel(
-                                                    "Distribución europea",
-                                                    "European distribution",
-                                                    "stats-distribution-graph",
-                                                    placeholder,
-                                                ),
-                                                _graph_panel(
-                                                    "Comparación con la media de la UE",
-                                                    "EU average comparison",
-                                                    "stats-average-graph",
-                                                    placeholder,
                                                 ),
                                                 html.Div(
                                                     [
@@ -220,13 +201,8 @@ def build_statistics_layout() -> Component:
                                                             "stats-response-comparison-graph",
                                                         ),
                                                         html.Div(
-                                                            dcc.Graph(
-                                                                id="stats-response-comparison-graph",
-                                                                figure=placeholder,
-                                                                responsive=True,
-                                                                config=chart_graph_config(),
-                                                                className="stats-chart-graph",
-                                                                style={"width": "100%"},
+                                                            _deferred_graph_slot(
+                                                                "stats-response-comparison-graph"
                                                             ),
                                                             className="stats-response-comparison-scroll",
                                                         ),
@@ -265,16 +241,8 @@ def build_statistics_layout() -> Component:
                                                             className="stats-radar-metadata",
                                                         ),
                                                         html.Div(
-                                                            dcc.Graph(
-                                                                id="stats-experience-legal-radar-graph",
-                                                                figure=placeholder,
-                                                                responsive=True,
-                                                                config=chart_graph_config(),
-                                                                className="stats-chart-graph",
-                                                                style={
-                                                                    "width": "100%",
-                                                                    "height": "650px",
-                                                                },
+                                                            _deferred_graph_slot(
+                                                                "stats-experience-legal-radar-graph"
                                                             ),
                                                             id="stats-experience-legal-radar-wrapper",
                                                             className="is-hidden",
@@ -309,14 +277,8 @@ def build_statistics_layout() -> Component:
                                                             className="stats-detail-summary",
                                                         ),
                                                         html.Div(
-                                                            dcc.Graph(
-                                                                id="stats-response-detail-graph",
-                                                                figure=placeholder,
-                                                                responsive=True,
-                                                                config=chart_graph_config(),
-                                                                style=_response_detail_graph_style(
-                                                                    placeholder
-                                                                ),
+                                                            _deferred_graph_slot(
+                                                                "stats-response-detail-graph"
                                                             ),
                                                             className="stats-response-detail-scroll",
                                                         ),
@@ -326,6 +288,16 @@ def build_statistics_layout() -> Component:
                                                     ],
                                                     id="stats-response-panel",
                                                     className="stats-panel stats-panel-wide stats-response-panel",
+                                                ),
+                                                _graph_panel(
+                                                    "Comparación con la media europea",
+                                                    "Comparison with the European average",
+                                                    "stats-average-graph",
+                                                    panel_id="stats-average-panel",
+                                                    panel_class_name=(
+                                                        "stats-panel stats-panel-wide "
+                                                        "stats-average-panel is-hidden"
+                                                    ),
                                                 ),
                                             ],
                                             className="stats-grid",
@@ -347,21 +319,18 @@ def build_statistics_layout() -> Component:
                                                             "Protección legal vs experiencia real",
                                                             "Legal protection vs lived experience",
                                                             "stats-gap-graph",
-                                                            placeholder,
                                                             combined_sources=True,
                                                         ),
                                                         _graph_panel(
                                                             "Relaci\u00f3n entre protecci\u00f3n legal y experiencia reportada",
                                                             "Legal protection and reported experience relationship",
                                                             "stats-scatter-graph",
-                                                            placeholder,
                                                             combined_sources=True,
                                                         ),
                                                         _graph_panel(
                                                             "Heatmap europeo",
                                                             "European heatmap",
                                                             "stats-combined-heatmap",
-                                                            placeholder,
                                                             panel_class_name=(
                                                                 "stats-panel stats-panel-wide "
                                                                 "stats-heatmap-panel"
@@ -492,12 +461,14 @@ def build_statistics_layout() -> Component:
                             ],
                             "loading_statistics",
                             element_id="stats-dashboard-loading",
-                            message_id="stats-loading-message",
                             target_components={
                                 "stats-data-store": "data",
-                                "stats-map-graph": "figure",
+                                "stats-dashboard-ready-store": "data",
+                                "stats-active-query-store": "data",
+                                "stats-survey-catalog-store": "data",
                             },
                             hide_content_while_loading=True,
+                            show_message=False,
                         ),
                         id="stats-dashboard-region",
                         className="stats-dashboard-region",
@@ -512,19 +483,62 @@ def build_statistics_layout() -> Component:
 
 
 def register_statistics_callbacks(app: Dash) -> None:
+    app.clientside_callback(
+        """
+        function(surveyId, category, indicator, answer,
+                 demographicType, demographicValue, identityType, identityValue, catalog) {
+            const catalogReady = Boolean(
+                catalog && catalog.survey_id === surveyId && catalog.loaded
+            );
+            const year = catalogReady ? catalog.year : null;
+            const hasCategory = Boolean(category);
+            const hasIndicator = Boolean(indicator);
+            let phase = "loading_indicators";
+            if (catalogReady && !catalog.has_data) {
+                phase = "survey_empty";
+            } else if (catalogReady && !hasCategory) {
+                phase = "initial";
+            } else if (catalogReady && hasIndicator) {
+                phase = "loading_statistics";
+            }
+            return {
+                query_token: JSON.stringify([
+                    surveyId, year, category, indicator, answer,
+                    demographicType, demographicValue, identityType, identityValue
+                ]),
+                phase: phase
+            };
+        }
+        """,
+        Output("stats-active-query-store", "data"),
+        Input("stats-survey-select", "value"),
+        Input("stats-category-select", "value"),
+        Input("fra-indicator-select", "value"),
+        Input("fra-answer-select", "value"),
+        Input("fra-demographic-type", "value"),
+        Input("fra-demographic-value", "value"),
+        Input("fra-identity-type", "value"),
+        Input("fra-identity-value", "value"),
+        Input("stats-survey-catalog-store", "data"),
+    )
+
     @app.callback(
         Output("stats-query-state", "children"),
         Output("stats-query-state", "className"),
         Output("stats-results-content", "className"),
         Input("stats-data-store", "data"),
+        Input("stats-dashboard-ready-store", "data"),
+        Input("stats-active-query-store", "data"),
         Input("app-language-store", "data"),
     )
     def update_statistics_query_state(
         result: dict[str, Any] | None,
+        ready_payload: dict[str, Any] | None,
+        active_payload: dict[str, Any] | None,
         language: str | None,
     ) -> tuple[Component, str, str]:
         clean_language = "en" if language == "en" else "es"
-        query_state = resolve_statistics_view_state(result)
+        query_state = resolve_statistics_view_state(result, ready_payload, active_payload)
         if query_state is StatisticsViewState.READY:
             return (
                 build_empty_state(
@@ -534,8 +548,19 @@ def register_statistics_callbacks(app: Dash) -> None:
                 "stats-query-state is-hidden",
                 "stats-results-content",
             )
+        if query_state in {
+            StatisticsViewState.LOADING_INDICATORS,
+            StatisticsViewState.LOADING_STATISTICS,
+        }:
+            return (
+                build_empty_state("", class_name="stats-query-state-card"),
+                "stats-query-state is-hidden",
+                "stats-results-content is-hidden",
+            )
         if query_state is StatisticsViewState.ERROR:
             message_key = "statistics_error"
+        elif query_state is StatisticsViewState.SURVEY_EMPTY:
+            message_key = "statistics_survey_empty"
         elif query_state is StatisticsViewState.NO_DATA:
             message_key = "statistics_no_data"
         else:
@@ -550,46 +575,21 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
 
     @app.callback(
-        Output("stats-loading-message", "children"),
-        Input("stats-category-select", "value"),
-        Input("fra-indicator-select", "value"),
-        Input("fra-answer-select", "value"),
-        Input("fra-demographic-type", "value"),
-        Input("fra-demographic-value", "value"),
-        Input("fra-identity-type", "value"),
-        Input("fra-identity-value", "value"),
-        Input("ilga-criterion-select", "value"),
-        Input("app-language-store", "data"),
-        prevent_initial_call=True,
-    )
-    def update_statistics_loading_message(*values: Any) -> Component:
-        triggered = ctx.triggered_id
-        if triggered == "stats-category-select":
-            message_key = "loading_indicators"
-        elif triggered in {"fra-indicator-select", "ilga-criterion-select"}:
-            message_key = "loading_statistics"
-        else:
-            message_key = "updating_visualisations"
-        return text(ui_text(message_key, "es"), ui_text(message_key, "en"))
-
-    @app.callback(
         Output({"type": "stats-source-attribution", "index": ALL}, "children"),
-        Input("stats-source-select", "value"),
-        Input("stats-year-select", "value"),
+        Input("stats-survey-select", "value"),
         Input("app-language-store", "data"),
         State({"type": "stats-source-attribution", "index": ALL}, "id"),
     )
     def update_statistics_attributions(
-        source: str | None,
-        year: int | None,
+        survey_id: str | None,
         language: str | None,
         targets: list[dict[str, str]] | None,
     ) -> list[Component]:
-        source_key = "ilga" if source == "ilga" else "fra"
+        survey = get_fra_survey(survey_id) or default_fra_survey()
         return [
             build_source_attribution(
-                source_key,
-                year=year,
+                "fra",
+                year=survey.year,
                 compact=True,
                 language=language,
             )
@@ -739,26 +739,22 @@ def register_statistics_callbacks(app: Dash) -> None:
     @app.callback(
         Output("stats-category-select", "placeholder"),
         Output("fra-indicator-select", "placeholder"),
-        Output("ilga-criterion-select", "placeholder"),
         Input("app-language-store", "data"),
     )
-    def translate_statistics_controls(language: str | None) -> tuple[str, str, str]:
+    def translate_statistics_controls(language: str | None) -> tuple[str, str]:
         if language == "en":
             return (
                 "Select a category",
                 "Select a category first",
-                "All criteria",
             )
         return (
             "Selecciona una categoría",
             "Selecciona primero una categoría",
-            "Todos los criterios",
         )
 
     @app.callback(
         Output("stats-create-report-link", "href"),
-        Input("stats-source-select", "value"),
-        Input("stats-year-select", "value"),
+        Input("stats-survey-select", "value"),
         Input("stats-category-select", "value"),
         Input("fra-indicator-select", "value"),
         Input("fra-answer-select", "value"),
@@ -766,13 +762,11 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("fra-demographic-value", "value"),
         Input("fra-identity-type", "value"),
         Input("fra-identity-value", "value"),
-        Input("ilga-criterion-select", "value"),
         Input("stats-selected-countries", "data"),
         Input("app-language-store", "data"),
     )
     def update_create_report_link(
-        source: str | None,
-        year: int | None,
+        survey_id: str | None,
         category: str | None,
         indicator: str | None,
         answer: str | None,
@@ -780,10 +774,10 @@ def register_statistics_callbacks(app: Dash) -> None:
         filter_a_value: str | None,
         filter_b_name: str | None,
         filter_b_value: str | None,
-        criterion: str | None,
         countries: list[str] | None,
         language: str | None,
     ) -> str:
+        survey = get_fra_survey(survey_id) or default_fra_survey()
         selected_countries = _normalize_selected_countries(countries)
         filters = _resolved_ui_filters(
             filter_a_name,
@@ -792,13 +786,12 @@ def register_statistics_callbacks(app: Dash) -> None:
             filter_b_value,
         )
         params = {
-            "source": source or "fra",
-            "year": year,
+            "source": "fra",
+            "year": survey.year,
             "category": category,
             "indicator_id": indicator,
             "answer": answer,
             **filters.as_query_fields(),
-            "criterion": criterion,
             "countries": ",".join(selected_countries),
             "primary_country": selected_countries[0] if selected_countries else None,
             "language": "en" if language == "en" else "es",
@@ -816,118 +809,51 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
 
     @app.callback(
-        Output("stats-year-select", "options"),
-        Output("stats-year-select", "value"),
-        Output("stats-fra-controls", "className"),
-        Output("stats-ilga-controls", "className"),
-        Output("stats-fra-segmentation-card", "className"),
-        Output("stats-year-field", "className"),
-        Input("stats-source-select", "value"),
-    )
-    def update_source_controls(source: str | None):
-        years = _year_options(source)
-        year = years[0]["value"] if years else None
-        is_fra = source == "fra"
-        year_class = "stats-control-field stats-year-field" + (
-            " is-hidden" if is_fra and len(years) <= 1 else ""
-        )
-        return (
-            years,
-            year,
-            "stats-source-controls" if is_fra else "stats-source-controls is-hidden",
-            "stats-source-controls is-hidden" if is_fra else "stats-source-controls",
-            _fra_segmentation_card_class(source),
-            year_class,
-        )
-
-    @app.callback(
-        Output("stats-ilga-normalization-note", "children"),
-        Output("stats-ilga-normalization-note", "className"),
-        Input("stats-source-select", "value"),
-        Input("stats-year-select", "value"),
-        Input("app-language-store", "data"),
-    )
-    def update_ilga_normalization_note(
-        source: str | None,
-        year: int | None,
-        language: str | None,
-    ):
-        if source != "ilga" or year is None:
-            return None, "stats-ilga-normalization-note is-hidden"
-        document = get_ilga_document_by_year(year)
-        normalization = document.get("normalization") if isinstance(document, dict) else None
-        note = build_ilga_normalization_note(
-            normalization,
-            language="en" if language == "en" else "es",
-            class_name="stats-ilga-normalization-callout",
-        )
-        if note is None:
-            return None, "stats-ilga-normalization-note is-hidden"
-        return note, "stats-ilga-normalization-note"
-
-    @app.callback(
-        Output("stats-temporal-normalization-note", "children"),
-        Output("stats-temporal-normalization-note", "className"),
-        Input("stats-data-store", "data"),
-        Input("app-language-store", "data"),
-    )
-    def update_ilga_temporal_normalization_note(
-        payload: dict[str, Any] | None,
-        language: str | None,
-    ):
-        result = payload or {}
-        if result.get("source") != "ILGA-Europe":
-            return None, "stats-temporal-normalization-note is-hidden"
-        note = build_ilga_series_normalization_note(
-            result.get("history") or [],
-            language="en" if language == "en" else "es",
-            class_name="stats-temporal-normalization-callout",
-        )
-        if note is None:
-            return None, "stats-temporal-normalization-note is-hidden"
-        return note, "stats-temporal-normalization-note"
-
-    @app.callback(
         Output("stats-category-select", "options"),
         Output("stats-category-select", "value"),
-        Input("stats-source-select", "value"),
-        Input("stats-year-select", "value"),
+        Output("stats-survey-catalog-store", "data"),
+        Input("stats-survey-select", "value"),
         Input("app-language-store", "data"),
         State("stats-category-select", "value"),
     )
-    def update_categories_for_year(
-        source: str | None,
-        year: int | None,
+    def update_categories_for_survey(
+        survey_id: str | None,
         language: str | None,
         current: str | None,
     ):
-        if not source or year is None:
-            return [], None
-        options = _category_options(source, year, language or "es")
-        return options, _selected_category_value(
-            source,
-            options,
-            current,
-            reset_to_default=ctx.triggered_id == "stats-source-select",
+        survey = get_fra_survey(survey_id)
+        if survey is None or not survey.enabled:
+            return [], None, {"survey_id": survey_id, "loaded": True, "has_data": False}
+        options = _category_options(survey.year, language or "es")
+        selected = (
+            _selected_category_value(options, current)
+            if ctx.triggered_id == "app-language-store"
+            else None
         )
+        return options, selected, {
+            "survey_id": survey.survey_id,
+            "year": survey.year,
+            "loaded": True,
+            "has_data": bool(options),
+        }
 
     @app.callback(
         Output("fra-indicator-select", "options"),
         Output("fra-indicator-select", "value"),
         Output("fra-indicator-select", "disabled"),
         Output("stats-data-store", "data", allow_duplicate=True),
-        Input("stats-source-select", "value"),
+        Input("stats-survey-select", "value"),
         Input("stats-category-select", "value"),
-        Input("stats-year-select", "value"),
         prevent_initial_call=True,
     )
-    def update_fra_indicators(source: str | None, category: str | None, year: int | None):
-        if source != "fra" or not category:
+    def update_fra_indicators(survey_id: str | None, category: str | None):
+        survey = get_fra_survey(survey_id)
+        if survey is None or not category:
             return [], None, True, None
         options = build_dropdown_options(
             (
                 {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
-                for indicator in get_fra_mongo_indicators_by_category(category, year)
+                for indicator in get_fra_mongo_indicators_by_category(category, survey.year)
             ),
             context="statistics-fra-indicator",
         )
@@ -944,13 +870,13 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("fra-indicator-select", "value"),
         Input("app-language-store", "data"),
         State("stats-category-select", "value"),
-        State("stats-year-select", "value"),
+        State("stats-survey-select", "value"),
     )
     def update_fra_controls(
         code: str | None,
         language: str | None,
         category: str | None,
-        year: int | None,
+        survey_id: str | None,
     ):
         if not code:
             return (
@@ -962,7 +888,10 @@ def register_statistics_callbacks(app: Dash) -> None:
                 None,
                 "stats-response-help is-hidden",
             )
-        payload = get_fra_control_payload(code, category, _safe_int(year))
+        survey = get_fra_survey(survey_id)
+        if survey is None:
+            raise PreventUpdate
+        payload = get_fra_control_payload(code, category, survey.year)
         answers = _translated_taxonomy_options(
             payload.get("answers") or [],
             "fra_response",
@@ -976,7 +905,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
         return (
             answers,
-            answers[0]["value"] if answers else None,
+            payload.get("default_answer")
+            or (answers[0]["value"] if len(answers) == 1 else None),
             demographic_options,
             _default_option_value(demographic_options),
             payload,
@@ -1063,20 +993,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         return options, _explicit_filter_value(segmentation, options, current)
 
     @app.callback(
-        Output("ilga-criterion-select", "options"),
-        Output("ilga-criterion-select", "value"),
-        Output("ilga-criterion-select", "disabled"),
-        Input("stats-source-select", "value"),
-        Input("stats-year-select", "value"),
-        Input("stats-category-select", "value"),
-    )
-    def update_ilga_criteria(source: str | None, year: int | None, category: str | None):
-        return _ilga_criterion_control(source, year, category)
-
-    @app.callback(
         Output("stats-data-store", "data"),
-        Input("stats-source-select", "value"),
-        Input("stats-year-select", "value"),
+        Input("stats-survey-select", "value"),
         Input("stats-category-select", "value"),
         Input("fra-indicator-select", "value"),
         Input("fra-answer-select", "value"),
@@ -1084,13 +1002,11 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("fra-demographic-value", "value"),
         Input("fra-identity-type", "value"),
         Input("fra-identity-value", "value"),
-        Input("ilga-criterion-select", "value"),
         State("stats-fra-control-store", "data"),
         prevent_initial_call=True,
     )
     def load_statistics_data(
-        source: str | None,
-        year: int | None,
+        survey_id: str | None,
         category: str | None,
         fra_code: str | None,
         answer: str | None,
@@ -1098,113 +1014,109 @@ def register_statistics_callbacks(app: Dash) -> None:
         demographic_value: str | None,
         identity_type: str | None,
         identity_value: str | None,
-        criterion: str | None,
         control_payload: dict[str, Any] | None,
     ) -> dict[str, Any] | None:
+        survey = get_fra_survey(survey_id)
+        if survey is None or not survey.enabled:
+            return None
         query_started_at = time.perf_counter()
-        if source == "fra":
-            if not _has_valid_fra_selection(category, fra_code):
-                return None
-            controls_ready = _fra_controls_are_ready(
-                category,
+        query_token = _statistics_query_token(
+            survey.survey_id,
+            survey.year,
+            category,
+            fra_code,
+            answer,
+            demographic_type,
+            demographic_value,
+            identity_type,
+            identity_value,
+        )
+        if not _has_valid_fra_selection(category, fra_code):
+            return None
+        controls_ready = _fra_controls_are_ready(
+            category,
+            fra_code,
+            control_payload,
+            answer,
+            demographic_type,
+            demographic_value,
+            identity_type,
+            identity_value,
+        )
+        if ctx.triggered_id == "stats-category-select" or not controls_ready:
+            return None
+        filters = _resolved_ui_filters(
+            demographic_type,
+            demographic_value,
+            identity_type,
+            identity_value,
+        )
+        filter_validation = validate_statistics_filter_combination(
+            filters,
+            available_values=_payload_filter_values(control_payload),
+        )
+        if not filter_validation.ok:
+            logger.warning(
+                "statistics_query_rejected indicator=%s reason=%s",
                 fra_code,
-                control_payload,
-                answer,
-                demographic_type,
-                demographic_value,
-                identity_type,
-                identity_value,
+                filter_validation.message,
             )
-            if ctx.triggered_id == "stats-category-select" or not controls_ready:
-                return None
-            filters = _resolved_ui_filters(
-                demographic_type,
-                demographic_value,
-                identity_type,
-                identity_value,
+            return _result_with_query_token(
+                _empty_data_result(filter_validation.message), query_token
             )
-            filter_validation = validate_statistics_filter_combination(
-                filters,
-                available_values=_payload_filter_values(control_payload),
-            )
-            if not filter_validation.ok:
-                logger.warning(
-                    "statistics_query_rejected indicator=%s reason=%s",
-                    fra_code,
-                    filter_validation.message,
+        query_started = time.perf_counter()
+        try:
+            result = get_fra_statistics(
+                FraStatisticsQuery(
+                    year=survey.year,
+                    category=category,
+                    question_code=fra_code,
+                    answer=answer,
+                    filter_a_name=filters.demographic_type,
+                    filter_a_value=filters.demographic_value,
+                    filter_b_name=filters.identity_type,
+                    filter_b_value=filters.identity_value,
                 )
-                return _empty_data_result(filter_validation.message)
-            query_started = time.perf_counter()
-            try:
-                result = get_fra_statistics(
-                    FraStatisticsQuery(
-                        year=_safe_int(year),
-                        category=category,
-                        question_code=fra_code,
-                        answer=answer,
+            )
+            query_ms = (time.perf_counter() - query_started) * 1000
+            enrichment_started = time.perf_counter()
+            if result.get("status") == "ok":
+                legal = get_ilga_statistics(
+                    IlgaStatisticsQuery(category="Ranking total"),
+                    include_history=False,
+                )
+                result["combined"] = _combine_rankings(
+                    result.get("ranking") or [], legal.get("ranking") or []
+                )
+                result["experience_legal_radar"] = get_experience_legal_radar(
+                    ExperienceLegalRadarQuery(
+                        fra_year=survey.year,
                         filter_a_name=filters.demographic_type,
                         filter_a_value=filters.demographic_value,
                         filter_b_name=filters.identity_type,
                         filter_b_value=filters.identity_value,
                     )
                 )
-                query_ms = (time.perf_counter() - query_started) * 1000
-                enrichment_started = time.perf_counter()
-                if result.get("status") == "ok":
-                    legal = get_ilga_statistics(
-                        IlgaStatisticsQuery(category="Ranking total"),
-                        include_history=False,
-                    )
-                    result["combined"] = _combine_rankings(
-                        result.get("ranking") or [], legal.get("ranking") or []
-                    )
-                    result["experience_legal_radar"] = get_experience_legal_radar(
-                        ExperienceLegalRadarQuery(
-                            fra_year=_safe_int(year),
-                            filter_a_name=filters.demographic_type,
-                            filter_a_value=filters.demographic_value,
-                            filter_b_name=filters.identity_type,
-                            filter_b_value=filters.identity_value,
-                        )
-                    )
-                enrichment_ms = (time.perf_counter() - enrichment_started) * 1000
-            except Exception:
-                logger.exception("statistics_query_failed source=fra indicator=%s", fra_code)
-                return _error_data_result()
-            logger.info(
-                "statistics_query_completed source=fra status=%s query_ms=%.2f "
-                "enrichment_ms=%.2f total_ms=%.2f",
-                result.get("status"),
-                query_ms,
-                enrichment_ms,
-                (time.perf_counter() - query_started_at) * 1000,
-            )
-            return _browser_statistics_payload(result)
-        if not category:
-            return None
-        try:
-            result = get_ilga_statistics(
-                IlgaStatisticsQuery(year=_safe_int(year), category=category, criterion=criterion)
-            )
-            if result.get("status") == "ok":
-                result["experience_legal_radar"] = get_experience_legal_radar(
-                    ExperienceLegalRadarQuery(ilga_year=_safe_int(year))
-                )
+            enrichment_ms = (time.perf_counter() - enrichment_started) * 1000
         except Exception:
-            logger.exception("statistics_query_failed source=ilga category=%s", category)
-            return _error_data_result()
+            logger.exception("statistics_query_failed source=fra indicator=%s", fra_code)
+            return _result_with_query_token(_error_data_result(), query_token)
         logger.info(
-            "statistics_query_completed source=ilga status=%s total_ms=%.2f",
+            "statistics_query_completed source=fra status=%s query_ms=%.2f "
+            "enrichment_ms=%.2f total_ms=%.2f",
             result.get("status"),
+            query_ms,
+            enrichment_ms,
             (time.perf_counter() - query_started_at) * 1000,
         )
-        return _browser_statistics_payload(result)
+        return _browser_statistics_payload(_result_with_query_token(result, query_token))
 
     @app.callback(
         Output("stats-selected-countries", "data"),
         Input("stats-map-graph", "clickData"),
         Input("stats-clear-countries", "n_clicks"),
         Input("stats-data-store", "data"),
+        Input("stats-survey-select", "value"),
         State("stats-selected-countries", "data"),
         prevent_initial_call=True,
     )
@@ -1212,26 +1124,14 @@ def register_statistics_callbacks(app: Dash) -> None:
         click_data: dict[str, Any] | None,
         _clear_clicks: int | None,
         data: dict[str, Any] | None,
+        _survey_id: str | None,
         current: list[str] | None,
     ) -> list[str] | Any:
-        selected = _normalize_selected_countries(current)
-        if ctx.triggered_id == "stats-clear-countries":
-            return []
-        if ctx.triggered_id == "stats-data-store":
-            available = set((data or {}).get("available_countries") or [])
-            return [country for country in selected if not available or country in available]
-        points = (click_data or {}).get("points") or []
-        if not points:
-            return no_update
-        customdata = points[0].get("customdata")
-        iso = customdata[0] if isinstance(customdata, (list, tuple)) and customdata else customdata
-        iso = normalize_country_code(iso)
-        if not iso:
-            return no_update
-        return (
-            [country for country in selected if country != iso]
-            if iso in selected
-            else [*selected, iso]
+        return _next_country_selection(
+            ctx.triggered_id,
+            click_data=click_data,
+            data=data,
+            current=current,
         )
 
     @app.callback(
@@ -1267,38 +1167,37 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-status-message", "children"),
         Output("stats-status-message", "className"),
         Output("stats-map-graph", "figure"),
+        Output("stats-map-graph", "style"),
         Output("stats-clear-countries", "disabled"),
         Output("stats-metric-row", "children"),
-        Output("stats-temporal-graph", "figure"),
+        Output("stats-temporal-graph-slot", "children"),
         Output("stats-temporal-panel", "className"),
-        Output("stats-ranking-graph", "figure"),
-        Output("stats-distribution-graph", "figure"),
-        Output("stats-average-graph", "figure"),
-        Output("stats-response-comparison-graph", "figure"),
+        Output("stats-ranking-graph-slot", "children"),
+        Output("stats-average-graph-slot", "children"),
+        Output("stats-average-panel", "className"),
+        Output("stats-response-comparison-graph-slot", "children"),
         Output("stats-response-comparison-panel", "className"),
         Output("stats-detail-summary", "children"),
-        Output("stats-response-detail-graph", "figure"),
-        Output("stats-response-detail-graph", "style"),
+        Output("stats-response-detail-graph-slot", "children"),
         Output("stats-response-panel", "className"),
         Output("stats-combined-metric-row", "children"),
-        Output("stats-gap-graph", "figure"),
-        Output("stats-scatter-graph", "figure"),
-        Output("stats-combined-heatmap", "figure"),
+        Output("stats-gap-graph-slot", "children"),
+        Output("stats-scatter-graph-slot", "children"),
+        Output("stats-combined-heatmap-slot", "children"),
         Output("stats-combined-block", "className"),
         Output("stats-results-table", "columnDefs"),
         Output("stats-results-table", "rowData"),
         Output("stats-methodology", "children"),
-        Output("stats-ranking-graph", "style"),
-        Output("stats-response-comparison-graph", "style"),
         Output("stats-table-download-button", "disabled"),
         Output("stats-table-export-status", "children"),
         Output("stats-table-export-status", "className"),
+        Output("stats-dashboard-ready-store", "data"),
         Input("stats-data-store", "data"),
         Input("stats-selected-countries", "data"),
         Input("stats-temporal-country-select", "value"),
         Input("app-language-store", "data"),
         Input("stats-ranking-page", "data"),
-        State("stats-map-graph", "figure"),
+        State("stats-active-query-store", "data"),
         prevent_initial_call=True,
     )
     def render_statistics(
@@ -1307,25 +1206,40 @@ def register_statistics_callbacks(app: Dash) -> None:
         temporal_countries: list[str] | None,
         language: str | None,
         ranking_page: int | None,
-        current_map: dict[str, Any] | None,
+        active_payload: dict[str, Any] | None,
     ):
         if not result or result.get("status") != "ok":
             raise PreventUpdate
+        result_token = str(result.get("query_token") or "")
+        active_token = str((active_payload or {}).get("query_token") or "")
+        if result_token and active_token and result_token != active_token:
+            raise PreventUpdate
         selected = _normalize_selected_countries(countries)
         language = language or "es"
+        ready_payload = {"query_token": str(result.get("query_token") or "")}
         if ctx.triggered_id == "stats-temporal-country-select":
-            return _render_temporal_dashboard_update(
-                result,
-                selected,
-                language,
-                _normalize_selected_countries(temporal_countries),
+            return (
+                *_dashboard_component_outputs(
+                    _render_temporal_dashboard_update(
+                        result,
+                        selected,
+                        language,
+                        _normalize_selected_countries(temporal_countries),
+                    )
+                ),
+                no_update,
             )
         if ctx.triggered_id == "stats-ranking-page":
-            return _render_ranking_dashboard_update(
-                result,
-                selected,
-                language,
-                ranking_page,
+            return (
+                *_dashboard_component_outputs(
+                    _render_ranking_dashboard_update(
+                        result,
+                        selected,
+                        language,
+                        ranking_page,
+                    )
+                ),
+                no_update,
             )
         dashboard = _render_dashboard(
             result,
@@ -1334,15 +1248,10 @@ def register_statistics_callbacks(app: Dash) -> None:
             temporal_countries=_normalize_selected_countries(temporal_countries),
             ranking_page=ranking_page,
         )
-        if ctx.triggered_id == "stats-selected-countries":
-            dashboard = list(dashboard)
-            dashboard[2] = _map_selection_patch(dashboard[2])
-            return tuple(dashboard)
-        if _map_contains_static_geojson(current_map):
-            dashboard = list(dashboard)
-            dashboard[2] = _map_data_patch(dashboard[2])
-            return tuple(dashboard)
-        return dashboard
+        ready_state = (
+            no_update if ctx.triggered_id == "stats-selected-countries" else ready_payload
+        )
+        return (*_dashboard_component_outputs(dashboard), ready_state)
 
     @app.callback(
         Output("stats-experience-legal-country-select", "options"),
@@ -1376,7 +1285,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         return options, value
 
     @app.callback(
-        Output("stats-experience-legal-radar-graph", "figure"),
+        Output("stats-experience-legal-radar-graph-slot", "children"),
         Output("stats-experience-legal-radar-wrapper", "className"),
         Output("stats-experience-legal-empty", "children"),
         Output("stats-experience-legal-metadata", "children"),
@@ -1384,19 +1293,24 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("stats-data-store", "data"),
         Input("stats-experience-legal-country-select", "value"),
         Input("app-language-store", "data"),
+        prevent_initial_call=True,
     )
     def render_experience_legal_radar(
         result: dict[str, Any] | None,
         country_iso: str | None,
         language: str | None,
     ) -> tuple[Any, str, str, str, str]:
+        if not result or result.get("status") != "ok":
+            raise PreventUpdate
         language = language or "es"
         payload = (result or {}).get("experience_legal_radar") or {}
+        if not payload or not country_iso:
+            raise PreventUpdate
         figure, compatible, metadata, interpretation = build_experience_legal_radar(
             payload, country_iso, language
         )
         if not compatible:
-            return figure, "is-hidden", interpretation, "", ""
+            return no_update, "is-hidden", interpretation, "", ""
         country_name = next(
             (
                 option["label"]
@@ -1420,26 +1334,32 @@ def register_statistics_callbacks(app: Dash) -> None:
             filters=_export_filter_labels(result or {}, language),
             language=language,
         )
-        return figure, "", "", metadata, interpretation
+        return (
+            _graph_component(
+                "stats-experience-legal-radar-graph",
+                figure,
+                style={"width": "100%", "height": "650px"},
+            ),
+            "",
+            "",
+            metadata,
+            interpretation,
+        )
 
 
-def _controls(
-    years: list[dict[str, Any]],
-    initial_year: int | None,
-    categories: list[dict[str, Any]],
-) -> Component:
+def _controls(categories: list[dict[str, Any]]) -> Component:
     return html.Section(
         [
             _control_group(
-                "Tipo de datos",
+                "Encuesta",
                 [
                     _field(
-                        "Tipo de datos",
+                        "Encuesta",
                         dcc.RadioItems(
-                            id="stats-source-select",
-                            options=DATA_TYPE_OPTIONS,
-                            value="fra",
-                            className="stats-segmented-control stats-data-type-control",
+                            id="stats-survey-select",
+                            options=FRA_SURVEY_OPTIONS,
+                            value=default_fra_survey().survey_id,
+                            className="stats-segmented-control stats-survey-control",
                             inputClassName="stats-segmented-input",
                             labelClassName="stats-segmented-label",
                         ),
@@ -1465,21 +1385,6 @@ def _controls(
                             clearable=False,
                             placeholder="Selecciona una categoría",
                         ),
-                    ),
-                    _field(
-                        ("Año", "Year"),
-                        dcc.Dropdown(
-                            id="stats-year-select",
-                            options=years,
-                            value=initial_year,
-                            clearable=False,
-                        ),
-                        element_id="stats-year-field",
-                        class_name="stats-control-field stats-year-field",
-                    ),
-                    html.Div(
-                        id="stats-ilga-normalization-note",
-                        className="stats-ilga-normalization-note is-hidden",
                     ),
                     html.Div(
                         [
@@ -1507,23 +1412,7 @@ def _controls(
                             ),
                         ],
                         id="stats-fra-controls",
-                        className="stats-source-controls",
-                    ),
-                    html.Div(
-                        [
-                            _field(
-                                "Criterio jurídico",
-                                dcc.Dropdown(
-                                    id="ilga-criterion-select",
-                                    options=[],
-                                    value=None,
-                                    disabled=True,
-                                    placeholder="Todos los criterios",
-                                ),
-                            )
-                        ],
-                        id="stats-ilga-controls",
-                        className="stats-source-controls is-hidden",
+                        className="stats-fra-controls",
                     ),
                 ],
                 class_name="stats-filter-card stats-filter-card-wide stats-indicator-card",
@@ -1557,7 +1446,7 @@ def _controls(
                     ),
                 ],
                 element_id="stats-fra-segmentation-card",
-                class_name=_fra_segmentation_card_class("fra"),
+                class_name=_fra_segmentation_card_class(),
             ),
         ],
         className="stats-controls",
@@ -1595,16 +1484,8 @@ def _field(
     return html.Div([label_node, component], **props)
 
 
-def _fra_segmentation_card_class(source: str | None) -> str:
-    classes = [
-        "stats-filter-card",
-        "stats-filter-card-wide",
-        "stats-fra-only",
-        "stats-segmentation-card",
-    ]
-    if source != "fra":
-        classes.append("is-hidden")
-    return " ".join(classes)
+def _fra_segmentation_card_class() -> str:
+    return "stats-filter-card stats-filter-card-wide stats-fra-only stats-segmentation-card"
 
 
 def _control_group(
@@ -1683,7 +1564,99 @@ def _combined_source_attribution(index: str) -> Component:
     )
 
 
-def _map_panel(placeholder: Any) -> Component:
+def _deferred_graph_slot(graph_id: str) -> Component:
+    """Reserve layout space without mounting Plotly before a valid figure exists."""
+    return html.Div(id=f"{graph_id}-slot", className="stats-deferred-graph-slot")
+
+
+def _stable_map_graph_slot() -> Component:
+    """Keep the interactive map mounted while deferring its first Plotly figure."""
+    return html.Div(
+        dcc.Graph(
+            id="stats-map-graph",
+            responsive=True,
+            config=fixed_europe_map_config(extra_mode_bar_buttons_to_remove=("toImage",)),
+            className="stats-mapbox-graph",
+            style=_map_graph_style(visible=False),
+        ),
+        id="stats-map-graph-slot",
+        className="stats-deferred-graph-slot",
+    )
+
+
+def _map_graph_style(*, visible: bool) -> dict[str, str]:
+    style = {"width": "100%"}
+    if not visible:
+        style["display"] = "none"
+    return style
+
+
+def _graph_component(
+    graph_id: str,
+    figure: Any,
+    *,
+    style: dict[str, str] | None = None,
+    class_name: str = "stats-chart-graph",
+    config: dcc.Graph.Config | None = None,
+) -> Component | Any:
+    if figure is no_update:
+        return no_update
+    if figure is None:
+        raise ValueError(f"{graph_id}_requires_a_complete_figure")
+    return dcc.Graph(
+        id=graph_id,
+        figure=figure,
+        responsive=True,
+        config=config or chart_graph_config(),
+        className=class_name,
+        style=style or {"width": "100%"},
+    )
+
+
+def _response_comparison_component(figure: Any, style: dict[str, str]) -> Component | Any:
+    """Render the country key outside Plotly's plotting canvas."""
+    if figure is no_update:
+        return no_update
+    legend_items: list[Component] = []
+    for trace in getattr(figure, "data", ()):
+        name = str(getattr(trace, "name", "") or "").strip()
+        color = getattr(getattr(trace, "marker", None), "color", None)
+        if not name or not isinstance(color, str):
+            continue
+        legend_items.append(
+            html.Span(
+                [
+                    html.Span(
+                        className="stats-country-legend-swatch",
+                        style={"backgroundColor": color},
+                    ),
+                    html.Span(name),
+                ],
+                className="stats-country-legend-item",
+            )
+        )
+    figure.update_layout(showlegend=False)
+    return html.Div(
+        [
+            _graph_component("stats-response-comparison-graph", figure, style=style),
+            html.Div(
+                [
+                    html.Span(
+                        text("Países", "Countries"),
+                        className="stats-country-legend-title",
+                    ),
+                    html.Div(legend_items, className="stats-country-legend-items"),
+                ],
+                className=(
+                    "stats-country-legend" if legend_items else "stats-country-legend is-hidden"
+                ),
+            ),
+        ],
+        className="stats-response-comparison-layout",
+    )
+
+
+def _map_panel() -> Component:
     return html.Div(
         [
             html.Div(
@@ -1711,21 +1684,14 @@ def _map_panel(placeholder: Any) -> Component:
                 ),
                 className="stats-panel-hint",
             ),
-            dcc.Graph(
-                id="stats-map-graph",
-                figure=placeholder,
-                responsive=True,
-                config=fixed_europe_map_config(extra_mode_bar_buttons_to_remove=("toImage",)),
-                className="stats-mapbox-graph",
-                style={"width": "100%"},
-            ),
+            _stable_map_graph_slot(),
             _dynamic_source_attribution("map"),
         ],
         className="stats-panel stats-panel-wide stats-map-panel",
     )
 
 
-def _temporal_panel(placeholder: Any) -> Component:
+def _temporal_panel() -> Component:
     return html.Div(
         [
             _chart_panel_heading(
@@ -1779,18 +1745,7 @@ def _temporal_panel(placeholder: Any) -> Component:
                 className="stats-panel-hint",
             ),
             html.Div(
-                id="stats-temporal-normalization-note",
-                className="stats-temporal-normalization-note is-hidden",
-            ),
-            html.Div(
-                dcc.Graph(
-                    id="stats-temporal-graph",
-                    figure=placeholder,
-                    responsive=True,
-                    config=chart_graph_config(),
-                    className="stats-chart-graph",
-                    style={"width": "100%", "minWidth": "860px", "height": "680px"},
-                ),
+                _deferred_graph_slot("stats-temporal-graph"),
                 className="stats-temporal-chart-scroll",
             ),
             _dynamic_source_attribution("temporal"),
@@ -1814,14 +1769,9 @@ def _graph_panel(
     panel_props: dict[str, Any] = {"className": panel_class_name}
     if panel_id:
         panel_props["id"] = panel_id
-    graph = dcc.Graph(
-        id=graph_id,
-        figure=figure,
-        responsive=True,
-        config=chart_graph_config(),
-        className="stats-chart-graph",
-        style={"width": "100%"},
-    )
+    if figure is not None:
+        raise ValueError("statistics_graph_panels_must_defer_plotly_mounting")
+    graph = _deferred_graph_slot(graph_id)
     graph_content: Component = (
         html.Div(graph, className="stats-chart-horizontal-scroll") if scrollable else graph
     )
@@ -1896,12 +1846,27 @@ def _ranking_graph_style(figure: Any) -> dict[str, str]:
     return _dynamic_graph_style(figure, min_height=500)
 
 
+def _average_panel_class(selected: list[str]) -> str:
+    base = "stats-panel stats-panel-wide stats-average-panel"
+    return base if selected else f"{base} is-hidden"
+
+
 def _response_comparison_graph_style(figure: Any) -> dict[str, str]:
     style = _dynamic_graph_style(figure, min_height=560)
     meta = getattr(getattr(figure, "layout", None), "meta", None)
     minimum_width = meta.get("minimum_width") if isinstance(meta, dict) else None
     if isinstance(minimum_width, (int, float)) and minimum_width > 760:
         style["minWidth"] = f"{int(minimum_width)}px"
+    return style
+
+
+def _heatmap_graph_style(figure: Any) -> dict[str, str]:
+    """Keep Plotly's calculated heatmap geometry instead of squeezing it into the panel."""
+    style = _dynamic_graph_style(figure, min_height=720)
+    meta = getattr(getattr(figure, "layout", None), "meta", None)
+    minimum_width = meta.get("minimum_width") if isinstance(meta, dict) else None
+    if isinstance(minimum_width, (int, float)) and minimum_width > 0:
+        style["minWidth"] = f"{max(960, int(minimum_width))}px"
     return style
 
 
@@ -1965,14 +1930,6 @@ def _block_header(kicker: str, title_es: str, title_en: str) -> Component:
     )
 
 
-def _year_options(source: str | None) -> list[dict[str, Any]]:
-    years = get_fra_years() if source == "fra" else get_ilga_years()
-    return build_dropdown_options(
-        ({"label": str(year), "value": year} for year in years),
-        context="statistics-year",
-    )
-
-
 def _temporal_country_options(
     result: dict[str, Any],
     language: str,
@@ -1999,63 +1956,21 @@ def _temporal_country_options(
 
 
 def _category_options(
-    source: str | None,
-    year: int | None,
+    year: int,
     language: str = "es",
 ) -> list[dict[str, Any]]:
-    if source == "fra":
-        return _visible_category_options(get_fra_categories(year), language)
-    options: list[dict[str, Any]] = [
-        {
-            "label": taxonomy_pair("ilga_category", "Ranking total")[1 if language == "en" else 0],
-            "value": "Ranking total",
-        }
-    ]
-    options.extend(
-        {
-            "label": label_en if language == "en" else label_es,
-            "value": category,
-        }
-        for category in _visible_categories(get_ilga_criteria_categories_by_year(year))
-        for label_es, label_en in [taxonomy_pair("ilga_category", category)]
-    )
-    return build_dropdown_options(options, context="statistics-ilga-category")
+    return _visible_category_options(get_fra_categories(year), language)
 
 
 def _selected_category_value(
-    source: str | None,
     options: list[dict[str, Any]],
     current: str | None,
-    *,
-    reset_to_default: bool = False,
 ) -> str | None:
     selected = option_value_or_none(options, current)
     values = {item["value"] for item in options}
-    if source == "ilga" and reset_to_default and "Ranking total" in values:
-        return "Ranking total"
     if selected in values:
         return str(selected)
-    if source == "ilga" and "Ranking total" in values:
-        return "Ranking total"
     return None
-
-
-def _ilga_criterion_control(
-    source: str | None,
-    year: int | None,
-    category: str | None,
-) -> tuple[list[dict[str, Any]], None, bool]:
-    if source != "ilga" or not category or category == "Ranking total":
-        return [], None, True
-    options = build_dropdown_options(
-        (
-            {"label": item["indicator"], "value": item["indicator"]}
-            for item in get_ilga_criteria_by_year(year, category)
-            if item.get("indicator")
-        ),
-        context="statistics-ilga-criterion",
-    )
-    return options, None, not bool(options)
 
 
 def _visible_category_options(categories: list[str], language: str = "es") -> list[dict[str, Any]]:
@@ -2250,54 +2165,48 @@ def _segmentation_group(
     return html.Section(children, className="stats-segmentation-row")
 
 
-def _map_selection_patch(figure: Any) -> Patch:
-    """Update only selection markers so the static GeoJSON stays in the browser."""
-    patch = Patch()
-    marker_index = 1
-    marker = figure.data[marker_index]
-    patch["data"][marker_index]["lat"] = list(marker.lat or [])
-    patch["data"][marker_index]["lon"] = list(marker.lon or [])
-    patch["data"][marker_index]["text"] = list(marker.text or [])
-    patch["data"][marker_index]["customdata"] = list(marker.customdata or [])
-    return patch
-
-
-def _map_data_patch(figure: Any) -> Patch:
-    """Update map values and labels while retaining the browser's static geometry."""
-    patch = Patch()
-    choropleth = figure.data[0]
-    for property_name in (
-        "locations",
-        "z",
-        "text",
-        "hovertext",
-        "customdata",
-        "colorscale",
-        "zmin",
-        "zmax",
-        "colorbar",
-        "hovertemplate",
-    ):
-        value = getattr(choropleth, property_name)
-        patch["data"][0][property_name] = (
-            value.to_plotly_json() if hasattr(value, "to_plotly_json") else value
-        )
-    marker = figure.data[1]
-    for property_name in ("lat", "lon", "text", "customdata", "hovertemplate"):
-        value = getattr(marker, property_name)
-        if property_name in {"lat", "lon", "text", "customdata"}:
-            value = list(value or [])
-        patch["data"][1][property_name] = value
-    patch["layout"]["annotations"] = [
-        annotation.to_plotly_json() for annotation in figure.layout.annotations
-    ]
-    patch["layout"]["uirevision"] = figure.layout.uirevision
-    return patch
-
-
-def _map_contains_static_geojson(figure: dict[str, Any] | None) -> bool:
-    data = (figure or {}).get("data") or []
-    return bool(data and isinstance(data[0], dict) and data[0].get("geojson"))
+def _dashboard_component_outputs(outputs: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
+    """Map render values to stable properties or first-mount visual graph slots."""
+    if len(outputs) != 29:
+        raise ValueError("statistics_dashboard_output_contract_changed")
+    return (
+        outputs[0],
+        outputs[1],
+        outputs[2],
+        no_update if outputs[2] is no_update else _map_graph_style(visible=True),
+        outputs[3],
+        outputs[4],
+        _graph_component(
+            "stats-temporal-graph",
+            outputs[5],
+            style={"width": "100%", "minWidth": "860px", "height": "680px"},
+        ),
+        outputs[6],
+        _graph_component("stats-ranking-graph", outputs[7], style=outputs[24]),
+        _graph_component("stats-average-graph", outputs[8]),
+        outputs[9],
+        _response_comparison_component(outputs[10], outputs[25]),
+        outputs[11],
+        outputs[12],
+        _graph_component("stats-response-detail-graph", outputs[13], style=outputs[14]),
+        outputs[15],
+        outputs[16],
+        _graph_component("stats-gap-graph", outputs[17]),
+        _graph_component("stats-scatter-graph", outputs[18]),
+        _graph_component(
+            "stats-combined-heatmap",
+            outputs[19],
+            style=_heatmap_graph_style(outputs[19]),
+            class_name="stats-chart-graph stats-heatmap-graph",
+        ),
+        outputs[20],
+        outputs[21],
+        outputs[22],
+        outputs[23],
+        outputs[26],
+        outputs[27],
+        outputs[28],
+    )
 
 
 def _render_temporal_dashboard_update(
@@ -2307,16 +2216,9 @@ def _render_temporal_dashboard_update(
     temporal_countries: list[str],
 ) -> tuple[Any, ...]:
     started_at = time.perf_counter()
-    if result.get("status") != "ok":
-        return _render_dashboard(
-            result,
-            selected,
-            language,
-            temporal_countries=temporal_countries,
-        )
-    source = str(result.get("source") or "")
+    history = list(result.get("history") or [])
     temporal = build_temporal_evolution_chart(
-        list(result.get("history") or []),
+        history,
         selected,
         language,
         visible_countries=temporal_countries,
@@ -2331,7 +2233,7 @@ def _render_temporal_dashboard_update(
     outputs[5] = temporal
     outputs[6] = (
         "stats-panel-wrapper stats-temporal-wrapper"
-        if source == "ILGA-Europe"
+        if history
         else "stats-panel-wrapper stats-temporal-wrapper is-hidden"
     )
     logger.info(
@@ -2348,8 +2250,6 @@ def _render_ranking_dashboard_update(
     ranking_page: int | None,
 ) -> tuple[Any, ...]:
     started_at = time.perf_counter()
-    if result.get("status") != "ok":
-        return _render_dashboard(result, selected, language, ranking_page=ranking_page)
     ranking = list(result.get("ranking") or [])
     visible_ranking = paginate_ranking(
         ranking,
@@ -2367,7 +2267,6 @@ def _render_ranking_dashboard_update(
         ranking,
         selected,
         language,
-        focus_rows=visible_ranking,
     )
     _prepare_dashboard_exports(
         {"ranking": comparative_ranking, "average": average},
@@ -2377,7 +2276,8 @@ def _render_ranking_dashboard_update(
     )
     outputs: list[Any] = [no_update] * 29
     outputs[7] = comparative_ranking
-    outputs[9] = average
+    outputs[8] = average
+    outputs[9] = _average_panel_class(selected)
     outputs[24] = _ranking_graph_style(comparative_ranking)
     logger.info(
         "statistics_callback_completed scope=ranking total_ms=%.2f",
@@ -2396,41 +2296,7 @@ def _render_dashboard(
 ):
     render_started_at = time.perf_counter()
     if result.get("status") != "ok":
-        message = str(
-            result.get("message") or "Selecciona un indicador para cargar los resultados."
-        )
-        empty = empty_figure(message)
-        return (
-            html.Div([html.Strong(text("Sin resultados", "No results")), html.P(message)]),
-            "stats-status stats-status-warning",
-            empty,
-            not bool(selected),
-            [],
-            empty,
-            "stats-panel-wrapper stats-temporal-wrapper is-hidden",
-            empty,
-            empty,
-            empty,
-            empty,
-            "stats-panel stats-panel-wide stats-response-comparison-section is-hidden",
-            "",
-            empty,
-            _response_detail_graph_style(empty),
-            "stats-panel stats-panel-wide stats-response-panel is-hidden",
-            [],
-            empty,
-            empty,
-            empty,
-            "stats-analytics-block is-hidden",
-            [],
-            [],
-            "",
-            _ranking_graph_style(empty),
-            _response_comparison_graph_style(empty),
-            True,
-            ui_text("no_export_data", language),
-            "stats-table-export-status",
-        )
+        raise ValueError("statistics_dashboard_requires_ready_result")
 
     source = str(result.get("source") or "")
     ranking = list(result.get("ranking") or [])
@@ -2439,14 +2305,10 @@ def _render_dashboard(
     history = list(result.get("history") or [])
     combined = list(result.get("combined") or [])
     normalization_started_at = time.perf_counter()
-    response_dataframe = (
-        prepare_fra_response_comparison_data(
-            detail,
-            list(result.get("country_universe") or []),
-            language=language,
-        )
-        if source == "FRA"
-        else None
+    response_dataframe = prepare_fra_response_comparison_data(
+        detail,
+        list(result.get("country_universe") or []),
+        language=language,
     )
     normalization_ms = (time.perf_counter() - normalization_started_at) * 1000
     scope = _selection_scope(ranking, selected, language)
@@ -2487,46 +2349,26 @@ def _render_dashboard(
         indicator=str(result.get("indicator") or ""),
         year=result.get("year"),
     )
-    distribution = build_europe_distribution_chart(ranking, selected, language)
     average = build_eu_average_comparison_chart(
         ranking,
         selected,
         language,
-        focus_rows=visible_ranking,
     )
-    comparison = (
-        build_response_country_comparison_chart(
-            detail,
-            selected,
-            language,
-            indicator=str(result.get("indicator") or ""),
-            year=result.get("year"),
-            prepared_data=response_dataframe,
-        )
-        if source == "FRA"
-        else empty_figure(
-            "Las fuentes jurídicas no contienen distribuciones de respuestas."
-            if language != "en"
-            else "Legal sources do not contain response distributions."
-        )
+    comparison = build_response_country_comparison_chart(
+        detail,
+        selected,
+        language,
+        indicator=str(result.get("indicator") or ""),
+        year=result.get("year"),
+        prepared_data=response_dataframe,
     )
-    response = (
-        build_fra_response_comparison_chart(
-            detail,
-            available_countries=list(result.get("country_universe") or []),
-            selected_countries=selected,
-            selected_response=str(result.get("answer") or "") or None,
-            language=language,
-            prepared_data=response_dataframe,
-        )
-        if source == "FRA"
-        else build_ilga_response_details_chart(
-            detail,
-            selected,
-            language=language,
-            indicator=str(result.get("indicator") or ""),
-            year=result.get("year"),
-        )
+    response = build_fra_response_comparison_chart(
+        detail,
+        available_countries=list(result.get("country_universe") or []),
+        selected_countries=selected,
+        selected_response=str(result.get("answer") or "") or None,
+        language=language,
+        prepared_data=response_dataframe,
     )
     gap = build_legal_reality_gap_chart(combined, selected, language)
     scatter = build_combined_scatter(combined, language, selected)
@@ -2537,7 +2379,6 @@ def _render_dashboard(
             "map": map_figure,
             "temporal": temporal,
             "ranking": comparative_ranking,
-            "distribution": distribution,
             "average": average,
             "response_comparison": comparison,
             "responses": response,
@@ -2566,7 +2407,7 @@ def _render_dashboard(
     logger.info(
         "statistics_callback_completed scope=dashboard statistics_normalization_ms=%.2f "
         "statistics_geodata_ms=%.2f statistics_charts_ms=%.2f total_ms=%.2f "
-        "chart_count=10",
+        "chart_count=9",
         normalization_ms,
         map_ms,
         charts_ms,
@@ -2581,24 +2422,23 @@ def _render_dashboard(
         temporal,
         (
             "stats-panel-wrapper stats-temporal-wrapper"
-            if source == "ILGA-Europe"
+            if history
             else "stats-panel-wrapper stats-temporal-wrapper is-hidden"
         ),
         comparative_ranking,
-        distribution,
         average,
+        _average_panel_class(selected),
         comparison,
         (
             "stats-panel stats-panel-wide stats-response-comparison-section"
-            if source == "FRA"
-            else "stats-panel stats-panel-wide stats-response-comparison-section is-hidden"
         ),
         _detail_summary(
-            source,
             detail,
             language,
             available_countries=list(result.get("country_universe") or []),
             prepared_data=response_dataframe,
+            ranking=ranking,
+            selected_response=str(result.get("answer") or "") or None,
         ),
         response,
         _response_detail_graph_style(response),
@@ -2610,7 +2450,7 @@ def _render_dashboard(
         "stats-analytics-block" if combined else "stats-analytics-block is-hidden",
         _table_columns(table_rows, language),
         table_rows,
-        _methodology_text(result, source, language),
+        _methodology_text(language),
         _ranking_graph_style(comparative_ranking),
         _response_comparison_graph_style(comparison),
         not bool(table_rows),
@@ -2742,8 +2582,17 @@ def _combined_metric_cards(rows: list[dict[str, Any]]) -> list[Any]:
     dataframe = pd.DataFrame(rows)
     if dataframe.empty:
         return []
+    dataframe["ilga_value"] = pd.to_numeric(dataframe["ilga_value"], errors="coerce")
+    dataframe["fra_value"] = pd.to_numeric(dataframe["fra_value"], errors="coerce")
     dataframe["gap"] = (dataframe["ilga_value"] - dataframe["fra_value"]).abs()
-    correlation = dataframe["ilga_value"].corr(dataframe["fra_value"])
+    paired = dataframe[["ilga_value", "fra_value"]].dropna()
+    correlation = (
+        paired["ilga_value"].corr(paired["fra_value"])
+        if len(paired) >= 2
+        and paired["ilga_value"].nunique() >= 2
+        and paired["fra_value"].nunique() >= 2
+        else None
+    )
     best = dataframe.nsmallest(1, "gap").iloc[0]
     largest = dataframe.nlargest(1, "gap").iloc[0]
     legal_mean = float(dataframe["ilga_value"].mean())
@@ -2762,7 +2611,7 @@ def _combined_metric_cards(rows: list[dict[str, Any]]) -> list[Any]:
         _metric_card(("Desviación de la brecha", "Gap standard deviation"), f"{gap_std:.2f} pp"),
         _metric_card(
             ("Correlación ILGA/FRA", "ILGA/FRA correlation"),
-            f"{correlation:.2f}" if pd.notna(correlation) else "—",
+            f"{correlation:.2f}" if correlation is not None and pd.notna(correlation) else "—",
         ),
         _metric_card(("Indicadores comparados", "Indicators compared"), "2"),
     ]
@@ -2774,60 +2623,14 @@ def _metric_card(label: str | tuple[str, str], value: str) -> Any:
 
 
 def _detail_summary(
-    source: str,
     rows: list[dict[str, Any]],
     language: str = "es",
     *,
     available_countries: list[dict[str, Any]] | None = None,
     prepared_data: pd.DataFrame | None = None,
+    ranking: list[dict[str, Any]] | None = None,
+    selected_response: str | None = None,
 ) -> Any:
-    if source != "FRA":
-        dataframe = pd.DataFrame(rows)
-        required = {"country_code", "response"}
-        if dataframe.empty or not required.issubset(dataframe.columns):
-            return ""
-        dataframe = dataframe.copy()
-        dataframe["country_code"] = dataframe["country_code"].fillna("").astype(str)
-        dataframe["response"] = dataframe["response"].fillna("not_available").astype(str)
-        dataframe["response_order"] = pd.to_numeric(
-            dataframe.get(
-                "response_order",
-                pd.Series(index=dataframe.index, dtype=float),
-            ),
-            errors="coerce",
-        ).fillna(99)
-        countries = int(dataframe.loc[dataframe["country_code"].ne(""), "country_code"].nunique())
-        responses = (
-            dataframe[["response", "response_order"]]
-            .drop_duplicates()
-            .sort_values(["response_order", "response"], kind="stable")["response"]
-            .tolist()
-        )
-        labels = [taxonomy_label("legal_status", response, language) for response in responses]
-        return html.Div(
-            [
-                html.Div(
-                    [
-                        html.Span(
-                            "Countries compared" if language == "en" else "Países comparados"
-                        ),
-                        html.Strong(str(countries)),
-                    ],
-                    className="stats-detail-summary-card stats-detail-summary-card-wide",
-                ),
-                html.Div(
-                    [
-                        html.Span(
-                            "Legal responses detected"
-                            if language == "en"
-                            else "Respuestas legales detectadas"
-                        ),
-                        html.Ul([html.Li(label) for label in labels]),
-                    ],
-                    className="stats-detail-summary-card stats-detail-summary-card-wide",
-                ),
-            ]
-        )
     summary = summarize_response_comparison(
         rows,
         available_countries=available_countries,
@@ -2835,42 +2638,77 @@ def _detail_summary(
         prepared_data=prepared_data,
     )
     distribution = summary.get("distribution") or []
-    countries_label = "Countries compared" if language == "en" else "Países comparados"
-    distribution_label = "Distribution" if language == "en" else "Distribución"
+    countries_label = ui_text("statistics_countries_compared", language)
+    distribution_label = ui_text("statistics_distribution", language)
     country_singular = "country" if language == "en" else "país"
     country_plural = "countries" if language == "en" else "países"
-    return html.Div(
-        [
-            html.Div(
-                [
-                    html.Span(countries_label),
-                    html.Strong(str(summary.get("countries") or 0)),
-                ],
-                className="stats-detail-summary-card stats-detail-summary-card-wide",
-            ),
-            html.Div(
-                [
-                    html.Span(distribution_label),
-                    html.Ul(
-                        [
-                            html.Li(
-                                [
-                                    html.Strong(str(item.get("label"))),
-                                    html.Span(
-                                        f"{item.get('value')}%"
-                                        if item.get("unit") == "%"
-                                        else f"{item.get('value')} {_plural(item.get('value'), country_singular, country_plural)}"
-                                    ),
-                                ]
-                            )
-                            for item in distribution[:8]
-                        ]
-                    ),
-                ],
-                className="stats-detail-summary-card stats-detail-summary-card-wide",
-            ),
-        ]
+    valid_values = pd.to_numeric(
+        pd.Series(
+            [row.get("value") for row in (ranking or []) if isinstance(row, dict)],
+            dtype=object,
+        ),
+        errors="coerce",
+    ).dropna()
+    european_mean = float(valid_values.mean()) if not valid_values.empty else None
+    formatted_mean = (
+        format_percentage(round(european_mean, 1)) if european_mean is not None else None
     )
+    average_text = (
+        formatted_mean.replace("%", " %") if formatted_mean else ui_text("no_data", language)
+    )
+    response_suffix = f" ({selected_response})" if selected_response else ""
+    children: list[Any] = [
+        html.Div(
+            [
+                html.Span(countries_label),
+                html.Strong(str(summary.get("countries") or 0)),
+            ],
+            className="stats-detail-summary-card stats-detail-country-metric",
+        ),
+        html.Div(
+            [
+                html.Span(distribution_label),
+                html.Ul(
+                    [
+                        html.Li(
+                            [
+                                html.Strong(
+                                    str(item.get("label")),
+                                    className="stats-response-distribution-label",
+                                ),
+                                html.Span(
+                                    (format_percentage(item.get("value")) or "").replace("%", " %")
+                                    if item.get("unit") == "%"
+                                    else f"{item.get('value')} {_plural(item.get('value'), country_singular, country_plural)}",
+                                    className="stats-response-distribution-value",
+                                ),
+                            ],
+                            className="stats-response-distribution-item",
+                        )
+                        for item in distribution[:8]
+                    ]
+                ),
+            ],
+            className=(
+                "stats-detail-summary-card stats-detail-summary-card-wide "
+                "stats-response-distribution"
+            ),
+        ),
+    ]
+    children.append(
+        html.Div(
+            [
+                html.Span(
+                    f"{ui_text('statistics_european_average', language)}{response_suffix}"
+                ),
+                html.Strong(average_text),
+            ],
+            className=(
+                "stats-detail-summary-card stats-european-average-reference"
+            ),
+        )
+    )
+    return children
 
 
 def _combine_rankings(
@@ -2941,10 +2779,9 @@ def _table_rows(
 
 
 def _table_indicator_label(result: dict[str, Any]) -> str:
-    source = str(result.get("source") or "")
     indicator = str(result.get("indicator") or result.get("category") or "")
     answer = str(result.get("answer") or "").strip()
-    return f"{indicator} \u00b7 {answer}" if source == "FRA" and answer else indicator
+    return f"{indicator} \u00b7 {answer}" if answer else indicator
 
 
 def _table_columns(
@@ -2989,20 +2826,18 @@ def _table_columns(
     )
 
 
-def _methodology_text(result: dict[str, Any], source: str, language: str = "es") -> str:
-    if source == "FRA":
-        if language == "en":
-            return (
-                "FRA reflects responses from surveyed people. "
-                "The ILGA score measures laws and policies. "
-                "The sources are not directly equivalent."
-            )
+def _methodology_text(language: str = "es") -> str:
+    if language == "en":
         return (
-            "FRA refleja respuestas de personas encuestadas. "
-            "La puntuación ILGA mide leyes y políticas. "
-            "Las fuentes no son directamente equivalentes."
+            "FRA reflects responses from surveyed people. "
+            "The ILGA score measures laws and policies. "
+            "The sources are not directly equivalent."
         )
-    return str(result.get("methodology") or "")
+    return (
+        "FRA refleja respuestas de personas encuestadas. "
+        "La puntuación ILGA mide leyes y políticas. "
+        "Las fuentes no son directamente equivalentes."
+    )
 
 
 def _selection_scope(
@@ -3043,6 +2878,37 @@ def _normalize_selected_countries(countries: list[str] | str | None) -> list[str
         if clean and clean not in result:
             result.append(clean)
     return result
+
+
+def _next_country_selection(
+    triggered_id: str | None,
+    *,
+    click_data: dict[str, Any] | None,
+    data: dict[str, Any] | None,
+    current: list[str] | None,
+) -> list[str] | Any:
+    """Resolve map selection without coupling the state transition to Dash context."""
+    selected = _normalize_selected_countries(current)
+    if triggered_id in {"stats-clear-countries", "stats-survey-select"}:
+        return []
+    if triggered_id == "stats-data-store":
+        available = set(
+            _normalize_selected_countries((data or {}).get("available_countries") or [])
+        )
+        return [country for country in selected if not available or country in available]
+    if triggered_id != "stats-map-graph":
+        return no_update
+    points = (click_data or {}).get("points") or []
+    if not points:
+        return no_update
+    customdata = points[0].get("customdata")
+    iso = customdata[0] if isinstance(customdata, (list, tuple)) and customdata else customdata
+    iso = normalize_country_code(iso)
+    if not iso:
+        return no_update
+    if iso in selected:
+        return [country for country in selected if country != iso]
+    return [*selected, iso]
 
 
 def _radar_country_options(payload: dict[str, Any], language: str) -> list[dict[str, Any]]:
@@ -3119,6 +2985,16 @@ def _browser_statistics_payload(result: dict[str, Any]) -> dict[str, Any]:
     if payload.get("source") == "FRA" and "detail_data" in payload:
         payload.pop("data", None)
     return payload
+
+
+def _result_with_query_token(result: dict[str, Any], query_token: str) -> dict[str, Any]:
+    payload = dict(result)
+    payload["query_token"] = query_token
+    return payload
+
+
+def _statistics_query_token(*values: Any) -> str:
+    return json.dumps(values, ensure_ascii=False, separators=(",", ":"), default=str)
 
 
 def _statistics_query_state(result: dict[str, Any] | None) -> str:

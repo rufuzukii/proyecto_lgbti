@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
+from app.fra_surveys import FRA_SURVEYS as FRA_SURVEY_CONFIGS
+
 SourceKey = Literal["fra", "ilga", "felgtbi"]
 
 PROCESSED_BY = "RainbowLens Datahub"
@@ -16,24 +18,7 @@ FELGTBI_ORGANIZATION = (
 )
 
 FRA_SURVEYS: dict[int, tuple[str, str]] = {
-    2012: (
-        "EU LGBT Survey",
-        (
-            "https://fra.europa.eu/en/publications-and-resources/data-and-maps/"
-            "survey-fundamental-rights-lesbian-gay-bisexual-and"
-        ),
-    ),
-    2019: (
-        "EU LGBTI Survey II",
-        "https://fra.europa.eu/en/project/2018/eu-lgbti-survey-ii",
-    ),
-    2023: (
-        "EU LGBTIQ Survey III",
-        (
-            "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/"
-            "eu-lgbtiq-survey-iii"
-        ),
-    ),
+    survey.year: (survey.source_name, survey.source_url) for survey in FRA_SURVEY_CONFIGS
 }
 
 FRA_ORGANIZATION_URL = "https://fra.europa.eu/en"

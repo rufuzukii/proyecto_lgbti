@@ -8,7 +8,6 @@ from typing import Any, cast
 
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from app.analytics.fra_metadata import (
     FraCountryState,
@@ -18,7 +17,11 @@ from app.analytics.fra_metadata import (
     order_fra_responses,
 )
 from app.analytics.geography import ISO2_TO_ISO3
-from app.analytics.geography_service import europe_centroids, prepare_europe_map_data
+from app.analytics.geography_service import (
+    europe_centroids,
+    europe_view_bounds,
+    prepare_europe_map_data,
+)
 from app.analytics.legal_criteria import (
     get_criterion_metadata,
     get_criterion_score_label,
@@ -82,6 +85,10 @@ EUROPE_PERCENTAGE_COLORSCALE = [
     [0.75, "#204F9F"],
     [1.0, "#12376F"],
 ]
+HEATMAP_ROW_HEIGHT = 50
+HEATMAP_MINIMUM_HEIGHT = 720
+HEATMAP_HEADER_AND_MARGINS = 190
+HEATMAP_COLUMN_WIDTH = 260
 EUROPE_MAP_COLORSCALE = [
     [0.0, MISSING_PERCENTAGE_COLOR],
     [0.0098, MISSING_PERCENTAGE_COLOR],
@@ -295,9 +302,7 @@ def build_europe_choropleth(
     dataframe["display_value"] = display_values
     dataframe["display_value_text"] = dataframe["display_value"].apply(format_percentage)
     if has_verified_fra_scope:
-        in_scope = ~dataframe["survey_state"].eq(
-            FraCountryState.OUTSIDE_SURVEY_SCOPE.value
-        )
+        in_scope = ~dataframe["survey_state"].eq(FraCountryState.OUTSIDE_SURVEY_SCOPE.value)
         dataframe.loc[in_scope & dataframe["display_value"].isna(), "survey_state"] = (
             FraCountryState.NO_DATA.value
         )
@@ -395,9 +400,7 @@ def build_europe_choropleth(
             marker={"line": {"color": "#334155", "width": 0.85}},
             colorbar={
                 "title": ui_text(
-                    "fra_map_percentage_scale"
-                    if has_verified_fra_scope
-                    else "chart_percentage",
+                    "fra_map_percentage_scale" if has_verified_fra_scope else "chart_percentage",
                     language,
                 ),
                 "ticksuffix": "%",
@@ -411,6 +414,11 @@ def build_europe_choropleth(
         str(value or "").strip().upper()
         for value in [*(selected_isos or []), selected_iso]
         if str(value or "").strip()
+    }
+    minimum_x, minimum_y, maximum_x, maximum_y = europe_view_bounds(sorted(selected_codes))
+    map_center = {
+        "lon": (minimum_x + maximum_x) / 2,
+        "lat": (minimum_y + maximum_y) / 2,
     }
     selected = dataframe[dataframe["iso"].isin(selected_codes)]
     centroids = europe_centroids() if not selected.empty else {}
@@ -487,6 +495,9 @@ def build_europe_choropleth(
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
+            "center": map_center,
+            "lonaxis": {"range": [minimum_x, maximum_x]},
+            "lataxis": {"range": [minimum_y, maximum_y]},
             "showframe": False,
             "showcoastlines": True,
             "coastlinecolor": "#b9c0ca",
@@ -496,7 +507,7 @@ def build_europe_choropleth(
             "oceancolor": "#dcebf2",
             "bgcolor": PLOTLY_TRANSPARENT,
         },
-        uirevision=f"statistics-{source}",
+        uirevision=f"statistics-{source}-{'-'.join(sorted(selected_codes)) or 'europe'}",
         legend={
             "orientation": "h",
             "x": 0,
@@ -536,6 +547,19 @@ def build_europe_choropleth(
 
 def normalize_percentage(value: Any) -> float | None:
     return coerce_percentage(value)
+
+
+def _spaced_percentage(value: Any) -> str:
+    formatted = format_percentage(round(float(value), 1)) if pd.notna(value) else None
+    return formatted.replace("%", " %") if formatted else ""
+
+
+def _format_signed_number(value: Any) -> str:
+    numeric = round(float(value), 1)
+    if numeric == 0:
+        return "0"
+    clean = f"{numeric:+.1f}".rstrip("0").rstrip(".")
+    return clean
 
 
 def build_fra_response_comparison_chart(
@@ -1742,125 +1766,6 @@ def _legal_country_universe(
     )
 
 
-def build_europe_distribution_chart(
-    ranking_rows: list[dict[str, Any]],
-    selected_countries: list[str] | None = None,
-    language: str = "es",
-) -> go.Figure:
-    dataframe = _numeric_ranking_dataframe(ranking_rows)
-    if dataframe.empty:
-        return empty_figure(
-            _chart_text(
-                language,
-                "No hay valores suficientes para analizar la distribución.",
-                "There are not enough values to analyse the distribution.",
-            )
-        )
-    selected = _selected_country_keys(selected_countries)
-    figure = make_subplots(
-        rows=1,
-        cols=2,
-        subplot_titles=(
-            _chart_text(language, "Histograma", "Histogram"),
-            _chart_text(language, "Boxplot", "Box plot"),
-        ),
-    )
-    figure.add_trace(
-        go.Histogram(
-            x=dataframe["value"],
-            marker={"color": DEFAULT_COUNTRY_COLOR},
-            nbinsx=12,
-            name=_chart_text(language, "Países", "Countries"),
-        ),
-        row=1,
-        col=1,
-    )
-    figure.add_trace(
-        go.Box(
-            x=dataframe["value"],
-            y=["Europa"] * len(dataframe),
-            text=dataframe["country"],
-            marker={"color": DEFAULT_COUNTRY_COLOR},
-            boxpoints=False,
-            name="Europa",
-            hovertemplate="<b>%{text}</b><br>%{x:.2f}%<extra></extra>",
-        ),
-        row=1,
-        col=2,
-    )
-    figure.add_trace(
-        go.Scatter(
-            x=dataframe["value"],
-            y=["Europa"] * len(dataframe),
-            text=dataframe["country"],
-            mode="markers",
-            marker={
-                "color": [country_color(row.iso, row.country) for row in dataframe.itertuples()],
-                "size": 8,
-                "opacity": 0.82,
-                "line": {"color": "white", "width": 0.8},
-            },
-            hovertemplate="<b>%{text}</b><br>%{x:.2f}%<extra></extra>",
-            name=_chart_text(language, "Países", "Countries"),
-        ),
-        row=1,
-        col=2,
-    )
-    if selected:
-        highlighted = dataframe[
-            dataframe.apply(
-                lambda row: _country_key(row.get("iso"), row.get("country")) in selected,
-                axis=1,
-            )
-        ]
-        if not highlighted.empty:
-            figure.add_trace(
-                go.Scatter(
-                    x=highlighted["value"],
-                    y=["Europa"] * len(highlighted),
-                    text=highlighted["country"],
-                    mode="markers",
-                    marker={
-                        "color": [
-                            country_color(row.iso, row.country) for row in highlighted.itertuples()
-                        ],
-                        "size": 13,
-                        "line": {"color": "#111827", "width": 2.5},
-                    },
-                    hovertemplate="<b>%{text}</b><br>%{x:.2f}%<extra></extra>",
-                    name=_chart_text(language, "Selección", "Selection"),
-                ),
-                row=1,
-                col=2,
-            )
-    mean = float(dataframe["value"].mean())
-    figure.add_shape(
-        type="line",
-        x0=mean,
-        x1=mean,
-        y0=0,
-        y1=1,
-        xref="x",
-        yref="paper",
-        line={"dash": "dash", "color": DEFAULT_COUNTRY_COLOR},
-    )
-    figure.add_shape(
-        type="line",
-        x0=mean,
-        x1=mean,
-        y0=0,
-        y1=1,
-        xref="x2",
-        yref="paper",
-        line={"dash": "dash", "color": DEFAULT_COUNTRY_COLOR},
-    )
-    figure.update_xaxes(title_text=_chart_text(language, "Valor (%)", "Value (%)"))
-    figure.update_yaxes(title_text=_chart_text(language, "Países", "Countries"), row=1, col=1)
-    _apply_base_layout(figure, margin={"l": 55, "r": 25, "t": 55, "b": 55})
-    figure.update_layout(showlegend=False)
-    return figure
-
-
 def build_comparative_ranking_chart(
     ranking_rows: list[dict[str, Any]],
     selected_countries: list[str] | None = None,
@@ -1986,8 +1891,6 @@ def build_eu_average_comparison_chart(
     ranking_rows: list[dict[str, Any]],
     selected_countries: list[str] | None = None,
     language: str = "es",
-    *,
-    focus_rows: list[dict[str, Any]] | None = None,
 ) -> go.Figure:
     all_countries = _ranking_dataframe_with_missing(ranking_rows)
     numeric = all_countries.dropna(subset=["value"])
@@ -1999,80 +1902,92 @@ def build_eu_average_comparison_chart(
                 "There are no data to compare with the European average.",
             )
         )
-    stored_means = (
-        pd.to_numeric(all_countries["european_mean"], errors="coerce").dropna()
-        if "european_mean" in all_countries
-        else pd.Series(dtype=float)
-    )
-    mean = float(stored_means.iloc[0]) if not stored_means.empty else float(numeric["value"].mean())
-    if focus_rows is not None:
-        focus = _ranking_dataframe_with_missing(focus_rows)
-    else:
-        selected = _selected_country_keys(selected_countries)
-        focus = all_countries[
-            all_countries.apply(
-                lambda row: _country_key(row.get("iso"), row.get("country")) in selected,
-                axis=1,
+    mean = float(numeric["value"].mean())
+    selected = _selected_country_keys(selected_countries)
+    focus = all_countries[
+        all_countries.apply(
+            lambda row: _country_key(row.get("iso"), row.get("country")) in selected,
+            axis=1,
+        )
+    ]
+    if focus.empty:
+        return empty_figure(
+            _chart_text(
+                language,
+                "Selecciona uno o varios países para compararlos con la media europea.",
+                "Select one or more countries to compare them with the European average.",
             )
-        ]
-        if focus.empty:
-            focus = numeric.head(5)
+        )
     focus = focus.copy()
-    if "difference" not in focus:
-        focus["difference"] = focus["value"] - mean
-    else:
-        focus["difference"] = pd.to_numeric(focus["difference"], errors="coerce")
-    if "absolute_difference" not in focus:
-        focus["absolute_difference"] = focus["difference"].abs()
-    else:
-        focus["absolute_difference"] = pd.to_numeric(
-            focus["absolute_difference"],
-            errors="coerce",
-        )
-    if "percentage_difference" not in focus:
-        focus["percentage_difference"] = focus["difference"] / mean * 100 if mean else float("nan")
-    else:
-        focus["percentage_difference"] = pd.to_numeric(
-            focus["percentage_difference"],
-            errors="coerce",
-        )
-    focus = focus.sort_values(["difference", "country"], na_position="first")
+    focus["difference"] = focus["value"] - mean
+    focus = focus.sort_values(["value", "country"], ascending=[True, False], na_position="first")
     missing_label = _chart_text(language, "Sin datos", "No data")
-    focus["plot_difference"] = pd.Series(
-        [float(value) if pd.notna(value) else None for value in focus["difference"]],
+    focus["plot_value"] = pd.Series(
+        [float(value) if pd.notna(value) else None for value in focus["value"]],
         index=focus.index,
         dtype=object,
     )
     focus["value_text"] = focus["value"].map(
-        lambda value: f"{value:.2f}%" if pd.notna(value) else missing_label
+        lambda value: _spaced_percentage(value) if pd.notna(value) else missing_label
     )
-    focus["absolute_text"] = focus["absolute_difference"].map(
-        lambda value: f"{value:.2f} pp" if pd.notna(value) else missing_label
+    comparison_phrase = ui_text("statistics_percentage_points_compared", language)
+    focus["difference_text"] = focus["difference"].map(
+        lambda value: (
+            f"{_format_signed_number(value)} {comparison_phrase}"
+            if pd.notna(value)
+            else missing_label
+        )
     )
-    focus["percentage_text"] = focus["percentage_difference"].map(
-        lambda value: f"{value:+.2f}%" if pd.notna(value) else missing_label
-    )
+    focus["bar_text"] = [
+        f"{value_text} · {_format_signed_number(difference)} pp"
+        if pd.notna(difference)
+        else value_text
+        for value_text, difference in zip(
+            focus["value_text"],
+            focus["difference"],
+            strict=True,
+        )
+    ]
     colors = [
         country_color(row.iso, row.country) if pd.notna(row.value) else MISSING_PERCENTAGE_COLOR
         for row in focus.itertuples()
     ]
     value_label = _chart_text(language, "Valor del país", "Country value")
-    mean_label = _chart_text(language, "Media europea", "European average")
-    absolute_label = _chart_text(language, "Diferencia absoluta", "Absolute difference")
-    percentage_label = _chart_text(language, "Diferencia porcentual", "Percentage difference")
-    figure = go.Figure(
+    mean_label = ui_text("statistics_european_average", language)
+    figure = go.Figure()
+    figure.add_trace(
         go.Bar(
-            x=focus["plot_difference"],
+            x=focus["plot_value"],
             y=focus["country"],
             orientation="h",
-            marker={"color": colors},
-            customdata=focus[["value_text", "absolute_text", "percentage_text"]].to_numpy(),
+            marker={"color": colors, "line": {"color": "#ffffff", "width": 1}},
+            text=focus["bar_text"],
+            textposition="outside",
+            cliponaxis=False,
+            customdata=focus[["value_text", "difference_text"]].to_numpy(),
             hovertemplate=(
                 f"<b>%{{y}}</b><br>{value_label}: %{{customdata[0]}}"
-                f"<br>{mean_label}: {mean:.2f}%"
-                f"<br>{absolute_label}: %{{customdata[1]}}"
-                f"<br>{percentage_label}: %{{customdata[2]}}<extra></extra>"
+                f"<br>{mean_label}: {_spaced_percentage(mean)}"
+                "<br>%{customdata[1]}<extra></extra>"
             ),
+            name=_chart_text(language, "Países seleccionados", "Selected countries"),
+        )
+    )
+    figure.add_trace(
+        go.Bar(
+            x=[mean],
+            y=[mean_label],
+            orientation="h",
+            marker={
+                "color": "#526477",
+                "line": {"color": "#f4a8c0", "width": 2},
+                "pattern": {"shape": "/", "fgcolor": "#f4a8c0", "solidity": 0.3},
+            },
+            text=[_spaced_percentage(mean)],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate=f"<b>{mean_label}</b><br>{_spaced_percentage(mean)}<extra></extra>",
+            name=mean_label,
         )
     )
     missing = focus[focus["difference"].isna()]
@@ -2083,19 +1998,37 @@ def build_eu_average_comparison_chart(
                 y=missing["country"],
                 mode="markers",
                 marker={"color": MISSING_PERCENTAGE_COLOR, "symbol": "x", "size": 10},
-                customdata=missing[["value_text", "absolute_text", "percentage_text"]].to_numpy(),
+                customdata=missing[["value_text"]].to_numpy(),
                 hovertemplate=(
                     f"<b>%{{y}}</b><br>{value_label}: %{{customdata[0]}}<extra></extra>"
                 ),
                 showlegend=False,
             )
         )
-    figure.add_vline(x=0, line_color="#6b7280", line_width=1.5)
-    average_title = _chart_text(
-        language, "Diferencia frente a la media europea", "Difference from the European average"
+    focus_values = pd.to_numeric(focus["value"], errors="coerce").dropna()
+    maximum = max(float(focus_values.max()) if not focus_values.empty else 0.0, mean)
+    longest_label = max(
+        [len(str(value)) for value in focus["country"].tolist()] + [len(mean_label)],
+        default=0,
     )
-    figure.update_layout(xaxis={"title": f"{average_title} ({mean:.2f}%)"}, yaxis={"title": ""})
-    _apply_base_layout(figure, margin={"l": 110, "r": 25, "t": 20, "b": 60})
+    figure.update_layout(
+        autosize=True,
+        height=max(420, 210 + (len(focus) + 1) * 54),
+        xaxis={
+            "title": _chart_text(language, "Valor (%)", "Value (%)"),
+            "range": [0, max(105, maximum + 16)],
+            "ticksuffix": "%",
+            "automargin": True,
+        },
+        yaxis={"title": "", "automargin": True},
+        barmode="group",
+        bargap=0.3,
+        showlegend=False,
+    )
+    _apply_base_layout(
+        figure,
+        margin={"l": min(270, max(135, longest_label * 7 + 28)), "r": 90, "t": 32, "b": 70},
+    )
     return figure
 
 
@@ -2126,9 +2059,7 @@ def build_response_country_comparison_chart(
             )
         )
 
-    response_order = order_fra_responses(
-        dataframe["response_key"].drop_duplicates().tolist()
-    )
+    response_order = order_fra_responses(dataframe["response_key"].drop_duplicates().tolist())
     labels = _response_labels(dataframe, language=language)
     x_labels = [labels.get(str(key), str(key)) for key in response_order]
     countries = (
@@ -2202,7 +2133,7 @@ def build_response_country_comparison_chart(
 
     country_count = len(countries)
     minimum_width = max(760, 150 + len(response_order) * max(150, country_count * 24))
-    _apply_base_layout(figure, margin={"l": 72, "r": 28, "t": 58, "b": 155})
+    _apply_base_layout(figure, margin={"l": 72, "r": 28, "t": 58, "b": 96})
     figure.update_layout(
         autosize=True,
         barmode="group",
@@ -2222,13 +2153,7 @@ def build_response_country_comparison_chart(
             "ticksuffix": "%",
             "automargin": True,
         },
-        legend={
-            "title": {"text": _chart_text(language, "País", "Country")},
-            "orientation": "h",
-            "y": -0.2,
-            "yanchor": "top",
-        },
-        showlegend=True,
+        showlegend=False,
     )
     if missing_values:
         figure.add_annotation(
@@ -2801,7 +2726,7 @@ def build_combined_scatter(
                 "The selected countries have no comparable FRA and ILGA data.",
             )
         )
-    correlation = dataframe["ilga_value"].corr(dataframe["fra_value"])
+    correlation = _safe_pairwise_correlation(dataframe, "ilga_value", "fra_value")
     figure = go.Figure(
         go.Scatter(
             x=dataframe["ilga_value"],
@@ -2847,6 +2772,28 @@ def build_combined_scatter(
     return figure
 
 
+def _safe_pairwise_correlation(
+    dataframe: pd.DataFrame,
+    first_column: str,
+    second_column: str,
+) -> float | None:
+    """Return Pearson correlation only when its statistical inputs are valid."""
+    paired = (
+        dataframe[[first_column, second_column]]
+        .apply(
+            pd.to_numeric,
+            errors="coerce",
+        )
+        .dropna()
+    )
+    if len(paired) < 2:
+        return None
+    if paired[first_column].nunique() < 2 or paired[second_column].nunique() < 2:
+        return None
+    correlation = paired[first_column].corr(paired[second_column])
+    return float(correlation) if pd.notna(correlation) else None
+
+
 def build_combined_heatmap(
     combined_rows: list[dict[str, Any]],
     language: str = "es",
@@ -2872,6 +2819,23 @@ def build_combined_heatmap(
         _chart_text(language, "Experiencia real", "Lived experience"),
     ]
     values = dataframe[["ilga_value", "fra_value"]].to_numpy()
+    annotations = []
+    for country, row in zip(dataframe["country"], values, strict=True):
+        for dimension, value in zip(dimensions, row, strict=True):
+            if pd.isna(value):
+                continue
+            annotations.append(
+                {
+                    "x": dimension,
+                    "y": country,
+                    "text": _spaced_percentage(value),
+                    "showarrow": False,
+                    "font": {
+                        "size": 16,
+                        "color": _heatmap_annotation_color(float(value)),
+                    },
+                }
+            )
     figure = go.Figure(
         go.Heatmap(
             z=values,
@@ -2880,24 +2844,98 @@ def build_combined_heatmap(
             zmin=0,
             zmax=100,
             colorscale=EUROPE_PERCENTAGE_COLORSCALE,
-            colorbar={"title": "%", "ticksuffix": "%", "thickness": 13},
-            text=[[format_percentage(value) or "" for value in row] for row in values],
-            texttemplate="%{text}",
-            xgap=3,
-            ygap=2,
+            colorbar={"title": "%", "ticksuffix": "%", "thickness": 16},
+            xgap=8,
+            ygap=6,
             hovertemplate="<b>%{y}</b><br>%{x}: %{z:.2f}%<extra></extra>",
         )
     )
-    figure_height = max(520, min(920, 170 + len(dataframe) * 24))
-    _apply_base_layout(figure, margin={"l": 145, "r": 52, "t": 28, "b": 80})
+    figure_height = max(
+        HEATMAP_MINIMUM_HEIGHT,
+        HEATMAP_HEADER_AND_MARGINS + len(dataframe) * HEATMAP_ROW_HEIGHT,
+    )
+    longest_country = max((len(str(country)) for country in dataframe["country"]), default=0)
+    left_margin = min(300, max(165, longest_country * 8 + 36))
+    minimum_width = max(
+        900,
+        left_margin + len(dimensions) * HEATMAP_COLUMN_WIDTH + 130,
+    )
+    _apply_base_layout(
+        figure,
+        margin={"l": left_margin, "r": 82, "t": 48, "b": 105},
+    )
     figure.update_layout(
         autosize=True,
         height=figure_height,
-        meta={"minimum_width": 680, "responsive": True},
-        xaxis={"automargin": True, "side": "bottom"},
-        yaxis={"automargin": True, "dtick": 1},
+        meta={
+            "minimum_width": minimum_width,
+            "responsive": True,
+            "row_count": len(dataframe),
+            "row_height": HEATMAP_ROW_HEIGHT,
+            "column_width": HEATMAP_COLUMN_WIDTH,
+        },
+        annotations=annotations,
+        xaxis={
+            "automargin": True,
+            "side": "bottom",
+            "tickfont": {"size": 16},
+        },
+        yaxis={"automargin": True, "dtick": 1, "tickfont": {"size": 15}},
     )
     return figure
+
+
+def _heatmap_annotation_color(value: float) -> str:
+    """Choose the higher-contrast text colour for the interpolated cell colour."""
+    position = min(1.0, max(0.0, value / 100.0))
+    lower_position, lower_hex = EUROPE_PERCENTAGE_COLORSCALE[0]
+    upper_position, upper_hex = EUROPE_PERCENTAGE_COLORSCALE[-1]
+    for index in range(1, len(EUROPE_PERCENTAGE_COLORSCALE)):
+        candidate_position, candidate_hex = EUROPE_PERCENTAGE_COLORSCALE[index]
+        if position <= candidate_position:
+            upper_position, upper_hex = candidate_position, candidate_hex
+            break
+        lower_position, lower_hex = candidate_position, candidate_hex
+
+    span = float(upper_position) - float(lower_position)
+    ratio = 0.0 if span <= 0 else (position - float(lower_position)) / span
+    lower_rgb = _hex_to_rgb(str(lower_hex))
+    upper_rgb = _hex_to_rgb(str(upper_hex))
+    background = (
+        round(lower_rgb[0] + (upper_rgb[0] - lower_rgb[0]) * ratio),
+        round(lower_rgb[1] + (upper_rgb[1] - lower_rgb[1]) * ratio),
+        round(lower_rgb[2] + (upper_rgb[2] - lower_rgb[2]) * ratio),
+    )
+    white_contrast = _contrast_ratio(background, (255, 255, 255))
+    dark_contrast = _contrast_ratio(background, (17, 24, 39))
+    return "#ffffff" if white_contrast >= dark_contrast else "#111827"
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    clean = value.strip().removeprefix("#")
+    return (
+        int(clean[0:2], 16),
+        int(clean[2:4], 16),
+        int(clean[4:6], 16),
+    )
+
+
+def _contrast_ratio(
+    first: tuple[int, int, int], second: tuple[int, int, int]
+) -> float:
+    first_luminance = _relative_luminance(first)
+    second_luminance = _relative_luminance(second)
+    lighter = max(first_luminance, second_luminance)
+    darker = min(first_luminance, second_luminance)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _relative_luminance(rgb: tuple[int, int, int]) -> float:
+    channels = []
+    for value in rgb:
+        channel = value / 255.0
+        channels.append(channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 
 
 def build_experience_legal_radar(

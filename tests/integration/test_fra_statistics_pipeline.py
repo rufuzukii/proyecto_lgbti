@@ -166,6 +166,16 @@ Source:,"EU LGBTIQ Survey III, 2023",,,,
 '''
 
 
+def _education_bathroom_csv() -> str:
+    return '''country,topic,question,answer,Gender Expression,percentage,question_code
+Spain,Education,Problems when going to bathroom and changing rooms at school,Always,Cisgender men,12,C9_E
+Spain,Education,Problems when going to bathroom and changing rooms at school,Never,,50,C9_E
+Spain,Education,Problems when going to bathroom and changing rooms at school,Often,,20,C9_E
+Spain,Education,Problems when going to bathroom and changing rooms at school,Rarely,,18,C9_E
+Source:,"EU LGBTIQ Survey III, 2023",,,,,
+'''
+
+
 def test_fra_import_normalization_persistence_and_statistics_query(monkeypatch) -> None:
     # Arrange
     collection = InMemoryFraCollection()
@@ -324,3 +334,33 @@ def test_ranked_reason_csv_to_mongo_statistics_preserves_categorical_responses(
         ("ES", 12.0),
         ("FR", 10.0),
     ]
+
+
+def test_education_bathroom_all_all_ignores_answers_only_published_for_a_segment(
+    monkeypatch,
+) -> None:
+    collection = InMemoryFraCollection()
+    monkeypatch.setattr(fra_mongo, "get_mongo_collection", lambda _name: collection)
+    monkeypatch.setattr(repository, "_mongo_collection", lambda _name: collection)
+    app = Flask("fra-education-all-all-integration")
+    init_cache(app)
+    payload = parse_fra_csv_text(_education_bathroom_csv(), file_name="education.csv")
+    fra_mongo.insert_indicator_fra_json(payload)
+
+    with app.app_context():
+        result = get_fra_statistics(
+            FraStatisticsQuery(
+                year=2023,
+                category="Education",
+                question_code="C9_E",
+                answer=None,
+                filter_a_name="All",
+                filter_a_value="All",
+                filter_b_name="All",
+                filter_b_value="All",
+            )
+        )
+
+    assert result["status"] == "ok"
+    assert result["answer"] == "Often"
+    assert [(row["iso"], row["value"]) for row in result["ranking"]] == [("ES", 20.0)]

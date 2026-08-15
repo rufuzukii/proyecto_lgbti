@@ -8,14 +8,15 @@ from typing import Any
 from bson import ObjectId
 from pymongo import UpdateOne
 
+from app.fra_surveys import default_fra_survey, get_fra_survey_by_year
 from app.import_to_db.fra.validation import (
     has_valid_fra_statistic_answer,
     is_valid_fra_category,
 )
 from app.mongo import get_mongo_collection
 
-INDICATOR_FRA_COLLECTION = "Indicator_fra"
-FRA_DATASET_CODE = "eu_lgbtiq_survey_iii"
+INDICATOR_FRA_COLLECTION = default_fra_survey().collection
+FRA_DATASET_CODE = default_fra_survey().dataset_code
 DEFAULT_BULK_SIZE = 500
 FRA_VALUE_BUCKETS = 16
 
@@ -26,11 +27,17 @@ def insert_indicator_fra_json(
     bulk_size: int = DEFAULT_BULK_SIZE,
 ) -> int:
     documents = _normalize_documents(file_json)
-    collection = get_mongo_collection(INDICATOR_FRA_COLLECTION)
     bounded_bulk_size = max(1, min(int(bulk_size), DEFAULT_BULK_SIZE))
-    grouped: dict[tuple[Any, ...], tuple[dict[str, Any], dict[str, dict[str, Any]]]] = {}
+    grouped_by_collection: dict[
+        str,
+        dict[tuple[Any, ...], tuple[dict[str, Any], dict[str, dict[str, Any]]]],
+    ] = {}
     for document in documents:
         prepared = _prepare_indicator_document(document)
+        survey = get_fra_survey_by_year(prepared["survey_year"])
+        if survey is None or not survey.enabled:
+            raise ValueError("unsupported_fra_survey_year")
+        grouped = grouped_by_collection.setdefault(survey.collection, {})
         answers = prepared.pop("answers", [])
         prepared.pop("_id", None)
         for answer in answers:
@@ -41,21 +48,23 @@ def insert_indicator_fra_json(
             parent.update(bucketed)
             grouped_answers[answer["identity_key"]] = answer
 
-    operations: list[UpdateOne] = []
-    for prepared, grouped_answers in grouped.values():
-        answers = list(grouped_answers.values())
-        operations.append(
-            UpdateOne(
-                _question_filter(prepared),
-                _question_update_pipeline(prepared, answers),
-                upsert=True,
+    for collection_name, grouped in grouped_by_collection.items():
+        collection = get_mongo_collection(collection_name)
+        operations: list[UpdateOne] = []
+        for prepared, grouped_answers in grouped.values():
+            answers = list(grouped_answers.values())
+            operations.append(
+                UpdateOne(
+                    _question_filter(prepared),
+                    _question_update_pipeline(prepared, answers),
+                    upsert=True,
+                )
             )
-        )
-        if len(operations) >= bounded_bulk_size:
+            if len(operations) >= bounded_bulk_size:
+                _execute_operations(collection, operations)
+                operations.clear()
+        if operations:
             _execute_operations(collection, operations)
-            operations.clear()
-    if operations:
-        _execute_operations(collection, operations)
 
     return len(documents)
 
@@ -68,10 +77,13 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
     survey_year = _survey_year(source.get("survey_year"))
     if survey_year is None:
         raise ValueError("missing_fra_survey_year")
+    survey = get_fra_survey_by_year(survey_year)
+    if survey is None or not survey.enabled:
+        raise ValueError("unsupported_fra_survey_year")
     prepared: dict[str, Any] = {
         "_id": _resolve_object_id(source.get("id")),
         "code": code,
-        "dataset": str(source.get("dataset") or FRA_DATASET_CODE).strip(),
+        "dataset": survey.dataset_code,
         "record_type": "statistic",
         "source": str(source.get("source") or "").strip(),
         "category": str(source.get("category") or "").strip(),

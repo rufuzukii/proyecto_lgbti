@@ -1,10 +1,12 @@
 from typing import Any, cast
 
 import pandas as pd
+import plotly.graph_objects as go
 import pytest
 from flask import Flask
 
 import app.analytics.repository as analytics_repository
+import app.dash.pages.statistics as statistics_page
 from app.analytics import statistics_service
 from app.analytics.percentage_display import normalize_percentage_values
 from app.analytics.statistics_charts import (
@@ -13,9 +15,9 @@ from app.analytics.statistics_charts import (
     NO_RESPONSE_COLOR,
     YES_RESPONSE_COLOR,
     _legal_hover_data,
+    build_combined_heatmap,
     build_comparative_ranking_chart,
     build_europe_choropleth,
-    build_europe_distribution_chart,
     build_fra_response_comparison_chart,
     build_ilga_criteria_heatmap,
     build_response_country_comparison_chart,
@@ -50,7 +52,7 @@ from app.analytics.statistics_service import (
 )
 from app.cache import cache, init_cache
 from app.dash.pages.statistics import (
-    DATA_TYPE_OPTIONS,
+    FRA_SURVEY_OPTIONS,
     _category_options,
     _control_group,
     _controls,
@@ -60,10 +62,11 @@ from app.dash.pages.statistics import (
     _fra_controls_are_ready,
     _fra_segmentation_card_class,
     _has_valid_fra_selection,
-    _ilga_criterion_control,
+    _heatmap_graph_style,
     _methodology_text,
     _ranking_graph_style,
     _resolved_ui_filters,
+    _response_comparison_component,
     _response_comparison_graph_style,
     _response_detail_graph_style,
     _segmentation_catalog_options,
@@ -82,21 +85,6 @@ def _traces(figure: Any) -> list[Any]:
 
 def _layout(figure: Any) -> Any:
     return figure.layout
-
-
-def test_distribution_chart_highlights_selected_country_without_invalid_box_colors() -> None:
-    figure = build_europe_distribution_chart(
-        [
-            {"country": "Spain", "iso": "ES", "value": 63.0},
-            {"country": "France", "iso": "FR", "value": 58.0},
-        ],
-        ["ES"],
-    )
-
-    traces = _traces(figure)
-    assert [trace.type for trace in traces] == ["histogram", "box", "scatter", "scatter"]
-    assert list(traces[2].text) == ["Spain", "France"]
-    assert list(traces[3].text) == ["Spain"]
 
 
 @pytest.fixture(autouse=True)
@@ -128,23 +116,19 @@ def test_repairs_common_mojibake_from_database_values() -> None:
     assert repair_text_encoding("It\u00e2\u20ac\u2122s quoted") == "It’s quoted"
 
 
-def test_statistics_data_type_options_keep_internal_source_values() -> None:
-    assert [option["value"] for option in DATA_TYPE_OPTIONS] == ["fra", "ilga"]
-    labels = [option["label"].to_plotly_json()["props"] for option in DATA_TYPE_OPTIONS]
-    assert labels[0]["children"] == "Sociodemográficos"
-    assert labels[0]["data-i18n-en"] == "Sociodemographic"
-    assert labels[1]["children"] == "Legales"
-    assert labels[1]["data-i18n-en"] == "Legal"
+def test_statistics_survey_options_keep_stable_internal_ids() -> None:
+    assert [option["value"] for option in FRA_SURVEY_OPTIONS] == [
+        "fra_survey_iii",
+        "fra_survey_ii",
+        "fra_survey_i",
+    ]
+    assert all("Indicator_fra" not in str(option["label"]) for option in FRA_SURVEY_OPTIONS)
 
 
-def test_legal_source_hides_sociodemographic_segmentation() -> None:
-    fra_classes = _fra_segmentation_card_class("fra").split()
-    legal_classes = _fra_segmentation_card_class("ilga").split()
-
-    assert "stats-segmentation-card" in fra_classes
-    assert "is-hidden" not in fra_classes
-    assert "stats-segmentation-card" in legal_classes
-    assert "is-hidden" in legal_classes
+def test_fra_segmentation_is_always_available_in_statistics() -> None:
+    classes = _fra_segmentation_card_class().split()
+    assert "stats-segmentation-card" in classes
+    assert "is-hidden" not in classes
 
 
 def test_statistics_category_options_exclude_hidden_categories(
@@ -154,45 +138,19 @@ def test_statistics_category_options_exclude_hidden_categories(
         "app.dash.pages.statistics.get_fra_categories",
         lambda _year=None: ["Discrimination", "Spanish LGBTIQ+ indicators", "Everyday life"],
     )
-    monkeypatch.setattr(
-        "app.dash.pages.statistics.get_ilga_criteria_categories_by_year",
-        lambda _year: ["Equality", "Political Participation", "Family"],
-    )
-
-    fra_values = [option["value"] for option in _category_options("fra", 2026)]
-    ilga_values = [option["value"] for option in _category_options("ilga", 2026)]
-
-    assert fra_values == ["Discrimination", "Everyday life"]
-    assert ilga_values == ["Ranking total", "Equality", "Family"]
+    values = [option["value"] for option in _category_options(2023)]
+    assert values == ["Discrimination", "Everyday life"]
 
 
-def test_legal_source_defaults_to_total_ranking() -> None:
+def test_selected_category_is_preserved_only_when_available() -> None:
     options = [
         {"label": "Ranking total", "value": "Ranking total"},
         {"label": "Equality", "value": "Equality"},
     ]
 
-    assert _selected_category_value("ilga", options, None) == "Ranking total"
-    assert _selected_category_value("ilga", options, "Equality") == "Equality"
-    assert (
-        _selected_category_value("ilga", options, "Equality", reset_to_default=True)
-        == "Ranking total"
-    )
-    assert _selected_category_value("fra", options, None) is None
-
-
-def test_total_ranking_disables_the_legal_criterion(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "app.dash.pages.statistics.get_ilga_criteria_by_year",
-        lambda _year, _category: [{"indicator": "Marriage equality"}],
-    )
-
-    assert _ilga_criterion_control("ilga", 2026, "Ranking total") == ([], None, True)
-    assert _ilga_criterion_control("ilga", 2026, "Equality") == (
-        [{"label": "Marriage equality", "value": "Marriage equality"}],
-        None,
-        False,
-    )
+    assert _selected_category_value(options, None) is None
+    assert _selected_category_value(options, "Equality") == "Equality"
+    assert _selected_category_value(options, "Family") is None
 
 
 def test_fra_categories_are_loaded_from_mongo_without_postgres(monkeypatch) -> None:
@@ -220,18 +178,12 @@ def test_fra_categories_are_loaded_from_mongo_without_postgres(monkeypatch) -> N
 
 
 def test_statistics_fra_selectors_start_empty() -> None:
-    controls = _controls(
-        [{"label": "2024", "value": 2024}],
-        2024,
-        [{"label": "Discrimination", "value": "Discrimination"}],
-    )
+    controls = _controls([{"label": "Discrimination", "value": "Discrimination"}])
 
     category = _component_by_id(controls, "stats-category-select")
     indicator = _component_by_id(controls, "fra-indicator-select")
-    legal_criterion = _component_by_id(controls, "ilga-criterion-select")
     assert category is not None
     assert indicator is not None
-    assert legal_criterion is not None
 
     category_props = category.to_plotly_json()["props"]
     indicator_props = indicator.to_plotly_json()["props"]
@@ -240,7 +192,6 @@ def test_statistics_fra_selectors_start_empty() -> None:
     assert indicator_props["value"] is None
     assert indicator_props["placeholder"] == "Selecciona primero una categoría"
     assert indicator_props["disabled"] is True
-    assert legal_criterion.to_plotly_json()["props"]["disabled"] is True
     assert not _has_valid_fra_selection(None, None)
     assert not _has_valid_fra_selection("Discrimination", None)
     assert _has_valid_fra_selection("Discrimination", "D1")
@@ -260,11 +211,7 @@ def test_statistics_fra_selectors_start_empty() -> None:
 
 
 def test_statistics_separates_demographic_and_identity_filters() -> None:
-    controls = _controls(
-        [{"label": "2024", "value": 2024}],
-        2024,
-        [{"label": "Discrimination", "value": "Discrimination"}],
-    )
+    controls = _controls([{"label": "Discrimination", "value": "Discrimination"}])
 
     demographic_type = _component_by_id(controls, "fra-demographic-type")
     demographic_value = _component_by_id(controls, "fra-demographic-value")
@@ -941,10 +888,44 @@ def test_get_fra_statistics_uses_default_answer_instead_of_averaging_all_answers
     result = get_fra_statistics(FraStatisticsQuery(question_code="D1", answer=None, year=2023))
 
     assert result["status"] == "ok"
+    assert result["answer"] == "Yes"
     assert [(row["country"], row["value"]) for row in result["ranking"]] == [
-        ("Portugal", 70.0),
-        ("Spain", 60.0),
+        ("Spain", 40.0),
+        ("Portugal", 30.0),
     ]
+
+
+def test_education_bathroom_indicator_default_uses_an_answer_published_for_all_all() -> None:
+    question = "Problems when going to bathroom and changing rooms at school"
+    document = {
+        "code": "C9_E",
+        "category": "Education",
+        "specific_category": "Education",
+        "question": question,
+        "answers": [
+            {
+                "country": "Spain",
+                "answer": "Always",
+                "percentage": 12.0,
+                "filters": [{"type": "Gender Expression", "value": "Cisgender men"}],
+            },
+            *[
+                {
+                    "country": "Spain",
+                    "answer": answer,
+                    "percentage": percentage,
+                    "filters": [{"type": "All", "value": "All"}],
+                }
+                for answer, percentage in (("Never", 50.0), ("Often", 20.0), ("Rarely", 18.0))
+            ],
+        ],
+    }
+
+    payload = statistics_service.build_fra_control_payload(document)
+
+    assert payload["global_answers"] == ["Never", "Often", "Rarely"]
+    assert payload["default_answer"] == "Often"
+    assert payload["default_answer"] != "Always"
 
 
 def test_get_fra_statistics_does_not_fall_back_to_available_scope(monkeypatch) -> None:
@@ -1500,18 +1481,42 @@ def test_fra_response_comparison_keeps_distinct_answer_meanings() -> None:
 
 def test_detail_summary_uses_separate_readable_blocks_and_pluralization() -> None:
     component = _detail_summary(
-        "FRA",
         [
             {"country": "Spain", "iso": "ES", "answer": "Yes", "percentage": 100.0},
         ],
     )
     text_values = _component_text(component)
 
+    assert isinstance(component, list)
+    assert len(component) == 3
     assert "Países comparados" in text_values
     assert "1" in text_values
     assert "Respuestas detectadas" not in text_values
     assert "Distribución" in text_values
     assert "1 país" in text_values
+
+
+def test_detail_summary_wraps_long_answers_and_calculates_valid_european_mean() -> None:
+    long_answer = "I am currently in the process of changing my legal gender"
+    component = _detail_summary(
+        [
+            {"country": "Spain", "iso": "ES", "answer": long_answer, "percentage": 40.0},
+            {"country": "France", "iso": "FR", "answer": long_answer, "percentage": 0.0},
+        ],
+        ranking=[
+            {"country": "Spain", "iso": "ES", "value": 40.0},
+            {"country": "France", "iso": "FR", "value": 0.0},
+            {"country": "Portugal", "iso": "PT", "value": None},
+        ],
+        selected_response=long_answer,
+    )
+
+    rendered = str(component)
+    assert "stats-response-distribution-item" in rendered
+    assert "stats-response-distribution-value" in rendered
+    assert long_answer in rendered
+    assert "Media europea" in rendered
+    assert "20 %" in rendered
 
 
 def test_ilga_dataframe_preserves_partial_criteria_values() -> None:
@@ -1722,19 +1727,27 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
     monkeypatch.setattr(
         "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
     )
-    monkeypatch.setattr("app.dash.pages.statistics._year_options", lambda _source: [])
-    monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _source, _year: [])
+    monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _year: [])
     monkeypatch.setattr("app.dash.pages.statistics.build_navbar", lambda **_kwargs: "")
 
     layout = build_statistics_layout()
 
-    assert _component_by_id(layout, "stats-response-detail-graph") is not None
+    assert _component_by_id(layout, "stats-response-detail-graph") is None
+    assert _component_by_id(layout, "stats-response-detail-graph-slot") is not None
     response_panel = _component_by_id(layout, "stats-response-panel")
     assert response_panel is not None
     response_classes = str(response_panel.to_plotly_json()["props"]["className"]).split()
     assert "stats-panel-wide" in response_classes
     assert "stats-response-panel" in response_classes
-    response_graph = cast(Any, _component_by_id(layout, "stats-response-detail-graph"))
+    response_figure = go.Figure()
+    response_graph = cast(
+        Any,
+        statistics_page._graph_component(
+            "stats-response-detail-graph",
+            response_figure,
+            style=statistics_page._response_detail_graph_style(response_figure),
+        ),
+    )
     graph_props = response_graph.to_plotly_json()["props"]
     assert graph_props["responsive"] is True
     assert graph_props["style"] == {
@@ -1742,8 +1755,11 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
         "height": "520px",
         "minHeight": "520px",
     }
-    assert _component_by_id(layout, "stats-ranking-graph") is not None
-    ranking_graph = cast(Any, _component_by_id(layout, "stats-ranking-graph"))
+    assert _component_by_id(layout, "stats-ranking-graph") is None
+    assert _component_by_id(layout, "stats-ranking-graph-slot") is not None
+    ranking_graph = cast(
+        Any, statistics_page._graph_component("stats-ranking-graph", go.Figure())
+    )
     ranking_graph_props = ranking_graph.to_plotly_json()["props"]
     assert ranking_graph_props["responsive"] is True
     assert ranking_graph_props["style"] == {"width": "100%"}
@@ -1757,13 +1773,15 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
     assert table_wrapper is not None
     assert table_wrapper.className == "stats-results-table-scroll"
     assert table_wrapper.to_plotly_json()["props"]["tabIndex"] == 0
-    assert _component_by_id(layout, "stats-response-comparison-graph") is not None
+    assert _component_by_id(layout, "stats-response-comparison-graph") is None
+    assert _component_by_id(layout, "stats-response-comparison-graph-slot") is not None
     comparison_panel = cast(Any, _component_by_id(layout, "stats-response-comparison-panel"))
     assert "stats-panel-wide" in comparison_panel.className.split()
     table_download = cast(Any, _component_by_id(layout, "stats-table-download-button"))
     assert table_download.disabled is True
     assert _component_by_id(layout, "stats-summary-table-download") is not None
-    assert _component_by_id(layout, "stats-experience-legal-radar-graph") is not None
+    assert _component_by_id(layout, "stats-experience-legal-radar-graph") is None
+    assert _component_by_id(layout, "stats-experience-legal-radar-graph-slot") is not None
     assert _component_by_id(layout, "stats-experience-legal-country-select") is not None
     assert _component_by_id(layout, "stats-filter-analysis-graph") is None
 
@@ -1772,16 +1790,13 @@ def test_all_statistics_graphs_are_responsive_without_fixed_widths(monkeypatch) 
     monkeypatch.setattr(
         "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
     )
-    monkeypatch.setattr("app.dash.pages.statistics._year_options", lambda _source: [])
-    monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _source, _year: [])
+    monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _year: [])
     monkeypatch.setattr("app.dash.pages.statistics.build_navbar", lambda **_kwargs: "")
 
-    layout = build_statistics_layout()
     graph_ids = (
         "stats-map-graph",
         "stats-temporal-graph",
         "stats-ranking-graph",
-        "stats-distribution-graph",
         "stats-average-graph",
         "stats-response-comparison-graph",
         "stats-experience-legal-radar-graph",
@@ -1791,8 +1806,16 @@ def test_all_statistics_graphs_are_responsive_without_fixed_widths(monkeypatch) 
         "stats-combined-heatmap",
     )
 
+    layout = build_statistics_layout()
     for graph_id in graph_ids:
-        graph = cast(Any, _component_by_id(layout, graph_id))
+        graph = cast(
+            Any,
+            (
+                _component_by_id(layout, "stats-map-graph")
+                if graph_id == "stats-map-graph"
+                else statistics_page._graph_component(graph_id, go.Figure())
+            ),
+        )
         props = graph.to_plotly_json()["props"]
         assert props["responsive"] is True
         assert props["config"]["responsive"] is True
@@ -1842,15 +1865,49 @@ def test_response_comparison_graph_style_tracks_local_horizontal_width() -> None
     }
 
 
-def test_fra_methodology_uses_exact_localized_copy() -> None:
-    result = {"methodology": "Texto anterior que no debe mostrarse"}
+def test_heatmap_graph_style_applies_plotly_height_and_minimum_width() -> None:
+    figure = build_combined_heatmap(
+        [
+            {"country": "Spain", "iso": "ES", "ilga_value": 75.0, "fra_value": 62.0},
+            {"country": "France", "iso": "FR", "ilga_value": 70.0, "fra_value": 58.0},
+        ]
+    )
 
-    assert _methodology_text(result, "FRA", "es") == (
+    assert _heatmap_graph_style(figure) == {
+        "width": "100%",
+        "height": "720px",
+        "minHeight": "720px",
+        "minWidth": "960px",
+    }
+
+
+def test_response_comparison_uses_an_external_country_legend() -> None:
+    figure = build_response_country_comparison_chart(
+        [
+            {"country": "Spain", "iso": "ES", "answer": "Yes", "percentage": 60.0},
+            {"country": "France", "iso": "FR", "answer": "Yes", "percentage": 55.0},
+        ]
+    )
+
+    component = _response_comparison_component(
+        figure,
+        _response_comparison_graph_style(figure),
+    )
+    graph = cast(Any, _component_by_id(component, "stats-response-comparison-graph"))
+
+    assert graph.figure.layout.showlegend is False
+    assert "stats-country-legend" in str(component)
+    assert "España" in str(component)
+    assert "Francia" in str(component)
+
+
+def test_fra_methodology_uses_exact_localized_copy() -> None:
+    assert _methodology_text("es") == (
         "FRA refleja respuestas de personas encuestadas. "
         "La puntuación ILGA mide leyes y políticas. "
         "Las fuentes no son directamente equivalentes."
     )
-    assert _methodology_text(result, "FRA", "en") == (
+    assert _methodology_text("en") == (
         "FRA reflects responses from surveyed people. "
         "The ILGA score measures laws and policies. "
         "The sources are not directly equivalent."
@@ -1972,6 +2029,24 @@ def test_percentage_choropleth_distinguishes_zero_low_values_and_null() -> None:
     assert trace.marker.line.color == "#334155"
     assert trace.marker.line.width >= 0.85
     assert list(trace.colorbar.tickvals) == [0, 20, 40, 60, 80, 100]
+
+
+def test_choropleth_uses_geometry_bounds_and_resets_after_country_selection() -> None:
+    rows = [
+        {"country": "Spain", "iso": "ES", "value": 42.0},
+        {"country": "France", "iso": "FR", "value": 38.0},
+    ]
+    europe = build_europe_choropleth(rows, source="FRA")
+    focused = build_europe_choropleth(rows, source="FRA", selected_isos=["ES"])
+    reset = build_europe_choropleth(rows, source="FRA", selected_isos=[])
+
+    europe_lon = list(europe.layout.geo.lonaxis.range)
+    focus_lon = list(focused.layout.geo.lonaxis.range)
+    assert europe.layout.geo.center.lon is not None
+    assert europe.layout.geo.center.lat is not None
+    assert focus_lon[1] - focus_lon[0] < europe_lon[1] - europe_lon[0]
+    assert list(reset.layout.geo.lonaxis.range) == europe_lon
+    assert reset.layout.uirevision.endswith("-europe")
 
 
 def test_social_attitudes_email_regression_keeps_all_all(monkeypatch) -> None:

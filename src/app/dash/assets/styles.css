@@ -522,15 +522,11 @@ body {
   background: var(--panel-bg);
   border-top: 1px solid var(--panel-border);
   color: var(--color-text-muted);
-  display: none;
+  display: grid;
   font-size: 0.7rem;
   gap: 1.1rem;
   padding: 1.25rem clamp(1.25rem, 5vw, 6rem) 1rem;
   width: 100%;
-}
-
-.app-shell[data-page-ready="true"] .site-footer {
-  display: grid;
 }
 
 .footer-attributions {

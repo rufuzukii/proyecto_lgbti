@@ -68,6 +68,14 @@ env.bak/
 venv.bak/
 
 /tmp
+/checkpoints/
+/local-data/
+/data-imports/
+*_checkpoint.json
+*_audit.jsonl
+*.dump
+*.dmp
+*.bak
 # mkdocs documentation
 /site
 

@@ -44,13 +44,10 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     monkeypatch.setattr(
         statistics_page,
-        "_year_options",
-        lambda _source: (_ for _ in ()).throw(AssertionError("unexpected year query")),
-    )
-    monkeypatch.setattr(
-        statistics_page,
         "_category_options",
-        lambda _source, _year: (_ for _ in ()).throw(AssertionError("unexpected category query")),
+        lambda _year, _language="es": (_ for _ in ()).throw(
+            AssertionError("unexpected category query")
+        ),
     )
 
     layout = statistics_page.build_statistics_layout()
@@ -59,7 +56,8 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     results = _component_by_id(layout, "stats-results-content")
     assert query_state is not None
     assert results is not None
-    assert "Selecciona una categoría y un indicador para comenzar." in str(query_state)
+    assert "Selecciona una categoría y un indicador para comenzar." not in str(query_state)
+    assert "is-hidden" in query_state.className.split()
     assert "is-hidden" in results.className.split()
 
     loading = cast(Any, _component_by_id(layout, "stats-dashboard-loading"))
@@ -71,11 +69,27 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     assert loading_props["overlay_style"] == {"visibility": "hidden"}
     assert loading_props["target_components"] == {
         "stats-data-store": "data",
-        "stats-map-graph": "figure",
+        "stats-dashboard-ready-store": "data",
+        "stats-active-query-store": "data",
+        "stats-survey-catalog-store": "data",
     }
     graphs = [item for item in _walk(layout) if type(item).__name__ == "Graph"]
-    assert graphs
-    assert all(item.figure == {} for item in graphs)
+    assert [graph.id for graph in graphs] == ["stats-map-graph"]
+    assert _component_by_id(layout, "stats-map-graph-slot") is not None
+    map_graph = cast(Any, _component_by_id(layout, "stats-map-graph"))
+    map_props = map_graph.to_plotly_json()["props"]
+    assert "figure" not in map_props
+    assert map_props["style"] == {"width": "100%", "display": "none"}
+    survey = cast(Any, _component_by_id(layout, "stats-survey-select"))
+    assert survey.value == "fra_survey_iii"
+    assert [option["value"] for option in survey.options] == [
+        "fra_survey_iii",
+        "fra_survey_ii",
+        "fra_survey_i",
+    ]
+    assert _component_by_id(layout, "stats-source-select") is None
+    assert _component_by_id(layout, "stats-year-select") is None
+    assert _component_by_id(layout, "ilga-criterion-select") is None
 
 
 def test_heatmap_spans_the_grid_and_uses_a_local_responsive_scroll_container(
@@ -83,14 +97,14 @@ def test_heatmap_spans_the_grid_and_uses_a_local_responsive_scroll_container(
 ) -> None:
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     layout = statistics_page.build_statistics_layout()
-    heatmap = _component_by_id(layout, "stats-combined-heatmap")
+    heatmap_slot = _component_by_id(layout, "stats-combined-heatmap-slot")
     panel = next(
         item
         for item in _walk(layout)
         if "stats-heatmap-panel" in str(getattr(item, "className", ""))
     )
 
-    assert heatmap is not None
+    assert heatmap_slot is not None
     assert "stats-panel-wide" in panel.className.split()
     assert "stats-chart-horizontal-scroll" in str(panel)
 
@@ -113,8 +127,46 @@ def test_heatmap_and_ranked_reason_styles_cover_mobile_and_dark_mode() -> None:
     assert "grid-column: 1 / -1" in css
     assert ".stats-chart-horizontal-scroll" in css
     assert "overflow-x: auto" in css
-    assert "body[data-theme=\"dark\"] .stats-response-help" in css
-    assert "min-width: 680px" in css
+    assert 'body[data-theme="dark"] .stats-response-help' in css
+    assert "min-width: 960px" in css
+    assert ".stats-response-distribution-item" in css
+    assert "grid-template-columns: minmax(0, 1fr) auto" in css
+    assert "white-space: nowrap" in css
+    assert ".stats-european-average-reference" in css
+    assert (
+        "grid-template-columns: minmax(150px, 0.22fr) minmax(320px, 1fr) "
+        "minmax(220px, 0.34fr)" in css
+    )
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
+    assert "grid-auto-flow: column" in css
+    assert ".stats-country-legend" in css
+
+
+def test_large_response_distribution_matches_the_compact_tablet_layout() -> None:
+    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    desktop_rule = css.split("@media (min-width: 1200px)", maxsplit=1)[1].split(
+        "@media (max-width: 767px)", maxsplit=1
+    )[0]
+
+    assert ".stats-response-distribution ul" in desktop_rule
+    assert "grid-auto-flow: row" in desktop_rule
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in desktop_rule
+    assert ".stats-response-distribution-label" in desktop_rule
+    assert ".stats-response-distribution-value" in desktop_rule
+    assert "font-size: 0.84rem" in desktop_rule
+
+
+def test_redundant_european_distribution_graph_is_absent(monkeypatch) -> None:
+    monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
+    layout = statistics_page.build_statistics_layout()
+
+    assert _component_by_id(layout, "stats-distribution-graph") is None
+    assert _component_by_id(layout, "stats-ranking-graph") is None
+    assert _component_by_id(layout, "stats-ranking-graph-slot") is not None
+    average_panel = cast(Any, _component_by_id(layout, "stats-average-panel"))
+    assert "is-hidden" in average_panel.className.split()
+    assert "is-hidden" in statistics_page._average_panel_class([]).split()
+    assert "is-hidden" not in statistics_page._average_panel_class(["ES"]).split()
 
 
 def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
@@ -122,10 +174,16 @@ def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
     statistics_page.register_statistics_callbacks(app)
     callback = _callback(app, "update_statistics_query_state")
 
-    initial = callback(None, "es")
-    no_data = callback({"status": "empty", "ranking": [], "data": []}, "en")
-    error = callback({"status": "error", "ranking": []}, "es")
-    ready = callback({"status": "ok", "ranking": [{"value": 1}]}, "es")
+    initial = callback(None, None, None, "es")
+    no_data = callback({"status": "empty", "ranking": [], "data": []}, None, None, "en")
+    error = callback({"status": "error", "ranking": []}, None, None, "es")
+    ready = callback({"status": "ok", "ranking": [{"value": 1}]}, None, None, "es")
+    loading = callback(
+        {"status": "ok", "query_token": "new", "ranking": [{"value": 1}]},
+        {"query_token": "old"},
+        {"query_token": "new"},
+        "es",
+    )
 
     assert "Selecciona una categoría y un indicador para comenzar." in str(initial[0])
     assert initial[1] == "stats-query-state"
@@ -137,11 +195,35 @@ def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
     assert error[2].endswith("is-hidden")
     assert ready[1].endswith("is-hidden")
     assert ready[2] == "stats-results-content"
+    assert loading[1].endswith("is-hidden")
+    assert loading[2].endswith("is-hidden")
 
 
 def test_statistics_view_states_are_explicit() -> None:
     assert resolve_statistics_view_state(None) is StatisticsViewState.INITIAL
+    assert (
+        resolve_statistics_view_state({"status": "loading_indicators"})
+        is StatisticsViewState.LOADING_INDICATORS
+    )
+    assert (
+        resolve_statistics_view_state(
+            {"status": "ok", "query_token": "new"}, {"query_token": "old"}
+        )
+        is StatisticsViewState.LOADING_STATISTICS
+    )
+    assert (
+        resolve_statistics_view_state(
+            {"status": "empty", "query_token": "stale"},
+            None,
+            {"query_token": "current"},
+        )
+        is StatisticsViewState.LOADING_STATISTICS
+    )
     assert resolve_statistics_view_state({"status": "ok"}) is StatisticsViewState.READY
+    assert (
+        resolve_statistics_view_state(None, None, {"phase": "survey_empty"})
+        is StatisticsViewState.SURVEY_EMPTY
+    )
     assert resolve_statistics_view_state({"status": "empty"}) is StatisticsViewState.NO_DATA
     assert resolve_statistics_view_state({"status": "invalid"}) is StatisticsViewState.NO_DATA
     assert resolve_statistics_view_state({"status": "error"}) is StatisticsViewState.ERROR
@@ -158,23 +240,48 @@ def test_initial_statistics_selection_does_not_run_data_services(monkeypatch) ->
     monkeypatch.setattr(statistics_page, "get_fra_statistics", unexpected_query)
     monkeypatch.setattr(statistics_page, "get_ilga_statistics", unexpected_query)
 
-    result = callback("fra", 2024, None, None, None, None, None, None, None, None, {})
+    result = callback("fra_survey_iii", None, None, None, None, None, None, None, {})
 
     assert result is None
 
 
-def test_statistics_category_catalog_waits_for_a_year(monkeypatch) -> None:
+def test_statistics_category_catalog_rejects_an_unknown_survey(monkeypatch) -> None:
     app = Dash("statistics-category-guard-test", suppress_callback_exceptions=True)
     statistics_page.register_statistics_callbacks(app)
-    callback = _callback(app, "update_categories_for_year")
+    callback = _callback(app, "update_categories_for_survey")
     monkeypatch.setattr(
         statistics_page,
         "_category_options",
         lambda *_args: (_ for _ in ()).throw(AssertionError("unexpected category query")),
     )
+    assert callback("unknown", "es", None) == (
+        [],
+        None,
+        {"survey_id": "unknown", "loaded": True, "has_data": False},
+    )
 
-    assert callback("fra", None, "es", None) == ([], None)
 
+def test_changing_survey_resets_category_and_exposes_empty_catalog(monkeypatch) -> None:
+    app = Dash("statistics-survey-reset-test", suppress_callback_exceptions=True)
+    statistics_page.register_statistics_callbacks(app)
+    callback = _callback(app, "update_categories_for_survey")
+    monkeypatch.setattr(
+        statistics_page,
+        "ctx",
+        type("Context", (), {"triggered_id": "stats-survey-select"})(),
+    )
+    monkeypatch.setattr(statistics_page, "_category_options", lambda _year, _language: [])
+
+    assert callback("fra_survey_ii", "es", "Discrimination") == (
+        [],
+        None,
+        {
+            "survey_id": "fra_survey_ii",
+            "year": 2019,
+            "loaded": True,
+            "has_data": False,
+        },
+    )
 
 def test_statistics_dropdown_ids_are_unique_and_do_not_persist_stale_values(monkeypatch) -> None:
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
@@ -186,6 +293,34 @@ def test_statistics_dropdown_ids_are_unique_and_do_not_persist_stale_values(monk
     assert all(
         item.to_plotly_json()["props"].get("persistence") in {None, False} for item in dropdowns
     )
+
+
+def test_critical_statistics_callback_ids_exist_once_in_page_layout(monkeypatch) -> None:
+    monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
+    layout = statistics_page.build_statistics_layout()
+    ids = [
+        item.id
+        for item in _walk(layout)
+        if isinstance(getattr(item, "id", None), str)
+    ]
+    counts = Counter(ids)
+
+    assert counts["stats-map-graph"] == 1
+    assert counts["stats-map-graph-slot"] == 1
+    assert counts["stats-selected-countries"] == 1
+    assert counts["stats-clear-countries"] == 1
+
+    app = Dash("statistics-layout-contract", suppress_callback_exceptions=True)
+    app.layout = layout
+    statistics_page.register_statistics_callbacks(app)
+    selection_callback = app.callback_map["stats-selected-countries.data"]
+    selection_input_ids = {item["id"] for item in selection_callback["inputs"]}
+    assert {
+        "stats-map-graph",
+        "stats-clear-countries",
+        "stats-data-store",
+    }.issubset(counts)
+    assert selection_input_ids.issubset(counts)
 
 
 def test_valid_statistics_selection_preserves_real_no_data_state(monkeypatch) -> None:
@@ -203,8 +338,7 @@ def test_valid_statistics_selection_preserves_real_no_data_state(monkeypatch) ->
     )
 
     result = callback(
-        "fra",
-        2024,
+        "fra_survey_iii",
         "Discrimination",
         "D1",
         "Yes",
@@ -212,11 +346,13 @@ def test_valid_statistics_selection_preserves_real_no_data_state(monkeypatch) ->
         "All",
         "All",
         "All",
-        None,
         {"code": "D1", "category": "Discrimination"},
     )
 
-    assert result == {"status": "empty", "ranking": [], "data": []}
+    assert result["status"] == "empty"
+    assert result["ranking"] == []
+    assert result["data"] == []
+    assert result["query_token"].startswith('["fra_survey_iii",2023')
     assert len(calls) == 1
 
 
@@ -236,8 +372,7 @@ def test_statistics_service_failure_becomes_controlled_error_state(monkeypatch) 
     )
 
     result = callback(
-        "fra",
-        2023,
+        "fra_survey_iii",
         "Discrimination",
         "D1",
         "Yes",
@@ -245,7 +380,6 @@ def test_statistics_service_failure_becomes_controlled_error_state(monkeypatch) 
         "All",
         "All",
         "All",
-        None,
         {"code": "D1", "category": "Discrimination"},
     )
 
@@ -253,16 +387,22 @@ def test_statistics_service_failure_becomes_controlled_error_state(monkeypatch) 
     assert result["ranking"] == []
 
 
-def test_statistics_loading_message_tracks_the_refresh_phase(monkeypatch) -> None:
-    app = Dash("statistics-loading-message-test", suppress_callback_exceptions=True)
+def test_statistics_loading_uses_spinner_only_without_message_callback(monkeypatch) -> None:
+    monkeypatch.setattr(statistics_page, "assert_analytics_databases_available", lambda: None)
+    monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
+    layout = statistics_page.build_statistics_layout()
+    loading = cast(Any, _component_by_id(layout, "stats-dashboard-loading"))
+    spinner_children = loading.custom_spinner.children
+
+    assert spinner_children[0].className == "context-loading-spinner"
+    assert spinner_children[1].className == "sr-only"
+    assert _component_by_id(layout, "stats-loading-message") is None
+
+    app = Dash("statistics-loading-spinner-test", suppress_callback_exceptions=True)
     statistics_page.register_statistics_callbacks(app)
-    callback = _callback(app, "update_statistics_loading_message")
-    monkeypatch.setattr(
-        statistics_page,
-        "ctx",
-        type("Context", (), {"triggered_id": "stats-category-select"})(),
-    )
-
-    message = callback(None, None, None, None, None, None, None, None, "es")
-
-    assert "Cargando indicadores..." in str(message)
+    callback_names = {
+        value["callback"].__wrapped__.__name__
+        for value in app.callback_map.values()
+        if getattr(value.get("callback"), "__wrapped__", None)
+    }
+    assert "update_statistics_loading_message" not in callback_names

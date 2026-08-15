@@ -98,6 +98,40 @@ def europe_bounds() -> tuple[float, float, float, float]:
     return float(minimum_x), float(minimum_y), float(maximum_x), float(maximum_y)
 
 
+def europe_view_bounds(
+    selected_country_codes: tuple[str, ...] | list[str] | None = None,
+) -> tuple[float, float, float, float]:
+    """Return the European extent, gently focused on selected countries."""
+    base = europe_bounds()
+    selected = {
+        normalize_country_code(code) or str(code or "").strip().upper()
+        for code in (selected_country_codes or [])
+        if str(code or "").strip()
+    }
+    if not selected:
+        return base
+
+    frame = load_europe_geodataframe()
+    focus = frame[frame["country_code"].isin(selected)]
+    if focus.empty:
+        return base
+    minimum_x, minimum_y, maximum_x, maximum_y = map(float, focus.total_bounds)
+    width = max(maximum_x - minimum_x, 1.0)
+    height = max(maximum_y - minimum_y, 1.0)
+    padded = (
+        minimum_x - width * 0.22,
+        minimum_y - height * 0.22,
+        maximum_x + width * 0.22,
+        maximum_y + height * 0.22,
+    )
+    focus_weight = 0.42 if len(focus) == 1 else 0.36
+    blended = tuple(
+        base_value + (focus_value - base_value) * focus_weight
+        for base_value, focus_value in zip(base, padded, strict=True)
+    )
+    return cast(tuple[float, float, float, float], blended)
+
+
 @lru_cache(maxsize=1)
 def europe_centroids() -> dict[str, tuple[float, float]]:
     """Calculate stable in-country marker points once in a projected CRS."""

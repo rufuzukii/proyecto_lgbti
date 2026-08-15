@@ -12,7 +12,7 @@ Expone la API pública: `FraIndicator`, consultas FRA/ILGA e invalidación de ca
 
 - `FraIndicator`: representación inmutable del catálogo relacional; `label` compone el texto mostrado en el selector.
 - `get_fra_indicators()`: consulta `public.indicators` y `public.categories` en PostgreSQL.
-- `get_fra_indicator_answers(code, category)`: recupera en una sola consulta y fusiona todos los documentos coincidentes de `Indicator_fra`.
+- `get_fra_indicator_answers(code, category, year)`: resuelve la colección desde el catálogo central de encuestas y fusiona los documentos coincidentes de esa edición.
 - `get_latest_ilga_document()`: recupera el documento `Indicator_ilga` con el año más reciente.
 - `invalidate_analytics_cache()`: limpia toda la caché configurada.
 
@@ -36,9 +36,11 @@ consumidores. Las figuras de Estadísticas se construyen en `statistics_charts.p
 
 PostgreSQL, MongoDB, Flask-Caching, Plotly y Pandas.
 
-## Estadísticas europeas FRA / ILGA-Europe
+## Estadísticas europeas FRA
 
-La pagina `/statistics` usa una capa modular nueva:
+La página `/statistics` selecciona una edición FRA mediante `fra_surveys.py`. No deriva el año visible del nombre de MongoDB: 2023 usa `Indicator_fra`, 2019 usa `Indicador_fra_2019` y la encuesta de 2012 usa, por compatibilidad, `Indicador_fra_2013`.
+
+El dashboard usa una capa modular:
 
 - `statistics_models.py`: modelos de consulta y validación de un único filtro FRA del grupo A y un único filtro del grupo B.
 - `statistics_normalizers.py`: normalización de códigos ISO, tipos de filtro y erratas conocidas sin perder el valor bruto usado por los datos.
@@ -59,7 +61,7 @@ figuras iniciales vacías.
 El mapa mantiene Plotly `Choropleth`: no necesita token privado de Mapbox, se integra con
 `clickData` y evita una dependencia geoespacial que no participaba en el flujo real.
 
-Los documentos FRA se esperan en `Indicator_fra` con `answers[]` que contengan `country`, `country_code`, `answer`, `percentage` y `filters[]` como pares `{type, value}`. Los documentos ILGA se esperan en `Indicator_ilga` con `countries[]`, `ranking` y `criteria[]`. Los criterios ILGA disponibles se extraen de los metadatos importados (`category`, `indicator`, `weight`); no se inventan descripciones jurídicas si el dataset no las trae.
+Los documentos FRA se esperan en la colección configurada para cada encuesta, con `answers[]` que contengan `country`, `country_code`, `answer`, `percentage` y `filters[]` como pares `{type, value}`. Los documentos ILGA se esperan en `Indicator_ilga` con `countries[]`, `ranking` y `criteria[]`. Los criterios ILGA disponibles se extraen de los metadatos importados (`category`, `indicator`, `weight`); no se inventan descripciones jurídicas si el dataset no las trae.
 
 ### Radar de experiencia real y protección legal
 

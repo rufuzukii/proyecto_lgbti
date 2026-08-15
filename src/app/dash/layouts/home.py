@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import unicodedata
 from collections.abc import Sequence
 from typing import Any, cast
 
@@ -17,6 +19,7 @@ from app.analytics.country_status_admin_service import (
 )
 from app.analytics.country_status_service import get_country_lgbti_status
 from app.analytics.figures import build_ilga_choropleth
+from app.analytics.home_legal_service import HOME_LEGAL_YEAR, get_home_legal_country_detail
 from app.analytics.repository import (
     get_ilga_document_by_year,
     get_ilga_years,
@@ -24,14 +27,28 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics_normalizers import normalize_country_code
 from app.auth.permissions import is_admin_user
+from app.dash.components.ilga_criteria import (
+    build_ilga_country_criteria_panel,
+)
+from app.dash.components.loading import contextual_loading
 from app.dash.components.section_navigation import build_home_section_navigation
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
-from app.dash.i18n import country_labels, dash_attrs, text, text_attrs
+from app.dash.i18n import (
+    COUNTRY_NAMES,
+    country_labels,
+    dash_attrs,
+    text,
+    text_attrs,
+    ui_text,
+    ui_text_component,
+)
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 from app.dates import utc_today, utc_today_iso
 from app.source_attribution import ILGA_ANNUAL_REVIEW_2026_PDF_URL
+
+logger = logging.getLogger(__name__)
 
 EDITOR_LABELS_EN = {
     "Identificación": "Identification",
@@ -88,22 +105,17 @@ def build_home_layout() -> Component:
                                                 className="home-map-heading",
                                             ),
                                             html.H2(
-                                                (
-                                                    "Selecciona un país para consultar la situación legal actual "
-                                                    "de las personas LGBTIQ+."
-                                                ),
+                                                ui_text("home_legal_map_helper", "es"),
                                                 id="home-map-helper-text",
                                                 className="home-map-helper-text",
                                                 **text_attrs(
-                                                    (
-                                                        "Selecciona un país para consultar la situación legal actual "
-                                                        "de las personas LGBTIQ+."
-                                                    ),
-                                                    (
-                                                        "Select a country to view the current legal situation of "
-                                                        "LGBTIQ+ people."
-                                                    ),
+                                                    ui_text("home_legal_map_helper", "es"),
+                                                    ui_text("home_legal_map_helper", "en"),
                                                 ),
+                                            ),
+                                            ui_text_component(
+                                                "home_legal_map_explanation",
+                                                class_name="home-map-explanation",
                                             ),
                                         ],
                                         className="home-map-intro",
@@ -144,7 +156,7 @@ def build_home_layout() -> Component:
                                     _control_field(
                                         ("Año del mapa legal", "Legal map year"),
                                         dcc.Dropdown(
-                                            id="home-ilga-year",
+                                            id="home-map-year-select",
                                             options=[
                                                 {"label": str(year), "value": year}
                                                 for year in ilga_years
@@ -154,28 +166,14 @@ def build_home_layout() -> Component:
                                             disabled=not bool(ilga_years),
                                             className="home-dropdown",
                                         ),
-                                        "home-ilga-control",
-                                        "home-ilga-control",
-                                    ),
-                                    _control_field(
-                                        ("País o países", "Country or countries"),
-                                        dcc.Dropdown(
-                                            id="home-country-select",
-                                            options=_ilga_country_options(ilga_document),
-                                            value=[],
-                                            clearable=True,
-                                            multi=True,
-                                            placeholder="Selecciona en el mapa o aquí",
-                                            className="home-dropdown home-country-dropdown",
-                                        ),
-                                        "home-country-control",
-                                        "home-country-control",
+                                        "home-map-year-control",
+                                        "home-map-year-control",
                                     ),
                                 ],
                                 className="home-map-controls",
                             ),
                             dcc.Graph(
-                                id="home-main-map",
+                                id="home-map-graph",
                                 figure=_home_map_figure(build_ilga_choropleth(ilga_document)),
                                 className="home-europe-map",
                                 config=cast(
@@ -185,17 +183,6 @@ def build_home_layout() -> Component:
                                         **fixed_europe_map_config(),
                                     },
                                 ),
-                            ),
-                            dcc.Store(id="home-country-status-refresh", data=0),
-                            dcc.Store(id="home-country-status-editor-state", data={}),
-                            html.Div(
-                                id="country-status-admin-feedback",
-                                className="country-status-admin-feedback",
-                                role="status",
-                            ),
-                            html.Div(id="home-country-status", className="country-status-anchor"),
-                            html.Div(
-                                id="country-status-editor", className="country-status-editor-shell"
                             ),
                             html.Div(
                                 [
@@ -215,6 +202,7 @@ def build_home_layout() -> Component:
                         ],
                         className="home-map-stage",
                     ),
+                    _home_legal_country_section(),
                     build_home_section_navigation(
                         authenticated=bool(getattr(current_user, "is_authenticated", False))
                     ),
@@ -225,22 +213,185 @@ def build_home_layout() -> Component:
     )
 
 
+def _home_legal_country_section() -> Component:
+    return html.Section(
+        [
+            html.Div(
+                [
+                    ui_text_component(
+                        "home_ilga_country_eyebrow",
+                        class_name="home-ilga-detail-eyebrow",
+                    ),
+                    html.H2(
+                        ui_text_component("home_ilga_country_title"),
+                        className="home-ilga-detail-title",
+                    ),
+                    ui_text_component(
+                        "home_ilga_country_intro",
+                        class_name="home-ilga-detail-intro",
+                    ),
+                ],
+                className="home-ilga-detail-header",
+            ),
+            _control_field(
+                (
+                    ui_text("home_legal_country_label", "es"),
+                    ui_text("home_legal_country_label", "en"),
+                ),
+                dcc.Dropdown(
+                    id="home-legal-country-select",
+                    options=_home_legal_country_options(),
+                    value=None,
+                    clearable=True,
+                    multi=False,
+                    searchable=True,
+                    placeholder=ui_text("home_legal_country_placeholder", "es"),
+                    className="home-dropdown home-legal-country-dropdown",
+                ),
+                "home-legal-country-control",
+                "home-legal-country-control",
+            ),
+            dcc.Store(
+                id="home-legal-country-state",
+                data={"status": "INITIAL", "country_code": None, "year": HOME_LEGAL_YEAR},
+            ),
+            dcc.Store(id="home-legal-status-refresh", data=0),
+            dcc.Store(id="home-legal-status-editor-state", data={}),
+            contextual_loading(
+                html.Div(
+                    [
+                        html.Div(
+                            _home_legal_initial_state(),
+                            id="home-legal-details",
+                            className="home-legal-details-panel",
+                        ),
+                        html.Div(
+                            id="home-legal-country-status",
+                            className="country-status-anchor",
+                        ),
+                    ],
+                    className="home-legal-results",
+                ),
+                "loading_indicators",
+                element_id="home-legal-details-loading",
+                target_components={
+                    "home-legal-details": "children",
+                    "home-legal-country-status": "children",
+                },
+                hide_content_while_loading=True,
+                show_message=False,
+            ),
+            html.Div(
+                id="home-legal-status-admin-feedback",
+                className="country-status-admin-feedback",
+                role="status",
+            ),
+            html.Div(
+                id="home-legal-status-editor",
+                className="country-status-editor-shell",
+            ),
+        ],
+        id="home-legal-section",
+        className="home-legal-section",
+    )
+
+
+def _home_legal_initial_state(language: str | None = None) -> Component:
+    return html.P(
+        ui_text_component("home_ilga_country_empty", language=language),
+        className="home-legal-message home-legal-message--initial",
+    )
+
+
 def register_home_callbacks(app: Dash) -> None:
     @app.callback(
-        Output("home-country-select", "placeholder"),
+        Output("home-legal-country-select", "placeholder"),
         Input("app-language-store", "data"),
     )
-    def translate_home_controls(language: str | None) -> str:
-        return "Select on the map or here" if language == "en" else "Selecciona en el mapa o aquí"
+    def translate_home_legal_country_control(language: str | None) -> str:
+        return ui_text("home_legal_country_placeholder", language or "es")
 
     @app.callback(
-        Output("home-main-map", "figure"),
+        Output("home-legal-country-select", "value"),
+        Input("home-map-graph", "clickData"),
+        State("home-legal-country-select", "options"),
+        prevent_initial_call=True,
+    )
+    def select_home_legal_country_from_map(
+        click_data: dict[str, Any] | None,
+        legal_country_options: list[dict[str, Any]] | None,
+    ) -> str:
+        country_code = _country_code_from_map_click(click_data)
+        available_codes = {
+            normalize_country_code(option.get("value"))
+            for option in legal_country_options or []
+            if isinstance(option, dict)
+        }
+        if not country_code or country_code not in available_codes:
+            raise PreventUpdate
+        return country_code
+
+    @app.callback(
+        Output("home-legal-details", "children"),
+        Output("home-legal-country-state", "data"),
+        Input("home-legal-country-select", "value"),
+        Input("app-language-store", "data"),
+    )
+    def update_home_legal_country_details(
+        selected_country: str | None,
+        language: str | None,
+    ) -> tuple[Component, dict[str, Any]]:
+        country_code = normalize_country_code(selected_country)
+        if not country_code:
+            return _home_legal_initial_state(language), {
+                "status": "INITIAL",
+                "country_code": None,
+                "year": HOME_LEGAL_YEAR,
+            }
+        try:
+            country = get_home_legal_country_detail(country_code)
+        except Exception:
+            logger.exception(
+                "home_legal_country_detail_failed",
+                extra={"country_code": country_code, "year": HOME_LEGAL_YEAR},
+            )
+            return (
+                html.P(
+                    ui_text_component("home_legal_country_error", language=language),
+                    className="home-legal-message home-legal-message--error",
+                    role="alert",
+                ),
+                {
+                    "status": "ERROR",
+                    "country_code": country_code,
+                    "year": HOME_LEGAL_YEAR,
+                },
+            )
+        if country is None:
+            return (
+                html.P(
+                    ui_text_component("home_legal_country_no_data", language=language),
+                    className="home-legal-message home-legal-message--no-data",
+                ),
+                {
+                    "status": "NO_DATA",
+                    "country_code": country_code,
+                    "year": HOME_LEGAL_YEAR,
+                },
+            )
+        return build_ilga_country_criteria_panel(country), {
+            "status": "READY",
+            "country_code": country_code,
+            "year": HOME_LEGAL_YEAR,
+        }
+
+    @app.callback(
+        Output("home-map-graph", "figure"),
         Output("home-map-title", "children"),
         Output("home-map-copy", "children"),
-        Output("home-map-helper-text", "className"),
         Output("home-map-source", "children"),
         Output("home-map-metrics", "children"),
-        Input("home-ilga-year", "value"),
+        Input("home-map-year-select", "value"),
         Input("app-language-store", "data"),
     )
     def update_home_map(
@@ -252,74 +403,44 @@ def register_home_callbacks(app: Dash) -> None:
             _home_map_figure(build_ilga_choropleth(document, language=language or "es")),
             text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map", language=language),
             _ilga_copy(document, language),
-            "home-map-helper-text",
             _ilga_source(document, language),
             _ilga_metrics(document, language),
         )
 
     @app.callback(
-        Output("home-country-select", "options"),
-        Output("home-country-select", "value"),
-        Input("home-ilga-year", "value"),
-        State("home-country-select", "value"),
+        Output("home-legal-country-status", "children"),
+        Input("home-legal-country-select", "value"),
+        Input("home-legal-status-refresh", "data"),
+        State("home-legal-country-select", "options"),
     )
-    def update_home_country_options(
-        ilga_year: int | None,
-        current_countries: list[str] | None,
-    ):
-        options = _ilga_country_options(get_ilga_document_by_year(ilga_year))
-        available = {str(option.get("value")) for option in options}
-        selected = [
-            country
-            for country in current_countries or []
-            if normalize_country_code(country) in available or str(country) in available
-        ]
-        return options, selected
-
-    @app.callback(
-        Output("home-country-select", "value", allow_duplicate=True),
-        Input("home-main-map", "clickData"),
-        State("home-country-select", "value"),
-        prevent_initial_call=True,
-    )
-    def select_home_country_from_map(click_data: dict[str, Any] | None, current: list[str] | None):
-        iso = _iso_from_map_click(click_data)
-        if not iso:
-            return current or []
-        selected = list(current or [])
-        if iso not in selected:
-            selected.append(iso)
-        return selected
-
-    @app.callback(
-        Output("home-country-status", "children"),
-        Input("home-country-select", "value"),
-        Input("home-ilga-year", "value"),
-        Input("home-country-status-refresh", "data"),
-        State("home-country-select", "options"),
-    )
-    def update_home_country_status(
-        selected_countries: list[str] | None,
-        requested_year: int | None,
+    def update_home_legal_country_status(
+        selected_country: str | None,
         _refresh: int | None,
         country_options: list[dict[str, Any]] | None,
     ):
-        selected = _normalize_selected_countries(selected_countries)
-        if not selected:
+        country_code = normalize_country_code(selected_country)
+        if not country_code:
             return []
         label_by_code = _country_label_map(country_options or [])
-        statuses = get_country_lgbti_status(selected, requested_year)
+        statuses = get_country_lgbti_status([country_code], HOME_LEGAL_YEAR)
+        statuses = [
+            status
+            for status in statuses
+            if not status.get("available") or status.get("year") == HOME_LEGAL_YEAR
+        ]
+        if not statuses:
+            return []
         return _country_status_section(
             statuses,
             label_by_code,
-            requested_year,
+            HOME_LEGAL_YEAR,
             can_manage=is_admin_user(current_user),
         )
 
     @app.callback(
-        Output("country-status-editor", "children"),
-        Output("home-country-status-editor-state", "data"),
-        Output("country-status-admin-feedback", "children"),
+        Output("home-legal-status-editor", "children"),
+        Output("home-legal-status-editor-state", "data"),
+        Output("home-legal-status-admin-feedback", "children"),
         Input(
             {
                 "type": "country-status-open-editor",
@@ -329,7 +450,7 @@ def register_home_callbacks(app: Dash) -> None:
             },
             "n_clicks",
         ),
-        State("home-country-select", "options"),
+        State("home-legal-country-select", "options"),
         prevent_initial_call=True,
     )
     def open_country_status_editor(
@@ -359,9 +480,9 @@ def register_home_callbacks(app: Dash) -> None:
         return _country_status_editor(initial, state, country_options or [], {}), state, ""
 
     @app.callback(
-        Output("country-status-editor", "children", allow_duplicate=True),
-        Output("home-country-status-editor-state", "data", allow_duplicate=True),
-        Output("country-status-admin-feedback", "children", allow_duplicate=True),
+        Output("home-legal-status-editor", "children", allow_duplicate=True),
+        Output("home-legal-status-editor-state", "data", allow_duplicate=True),
+        Output("home-legal-status-admin-feedback", "children", allow_duplicate=True),
         Input({"type": "country-status-editor-cancel", "slot": ALL}, "n_clicks"),
         prevent_initial_call=True,
     )
@@ -371,15 +492,15 @@ def register_home_callbacks(app: Dash) -> None:
         return [], {}, ""
 
     @app.callback(
-        Output("country-status-editor", "children", allow_duplicate=True),
-        Output("home-country-status-editor-state", "data", allow_duplicate=True),
-        Output("country-status-admin-feedback", "children", allow_duplicate=True),
-        Output("home-country-status-refresh", "data"),
+        Output("home-legal-status-editor", "children", allow_duplicate=True),
+        Output("home-legal-status-editor-state", "data", allow_duplicate=True),
+        Output("home-legal-status-admin-feedback", "children", allow_duplicate=True),
+        Output("home-legal-status-refresh", "data"),
         Input({"type": "country-status-editor-save", "slot": ALL}, "n_clicks"),
         Input({"type": "country-status-editor-delete", "slot": ALL}, "n_clicks"),
-        State("home-country-status-editor-state", "data"),
-        State("home-country-select", "options"),
-        State("home-country-status-refresh", "data"),
+        State("home-legal-status-editor-state", "data"),
+        State("home-legal-country-select", "options"),
+        State("home-legal-status-refresh", "data"),
         State({"type": "country-status-form-country", "slot": ALL}, "value"),
         State({"type": "country-status-form-country-code", "slot": ALL}, "value"),
         State({"type": "country-status-form-year", "slot": ALL}, "value"),
@@ -546,57 +667,47 @@ def _home_map_figure(figure: Any) -> Any:
     return figure
 
 
-def _ilga_country_options(document: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not isinstance(document, dict):
-        return []
-    countries = []
-    for country in document.get("countries", []):
-        if not isinstance(country, dict):
-            continue
-        country_name = str(country.get("country") or "").strip()
-        country_code = normalize_country_code(country.get("country_code"), country_name)
-        if country_name and country_code:
-            name_es, name_en = country_labels(country_code, country_name)
-            countries.append(
-                {
-                    "label": text(
-                        f"{name_es} ({country_code})",
-                        f"{name_en} ({country_code})",
-                    ),
-                    "value": country_code,
-                    "title": country_name,
-                    "sort_label": name_es,
-                }
-            )
-    ordered = sorted(countries, key=lambda item: str(item["sort_label"]))
+def _home_legal_country_options() -> list[dict[str, Any]]:
+    options = []
+    for country_code, (name_es, name_en) in COUNTRY_NAMES.items():
+        options.append(
+            {
+                "label": text(
+                    f"{name_es} ({country_code})",
+                    f"{name_en} ({country_code})",
+                ),
+                "value": country_code,
+                "title": name_es,
+                "search": _country_search_terms(country_code, name_es, name_en),
+                "sort_label": name_es.casefold(),
+            }
+        )
     return [
-        {
-            "label": item["label"],
-            "value": item["value"],
-            "title": item["title"],
-        }
-        for item in ordered
+        {key: value for key, value in option.items() if key != "sort_label"}
+        for option in sorted(options, key=lambda item: str(item["sort_label"]))
     ]
 
 
-def _iso_from_map_click(click_data: dict[str, Any] | None) -> str:
-    points = (click_data or {}).get("points") or []
-    if not points:
+def _country_code_from_map_click(click_data: dict[str, Any] | None) -> str:
+    points = click_data.get("points") if isinstance(click_data, dict) else None
+    if not isinstance(points, list) or not points or not isinstance(points[0], dict):
         return ""
     customdata = points[0].get("customdata")
     raw_code = customdata[0] if isinstance(customdata, (list, tuple)) and customdata else customdata
     return normalize_country_code(raw_code)
 
 
-def _normalize_selected_countries(countries: list[str] | None) -> list[str]:
-    selected: list[str] = []
-    seen: set[str] = set()
-    for country in countries or []:
-        country_code = normalize_country_code(country)
-        if country_code and country_code not in seen:
-            selected.append(country_code)
-            seen.add(country_code)
-    return selected
+def _country_search_terms(country_code: str, *names: str) -> str:
+    values = [country_code, *names]
+    accentless = [
+        "".join(
+            character
+            for character in unicodedata.normalize("NFKD", value)
+            if not unicodedata.combining(character)
+        )
+        for value in values
+    ]
+    return " ".join([*values, *accentless]).casefold()
 
 
 def _country_label_map(options: list[dict[str, Any]]) -> dict[str, str]:
