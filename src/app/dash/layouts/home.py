@@ -20,6 +20,15 @@ from app.analytics.country_status_admin_service import (
 from app.analytics.country_status_service import get_country_lgbti_status
 from app.analytics.figures import build_ilga_choropleth
 from app.analytics.home_legal_service import HOME_LEGAL_YEAR, get_home_legal_country_detail
+from app.analytics.legal_ranking import (
+    LegalMapExportError,
+    LegalRankingEntry,
+    build_legal_map_export_figure,
+    build_legal_ranking,
+    export_legal_map_png,
+    legal_map_export_filename,
+    legal_ranking_payload,
+)
 from app.analytics.repository import (
     get_ilga_document_by_year,
     get_ilga_years,
@@ -76,6 +85,7 @@ def build_home_layout() -> Component:
     ilga_document = get_latest_ilga_document()
     ilga_years = get_ilga_years()
     current_year = ilga_document.get("year") if isinstance(ilga_document, dict) else None
+    initial_ranking = _localized_legal_ranking(ilga_document, "es")
     if current_year and current_year not in ilga_years:
         ilga_years = [int(current_year), *ilga_years]
 
@@ -169,21 +179,77 @@ def build_home_layout() -> Component:
                                         "home-map-year-control",
                                         "home-map-year-control",
                                     ),
+                                    html.Div(
+                                        [
+                                            html.Button(
+                                                text("Descargar imagen", "Download image"),
+                                                id="home-map-export-button",
+                                                type="button",
+                                                className="home-map-export-button",
+                                                title="Descargar imagen / Download image",
+                                                **dash_attrs(
+                                                    {
+                                                        "aria-label": (
+                                                            "Descargar imagen del mapa y ranking / "
+                                                            "Download map and ranking image"
+                                                        )
+                                                    }
+                                                ),
+                                            ),
+                                            html.Span(
+                                                "",
+                                                id="home-map-export-status",
+                                                className="home-map-export-status is-hidden",
+                                                role="alert",
+                                            ),
+                                        ],
+                                        className="home-map-export-control",
+                                    ),
                                 ],
                                 className="home-map-controls",
                             ),
-                            dcc.Graph(
-                                id="home-map-graph",
-                                figure=_home_map_figure(build_ilga_choropleth(ilga_document)),
-                                className="home-europe-map",
-                                config=cast(
-                                    dcc.Graph.Config,
-                                    {
-                                        "displayModeBar": True,
-                                        **fixed_europe_map_config(),
-                                    },
-                                ),
+                            html.Div(
+                                [
+                                    dcc.Graph(
+                                        id="home-map-graph",
+                                        figure=_home_map_figure(
+                                            build_ilga_choropleth(ilga_document)
+                                        ),
+                                        className="home-europe-map",
+                                        config=cast(
+                                            dcc.Graph.Config,
+                                            {
+                                                "displayModeBar": True,
+                                                **fixed_europe_map_config(),
+                                            },
+                                        ),
+                                    ),
+                                    html.Aside(
+                                        _legal_ranking_content(
+                                            initial_ranking,
+                                            current_year,
+                                            "es",
+                                        ),
+                                        id="home-legal-ranking",
+                                        className="home-legal-ranking",
+                                        **dash_attrs(
+                                            {
+                                                "aria-label": (
+                                                    "Ranking legal de países / "
+                                                    "Country legal ranking"
+                                                )
+                                            }
+                                        ),
+                                    ),
+                                ],
+                                className="home-map-visual-grid",
                             ),
+                            dcc.Store(
+                                id="home-legal-ranking-store",
+                                data=legal_ranking_payload(initial_ranking),
+                            ),
+                            dcc.Store(id="home-map-export-request"),
+                            dcc.Download(id="home-map-export-download"),
                             html.Div(
                                 [
                                     html.Div(
@@ -391,6 +457,8 @@ def register_home_callbacks(app: Dash) -> None:
         Output("home-map-copy", "children"),
         Output("home-map-source", "children"),
         Output("home-map-metrics", "children"),
+        Output("home-legal-ranking", "children"),
+        Output("home-legal-ranking-store", "data"),
         Input("home-map-year-select", "value"),
         Input("app-language-store", "data"),
     )
@@ -399,12 +467,87 @@ def register_home_callbacks(app: Dash) -> None:
         language: str | None,
     ):
         document = get_ilga_document_by_year(ilga_year)
+        ranking = _localized_legal_ranking(document, language or "es")
         return (
             _home_map_figure(build_ilga_choropleth(document, language=language or "es")),
             text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map", language=language),
             _ilga_copy(document, language),
             _ilga_source(document, language),
             _ilga_metrics(document, language),
+            _legal_ranking_content(ranking, ilga_year, language or "es"),
+            legal_ranking_payload(ranking),
+        )
+
+    app.clientside_callback(
+        """
+        function(nClicks) {
+            if (!Number.isFinite(nClicks) || nClicks < 1) {
+                return window.dash_clientside.no_update;
+            }
+            const activeTheme = document.documentElement.dataset.theme === "dark"
+                ? "dark"
+                : "light";
+            return {theme: activeTheme, request: nClicks};
+        }
+        """,
+        Output("home-map-export-request", "data"),
+        Input("home-map-export-button", "n_clicks"),
+        prevent_initial_call=True,
+    )
+
+    @app.callback(
+        Output("home-map-export-download", "data"),
+        Output("home-map-export-status", "children"),
+        Output("home-map-export-status", "className"),
+        Input("home-map-export-request", "data"),
+        State("home-map-graph", "figure"),
+        State("home-legal-ranking-store", "data"),
+        State("home-map-year-select", "value"),
+        State("app-language-store", "data"),
+        prevent_initial_call=True,
+        running=[(Output("home-map-export-button", "disabled"), True, False)],
+    )
+    def download_home_legal_map(
+        export_request: dict[str, Any] | None,
+        map_figure: dict[str, Any] | None,
+        ranking_rows: list[dict[str, Any]] | None,
+        year: int | None,
+        language: str | None,
+    ):
+        if not export_request or not export_request.get("request"):
+            raise PreventUpdate
+        selected_language = language or "es"
+        selected_theme = "dark" if export_request.get("theme") == "dark" else "light"
+        if not map_figure or not ranking_rows:
+            return (
+                no_update,
+                ui_text("home_legal_export_error", selected_language),
+                "home-map-export-status",
+            )
+        try:
+            export_figure = build_legal_map_export_figure(
+                map_figure,
+                ranking_rows,
+                year=year,
+                language=selected_language,
+                theme=selected_theme,
+            )
+            image = export_legal_map_png(export_figure)
+        except (LegalMapExportError, TypeError, ValueError):
+            logger.exception("home_legal_map_export_failed", extra={"year": year})
+            return (
+                no_update,
+                ui_text("home_legal_export_error", selected_language),
+                "home-map-export-status",
+            )
+        return (
+            dcc.send_bytes(
+                image,
+                legal_map_export_filename(year),
+                type="image/png",
+            ),
+            "",
+            "home-map-export-status is-hidden",
         )
 
     @app.callback(
@@ -1398,6 +1541,83 @@ def _status_source(status: dict[str, Any]) -> Component:
             )
         )
     return html.Footer(children, className="country-status-card__source")
+
+
+def _localized_legal_ranking(
+    document: dict[str, Any] | None,
+    language: str,
+) -> list[LegalRankingEntry]:
+    name_index = 1 if language == "en" else 0
+    return build_legal_ranking(
+        document,
+        country_name_resolver=lambda country_code, fallback: country_labels(
+            country_code,
+            fallback,
+        )[name_index],
+    )
+
+
+def _legal_ranking_content(
+    ranking: Sequence[LegalRankingEntry],
+    year: int | str | None,
+    language: str,
+) -> list[Component]:
+    english = language == "en"
+    title = "Country ranking" if english else "Ranking legal"
+    if year is not None and str(year).strip():
+        title = f"{title} · {year}"
+    if not ranking:
+        return [
+            html.H3(title, className="home-legal-ranking-title"),
+            html.P(
+                ui_text("home_legal_ranking_empty", language),
+                className="home-legal-ranking-empty",
+            ),
+        ]
+
+    rows = [
+        html.Li(
+            [
+                html.Span(str(position), className="home-legal-ranking-position"),
+                html.Span(entry.country_name, className="home-legal-ranking-country"),
+                html.Span(
+                    entry.score_text,
+                    className="home-legal-ranking-score",
+                ),
+            ],
+            className="home-legal-ranking-row",
+            **dash_attrs(
+                {
+                    "aria-label": (
+                        f"{position}. {entry.country_name} — {entry.score_text}"
+                    )
+                }
+            ),
+        )
+        for position, entry in enumerate(ranking, start=1)
+    ]
+    return [
+        html.Div(
+            [
+                html.H3(title, className="home-legal-ranking-title"),
+                html.Span(
+                    str(len(ranking)),
+                    className="home-legal-ranking-count",
+                    **dash_attrs(
+                        {
+                            "aria-label": (
+                                f"{len(ranking)} countries"
+                                if english
+                                else f"{len(ranking)} países"
+                            )
+                        }
+                    ),
+                ),
+            ],
+            className="home-legal-ranking-header",
+        ),
+        html.Ol(rows, className="home-legal-ranking-list"),
+    ]
 
 
 def _control_field(

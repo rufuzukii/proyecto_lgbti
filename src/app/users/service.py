@@ -93,13 +93,14 @@ def list_users_page(
     clean_search = _normalize_user_text(search or "")[:120]
     clean_page_size = min(100, max(1, page_size))
     pattern = f"%{_escape_like(clean_search)}%"
-    where = """
-        where (%s = '' or username ilike %s escape '\\' or email ilike %s escape '\\'
-               or coalesce(organization, '') ilike %s escape '\\')
-    """
     with _connect() as conn:
         count_row = conn.execute(
-            f"select count(*) as total from public.users {where}",
+            """
+            select count(*) as total
+            from public.users
+            where (%s = '' or username ilike %s escape '\\' or email ilike %s escape '\\'
+                   or coalesce(organization, '') ilike %s escape '\\')
+            """,
             (clean_search, pattern, pattern, pattern),
         ).fetchone()
         count_values = cast(dict[str, Any], count_row or {})
@@ -107,10 +108,11 @@ def list_users_page(
         page_count = max(1, (total + clean_page_size - 1) // clean_page_size)
         clean_page = min(max(1, page), page_count)
         rows = conn.execute(
-            f"""
+            """
             select id::text, username, email, organization, user_type
             from public.users
-            {where}
+            where (%s = '' or username ilike %s escape '\\' or email ilike %s escape '\\'
+                   or coalesce(organization, '') ilike %s escape '\\')
             order by created_at desc nulls last, email asc
             limit %s offset %s
             """,

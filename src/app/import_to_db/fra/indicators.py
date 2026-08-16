@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
+from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, cast
 
 import psycopg
@@ -12,15 +16,192 @@ from app.import_to_db.fra.validation import (
 )
 from app.postgres import postgres_connection
 
+# Reserved for reviewed methodological mappings. Exact code and exact normalized
+# question/category matching do not need entries here.
+FRA_INDICATOR_EQUIVALENCE_MAP: dict[tuple[int, str], str] = {}
+
+
+@dataclass(frozen=True, slots=True)
+class IndicatorResolution:
+    question_code: str
+    canonical_id: str
+    action: str
+    reason: str
+    question: str
+    category: str
+
 
 def upsert_indicators_from_json(file_json: dict[str, Any] | list[Any]) -> int:
+    resolved, _resolutions = resolve_and_upsert_indicators_from_json(file_json)
+    return len(_normalize_documents(resolved))
+
+
+def resolve_and_upsert_indicators_from_json(
+    file_json: dict[str, Any] | list[Any],
+) -> tuple[dict[str, Any] | list[dict[str, Any]], list[IndicatorResolution]]:
+    """Resolve canonical indicators through the official relational catalog.
+
+    Matching is deliberately conservative: exact canonical code, an explicit
+    reviewed mapping, or one unambiguous normalized question/category match.
+    """
     documents = _normalize_documents(file_json)
+    resolved_documents = [deepcopy(document) for document in documents]
+    resolutions: list[IndicatorResolution] = []
     catalog_documents = _consolidate_catalog_documents(documents)
     with postgres_connection(row_factory=cast(Any, dict_row)) as conn:
         for document in catalog_documents:
-            _upsert_indicator(conn, document)
+            resolution = _resolve_indicator(conn, document)
+            resolutions.append(resolution)
+            prepared = _resolved_document(document, resolution)
+            _upsert_indicator(
+                conn,
+                prepared,
+                preserve_existing=resolution.action == "reused",
+            )
         conn.commit()
-    return len(documents)
+
+    by_question_code = {item.question_code: item for item in resolutions}
+    for document in resolved_documents:
+        question_code = _question_code(document)
+        resolution = by_question_code.get(question_code)
+        if resolution is not None:
+            document.update(
+                {
+                    "question_code": question_code,
+                    "indicator_id": resolution.canonical_id,
+                    "canonical_indicator": resolution.canonical_id,
+                    "code": resolution.canonical_id,
+                }
+            )
+    if isinstance(file_json, dict) and file_json.get("code"):
+        return resolved_documents[0], resolutions
+    return resolved_documents, resolutions
+
+
+def _resolve_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> IndicatorResolution:
+    question_code = _question_code(document)
+    question = str(document.get("question") or "").strip()
+    category = _resolve_category(document)
+    survey_year = _survey_year(document.get("survey_year"))
+    if not question_code or not question or survey_year is None:
+        raise ValueError("invalid_indicator_payload")
+
+    exact_code = _catalog_row_by_code(conn, question_code)
+    if exact_code and _same_indicator(exact_code, question=question, category=category):
+        return IndicatorResolution(
+            question_code, question_code, "reused", "canonical_code", question, category
+        )
+
+    mapped_code = FRA_INDICATOR_EQUIVALENCE_MAP.get((survey_year, question_code))
+    if mapped_code:
+        mapped = _catalog_row_by_code(conn, mapped_code)
+        if mapped and _same_indicator(mapped, question=question, category=category):
+            return IndicatorResolution(
+                question_code,
+                mapped_code,
+                "reused",
+                "explicit_mapping",
+                question,
+                category,
+            )
+
+    semantic_matches = _catalog_rows_by_question(conn, question, category)
+    safe_matches = [
+        row for row in semantic_matches if _same_indicator(row, question=question, category=category)
+    ]
+    if len(safe_matches) == 1:
+        return IndicatorResolution(
+            question_code,
+            str(safe_matches[0]["code"]),
+            "reused",
+            "exact_normalized_question_category",
+            question,
+            category,
+        )
+
+    canonical_id = question_code
+    reason = "new_question_code"
+    if exact_code is not None:
+        canonical_id = f"fra_{survey_year}_{_safe_code(question_code)}"
+        reason = "question_code_collision"
+    existing_canonical = _catalog_row_by_code(conn, canonical_id)
+    action = "reused" if existing_canonical else "created"
+    if existing_canonical:
+        reason = "canonical_code"
+    return IndicatorResolution(
+        question_code, canonical_id, action, reason, question, category
+    )
+
+
+def _catalog_row_by_code(conn: psycopg.Connection, code: str) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT i.code, i.question, c.name AS category
+        FROM public.indicators i
+        JOIN public.categories c ON c.id = i.category_id
+        WHERE i.code = %s
+        """,
+        (code,),
+    ).fetchone()
+    return cast(dict[str, Any] | None, row)
+
+
+def _catalog_rows_by_question(
+    conn: psycopg.Connection, question: str, category: str
+) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT i.code, i.question, c.name AS category
+        FROM public.indicators i
+        JOIN public.categories c ON c.id = i.category_id
+        WHERE lower(trim(i.question)) = lower(trim(%s))
+          AND lower(trim(c.name)) = lower(trim(%s))
+        ORDER BY i.code
+        LIMIT 2
+        """,
+        (question, category),
+    ).fetchall()
+    return cast(list[dict[str, Any]], rows)
+
+
+def _same_indicator(row: dict[str, Any], *, question: str, category: str) -> bool:
+    return _safe_text(row.get("question")) == _safe_text(question) and _safe_text(
+        row.get("category")
+    ) == _safe_text(category)
+
+
+def _safe_text(value: Any) -> str:
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return " ".join(normalized.split())
+
+
+def _safe_code(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_]+", "_", value).strip("_") or "indicator"
+
+
+def _survey_year(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except TypeError, ValueError:
+        return None
+
+
+def _question_code(document: dict[str, Any]) -> str:
+    return str(document.get("question_code") or document.get("code") or "").strip()
+
+
+def _resolved_document(
+    document: dict[str, Any], resolution: IndicatorResolution
+) -> dict[str, Any]:
+    return {
+        **document,
+        "question_code": resolution.question_code,
+        "indicator_id": resolution.canonical_id,
+        "canonical_indicator": resolution.canonical_id,
+        "code": resolution.canonical_id,
+    }
 
 
 def _consolidate_catalog_documents(
@@ -43,7 +224,12 @@ def _consolidate_catalog_documents(
     return list(consolidated.values())
 
 
-def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> None:
+def _upsert_indicator(
+    conn: psycopg.Connection,
+    document: dict[str, Any],
+    *,
+    preserve_existing: bool = False,
+) -> None:
     indicator = _indicator_payload(document)
     code = (document.get("code") or indicator.get("code") or "").strip()
     question = (indicator.get("question") or "").strip()
@@ -87,6 +273,17 @@ def _upsert_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> Non
 
     row = cast(dict[str, Any], row)
     merged_answer_types = _merge_answer_types(row.get("answer_type"), next_answer_types)
+    if preserve_existing:
+        conn.execute(
+            """
+            UPDATE public.indicators
+            SET answer_type = %s
+            WHERE code = %s
+            """,
+            (_serialize_answer_types(merged_answer_types), code),
+        )
+        return
+
     conn.execute(
         """
         UPDATE public.indicators

@@ -10,8 +10,6 @@ Plataforma para el análisis y visualización de datos del colectivo LGBTIQ+ en 
 
 ## Seguridad básica (configuración)
 - `API_KEY` o `API_KEYS`: clave(s) para acceder a la API (cabecera `X-API-Key`).
-- `DASH_BASIC_AUTH`: credenciales para la interfaz Dash (`usuario:password,otro:password`).
-- `IMPORT_BASE_DIR`: carpeta base permitida para importar CSV en la API.
 - `AUTH_MAX_ATTEMPTS` y `AUTH_WINDOW_SECONDS`: límites de intentos para login/registro.
 
 ## Cache
@@ -39,8 +37,9 @@ credenciales ni trazas. Para ejecutar las pruebas de humo contra un despliegue r
 Los registros nuevos quedan pendientes de verificación. Los tokens de verificación y
 recuperación son de un solo uso, se almacenan mediante hash y caducan. El envío se centraliza
 con `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y
-`SMTP_TIMEOUT_SECONDS`. Los enlaces usan `PUBLIC_BASE_URL` o, en Render,
-`RENDER_EXTERNAL_URL`; no se guardan credenciales ni URLs privadas en el repositorio.
+`SMTP_TIMEOUT_SECONDS`. Los enlaces usan `PUBLIC_BASE_URL` o el hostname externo proporcionado
+por Render; no se guardan credenciales ni URLs privadas en el repositorio. Para dominios
+personalizados se puede definir `TRUSTED_HOSTS` como una lista separada por comas.
 
 Los límites se configuran con `EMAIL_TOKEN_MAX_ATTEMPTS`, `EMAIL_TOKEN_WINDOW_SECONDS`,
 `PASSWORD_RESET_MAX_ATTEMPTS` y `PASSWORD_RESET_WINDOW_SECONDS`. Las operaciones sensibles
@@ -48,12 +47,9 @@ Los límites se configuran con `EMAIL_TOKEN_MAX_ATTEMPTS`, `EMAIL_TOKEN_WINDOW_S
 
 ## Puntos de entrada
 
-- `run_dash.py`: inicia la interfaz Dash en el host y puerto configurados.
-- `run_api.py`: inicia FastAPI con Uvicorn.
-- `run_auth.py`: inicia el servicio Flask JSON de autenticación.
+- `rainbowlens-dash`: inicia la interfaz local mediante el entrypoint declarado en `pyproject.toml`.
+- `uvicorn app.api:app`: inicia la API FastAPI cuando se necesita como servicio independiente.
 - `wsgi.py`: expone el servidor Flask interno de Dash para Gunicorn/Render.
 - `render.yaml`: despliega `wsgi:server` en producción.
 - `requirements.txt`: dependencias Python.
 - `.env`: configuración local sensible; no debe compartirse.
-- `dash-server.out.log` y `dash-server.err.log`: salidas generadas al ejecutar el servidor, no código fuente.
-

@@ -73,7 +73,7 @@ def _configuration(**overrides: Any) -> ReportConfiguration:
 
 
 def test_report_fields_associate_labels_without_targeting_composite_containers() -> None:
-    text_field = reports_page._field("TÃ­tulo", "Title", dcc.Input(id="report-title-test"))
+    text_field = reports_page._field("Título", "Title", dcc.Input(id="report-title-test"))
     group_field = reports_page._field(
         "Formato",
         "Format",

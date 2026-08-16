@@ -1,6 +1,7 @@
 # API HTTP
 
-Esta carpeta contiene la infraestructura FastAPI. La aplicación desplegada por `run_api.py` es `app.api:app`, definida en `src/app/api/__init__.py`.
+Esta carpeta contiene la infraestructura FastAPI. Su aplicación es `app.api:app`, definida en
+`src/app/api/__init__.py`.
 
 ## Archivos Python
 
@@ -12,7 +13,7 @@ Esta carpeta contiene la infraestructura FastAPI. La aplicación desplegada por 
 ## Ejecución
 
 ```powershell
-python run_api.py
+uvicorn app.api:app
 ```
 
 FastAPI expone además documentación OpenAPI en `/docs` y `/redoc` cuando el servidor está activo.

@@ -113,6 +113,9 @@ def test_source_invalidation_changes_generation_without_global_clear(
 
     # Assert
     assert repository.analytics_cache_generation("fra") == 1
+    assert repository.analytics_cache_generation("fra:2019") == 1
+    assert repository.analytics_cache_generation("fra:2023") == 1
+    assert repository.analytics_cache_generation("fra:catalog") == 1
     assert cache.get("unrelated") == "preserved"
     assert repository.get_fra_indicator_control_document in deleted
     assert repository.get_ilga_document_by_year not in deleted

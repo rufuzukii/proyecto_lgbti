@@ -13,6 +13,7 @@ class FraSurveyConfig:
     dataset_code: str
     source_name: str
     source_url: str
+    csv_versions: tuple[str, ...]
     enabled: bool = True
 
     def label(self, language: str = "es") -> str:
@@ -32,6 +33,7 @@ FRA_SURVEYS: Final[tuple[FraSurveyConfig, ...]] = (
             "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/"
             "eu-lgbtiq-survey-iii"
         ),
+        csv_versions=("current_wide",),
     ),
     FraSurveyConfig(
         survey_id="fra_survey_ii",
@@ -41,6 +43,7 @@ FRA_SURVEYS: Final[tuple[FraSurveyConfig, ...]] = (
         dataset_code="eu_lgbti_survey_ii",
         source_name="EU LGBTI Survey II",
         source_url="https://fra.europa.eu/en/project/2018/eu-lgbti-survey-ii",
+        csv_versions=("legacy_long",),
     ),
     FraSurveyConfig(
         survey_id="fra_survey_i",
@@ -53,6 +56,7 @@ FRA_SURVEYS: Final[tuple[FraSurveyConfig, ...]] = (
             "https://fra.europa.eu/en/publications-and-resources/data-and-maps/"
             "survey-fundamental-rights-lesbian-gay-bisexual-and"
         ),
+        csv_versions=("legacy_long",),
     ),
 )
 

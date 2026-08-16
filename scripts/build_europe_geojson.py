@@ -72,7 +72,8 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="rainbowlens-geodata-") as directory:
         archive = Path(directory) / "ne_50m_admin_0_countries.zip"
-        urllib.request.urlretrieve(NATURAL_EARTH_URL, archive)
+        # The source is a fixed HTTPS Natural Earth endpoint, never user input.
+        urllib.request.urlretrieve(NATURAL_EARTH_URL, archive)  # nosec B310
         build_europe_geojson(str(archive), args.output, tolerance=args.tolerance)
 
 

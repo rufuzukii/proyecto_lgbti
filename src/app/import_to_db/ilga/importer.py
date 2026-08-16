@@ -102,16 +102,6 @@ def parse_ilga_json_text(
     return normalized if isinstance(payload, list) else normalized[0]
 
 
-def generate_ilga_json(
-    file_paths: Iterable[Path | str],
-) -> list[dict]:
-    documents_by_year: dict[int, dict] = {}
-    for file_path in file_paths:
-        document = parse_ilga_csv(file_path)
-        documents_by_year[document["year"]] = document
-    return list(documents_by_year.values())
-
-
 def extract_ilga_year(file_name: str) -> int | None:
     match = YEAR_PATTERN.search(file_name)
     return int(match.group(1)) if match else None

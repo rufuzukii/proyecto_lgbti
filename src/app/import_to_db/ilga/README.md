@@ -35,17 +35,3 @@ Persiste documentos anuales en `Indicator_ilga` mediante una sola lectura previa
 `bulk_write`. La identidad física es `(dataset, year)` y los códigos de país deben ser únicos dentro
 del documento. No usa `upsert`: una edición ya existente se compara y se omite, registrando los
 campos diferentes, conforme al carácter inmutable de la publicación.
-
-## `historical.py`
-
-Carga una carpeta completa pasando cada JSON por `parse_ilga_json()` antes de persistir. El año 2026
-se detecta dentro del JSON y se omite antes de invocar cualquier escritura.
-
-```powershell
-$env:PYTHONPATH='src'
-.\.venv\Scripts\python.exe -m app.import_to_db.ilga.historical `
-  '<ruta-datos-ilga>' --dry-run
-```
-
-Sin `--dry-run`, crea/verifica el índice único, inserta todos los años nuevos en un lote e invalida
-las cachés de analítica legal y Tendencias.

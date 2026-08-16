@@ -58,47 +58,47 @@ def initialize_mongo_indexes() -> None:
 def ensure_fra_indexes() -> None:
     """Create only the indexes required by FRA import and Statistics queries."""
     indexes = [
-            IndexModel([("code", ASCENDING)], name="fra_code"),
-            IndexModel(
-                [
-                    ("code", ASCENDING),
-                    ("category", ASCENDING),
-                    ("specific_category", ASCENDING),
-                    ("question", ASCENDING),
-                    ("survey_year", ASCENDING),
-                    ("value_bucket", ASCENDING),
-                ],
-                unique=True,
-                name="fra_question_year_bucket_unique",
-            ),
-            IndexModel(
-                [("dataset", ASCENDING), ("survey_year", DESCENDING)],
-                name="fra_dataset_survey_year",
-            ),
-            IndexModel(
-                [
-                    ("category", ASCENDING),
-                    ("specific_category", ASCENDING),
-                    ("question", ASCENDING),
-                    ("code", ASCENDING),
-                ],
-                name="fra_category_question_code",
-            ),
-            IndexModel(
-                [
-                    ("category", ASCENDING),
-                    ("survey_year", DESCENDING),
-                    ("specific_category", ASCENDING),
-                    ("question", ASCENDING),
-                    ("code", ASCENDING),
-                ],
-                name="fra_category_year_question_code",
-            ),
-            IndexModel(
-                [("survey_year", DESCENDING), ("code", ASCENDING)],
-                name="fra_year_code",
-            ),
-        ]
+        IndexModel([("code", ASCENDING)], name="fra_code"),
+        IndexModel(
+            [
+                ("code", ASCENDING),
+                ("category", ASCENDING),
+                ("specific_category", ASCENDING),
+                ("question", ASCENDING),
+                ("survey_year", ASCENDING),
+                ("value_bucket", ASCENDING),
+            ],
+            unique=True,
+            name="fra_question_year_bucket_unique",
+        ),
+        IndexModel(
+            [("dataset", ASCENDING), ("survey_year", DESCENDING)],
+            name="fra_dataset_survey_year",
+        ),
+        IndexModel(
+            [
+                ("category", ASCENDING),
+                ("specific_category", ASCENDING),
+                ("question", ASCENDING),
+                ("code", ASCENDING),
+            ],
+            name="fra_category_question_code",
+        ),
+        IndexModel(
+            [
+                ("category", ASCENDING),
+                ("survey_year", DESCENDING),
+                ("specific_category", ASCENDING),
+                ("question", ASCENDING),
+                ("code", ASCENDING),
+            ],
+            name="fra_category_year_question_code",
+        ),
+        IndexModel(
+            [("survey_year", DESCENDING), ("code", ASCENDING)],
+            name="fra_year_code",
+        ),
+    ]
     for survey in FRA_SURVEYS:
         if not survey.enabled:
             continue

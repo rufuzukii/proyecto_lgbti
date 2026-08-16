@@ -181,7 +181,7 @@ COUNTRY_NAME_CODES = {
     "croacia": "HR",
 }
 ISO3_TO_ISO2 = {iso3: iso2 for iso2, iso3 in ISO2_TO_ISO3.items()}
-NON_GEOGRAPHIC_CODES = {"EU27"}
+NON_GEOGRAPHIC_CODES = {"EU27", "EU28"}
 PLOTLY_TRANSPARENT = "rgba(0,0,0,0)"
 
 
@@ -728,7 +728,7 @@ def _append_missing_response_countries(
         if not isinstance(country, dict):
             continue
         country_key = _country_key(country.get("iso"), country.get("country"))
-        if not country_key or country_key == "EU27" or country_key in represented:
+        if not country_key or country_key in NON_GEOGRAPHIC_CODES or country_key in represented:
             continue
         complete_rows.append(
             {
@@ -770,8 +770,8 @@ def _response_comparison_dataframe(
         dataframe["iso"] = ""
     dataframe = dataframe[
         dataframe["country"].ne("")
-        & dataframe["iso"].ne("EU27")
-        & dataframe["country"].str.upper().ne("EU27")
+        & ~dataframe["iso"].isin(NON_GEOGRAPHIC_CODES)
+        & ~dataframe["country"].str.upper().isin(NON_GEOGRAPHIC_CODES)
     ]
     if dataframe.empty:
         return pd.DataFrame()
@@ -2201,7 +2201,10 @@ def build_ilga_response_details_chart(
         normalize_country_code(code, name)
         for code, name in zip(dataframe["country_code"], dataframe["country_name"], strict=True)
     ]
-    dataframe = dataframe[dataframe["country_code"].ne("") & dataframe["country_code"].ne("EU27")]
+    dataframe = dataframe[
+        dataframe["country_code"].ne("")
+        & ~dataframe["country_code"].isin(NON_GEOGRAPHIC_CODES)
+    ]
     if dataframe.empty:
         return empty_figure("No hay países comparables para esta selección.")
     dataframe["country_label"] = [
@@ -2500,7 +2503,7 @@ def build_temporal_evolution_chart(
     dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
     dataframe = dataframe[
         dataframe["iso"].ne("")
-        & dataframe["iso"].ne("EU27")
+        & ~dataframe["iso"].isin(NON_GEOGRAPHIC_CODES)
         & dataframe["year"].notna()
         & dataframe["value"].notna()
         & dataframe["value"].between(0, 100)

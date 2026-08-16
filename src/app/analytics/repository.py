@@ -612,50 +612,6 @@ def get_fra_indicator_documents(
 
 
 @cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-def get_fra_historical_documents(
-    code: str,
-    category: str,
-    specific_category: str,
-    question: str,
-) -> list[dict[str, Any]]:
-    """Load one exact FRA question across editions without merging its document metadata."""
-    clean_code = str(code or "").strip()
-    clean_category = str(category or "").strip()
-    clean_specific_category = str(specific_category or "").strip()
-    clean_question = str(question or "").strip()
-    if not clean_code or not is_valid_fra_category(clean_category) or not clean_question:
-        return []
-
-    query = _fra_statistic_document_filter(category=clean_category)
-    query.update({"code": clean_code, "question": clean_question})
-    query["specific_category"] = clean_specific_category or {"$in": [None, ""]}
-    projection = {
-        "_id": 0,
-        "answers": 1,
-        "category": 1,
-        "code": 1,
-        "dataset": 1,
-        "metadata": 1,
-        "question": 1,
-        "source": 1,
-        "specific_category": 1,
-        "survey_year": 1,
-    }
-    try:
-        documents: list[dict[str, Any]] = []
-        for survey in FRA_SURVEYS:
-            if survey.enabled:
-                documents.extend(_mongo_collection(survey.collection).find(query, projection))
-        return documents
-    except Exception:
-        logger.exception(
-            "fra_historical_series_read_failed",
-            extra={"code": clean_code, "category": clean_category},
-        )
-        raise
-
-
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_fra_years(code: str | None = None) -> list[int]:
     query: dict[str, Any] = {}
     clean_code = str(code or "").strip()
@@ -1351,8 +1307,13 @@ def analytics_cache_generation(source: str) -> int:
     value = cache.get(f"analytics-generation:{clean_source}")
     try:
         return int(value or 0)
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return 0
+
+
+def fra_cache_namespace(year: int | None) -> str:
+    """Keep each FRA edition in an independent cache generation namespace."""
+    return f"fra:{int(year)}" if year is not None else "fra:catalog"
 
 
 def invalidate_analytics_cache(source: str | None = None) -> None:
@@ -1361,19 +1322,24 @@ def invalidate_analytics_cache(source: str | None = None) -> None:
     if not clean_source:
         cache.clear()
     else:
-        generation_key = f"analytics-generation:{clean_source}"
-        cache.set(
-            generation_key,
-            analytics_cache_generation(clean_source) + 1,
-            timeout=0,
-        )
+        generation_namespaces = {clean_source}
+        if clean_source == "fra":
+            generation_namespaces.update(
+                fra_cache_namespace(survey.year) for survey in FRA_SURVEYS if survey.enabled
+            )
+            generation_namespaces.add(fra_cache_namespace(None))
+        for namespace in generation_namespaces:
+            cache.set(
+                f"analytics-generation:{namespace}",
+                analytics_cache_generation(namespace) + 1,
+                timeout=0,
+            )
         functions_by_source = {
             "fra": (
                 get_fra_categories,
                 get_fra_indicator_answers,
                 get_fra_indicator_control_document,
                 get_fra_indicator_documents,
-                get_fra_historical_documents,
                 get_fra_mongo_indicators_by_category,
                 get_fra_years,
             ),

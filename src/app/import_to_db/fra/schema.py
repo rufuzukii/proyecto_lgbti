@@ -133,6 +133,8 @@ COLUMN_ALIASES = {
     "pais": "country",
     "territory": "country",
     "country_code": "country_code",
+    # Survey II calls this field CountryCode although its values are names.
+    "countrycode": "country",
     "iso": "country_code",
     "iso2": "country_code",
     "topic": "topic",
@@ -140,6 +142,7 @@ COLUMN_ALIASES = {
     "category": "category",
     "categoria": "category",
     "question": "question",
+    "question_label": "question",
     "pregunta": "question",
     "indicator": "question",
     "indicador": "question",
@@ -229,6 +232,9 @@ COUNTRY_NAME_CODES = {
     "spain": "ES",
     "espana": "ES",
     "sweden": "SE",
+    "united kingdom": "GB",
+    "eu 28": "EU28",
+    "eu-28": "EU28",
 }
 COUNTRY_CODE_ALIASES = {"EL": "GR", "UK": "GB"}
 
@@ -421,6 +427,7 @@ def normalize_fra_csv(
     *,
     path_filters: Mapping[str, str] | None = None,
     file_name: Path | str | None = None,
+    survey_year: int | None = None,
 ) -> pd.DataFrame:
     if schema.version == "current_wide":
         normalized = normalize_current_fra_csv(
@@ -435,6 +442,7 @@ def normalize_fra_csv(
             schema=schema,
             path_filters=path_filters,
             file_name=file_name,
+            preserve_question_slashes=survey_year == 2019,
         )
     else:
         raise UnsupportedFraCsvSchemaError(f"unsupported_fra_csv_schema:{schema.version}")
@@ -524,6 +532,7 @@ def normalize_legacy_fra_csv(
     *,
     path_filters: Mapping[str, str] | None = None,
     file_name: Path | str | None = None,
+    preserve_question_slashes: bool = False,
 ) -> pd.DataFrame:
     legacy_schema = schema or detect_fra_csv_schema(dataframe)
     if legacy_schema.version != "legacy_long":
@@ -554,7 +563,9 @@ def normalize_legacy_fra_csv(
         if not is_valid_fra_category(topic):
             continue
         specific_category, question = split_fra_question(
-            question_text, fallback_category=record.get("category") or topic
+            question_text,
+            fallback_category=record.get("category") or topic,
+            split_slash=not preserve_question_slashes,
         )
         indicator_id = (
             record.get("indicator_id") or metadata.indicator_id or build_fra_question_code(question)
@@ -646,16 +657,17 @@ def extract_fra_csv_metadata(
             source_year = extract_fra_survey_year(raw_label) or source_year
         elif label in {"filters", "filtros"}:
             response, filters = parse_fra_filter_metadata(raw_value)
-        elif label in {"source", "fuente"}:
-            source = raw_value or source
+        elif label in {"source", "fuente", "source_of_data"}:
+            if raw_value and raw_value.casefold() != "placeholder":
+                source = raw_value
             source_year = extract_fra_survey_year(raw_value) or source_year
         elif label in {"survey_year", "survey year", "ano_encuesta", "anio_encuesta"}:
             metadata_year = extract_fra_survey_year(raw_value) or metadata_year
-        elif label in {"date", "fecha"}:
+        elif label in {"date", "fecha", "last_update"}:
             downloaded_at = raw_value
-        elif label in {"question_code", "codigo_pregunta", "indicator_code"}:
+        elif label in {"question_code", "codigo_pregunta", "indicator_code", "code"}:
             indicator_id = raw_value
-        elif label in {"hyperlink", "link", "url"}:
+        elif label in {"hyperlink", "link", "url", "hyperlink_to_the_variable"}:
             hyperlink = raw_value
         elif label in {"note", "nota"}:
             note = raw_value
@@ -829,18 +841,27 @@ def validate_fra_filter_scope(
 def filename_declares_all_all(file_name: Path | str | None) -> bool:
     if not file_name:
         return False
-    stem = normalize_header(Path(file_name).stem)
+    path = Path(file_name)
+    stem = normalize_header(path.stem)
+    if stem in {"no_filters", "no_filter"}:
+        parents = [normalize_header(part) for part in path.parts[-3:-1]]
+        return len(parents) == 2 and parents == ["all", "all"]
     return stem.endswith("_all_all") or "_all_all_" in f"_{stem}_"
 
 
-def split_fra_question(question: str, *, fallback_category: str) -> tuple[str, str]:
+def split_fra_question(
+    question: str,
+    *,
+    fallback_category: str,
+    split_slash: bool = True,
+) -> tuple[str, str]:
     clean = _clean(question)
     category = _clean(fallback_category) or "Uncategorized"
     if ">" in clean:
         left, right = clean.split(">", 1)
         category = left.strip() or category
         clean = right.strip() or clean
-    if "/" in clean:
+    if split_slash and "/" in clean:
         left, right = clean.split("/", 1)
         category = left.strip() or category
         clean = right.strip() or clean

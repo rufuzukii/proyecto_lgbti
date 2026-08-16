@@ -5,7 +5,6 @@ from typing import Any
 
 from dash import dcc
 
-from app.dash.i18n import ui_text
 from app.dash.pages import spain
 
 
@@ -128,25 +127,3 @@ def test_indicator_navigation_selects_first_option_when_previous_value_disappear
     )
 
     assert selected == ("one", "removed")
-
-
-def test_new_spain_control_translations_exist_in_both_languages() -> None:
-    # Arrange
-    keys = (
-        "spain_year",
-        "spain_document",
-        "spain_indicator",
-        "spain_select_year",
-        "spain_select_document",
-        "spain_select_indicator",
-        "spain_previous",
-        "spain_next",
-        "spain_no_documents",
-        "spain_no_content",
-        "spain_figure",
-        "spain_source",
-    )
-
-    # Act / Assert
-    assert all(ui_text(key, "es") != key for key in keys)
-    assert all(ui_text(key, "en") != key for key in keys)

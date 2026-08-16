@@ -8,7 +8,7 @@ services:
   - type: web
     name: proyecto-lgbti
     runtime: python
-    buildCommand: python -m pip install -e . && plotly_get_chrome -y
+    buildCommand: python -m pip install --upgrade pip==26.2.1 setuptools==83.0.0 && python -m pip install -e . && plotly_get_chrome -y
     startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --worker-class gthread --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile -
     healthCheckPath: /health
     envVars:

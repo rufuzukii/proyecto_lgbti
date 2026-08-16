@@ -23,6 +23,7 @@ from app.analytics.percentage_display import (
 from app.analytics.repository import (
     ANALYTICS_CACHE_TIMEOUT_SECONDS,
     analytics_cache_generation,
+    fra_cache_namespace,
     get_fra_indicator_answers,
     get_fra_indicator_control_document,
     get_fra_indicator_documents,
@@ -263,7 +264,7 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
             continue
         country_name = repair_text_encoding(raw_row.get("country_name")).strip()
         country_code = normalize_country_code(raw_row.get("country_code"), country_name)
-        if not country_code or not country_name or country_code == "EU27":
+        if not country_code or not country_name or re.fullmatch(r"EU\d{2}", country_code):
             discarded["missing_country"] += 1
             continue
         document_id = str(raw_row.get("document_id") or "")
@@ -557,7 +558,7 @@ def get_fra_control_payload(
     clean_category = str(category or "").strip()
     clean_year = str(int(year)) if year is not None else "all-years"
     cache_key = (
-        f"fra-controls-v5:{analytics_cache_generation('fra')}:"
+        f"fra-controls-v5:{analytics_cache_generation(fra_cache_namespace(year))}:"
         f"{clean_code}:{clean_category}:{clean_year}"
     )
     cached = _server_cache_get(cache_key)
@@ -765,9 +766,9 @@ def _prepare_fra_response_details(
     missing_iso_mask = detail["country_code"].eq("")
     missing_country_mask = detail["country_name"].eq("")
     missing_response_mask = detail["response"].eq("")
-    aggregate_mask = detail["country_code"].eq("EU27") | detail["country_name"].str.upper().eq(
-        "EU27"
-    )
+    aggregate_mask = detail["country_code"].str.upper().str.fullmatch(
+        r"EU\d{2}", na=False
+    ) | detail["country_name"].str.upper().str.fullmatch(r"EU-?\d{2}", na=False)
     discarded_mask = (
         missing_iso_mask | missing_country_mask | missing_response_mask | aggregate_mask
     )
@@ -829,8 +830,8 @@ def _fra_country_universe(dataframe: pd.DataFrame, year: int | None) -> pd.DataF
     if year is not None and "year" in universe:
         universe = universe[(universe["year"].isna()) | (universe["year"] == year)]
     universe = universe[
-        universe["iso"].astype(str).str.upper().ne("EU27")
-        & universe["country"].astype(str).str.upper().ne("EU27")
+        ~universe["iso"].astype(str).str.upper().str.fullmatch(r"EU\d{2}", na=False)
+        & ~universe["country"].astype(str).str.upper().str.fullmatch(r"EU-?\d{2}", na=False)
     ]
     optional_columns = [
         column for column in ("question", "question_code", "indicator_id") if column in universe
@@ -857,7 +858,7 @@ def _fra_dataframe_for_code(
         return _empty_fra_dataframe()
     clean_category = str(category or "").strip()
     cache_key = (
-        f"fra-normalized-frame-v5:{analytics_cache_generation('fra')}:"
+        f"fra-normalized-frame-v5:{analytics_cache_generation(fra_cache_namespace(year))}:"
         f"{code}:{clean_category}:{year if year is not None else 'all-years'}"
     )
     cached = _server_cache_get(cache_key)
@@ -893,7 +894,7 @@ def _fra_dataframe_for_code(
 
 def _fra_statistics_cache_key(query: FraStatisticsQuery) -> str:
     identity = {
-        "cache_generation": analytics_cache_generation("fra"),
+        "cache_generation": analytics_cache_generation(fra_cache_namespace(query.year)),
         "year": query.year,
         "countries": sorted(str(country) for country in query.countries),
         "category": query.category,
@@ -1085,7 +1086,7 @@ def _experience_radar_base_dataframe(year: int | None) -> pd.DataFrame:
     matched = matched[matched["percentage"].between(0, 100, inclusive="both")]
     matched = matched[
         matched["iso"].astype(str).str.strip().ne("")
-        & matched["iso"].astype(str).str.upper().ne("EU27")
+        & ~matched["iso"].astype(str).str.upper().str.fullmatch(r"EU\d{2}", na=False)
     ]
     compact_columns = [
         "iso",
@@ -1784,7 +1785,7 @@ def _complete_country_ranking(
     universe = universe[
         universe["country"].notna()
         & universe["country"].astype(str).str.strip().ne("")
-        & universe["iso"].ne("EU27")
+        & ~universe["iso"].str.fullmatch(r"EU\d{2}", na=False)
     ].drop_duplicates("iso", keep="first")
     if countries:
         selected = {normalize_country_code(country) or str(country) for country in countries}

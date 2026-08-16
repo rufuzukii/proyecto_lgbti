@@ -61,7 +61,42 @@ FRA_SURVEY_PARTICIPANT_COUNTRY_CODES_BY_YEAR: dict[int, frozenset[str]] = {
             "SI",
             "SK",
         }
-    )
+    ),
+    # Survey II contains the then EU-28 plus North Macedonia and Serbia.
+    2019: frozenset(
+        {
+            "AT",
+            "BE",
+            "BG",
+            "CY",
+            "CZ",
+            "DE",
+            "DK",
+            "EE",
+            "ES",
+            "FI",
+            "FR",
+            "GB",
+            "GR",
+            "HR",
+            "HU",
+            "IE",
+            "IT",
+            "LT",
+            "LU",
+            "LV",
+            "MK",
+            "MT",
+            "NL",
+            "PL",
+            "PT",
+            "RO",
+            "RS",
+            "SE",
+            "SI",
+            "SK",
+        }
+    ),
 }
 
 RANKED_REASON_RESPONSE_KEYS = ("1st", "2nd", "3rd", "not selected")

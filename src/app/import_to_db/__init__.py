@@ -12,10 +12,7 @@ if TYPE_CHECKING:
     )
     from .fra import (
         build_fra_questions_payload,
-        convert_fra_csv_files,
         count_fra_questions,
-        generate_fra_json,
-        generate_fra_questions_json,
         parse_answer_survey_csv,
         parse_answer_survey_csv_text,
         parse_fra_csv,
@@ -23,7 +20,6 @@ if TYPE_CHECKING:
     )
     from .ilga import (
         extract_ilga_year,
-        generate_ilga_json,
         parse_ilga_csv,
         parse_ilga_csv_text,
         parse_ilga_json_text,
@@ -38,15 +34,11 @@ _LAZY_EXPORTS = {
     "parse_felgtbi_pdf_links": ("app.import_to_db.felgtbi", "parse_felgtbi_pdf_links"),
     "build_fra_questions_payload": ("app.import_to_db.fra", "build_fra_questions_payload"),
     "count_fra_questions": ("app.import_to_db.fra", "count_fra_questions"),
-    "convert_fra_csv_files": ("app.import_to_db.fra", "convert_fra_csv_files"),
-    "generate_fra_json": ("app.import_to_db.fra", "generate_fra_json"),
-    "generate_fra_questions_json": ("app.import_to_db.fra", "generate_fra_questions_json"),
     "parse_answer_survey_csv": ("app.import_to_db.fra", "parse_answer_survey_csv"),
     "parse_answer_survey_csv_text": ("app.import_to_db.fra", "parse_answer_survey_csv_text"),
     "parse_fra_csv": ("app.import_to_db.fra", "parse_fra_csv"),
     "parse_fra_csv_text": ("app.import_to_db.fra", "parse_fra_csv_text"),
     "extract_ilga_year": ("app.import_to_db.ilga", "extract_ilga_year"),
-    "generate_ilga_json": ("app.import_to_db.ilga", "generate_ilga_json"),
     "parse_ilga_csv": ("app.import_to_db.ilga", "parse_ilga_csv"),
     "parse_ilga_csv_text": ("app.import_to_db.ilga", "parse_ilga_csv_text"),
     "parse_ilga_json_text": ("app.import_to_db.ilga", "parse_ilga_json_text"),
@@ -84,13 +76,9 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "build_fra_questions_payload",
-    "convert_fra_csv_files",
     "count_fra_questions",
     "discover_felgtbi_pdfs",
     "extract_ilga_year",
-    "generate_fra_json",
-    "generate_fra_questions_json",
-    "generate_ilga_json",
     "parse_answer_survey_csv",
     "parse_answer_survey_csv_text",
     "parse_felgtbi_pdf",

@@ -34,5 +34,5 @@ callbacks/recursos del frontend.
 4. Los archivos aceptados se normalizan y quedan pendientes en PostgreSQL.
 5. Un administrador aprueba la persistencia final en MongoDB.
 
-FastAPI (`run_api.py`) y la autenticación JSON (`run_auth.py`) son servicios separados para
+FastAPI (`app.api:app`) y la factoría de autenticación JSON son servicios separados para
 desarrollo/integración. Render arranca únicamente `wsgi:server`.

@@ -94,6 +94,15 @@ def test_public_email_links_require_an_explicit_deployment_url(
 ) -> None:
     monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
     monkeypatch.delenv("RENDER_EXTERNAL_URL", raising=False)
+    monkeypatch.delenv("RENDER_EXTERNAL_HOSTNAME", raising=False)
 
     with pytest.raises(mail_service.MailDeliveryError, match="public_base_url_not_configured"):
         mail_service.public_base_url()
+
+
+def test_public_email_links_use_the_render_hostname(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("RENDER_EXTERNAL_URL", raising=False)
+    monkeypatch.setenv("RENDER_EXTERNAL_HOSTNAME", "rainbowlens.onrender.com")
+
+    assert mail_service.public_base_url() == "https://rainbowlens.onrender.com"

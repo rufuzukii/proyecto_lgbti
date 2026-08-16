@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 import app.api as api_module
-import app.api.routers.data_io as data_io_router
 import app.api.routers.reports as reports_router
 from app.api import create_api_app
 from app.reports.service import ReportGenerationError
@@ -147,74 +145,6 @@ def test_report_endpoint_hides_generation_details(
     assert "mongo secret" not in response.text
 
 
-def test_data_import_queues_review_without_direct_persistence(
-    api_client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    # Arrange
-    csv_path = tmp_path / "rainbow.csv"
-    csv_path.write_text("Country,Score\nSpain,70\n", encoding="utf-8")
-    queued = []
-    monkeypatch.setattr(data_io_router, "IMPORT_BASE_DIR", tmp_path.resolve())
-    monkeypatch.setattr(
-        data_io_router,
-        "parse_ilga_csv",
-        lambda path, year: {"source_type": "ILGA_RAINBOW", "year": year, "path": path.name},
-    )
-    monkeypatch.setattr(
-        data_io_router,
-        "register_pending_import",
-        lambda *, file_name, file_json: queued.append((file_name, file_json)),
-    )
-
-    # Act
-    response = api_client.post(
-        "/data/import",
-        headers={"X-API-Key": ADMIN_KEY},
-        json={"rainbow_csv": "rainbow.csv", "year": 2026},
-    )
-
-    # Assert
-    assert response.status_code == 202
-    assert response.json() == {
-        "status": "pending_review",
-        "sources": ["rainbow.csv"],
-        "queued": 1,
-    }
-    assert len(queued) == 1
-    assert queued[0][1][0]["year"] == 2026
-
-
-@pytest.mark.parametrize(
-    ("payload", "expected_detail"),
-    [
-        ({}, "import_source_required"),
-        ({"rainbow_csv": "../outside.csv"}, "invalid_import_csv"),
-    ],
-)
-def test_data_import_rejects_missing_or_unsafe_sources(
-    api_client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    payload: dict[str, str],
-    expected_detail: str,
-) -> None:
-    # Arrange
-    monkeypatch.setattr(data_io_router, "IMPORT_BASE_DIR", tmp_path.resolve())
-
-    # Act
-    response = api_client.post(
-        "/data/import",
-        headers={"X-API-Key": ADMIN_KEY},
-        json=payload,
-    )
-
-    # Assert
-    assert response.status_code == 400
-    assert response.json() == {"detail": expected_detail}
-
-
 def test_removed_placeholder_routes_are_not_registered(api_client: TestClient) -> None:
     # Arrange
     general_headers = {"X-API-Key": GENERAL_KEY}
@@ -255,17 +185,5 @@ def test_fastapi_has_no_duplicate_application_routes(api_client: TestClient) -> 
         ("GET", "/health"),
         ("GET", "/edu/units"),
         ("POST", "/reports"),
-        ("POST", "/data/import"),
     }.issubset(set(registered))
     assert len(registered) == len(set(registered))
-
-
-def test_admin_import_cannot_be_called_with_a_general_key(api_client: TestClient) -> None:
-    # Arrange
-    headers = {"X-API-Key": GENERAL_KEY}
-
-    # Act
-    response = api_client.post("/data/import", headers=headers, json={})
-
-    # Assert
-    assert response.status_code == 401

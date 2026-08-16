@@ -57,7 +57,8 @@ def select_word_search_terms(
         if normalized and len(normalized) <= max_length:
             unique.setdefault(normalized, term)
     candidates = list(unique.values())
-    random.Random(seed).shuffle(candidates)
+    # Deterministic game layout; this randomness has no security purpose.
+    random.Random(seed).shuffle(candidates)  # nosec B311
     return tuple(candidates[: min(requested, len(candidates))])
 
 
@@ -82,7 +83,8 @@ def generate_word_search(
         if word and _can_fit(word, rows, columns, direction_names):
             unique_words.setdefault(word, None)
 
-    randomizer = random.Random(seed)
+    # Deterministic game layout; this randomness has no security purpose.
+    randomizer = random.Random(seed)  # nosec B311
     ordered_words = list(unique_words)
     randomizer.shuffle(ordered_words)
     ordered_words.sort(key=len, reverse=True)

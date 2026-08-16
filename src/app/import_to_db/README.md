@@ -26,9 +26,3 @@ revisión ni modifica el catálogo FRA antes de aprobar.
 El antiguo `ImportErrorHandler` sin consumidores y el helper duplicado `test_connection()` se
 eliminaron. El health check central es la única comprobación de conectividad. Las excepciones
 técnicas se registran en servidor y las capas de presentación muestran mensajes genéricos.
-
-## Mantenimiento FRA
-
-`fra/backfill_year.py` es una herramienta manual para instalaciones históricas. No se ejecuta
-durante el arranque ni durante peticiones; extrae el año únicamente de evidencia disponible y
-registra los documentos no resolubles.

@@ -1,5 +1,5 @@
 {
-  "include": ["src", "tests", "run_api.py", "run_auth.py", "run_dash.py", "wsgi.py"],
+  "include": ["src", "tests", "wsgi.py"],
   "exclude": ["**/__pycache__", ".venv", ".pytest_cache"],
   "venvPath": ".",
   "venv": ".venv",

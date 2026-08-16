@@ -46,9 +46,14 @@ FILTER_PRIORITY: tuple[str, ...] = (
 )
 
 
-def parse_fra_csv(file_path: Path | str, *, root: Path | str | None = None) -> JsonPayload:
+def parse_fra_csv(
+    file_path: Path | str,
+    *,
+    root: Path | str | None = None,
+    survey_year: int | None = None,
+) -> JsonPayload:
     path = Path(file_path)
-    documents = parse_answer_survey_csv(path, root=root)
+    documents = parse_answer_survey_csv(path, root=root, survey_year=survey_year)
     return build_fra_questions_payload(documents, file_name=path.name)
 
 
@@ -56,20 +61,15 @@ def parse_fra_csv_text(
     csv_text: str,
     *,
     file_name: Path | str | None = None,
+    survey_year: int | None = None,
 ) -> JsonPayload:
-    documents = parse_answer_survey_csv_text(csv_text, file_name=file_name)
+    documents = parse_answer_survey_csv_text(
+        csv_text, file_name=file_name, survey_year=survey_year
+    )
     return build_fra_questions_payload(
         documents,
         file_name=Path(file_name).name if file_name else "",
     )
-
-
-def generate_fra_questions_json(directory: Path | str) -> JsonPayload:
-    base_dir = Path(directory)
-    documents: list[dict[str, Any]] = []
-    for csv_path in sorted(base_dir.rglob("*.csv")):
-        documents.extend(parse_answer_survey_csv(csv_path, root=base_dir))
-    return build_fra_questions_payload(documents, file_name=base_dir.name)
 
 
 def build_fra_questions_payload(
@@ -125,6 +125,9 @@ def _build_question_document(document: dict[str, Any], code: str) -> dict[str, A
         "specific_category": specific_category,
         "question": question_text,
         "survey_year": survey_year,
+        "survey_id": survey.survey_id if survey else "",
+        "indicator_id": code,
+        "question_code": str(document.get("external_code") or code).strip(),
         "answers": [],
     }
     metadata = document.get("metadata")

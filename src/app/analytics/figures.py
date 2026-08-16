@@ -103,6 +103,10 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
                     "title": ui_text("chart_percentage", language),
                     "ticksuffix": "%",
                     "thickness": 13,
+                    "len": 0.7,
+                    "x": -0.035,
+                    "xanchor": "right",
+                    "y": 0.5,
                 },
                 hovertemplate=(
                     "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
@@ -121,7 +125,7 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
         )
 
     figure.update_layout(
-        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        margin={"l": 88, "r": 0, "t": 0, "b": 0},
         dragmode=False,
         geo={
             "scope": "europe",

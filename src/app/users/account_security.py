@@ -12,7 +12,8 @@ from app.mongo import get_mongo_collection
 from app.privacy.policy import get_privacy_policy_config
 
 ACCOUNT_COLLECTION = "user_account_security"
-TOKEN_COLLECTION = "user_security_tokens"
+# This is a MongoDB collection name, not a credential.
+TOKEN_COLLECTION = "user_security_tokens"  # nosec B105
 SECURITY_AUDIT_COLLECTION = "user_security_audit"
 TokenPurpose = Literal["email_verification", "password_reset"]
 

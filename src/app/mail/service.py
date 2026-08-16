@@ -5,6 +5,7 @@ import smtplib
 import ssl
 from dataclasses import dataclass
 from email.message import EmailMessage
+from urllib.parse import urlsplit
 
 
 class MailDeliveryError(RuntimeError):
@@ -55,8 +56,21 @@ def send_email(message: EmailMessage) -> None:
 def public_base_url() -> str:
     configured = (os.getenv("PUBLIC_BASE_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").strip()
     if not configured:
+        render_hostname = (os.getenv("RENDER_EXTERNAL_HOSTNAME") or "").strip()
+        configured = f"https://{render_hostname}" if render_hostname else ""
+    if not configured:
         raise MailDeliveryError("public_base_url_not_configured")
-    if not configured.startswith(("http://", "https://")):
+    parsed = urlsplit(configured)
+    production = os.getenv("APP_ENV", "local").strip().casefold() == "production" and os.getenv(
+        "LOCAL_MODE", ""
+    ).strip().casefold() not in {"1", "true", "yes", "on"}
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or (production and parsed.scheme != "https")
+    ):
         raise MailDeliveryError("invalid_public_base_url")
     return configured.rstrip("/")
 

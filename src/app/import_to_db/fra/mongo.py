@@ -83,6 +83,9 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
     prepared: dict[str, Any] = {
         "_id": _resolve_object_id(source.get("id")),
         "code": code,
+        "indicator_id": str(source.get("indicator_id") or code).strip(),
+        "question_code": str(source.get("question_code") or code).strip(),
+        "canonical_indicator": str(source.get("canonical_indicator") or code).strip(),
         "dataset": survey.dataset_code,
         "record_type": "statistic",
         "source": str(source.get("source") or "").strip(),
@@ -90,7 +93,20 @@ def _prepare_indicator_document(document: dict[str, Any]) -> dict[str, Any]:
         "specific_category": str(source.get("specific_category") or "").strip(),
         "question": str(source.get("question") or "").strip(),
         "survey_year": survey_year,
+        "survey_id": survey.survey_id,
     }
+    raw_metadata = source.get("metadata")
+    metadata: dict[str, Any] = deepcopy(raw_metadata) if isinstance(raw_metadata, dict) else {}
+    metadata.update(
+        {
+            "survey_year": survey_year,
+            "survey_id": survey.survey_id,
+            "dataset": survey.dataset_code,
+            "question_code": prepared["question_code"],
+            "canonical_indicator": prepared["canonical_indicator"],
+        }
+    )
+    prepared["metadata"] = metadata
     answers: list[dict[str, Any]] = []
     for answer in source.get("answers", []):
         if not isinstance(answer, dict):

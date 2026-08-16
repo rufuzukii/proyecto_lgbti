@@ -60,6 +60,10 @@ def test_categories_with_symbols_and_accents_match_aliases() -> None:
         == "Equality & non-discrimination"
     )
     assert taxonomy_label("felgtbi_topic", "LGBTIQ+ youth", "es") == "Juventud LGBTIQ+"
+    assert (
+        taxonomy_label("fra_category", "Living openly and daily life", "es")
+        == "Vida abierta y vida cotidiana"
+    )
 
 
 def test_unknown_value_uses_controlled_fallback_and_is_logged_once(caplog) -> None:

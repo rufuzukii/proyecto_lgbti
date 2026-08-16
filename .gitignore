@@ -72,7 +72,12 @@ venv.bak/
 /local-data/
 /data-imports/
 *_checkpoint.json
-*_audit.jsonl
+*_import_report.json
+*.jsonl
+!tests/fixtures/**/*.jsonl
+*.prof
+*.pstats
+*.trace
 *.dump
 *.dmp
 *.bak
@@ -110,6 +115,3 @@ cython_debug/
 
 # Local functionality registry
 registro_funcionalidades/
-
-# Local dev entrypoints
-run_*.py

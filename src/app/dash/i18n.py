@@ -146,30 +146,6 @@ UI_TEXT = {
     "source_fra_label": {"es": "FRA", "en": "FRA"},
     "source_ilga_label": {"es": "ILGA-Europe", "en": "ILGA-Europe"},
     "source_felgtbi_label": {"es": "FELGTBI+", "en": "FELGTBI+"},
-    "spain_year": {"es": "Año", "en": "Year"},
-    "spain_document": {"es": "Documento", "en": "Document"},
-    "spain_indicator": {"es": "Indicador", "en": "Indicator"},
-    "spain_select_year": {"es": "Selecciona un año", "en": "Select a year"},
-    "spain_select_document": {
-        "es": "Selecciona un documento",
-        "en": "Select a document",
-    },
-    "spain_select_indicator": {
-        "es": "Selecciona un indicador",
-        "en": "Select an indicator",
-    },
-    "spain_previous": {"es": "Anterior", "en": "Previous"},
-    "spain_next": {"es": "Siguiente", "en": "Next"},
-    "spain_no_documents": {
-        "es": "No hay documentos disponibles",
-        "en": "No documents available",
-    },
-    "spain_no_content": {
-        "es": "No hay contenido disponible",
-        "en": "No content available",
-    },
-    "spain_figure": {"es": "Figura", "en": "Figure"},
-    "spain_source": {"es": "Fuente", "en": "Source"},
     "fra_survey_2012": {"es": "Encuesta FRA 2012", "en": "FRA Survey 2012"},
     "fra_survey_2019": {"es": "Encuesta FRA 2019", "en": "FRA Survey 2019"},
     "fra_survey_2023": {"es": "Encuesta FRA 2023", "en": "FRA Survey 2023"},
@@ -192,30 +168,9 @@ UI_TEXT = {
     "privacy_recipients": {"es": "Destinatarios", "en": "Recipients"},
     "privacy_rights": {"es": "Tus derechos", "en": "Your rights"},
     "privacy_manage_data": {"es": "Gestionar mis datos", "en": "Manage my data"},
-    "privacy_download_data": {"es": "Descargar mis datos", "en": "Download my data"},
-    "privacy_zone": {"es": "Zona de privacidad", "en": "Privacy area"},
-    "privacy_delete_my_data": {"es": "Eliminar mis datos", "en": "Delete my data"},
-    "privacy_delete_account": {"es": "Eliminar cuenta", "en": "Delete account"},
-    "privacy_confirm_deletion": {
-        "es": "Confirmar eliminación",
-        "en": "Confirm deletion",
-    },
-    "privacy_irreversible": {
-        "es": "Esta acción no se puede deshacer.",
-        "en": "This action cannot be undone.",
-    },
-    "privacy_enter_email": {"es": "Introduce tu correo", "en": "Enter your email"},
-    "privacy_enter_password": {
-        "es": "Introduce tu contraseña",
-        "en": "Enter your password",
-    },
     "privacy_account_deleted": {
         "es": "Tu cuenta y los datos personales asociados han sido eliminados.",
         "en": "Your account and associated personal data have been deleted.",
-    },
-    "privacy_deletion_error": {
-        "es": "No se ha podido completar la eliminación de tus datos. Inténtalo de nuevo o contacta con el equipo responsable.",
-        "en": "Your data could not be deleted. Try again or contact the responsible team.",
     },
     "privacy_notice": {
         "es": "RainbowLens DataHub utiliza los datos necesarios para gestionar tu cuenta y ofrecer las funcionalidades solicitadas. Puedes consultar qué información se conserva y solicitar la eliminación de tu cuenta en cualquier momento.",
@@ -223,7 +178,6 @@ UI_TEXT = {
     },
     "privacy_understood": {"es": "Entendido", "en": "Got it"},
     "privacy_deleted_heading": {"es": "Cuenta eliminada", "en": "Account deleted"},
-    "privacy_cancel": {"es": "Cancelar", "en": "Cancel"},
     "privacy_controller": {
         "es": "Responsable del tratamiento",
         "en": "Data controller",
@@ -364,6 +318,14 @@ UI_TEXT = {
         "es": "Explora Europa y consulta la puntuación global de protección legal LGBTIQ+.",
         "en": "Explore Europe and view the overall LGBTIQ+ legal protection score.",
     },
+    "home_legal_ranking_empty": {
+        "es": "No hay puntuaciones legales disponibles para este año.",
+        "en": "No legal scores are available for this year.",
+    },
+    "home_legal_export_error": {
+        "es": "No se ha podido generar la imagen. Inténtalo de nuevo.",
+        "en": "The image could not be generated. Please try again.",
+    },
     "home_ilga_country_eyebrow": {
         "es": "Detalle de criterios ILGA",
         "en": "ILGA criteria detail",
@@ -477,10 +439,6 @@ UI_TEXT = {
         "es": "Descargar CSV",
         "en": "Download CSV",
     },
-    "download_excel": {
-        "es": "Descargar Excel",
-        "en": "Download Excel",
-    },
     "no_export_data": {
         "es": "No hay datos para exportar",
         "en": "No data available to export",
@@ -569,21 +527,12 @@ UI_TEXT = {
         "es": "Cargando indicadores...",
         "en": "Loading indicators...",
     },
-    "updating_map": {"es": "Actualizando mapa...", "en": "Updating map..."},
-    "generating_chart": {"es": "Generando gráfico...", "en": "Generating chart..."},
     "loading_trends": {"es": "Calculando tendencia...", "en": "Calculating trend..."},
     "processing_document": {
         "es": "Procesando documento...",
         "en": "Processing document...",
     },
     "generating_report": {"es": "Generando informe...", "en": "Generating report..."},
-    "uploading_file": {"es": "Subiendo archivo...", "en": "Uploading file..."},
-    "importing_data": {"es": "Importando datos...", "en": "Importing data..."},
-    "deleting_data": {"es": "Eliminando datos...", "en": "Deleting data..."},
-    "wait_updating_data": {
-        "es": "Espera mientras actualizamos los datos.",
-        "en": "Please wait while we update the data.",
-    },
     "contact_success": {
         "es": "Tu mensaje se ha enviado correctamente.",
         "en": "Your message was sent successfully.",
@@ -777,10 +726,6 @@ UI_TEXT = {
     "statistics_european_average": {
         "es": "Media europea",
         "en": "European average",
-    },
-    "statistics_european_average_comparison": {
-        "es": "Comparación con la media europea",
-        "en": "Comparison with the European average",
     },
     "statistics_percentage_points_compared": {
         "es": "puntos porcentuales respecto a la media europea",

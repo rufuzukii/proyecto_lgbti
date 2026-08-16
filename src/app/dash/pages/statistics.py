@@ -867,6 +867,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-fra-control-store", "data"),
         Output("stats-fra-response-help", "children"),
         Output("stats-fra-response-help", "className"),
+        Output("stats-fra-segmentation-card", "className"),
         Input("fra-indicator-select", "value"),
         Input("app-language-store", "data"),
         State("stats-category-select", "value"),
@@ -887,6 +888,7 @@ def register_statistics_callbacks(app: Dash) -> None:
                 {},
                 None,
                 "stats-response-help is-hidden",
+                f"{_fra_segmentation_card_class()} is-hidden",
             )
         survey = get_fra_survey(survey_id)
         if survey is None:
@@ -903,6 +905,11 @@ def register_statistics_callbacks(app: Dash) -> None:
         demographic_options = _segmentation_catalog_options(
             FRA_FILTER_GROUP_A, segmentations, language or "es"
         )
+        has_real_segmentation = any(
+            str(option.get("value") or "") != "All"
+            for option in segmentations
+            if isinstance(option, dict) and not option.get("disabled", False)
+        )
         return (
             answers,
             payload.get("default_answer")
@@ -915,6 +922,11 @@ def register_statistics_callbacks(app: Dash) -> None:
                 "stats-response-help"
                 if payload.get("response_type") == "ranked_reason"
                 else "stats-response-help is-hidden"
+            ),
+            (
+                _fra_segmentation_card_class()
+                if has_real_segmentation
+                else f"{_fra_segmentation_card_class()} is-hidden"
             ),
         )
 
@@ -1942,7 +1954,7 @@ def _temporal_country_options(
             row.get("country_code") or row.get("iso"),
             row.get("country_name") or row.get("country"),
         )
-        if not iso or iso == "EU27":
+        if not iso or iso in {"EU27", "EU28"}:
             continue
         fallback = str(row.get("country_name") or row.get("country") or iso)
         countries[iso] = country_labels(iso, fallback)[1 if language == "en" else 0]
@@ -2926,7 +2938,7 @@ def _radar_country_options(payload: dict[str, Any], language: str) -> list[dict[
     options: list[dict[str, str]] = []
     for row in coverage.itertuples(index=False):
         iso = normalize_country_code(row.iso, row.country)
-        if not iso or iso == "EU27":
+        if not iso or iso in {"EU27", "EU28"}:
             continue
         labels = country_labels(iso, str(row.country))
         options.append({"label": labels[1 if language == "en" else 0], "value": iso})

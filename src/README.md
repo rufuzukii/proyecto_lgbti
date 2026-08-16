@@ -1,6 +1,7 @@
 # Código fuente
 
-Esta carpeta contiene el paquete Python de RainbowLens Datahub. Para ejecutar sus módulos, `src` debe estar en `PYTHONPATH`; los scripts de la raíz (`run_dash.py`, `run_api.py`, `run_auth.py` y `wsgi.py`) lo añaden automáticamente.
+Esta carpeta contiene el paquete Python de RainbowLens DataHub. La instalación editable declarada
+en `pyproject.toml` expone el paquete y el comando `rainbowlens-dash`; Render utiliza `wsgi.py`.
 
 ## Contenido
 

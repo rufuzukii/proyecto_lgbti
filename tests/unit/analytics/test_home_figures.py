@@ -22,6 +22,9 @@ def test_home_ilga_choropleth_uses_iso3_locations() -> None:
     assert list(trace.locations) == ["ESP", "PRT"]
     assert list(trace.text) == ["Spain", "Portugal"]
     assert trace.customdata[0][0] == "ES"
+    assert trace.colorbar.x == -0.035
+    assert trace.colorbar.xanchor == "right"
+    assert figure.layout.margin.l == 88
     assert figure.layout.dragmode is False
 
 

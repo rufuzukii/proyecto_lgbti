@@ -64,6 +64,7 @@ def test_home_map_and_2026_legal_detail_complete_independent_flow(monkeypatch) -
     monkeypatch.setattr(home, "current_user", SimpleNamespace(is_authenticated=False))
     monkeypatch.setattr(home, "get_latest_ilga_document", lambda: document)
     monkeypatch.setattr(home, "get_ilga_years", lambda: [2026])
+    monkeypatch.setattr(home, "get_ilga_document_by_year", lambda _year: document)
     monkeypatch.setattr(home, "get_home_legal_country_detail", countries.get)
 
     app = Dash("home-legal-e2e", suppress_callback_exceptions=True)
@@ -76,6 +77,7 @@ def test_home_map_and_2026_legal_detail_complete_independent_flow(monkeypatch) -
     }
     details = _callback(app, "update_home_legal_country_details")
     select_from_map = _callback(app, "select_home_legal_country_from_map")
+    update_map = _callback(app, "update_home_map")
 
     initial, initial_state = details(None, "es")
     spain_code = select_from_map(
@@ -89,8 +91,18 @@ def test_home_map_and_2026_legal_detail_complete_independent_flow(monkeypatch) -
     )
     france, france_state = details(france_code, "es")
     germany, germany_state = details("DE", "es")
+    english_map = update_map(2026, "en")
 
     assert components["home-map-graph"].figure.data
+    assert "Ranking legal" in str(components["home-legal-ranking"])
+    assert [row["country_code"] for row in components["home-legal-ranking-store"].data] == [
+        "ES",
+        "DE",
+        "FR",
+    ]
+    assert "Country ranking" in str(english_map[5])
+    assert "Spain" in str(english_map[5])
+    assert english_map[6][0]["score"] == 77.0
     assert components["home-legal-country-select"].value is None
     assert "Situación legal por país en 2026" in str(components["home-legal-section"])
     assert "Selecciona un país" in str(initial)

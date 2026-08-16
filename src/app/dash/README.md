@@ -31,7 +31,7 @@ requiere sesión y reserva su configuración avanzada para RRHH, Político y ONG
 ## Ejecución
 
 ```powershell
-python run_dash.py
+rainbowlens-dash
 ```
 
 La autenticación usa sesiones Flask-Login; no usa `DASH_BASIC_AUTH`.

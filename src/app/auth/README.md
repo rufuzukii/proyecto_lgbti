@@ -16,7 +16,8 @@ Implementa un servicio Flask JSON independiente:
 
 Las sesiones autenticadas son permanentes con vencimiento deslizante: cada petición activa renueva el plazo configurado. La protección `strong` de Flask-Login se mantiene, pero un cambio del identificador de red observado a través del proxy deja la sesión como no reciente en vez de eliminar al usuario durante la navegación.
 
-Este servicio se ejecuta con `run_auth.py`. Es independiente de las rutas HTML registradas dentro de `dash_app.py`.
+La factoría `create_auth_app()` permite ejecutar este servicio de forma independiente cuando sea
+necesario. Las rutas HTML de producción siguen registradas dentro de `dash_app.py`.
 
 ### `rate_limit.py`
 

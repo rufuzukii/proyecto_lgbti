@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from app.fra_surveys import get_fra_survey_by_year
 from app.import_to_db.fra.schema import (
     FraCsvSchema,
     filename_declares_all_all,
@@ -220,11 +222,21 @@ class IndicatorQuestionParts:
 
 
 
-def parse_answer_survey_csv(file_path: Path | str, *, root: Path | str | None = None) -> list[dict]:
+def parse_answer_survey_csv(
+    file_path: Path | str,
+    *,
+    root: Path | str | None = None,
+    survey_year: int | None = None,
+) -> list[dict]:
     path = Path(file_path)
     csv_text = read_text_with_fallback(path)
     context = build_path_context(path, Path(root) if root else None)
-    return parse_answer_survey_csv_text(csv_text, file_name=path, path_context=context)
+    return parse_answer_survey_csv_text(
+        csv_text,
+        file_name=path,
+        path_context=context,
+        survey_year=survey_year,
+    )
 
 
 def parse_answer_survey_csv_text(
@@ -232,6 +244,7 @@ def parse_answer_survey_csv_text(
     *,
     file_name: Path | str | None = None,
     path_context: FraPathContext | None = None,
+    survey_year: int | None = None,
 ) -> list[dict]:
     context = path_context or (
         build_path_context(Path(file_name), None) if file_name else FraPathContext()
@@ -242,7 +255,48 @@ def parse_answer_survey_csv_text(
         schema,
         path_filters=context.filters,
         file_name=file_name,
+        survey_year=survey_year,
     )
+    survey = get_fra_survey_by_year(survey_year) if survey_year is not None else None
+    if survey_year is not None and survey is None:
+        raise ValueError("unsupported_fra_survey_year")
+    if survey is not None and schema.version not in survey.csv_versions:
+        raise ValueError(
+            f"fra_survey_schema_mismatch:year={survey.year}:schema={schema.version}"
+        )
+    detected_years = {
+        int(value)
+        for value in normalized["survey_year"].dropna().tolist()
+        if str(value).strip()
+    }
+    if survey_year is not None and detected_years and detected_years != {int(survey_year)}:
+        raise ValueError(
+            f"fra_survey_year_mismatch:expected={survey_year}:detected={sorted(detected_years)}"
+        )
+    if survey_year is not None:
+        normalized["survey_year"] = int(survey_year)
+        metadata = dict(normalized.attrs.get("fra_metadata") or {})
+        metadata.update(
+            {
+                "survey_year": int(survey_year),
+                "survey_id": survey.survey_id if survey else "",
+                "survey_year_source": (
+                    "csv_metadata" if detected_years else "explicit_survey_configuration"
+                ),
+            }
+        )
+        normalized.attrs["fra_metadata"] = metadata
+
+    path_category = _path_category(context.category)
+    if path_category:
+        category_missing = normalized["category"].astype(str).str.strip().isin(
+            {"", "Uncategorized"}
+        )
+        specific_category_missing = normalized["specific_category"].astype(str).str.strip().isin(
+            {"", "Uncategorized"}
+        )
+        normalized.loc[category_missing, "category"] = path_category
+        normalized.loc[specific_category_missing, "specific_category"] = path_category
     if filename_declares_all_all(file_name):
         validate_fra_filter_scope(
             normalized,
@@ -352,9 +406,6 @@ def build_path_context(file_path: Path, root: Path | None) -> FraPathContext:
         relative = Path(file_name)
 
     parts = list(relative.with_suffix("").parts)
-    if root and root.name and is_meaningful_path_part(root.name):
-        parts.insert(0, root.name)
-
     clean_parts = [part.strip() for part in parts if part and part.strip()]
     filters = extract_filters_from_path(clean_parts)
 
@@ -375,6 +426,11 @@ def build_path_context(file_path: Path, root: Path | None) -> FraPathContext:
 def is_meaningful_path_part(value: str) -> bool:
     ignored = {"data", "datos", "downloads", "imports", "csv", "fra"}
     return normalize_header(value) not in ignored
+
+
+def _path_category(value: str) -> str:
+    """Remove the FRA explorer's display-only question count suffix."""
+    return re.sub(r"\s*\(\d+\)\s*$", "", str(value or "")).strip()
 
 
 def extract_filters_from_path(parts: list[str]) -> dict[str, str]:
@@ -452,23 +508,3 @@ def validate_fra_document(document: dict) -> dict:
         "status": "review_required" if warnings else "ready",
         "warnings": warnings,
     }
-
-
-def convert_fra_csv_files(file_paths: Iterable[Path | str]) -> list[tuple[Path, list[dict]]]:
-    results: list[tuple[Path, list[dict]]] = []
-    for file_path in file_paths:
-        path = Path(file_path)
-        results.append((path, parse_answer_survey_csv(path)))
-    return results
-
-
-def generate_fra_json(discrimination_dir: str) -> list[tuple[Path, list[dict]]]:
-    base_dir = Path(discrimination_dir)
-    csv_paths = sorted(base_dir.rglob("*.csv"))
-    if not csv_paths:
-        return []
-
-    results: list[tuple[Path, list[dict]]] = []
-    for csv_path in csv_paths:
-        results.append((csv_path, parse_answer_survey_csv(csv_path, root=base_dir)))
-    return results

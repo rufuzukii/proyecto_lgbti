@@ -1193,14 +1193,17 @@ def _insert_approved_import(
 
     datasets = {document.get("dataset") for document in documents}
     sources = {document.get("source") for document in documents}
-    if datasets == {"eu_lgbtiq_survey_iii"}:
+    from app.fra_surveys import FRA_SURVEYS
+
+    fra_dataset_codes = {survey.dataset_code for survey in FRA_SURVEYS if survey.enabled}
+    if len(datasets) == 1 and datasets.issubset(fra_dataset_codes):
         from app.import_to_db.fra import (
             insert_indicator_fra_json,
-            upsert_indicators_from_json,
+            resolve_and_upsert_indicators_from_json,
         )
 
-        upsert_indicators_from_json(file_json)
-        insert_indicator_fra_json(file_json)
+        resolved, _resolutions = resolve_and_upsert_indicators_from_json(file_json)
+        insert_indicator_fra_json(resolved)
         return "fra"
     if datasets == {"ilga_rainbow_map"}:
         from app.import_to_db.ilga import insert_indicator_ilga_json

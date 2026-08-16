@@ -29,7 +29,10 @@ def test_fra_2023_scope_is_edition_specific_and_contains_30_countries() -> None:
     assert len(participants) == 30
     assert {"ES", "AL", "MK", "RS"}.issubset(participants)
     assert {"GB", "NO", "CH"}.isdisjoint(participants)
-    assert fra_survey_participant_codes(2019) is None
+    survey_ii = fra_survey_participant_codes(2019)
+    assert survey_ii is not None
+    assert len(survey_ii) == 30
+    assert {"ES", "GB", "MK", "RS"}.issubset(survey_ii)
 
 
 def test_fra_country_state_does_not_infer_scope_from_value_presence() -> None:
@@ -44,6 +47,10 @@ def test_fra_country_state_does_not_infer_scope_from_value_presence() -> None:
     assert (
         classify_fra_country_state("GB", True, survey_year=2023)
         is FraCountryState.OUTSIDE_SURVEY_SCOPE
+    )
+    assert (
+        classify_fra_country_state("GB", True, survey_year=2019)
+        is FraCountryState.HAS_DATA
     )
 
 

@@ -105,6 +105,30 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         "Territory": {"es": "Territorio", "en": "Territory"},
         "Trans and gender identity": {"es": "Realidad trans e identidad de g\u00e9nero", "en": "Trans and gender identity"},
         "Intersex": {"es": "Intersexualidad", "en": "Intersex"},
+        "Intersex specific questions": {
+            "es": "Preguntas específicas sobre intersexualidad",
+            "en": "Intersex specific questions",
+        },
+        "Living openly and daily life": {
+            "es": "Vida abierta y vida cotidiana",
+            "en": "Living openly and daily life",
+        },
+        "Social attitudes and government response": {
+            "es": "Actitudes sociales y respuesta gubernamental",
+            "en": "Social attitudes and government response",
+        },
+        "Socio-demographics": {
+            "es": "Datos sociodemográficos",
+            "en": "Socio-demographics",
+        },
+        "Trans specific questions": {
+            "es": "Preguntas específicas sobre personas trans",
+            "en": "Trans specific questions",
+        },
+        "Violence and harassment": {
+            "es": "Violencia y acoso",
+            "en": "Violence and harassment",
+        },
     },
     "fra_response": {
         "All": {"es": "Todas", "en": "All"},

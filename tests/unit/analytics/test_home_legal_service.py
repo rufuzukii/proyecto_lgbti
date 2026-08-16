@@ -36,10 +36,12 @@ def test_home_legal_service_uses_only_2026_and_caches_by_iso(monkeypatch) -> Non
     monkeypatch.setattr(service, "get_ilga_document_by_year", load)
 
     first = service.get_home_legal_country_detail("es")
+    assert first is not None
     first["country"] = "Changed locally"
     second = service.get_home_legal_country_detail("ES")
 
     assert calls == [(2026, True)]
+    assert second is not None
     assert second["country"] == "Spain"
     assert "home:legal:2026:ES:g4" in memory_cache.values
 

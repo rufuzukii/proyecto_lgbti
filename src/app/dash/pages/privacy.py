@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from dash import dcc, html
 from dash.development.base_component import Component
@@ -211,13 +212,13 @@ def _controller_detail(
     classes = "privacy-controller-detail"
     if class_name:
         classes = f"{classes} {class_name}"
-    attributes = {"className": classes}
+    attributes: dict[str, Any] = {"className": classes}
     if detail_id:
         attributes["id"] = detail_id
     return html.Div(
         [
             html.Dt(ui_text_component(label_key)),
-            html.Dd(value),
+            html.Dd(children=value),
         ],
         **attributes,
     )
