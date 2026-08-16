@@ -54,6 +54,7 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
 
     # Act
     privacy_response = client.get("/es/privacidad")
+    privacy_response_en = client.get("/en/privacy")
     anonymous_layout = client.get("/_dash-layout").get_json()
     with client.session_transaction() as browser_session:
         browser_session["_csrf_token"] = "valid"
@@ -70,6 +71,7 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
 
     # Assert
     assert privacy_response.status_code == 200
+    assert privacy_response_en.status_code == 200
     assert "privacy-notice" in str(anonymous_layout)
     assert "/es/privacidad" in str(anonymous_layout)
     assert "Personal data management" not in str(anonymous_layout)

@@ -228,6 +228,32 @@ UI_TEXT = {
         "es": "Responsable del tratamiento",
         "en": "Data controller",
     },
+    "privacy_on_this_page": {
+        "es": "En esta página",
+        "en": "On this page",
+    },
+    "privacy_contact": {"es": "Contacto", "en": "Contact"},
+    "privacy_controller_name_label": {
+        "es": "Responsable:",
+        "en": "Controller:",
+    },
+    "privacy_location_label": {"es": "Ubicación:", "en": "Location:"},
+    "privacy_controller_location": {
+        "es": "Málaga, España",
+        "en": "Málaga, Spain",
+    },
+    "privacy_identity_document_label": {
+        "es": "NIF/Pasaporte:",
+        "en": "NIF/Passport:",
+    },
+    "privacy_identity_document_value": {
+        "es": "Disponible para el usuario que acredite su identidad y desee ejercer sus derechos ARCO",
+        "en": "Available to users who verify their identity and wish to exercise their data protection rights.",
+    },
+    "privacy_contact_email_label": {
+        "es": "Correo electrónico:",
+        "en": "Email:",
+    },
     "privacy_security": {"es": "Cómo protegemos los datos", "en": "How we protect data"},
     "privacy_backups": {"es": "Copias de seguridad", "en": "Backups"},
     "navigation_home": {"es": "Inicio", "en": "Home"},

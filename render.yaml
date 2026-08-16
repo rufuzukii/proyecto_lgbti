@@ -137,8 +137,6 @@ services:
         sync: false
       - key: PRIVACY_CONTACT_EMAIL
         sync: false
-      - key: PRIVACY_CONTROLLER_ADDRESS
-        sync: false
       - key: PRIVACY_POLICY_EFFECTIVE_DATE
         value: "2026-08-06"
       - key: PRIVACY_AUDIT_RETENTION_DAYS

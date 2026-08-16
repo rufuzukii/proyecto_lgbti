@@ -6,7 +6,14 @@ from dash import dcc, html
 from dash.development.base_component import Component
 from flask_login import current_user
 
-from app.dash.i18n import dash_attrs, text, text_attrs, ui_text_component
+from app.dash.i18n import (
+    attribute_attrs,
+    dash_attrs,
+    text,
+    text_attrs,
+    ui_text,
+    ui_text_component,
+)
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 from app.privacy.policy import (
@@ -15,6 +22,16 @@ from app.privacy.policy import (
     PrivacyPolicyConfig,
     get_privacy_policy_config,
 )
+
+_PRIVACY_SECTION_IDS = {
+    "privacy_data_collected": "privacy-data",
+    "privacy_purposes": "privacy-purposes",
+    "privacy_retention": "privacy-retention",
+    "privacy_recipients": "privacy-recipients",
+    "privacy_security": "privacy-security",
+    "privacy_rights": "privacy-rights",
+    "privacy_backups": "privacy-backups",
+}
 
 
 def build_privacy_layout() -> Component:
@@ -48,14 +65,20 @@ def build_privacy_layout() -> Component:
                         ],
                         className="privacy-header",
                     ),
+                    _privacy_navigation(),
                     _controller_card(config),
-                    _data_inventory_card(),
-                    _purposes_card(),
-                    _retention_card(config),
-                    _recipients_card(config),
-                    _security_card(),
-                    _rights_card(config),
-                    _backup_card(config),
+                    html.Div(
+                        [
+                            _data_inventory_card(),
+                            _purposes_card(),
+                            _retention_card(config),
+                            _recipients_card(config),
+                            _security_card(),
+                            _rights_card(config),
+                            _backup_card(config),
+                        ],
+                        className="privacy-content-grid",
+                    ),
                 ],
                 className="privacy-page app-page-container",
             ),
@@ -98,40 +121,106 @@ def build_account_deleted_layout() -> Component:
     )
 
 
-def _controller_card(config: PrivacyPolicyConfig) -> Component:
-    identity_note: Component | None = None
-    if not config.controller_identity_configured:
-        identity_note = html.P(
-            text(
-                "La identidad jurídica del responsable debe completarse en la configuración del despliegue antes de publicar esta política.",
-                "The controller's legal identity must be completed in the deployment configuration before this policy is published.",
+def _privacy_navigation() -> Component:
+    links = (
+        ("privacy_controller", "#privacy-controller"),
+        ("privacy_purposes", "#privacy-purposes"),
+        ("privacy_data_collected", "#privacy-data"),
+        ("privacy_retention", "#privacy-retention"),
+        ("privacy_rights", "#privacy-rights"),
+        ("privacy_contact", "#privacy-contact"),
+    )
+    return html.Nav(
+        [
+            ui_text_component("privacy_on_this_page", class_name="privacy-toc-title"),
+            html.Ul(
+                [
+                    html.Li(html.A(ui_text_component(label_key), href=href))
+                    for label_key, href in links
+                ]
             ),
-            className="privacy-config-warning",
-            role="status",
-        )
-    details: list[Component] = [
-        html.P(
-            [
-                html.Strong(text("Responsable: ", "Controller: ")),
-                config.controller_name,
-            ]
+        ],
+        className="privacy-toc",
+        **dash_attrs(
+            {
+                "aria-label": ui_text("privacy_on_this_page", "es"),
+                **attribute_attrs(
+                    "aria-label",
+                    ui_text("privacy_on_this_page", "es"),
+                    ui_text("privacy_on_this_page", "en"),
+                ),
+            }
         ),
-        html.P(
-            [
-                html.Strong(text("Contacto de privacidad: ", "Privacy contact: ")),
-                html.A(config.contact_email, href=f"mailto:{config.contact_email}"),
-            ]
-        ),
-    ]
-    if config.controller_address:
-        details.append(
-            html.P(
-                [html.Strong(text("Dirección: ", "Address: ")), config.controller_address]
-            )
-        )
-    if identity_note is not None:
-        details.append(identity_note)
-    return _card("privacy_controller", details)
+    )
+
+
+def _controller_card(config: PrivacyPolicyConfig) -> Component:
+    heading_id = "privacy-controller-title"
+    return html.Section(
+        [
+            html.Div(
+                [
+                    html.P(
+                        text("Información identificativa", "Identification details"),
+                        className="privacy-card-eyebrow",
+                    ),
+                    html.H2(ui_text_component("privacy_controller"), id=heading_id),
+                ],
+                className="privacy-card-heading",
+            ),
+            html.Dl(
+                [
+                    _controller_detail(
+                        "privacy_controller_name_label",
+                        config.controller_name,
+                    ),
+                    _controller_detail(
+                        "privacy_location_label",
+                        ui_text_component("privacy_controller_location"),
+                    ),
+                    _controller_detail(
+                        "privacy_identity_document_label",
+                        ui_text_component("privacy_identity_document_value"),
+                        class_name="privacy-controller-detail--wide",
+                    ),
+                    _controller_detail(
+                        "privacy_contact_email_label",
+                        html.A(
+                            config.contact_email,
+                            href=f"mailto:{config.contact_email}",
+                        ),
+                        detail_id="privacy-contact",
+                    ),
+                ],
+                className="privacy-controller-details",
+            ),
+        ],
+        id="privacy-controller",
+        className="privacy-card privacy-card--controller",
+        **dash_attrs({"aria-labelledby": heading_id}),
+    )
+
+
+def _controller_detail(
+    label_key: str,
+    value: Component | str,
+    *,
+    class_name: str | None = None,
+    detail_id: str | None = None,
+) -> Component:
+    classes = "privacy-controller-detail"
+    if class_name:
+        classes = f"{classes} {class_name}"
+    attributes = {"className": classes}
+    if detail_id:
+        attributes["id"] = detail_id
+    return html.Div(
+        [
+            html.Dt(ui_text_component(label_key)),
+            html.Dd(value),
+        ],
+        **attributes,
+    )
 
 
 def _data_inventory_card() -> Component:
@@ -353,10 +442,7 @@ def _rights_card(config: PrivacyPolicyConfig) -> Component:
                 if current_user.is_authenticated
                 else dcc.Link(
                     text("Iniciar sesión", "Sign in"),
-                    href=(
-                        f"{route_path('login')}?"
-                        f"next={route_path('profile')}"
-                    ),
+                    href=(f"{route_path('login')}?next={route_path('profile')}"),
                     refresh=False,
                     className="auth-button",
                 ),
@@ -411,10 +497,17 @@ def _card(
     *,
     secondary_key: str | None = None,
 ) -> Component:
-    headings: list[Component] = [html.H2(ui_text_component(title_key))]
+    section_id = _PRIVACY_SECTION_IDS[title_key]
+    heading_id = f"{section_id}-title"
+    headings: list[Component] = [html.H2(ui_text_component(title_key), id=heading_id)]
     if secondary_key:
         headings.append(html.H3(ui_text_component(secondary_key)))
-    return html.Section([*headings, *children], className="privacy-card")
+    return html.Section(
+        [*headings, *children],
+        id=section_id,
+        className="privacy-card",
+        **dash_attrs({"aria-labelledby": heading_id}),
+    )
 
 
 def _subsection(title_es: str, title_en: str, items: list[str]) -> Component:

@@ -55,6 +55,14 @@ def test_required_privacy_translations_exist_in_both_languages() -> None:
         "privacy_deletion_error",
         "privacy_manage_data",
         "privacy_download_data",
+        "privacy_on_this_page",
+        "privacy_contact",
+        "privacy_controller_name_label",
+        "privacy_location_label",
+        "privacy_controller_location",
+        "privacy_identity_document_label",
+        "privacy_identity_document_value",
+        "privacy_contact_email_label",
     }
     assert required <= UI_TEXT.keys()
     assert all(set(UI_TEXT[key]) == {"es", "en"} for key in required)
@@ -77,6 +85,41 @@ def test_privacy_page_describes_only_real_stores_and_links_rights(monkeypatch) -
     assert "no existe un historial de informes guardado" in body
     assert privacy.AEPD_RIGHTS_URL in hrefs
     assert privacy.AEPD_COMPLAINT_URL in hrefs
+
+
+def test_privacy_controller_is_production_ready_and_bilingual(monkeypatch) -> None:
+    # Arrange
+    monkeypatch.setattr(privacy, "current_user", _User())
+    monkeypatch.setattr(privacy, "build_navbar", lambda **_kwargs: "navbar")
+
+    # Act
+    layout = privacy.build_privacy_layout()
+    body = str(layout.to_plotly_json())
+    ids = {getattr(item, "id", None) for item in _walk(layout)}
+    classes = {getattr(item, "className", None) for item in _walk(layout)}
+
+    # Assert
+    assert "Málaga, España" in body
+    assert "Málaga, Spain" in body
+    assert "NIF/Pasaporte:" in body
+    assert (
+        "Disponible para el usuario que acredite su identidad y desee ejercer sus derechos ARCO"
+        in body
+    )
+    assert "NIF/Passport:" in body
+    assert (
+        "Available to users who verify their identity and wish to exercise their data protection rights."
+        in body
+    )
+    assert "privacy-config-warning" not in classes
+    assert {
+        "privacy-controller",
+        "privacy-contact",
+        "privacy-data",
+        "privacy-purposes",
+        "privacy-retention",
+        "privacy-rights",
+    } <= ids
 
 
 def test_personal_panel_has_export_and_reinforced_deletion_controls(monkeypatch) -> None:
@@ -122,5 +165,9 @@ def test_privacy_assets_cover_persistence_accessibility_themes_and_mobile() -> N
     assert "rainbowlens-" in javascript
     assert 'body[data-theme="dark"]' in css
     assert ":focus-visible" in css
+    assert ".privacy-content-grid" in css
+    assert ".privacy-controller-details" in css
+    assert "@media (max-width: 900px)" in css
     assert "@media (max-width: 680px)" in css
     assert ".privacy-dialog::backdrop" in css
+    assert ".privacy-config-warning" not in css
