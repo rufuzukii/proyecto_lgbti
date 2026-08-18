@@ -5,6 +5,10 @@ from typing import Any
 from dash import Dash, html
 from dash.development.base_component import Component
 
+from app.dash.components.contact_form import (
+    build_contact_panel,
+    register_contact_form_callbacks,
+)
 from app.dash.i18n import dash_attrs, text_attrs, ui_text, ui_text_component
 from app.dash.layouts.navigation import build_navbar
 from app.source_attribution import FELGTBI_REPORTS_URL, FRA_SURVEYS, ILGA_RAINBOW_MAP_URL
@@ -324,6 +328,7 @@ def build_about_layout() -> Component:
                         ],
                         className="about-recommended-section",
                     ),
+                    build_contact_panel(),
                 ],
                 className="about-shell app-page-container",
             ),
@@ -476,4 +481,4 @@ def _source_card_link(link: Any) -> Component:
 
 
 def register_about_callbacks(app: Dash) -> None:
-    del app
+    register_contact_form_callbacks(app)

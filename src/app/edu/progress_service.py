@@ -31,7 +31,7 @@ def complete_lesson(user_id: str, lesson_id: str) -> None:
 
 
 def save_game_score(user_id: str, game_id: str, score: int) -> None:
-    if not user_id or game_id not in {"guess_term", "true_false"}:
+    if not user_id or game_id not in {"guess_term", "rank_countries"}:
         return
     _update(
         user_id,

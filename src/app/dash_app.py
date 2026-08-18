@@ -35,7 +35,7 @@ from app.dash.layouts.error_page import (
     render_error_response,
 )
 from app.dash.layouts.home import build_home_layout, register_home_callbacks
-from app.dash.layouts.user_page import build_user_page_layout, register_user_page_callbacks
+from app.dash.layouts.user_page import build_user_page_layout
 from app.dash.pages.admin.imports import build_admin_imports_layout
 from app.dash.pages.admin.users import (
     build_access_denied_layout,
@@ -267,7 +267,6 @@ def create_dash_app() -> Dash:
     register_home_callbacks(app)
     register_about_callbacks(app)
     register_didactica_callbacks(app)
-    register_user_page_callbacks(app)
     return app
 
 
@@ -798,7 +797,7 @@ def _register_auth_routes(app: Dash) -> None:
             logger.exception("register_failed")
             return _redirect("/register", error="storage", next_path=next_path)
 
-        delivery_status = "sent"
+        delivery_status = "registration_sent"
         try:
             verification_token = issue_security_token(
                 created_user.id,

@@ -1,26 +1,15 @@
 from __future__ import annotations
 
-import os
-
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import dcc, html
 from dash.development.base_component import Component
 from flask_login import current_user
 
 from app.auth.csrf import get_csrf_token
-from app.auth.permissions import Permission, user_has_permission
-from app.auth.rate_limit import create_rate_limiter
-from app.dash.i18n import dash_attrs, text, text_attrs, ui_text
+from app.dash.components.user_profile import role_label
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
-from app.http_security import rate_limit_key
 from app.privacy.service import PrivacyStorageError, get_personal_data_inventory
-from app.taxonomy import taxonomy_label, taxonomy_pair
-from app.users.contact_service import (
-    ContactDeliveryError,
-    ContactValidationError,
-    decode_contact_attachments,
-    send_role_contact_email,
-)
 from app.users.schemas import UserRole, UserType
 
 STATUS_MESSAGES = {
@@ -157,8 +146,8 @@ def _dashboard_header(
     role: UserRole | str,
     user_type: UserType | str | None,
 ) -> Component:
-    role_value = _role_label(role, user_type)
-    role_value_en = _role_label(role, user_type, language="en")
+    role_value = role_label(role, user_type)
+    role_value_en = role_label(role, user_type, language="en")
     return html.Header(
         [
             html.Div(
@@ -215,26 +204,15 @@ def _build_dashboard(
 ) -> Component:
     return html.Div(
         [
-            html.Section(
-                [
-                    _profile_card(username, email, organization),
-                    _privacy_zone(
-                        username,
-                        email,
-                        organization,
-                        role,
-                        user_type,
-                        error_code=privacy_error,
-                        dialog_open=privacy_dialog_open,
-                    ),
-                ],
-                className="user-dashboard-main",
-            ),
-            html.Section(
-                [
-                    _contact_panel(username, email, role, user_type),
-                ],
-                className="user-dashboard-side",
+            _profile_card(username, email, organization),
+            _privacy_zone(
+                username,
+                email,
+                organization,
+                role,
+                user_type,
+                error_code=privacy_error,
+                dialog_open=privacy_dialog_open,
             ),
         ],
         className="user-dashboard-grid",
@@ -413,8 +391,8 @@ def _privacy_zone(
                             *_privacy_summary_row(
                                 "Rol actual",
                                 "Current role",
-                                _role_label(role, user_type),
-                                _role_label(role, user_type, language="en"),
+                                role_label(role, user_type),
+                                role_label(role, user_type, language="en"),
                             ),
                         ],
                         className="privacy-account-summary",
@@ -561,9 +539,7 @@ def _privacy_zone(
                 [
                     html.Form(
                         [
-                            dcc.Input(
-                                type="hidden", name="csrf_token", value=get_csrf_token()
-                            ),
+                            dcc.Input(type="hidden", name="csrf_token", value=get_csrf_token()),
                             html.Button(
                                 "Descargar mis datos",
                                 type="submit",
@@ -605,154 +581,6 @@ def _privacy_summary_row(
         html.Dt(label_es, **text_attrs(label_es, label_en)),
         html.Dd(value_es, **text_attrs(value_es, value_en or value_es)),
     ]
-
-
-def _contact_panel(
-    username: str,
-    email: str,
-    role: UserRole | str,
-    user_type: UserType | str | None,
-) -> Component:
-    requested_role_options = [
-        {"label": text(*taxonomy_pair("role", value)), "value": value}
-        for value in (
-            UserType.DOCENTE.value,
-            UserType.RRHH.value,
-            UserType.POLITICO.value,
-            UserType.ONG.value,
-            UserType.SOCIOLOGO.value,
-            UserType.COMUN.value,
-        )
-    ]
-    return html.Section(
-        [
-            html.H2("¡Contáctanos!", **text_attrs("¡Contáctanos!", "Contact us!")),
-            html.P(
-                "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens Datahub.",
-                **text_attrs(
-                    "Solicita un nuevo perfil o envíanos cualquier sugerencia sobre RainbowLens Datahub.",
-                    "Request a new profile or send us any suggestion about RainbowLens Datahub.",
-                ),
-            ),
-            html.Div(
-                [
-                    _contact_field(
-                        "Nombre",
-                        "Name",
-                        dcc.Input(
-                            id="user-contact-name",
-                            type="text",
-                            value=username,
-                            maxLength=80,
-                            autoComplete="name",
-                            readOnly=True,
-                            className="auth-input user-contact-readonly",
-                        ),
-                    ),
-                    _contact_field(
-                        "Correo electrónico",
-                        "Email address",
-                        dcc.Input(
-                            id="user-contact-email",
-                            type="email",
-                            value=email,
-                            maxLength=254,
-                            autoComplete="email",
-                            readOnly=True,
-                            className="auth-input user-contact-readonly",
-                        ),
-                    ),
-                    _contact_field(
-                        "Perfil solicitado (opcional)",
-                        "Requested profile (optional)",
-                        dcc.Dropdown(
-                            id="user-contact-role",
-                            options=requested_role_options,
-                            value=None,
-                            clearable=True,
-                            className="user-contact-dropdown",
-                        ),
-                    ),
-                    _contact_field(
-                        "Asunto",
-                        "Subject",
-                        dcc.Input(
-                            id="user-contact-subject",
-                            type="text",
-                            maxLength=160,
-                            className="auth-input",
-                        ),
-                    ),
-                    _contact_field(
-                        "Mensaje",
-                        "Message",
-                        dcc.Textarea(
-                            id="user-contact-message",
-                            maxLength=4000,
-                            className="user-contact-textarea",
-                        ),
-                    ),
-                    html.Div(
-                        [
-                            html.Label(
-                                "Documentación acreditativa",
-                                htmlFor="user-contact-files",
-                                **text_attrs(
-                                    "Documentación acreditativa",
-                                    "Supporting documentation",
-                                ),
-                            ),
-                            dcc.Upload(
-                                id="user-contact-files",
-                                children=html.Div(
-                                    text(
-                                        "Adjunta hasta 3 archivos PDF, PNG, JPG, DOC o DOCX (5 MB por archivo).",
-                                        "Attach up to 3 PDF, PNG, JPG, DOC or DOCX files (5 MB each).",
-                                    )
-                                ),
-                                multiple=True,
-                                className="user-contact-upload",
-                            ),
-                            html.P(
-                                id="user-contact-file-summary",
-                                className="auth-help",
-                                **dash_attrs({"aria-live": "polite"}),
-                            ),
-                        ],
-                        className="user-contact-field",
-                    ),
-                    html.Button(
-                        "Enviar",
-                        id="user-contact-submit",
-                        type="button",
-                        className="auth-button",
-                        **text_attrs("Enviar", "Send"),
-                    ),
-                    html.P(
-                        id="user-contact-status",
-                        className="auth-message is-hidden",
-                        role="status",
-                        **dash_attrs({"aria-live": "polite"}),
-                    ),
-                    html.Span(
-                        _role_label(role, user_type),
-                        id="user-contact-current-role",
-                        hidden=True,
-                    ),
-                ],
-                className="user-contact-form",
-            ),
-        ],
-        className="user-card user-contact-card",
-    )
-
-
-def _contact_field(label_es: str, label_en: str, control: Component) -> Component:
-    control_id = getattr(control, "id", None)
-    return html.Div(
-        [html.Label(label_es, htmlFor=control_id, **text_attrs(label_es, label_en)), control],
-        className="user-contact-field",
-    )
 
 
 def _build_edit_panel(username: str, email: str, organization: str) -> Component:
@@ -942,149 +770,6 @@ def _detail_row(label_es: str, label_en: str, value_es: str, value_en: str) -> C
         ],
         className="profile-detail",
     )
-
-
-def register_user_page_callbacks(app: Dash) -> None:
-    limiter = create_rate_limiter(
-        max_attempts=max(1, int(os.getenv("CONTACT_MAX_ATTEMPTS", "5"))),
-        window_seconds=max(60, int(os.getenv("CONTACT_WINDOW_SECONDS", "3600"))),
-        namespace="user-contact",
-    )
-
-    @app.callback(
-        Output("user-contact-file-summary", "children"),
-        Input("user-contact-files", "filename"),
-    )
-    def summarize_contact_files(filenames: list[str] | str | None):
-        if not filenames:
-            return ""
-        names = filenames if isinstance(filenames, list) else [filenames]
-        return ", ".join(str(name) for name in names[:3])
-
-    @app.callback(
-        Output("user-contact-status", "children"),
-        Output("user-contact-status", "className"),
-        Output("user-contact-role", "value"),
-        Output("user-contact-subject", "value"),
-        Output("user-contact-message", "value"),
-        Output("user-contact-files", "contents"),
-        Output("user-contact-files", "filename"),
-        Input("user-contact-submit", "n_clicks"),
-        State("user-contact-name", "value"),
-        State("user-contact-email", "value"),
-        State("user-contact-role", "value"),
-        State("user-contact-subject", "value"),
-        State("user-contact-message", "value"),
-        State("user-contact-files", "contents"),
-        State("user-contact-files", "filename"),
-        State("app-language-store", "data"),
-        prevent_initial_call=True,
-        running=[(Output("user-contact-submit", "disabled"), True, False)],
-    )
-    def submit_contact_request(
-        clicks: int | None,
-        name: str | None,
-        email: str | None,
-        requested_role: str | None,
-        subject: str | None,
-        message: str | None,
-        contents: list[str] | str | None,
-        filenames: list[str] | str | None,
-        language: str | None,
-    ):
-        if not clicks or not user_has_permission(current_user, Permission.VIEW_DASHBOARD):
-            return (no_update,) * 7
-        clean_language = "en" if language == "en" else "es"
-        if not bool(getattr(current_user, "email_verified", True)):
-            return (
-                (
-                    "Verify your email before sending requests or attachments."
-                    if clean_language == "en"
-                    else "Verifica tu correo antes de enviar solicitudes o adjuntos."
-                ),
-                "auth-message auth-message-error",
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-            )
-        limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="contact")
-        if limiter.is_blocked(limiter_key):
-            return (
-                ui_text("contact_rate_limited", clean_language),
-                "auth-message auth-message-error",
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-            )
-        try:
-            attachments = decode_contact_attachments(contents, filenames)
-            send_role_contact_email(
-                user_id=current_user.get_id() or "",
-                name=getattr(current_user, "username", None) or name or "",
-                email=getattr(current_user, "email", None) or email or "",
-                current_role=_role_label(
-                    getattr(current_user, "role", UserRole.COMMON),
-                    getattr(current_user, "user_type", None),
-                ),
-                requested_role=requested_role or "",
-                subject=subject or "",
-                message=message or "",
-                attachments=attachments,
-            )
-        except ContactValidationError:
-            limiter.record_failure(limiter_key)
-            return (
-                ui_text("contact_validation_error", clean_language),
-                "auth-message auth-message-error",
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-            )
-        except ContactDeliveryError:
-            limiter.record_failure(limiter_key)
-            return (
-                ui_text("contact_delivery_error", clean_language),
-                "auth-message auth-message-error",
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-                no_update,
-            )
-        limiter.reset(limiter_key)
-        return (
-            ui_text("contact_success", clean_language),
-            "auth-message auth-message-success",
-            None,
-            "",
-            "",
-            None,
-            None,
-        )
-
-
-def _role_label(
-    role: UserRole | str,
-    user_type: UserType | str | None = None,
-    *,
-    language: str = "es",
-) -> str:
-    value = role.value if isinstance(role, UserRole) else str(role)
-    if value == UserRole.ADMIN.value:
-        return taxonomy_label("role", UserType.ADMIN.value, language)
-    profile = _user_type_value(user_type) or UserType.COMUN.value
-    return taxonomy_label("role", profile, language)
-
-
-def _user_type_value(user_type: UserType | str | None) -> str:
-    value = user_type.value if isinstance(user_type, UserType) else str(user_type or "")
-    return UserType.DOCENTE.value if value == "profesor" else value
 
 
 def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | str:

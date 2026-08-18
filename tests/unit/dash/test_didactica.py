@@ -123,7 +123,6 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
     }
     assert all(lesson.slides and lesson.activity and lesson.sources for lesson in lessons)
     assert len(set(new_game_state("guess_term")["order"])) == 5
-    assert len(set(new_game_state("true_false")["order"])) == 5
 
     assert {"didactica-glossary-search", "didactica-glossary-category"} <= _ids(
         didactica_page.build_dictionary_layout()
@@ -151,7 +150,7 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
 
 def test_teacher_resources_have_metadata_and_generate_in_memory_pdf() -> None:
     resources = list_teacher_resources()
-    assert len(resources) >= 4
+    assert len(resources) >= 3
     assert all(
         resource.level.es
         and resource.duration_minutes
@@ -208,7 +207,7 @@ def test_teacher_resource_callback_is_public(dash_app, monkeypatch) -> None:
     assert result[1] == ""
 
 
-def test_dictionary_lesson_and_both_games_callbacks_work_in_english(dash_app, monkeypatch) -> None:
+def test_dictionary_lesson_and_guess_game_callbacks_work_in_english(dash_app, monkeypatch) -> None:
     monkeypatch.setattr(didactica_page, "current_user", _user())
 
     glossary = _callback(dash_app, "filter_glossary")
@@ -224,24 +223,15 @@ def test_dictionary_lesson_and_both_games_callbacks_work_in_english(dash_app, mo
     assert lesson_result[4] == "2"
 
     game = _callback(dash_app, "play_game")
-    for game_id in ("guess_term", "true_false"):
-        state = new_game_state(game_id)
-        identifier = state["order"][0]
-        if game_id == "guess_term":
-            selected = identifier
-        else:
-            from app.edu.game_service import true_false_question
-
-            question = true_false_question(identifier)
-            assert question is not None
-            selected = str(question["answer"]).lower()
-        monkeypatch.setattr(
-            didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-game-submit")
-        )
-        game_result = game(1, None, None, "en", selected, state)
-        assert game_result[6]["score"] == 1
-        assert "Correct answer" in game_result[3]
-        assert game_result[9] == "1"
+    state = new_game_state("guess_term")
+    identifier = state["order"][0]
+    monkeypatch.setattr(
+        didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-game-submit")
+    )
+    game_result = game(1, None, None, "en", identifier, state)
+    assert game_result[6]["score"] == 1
+    assert "Correct answer" in game_result[3]
+    assert game_result[9] == "1"
 
 
 def test_progress_is_stored_as_summary_not_individual_answers(monkeypatch) -> None:
@@ -296,6 +286,57 @@ def test_games_route_is_public(dash_app, monkeypatch) -> None:
     monkeypatch.setattr(dash_app_module, "current_user", registered)
     monkeypatch.setattr(didactica_page, "current_user", registered)
     assert "didactica-game-state" in _ids(display_page("/es/didactica/juegos", "?game=guess_term"))
+
+
+def test_ranking_game_callback_checks_and_starts_a_new_round_without_reload(
+    dash_app, monkeypatch
+) -> None:
+    # Arrange
+    callback = _callback(dash_app, "play_ranking_game")
+    monkeypatch.setattr(didactica_page, "current_user", _user())
+    saved: list[tuple[str, str, int]] = []
+    monkeypatch.setattr(
+        didactica_page,
+        "save_game_score",
+        lambda user_id, game_id, score: saved.append((user_id, game_id, score)),
+    )
+    state = {
+        "game_id": "rank_countries",
+        "year": 2026,
+        "items": [
+            {"country_code": "MT", "country_name": "Malta", "score": 89},
+            {"country_code": "ES", "country_name": "Spain", "score": 78},
+            {"country_code": "DE", "country_name": "Germany", "score": 69},
+            {"country_code": "IT", "country_name": "Italy", "score": 24},
+        ],
+        "checked": False,
+    }
+    monkeypatch.setattr(
+        didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-ranking-check")
+    )
+
+    # Act
+    checked = callback(None, 1, [0, 0, 0, 0], [0, 0, 0, 0], "en", state)
+
+    # Assert
+    assert checked[2]["checked"] is True
+    assert checked[2]["positions_correct"] == 4
+    assert checked[3] is True
+    assert saved == [("user-1", "rank_countries", 4)]
+
+    # Arrange / Act: a new round is supplied by the service without a page reload.
+    replacement = {**state, "items": list(reversed(state["items"]))}
+    monkeypatch.setattr(
+        didactica_page,
+        "new_ranking_game",
+        lambda **_kwargs: replacement,
+    )
+    monkeypatch.setattr(
+        didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-ranking-new")
+    )
+    renewed = callback(1, None, [0, 0, 0, 0], [0, 0, 0, 0], "es", checked[2])
+    assert renewed[2] == replacement
+    assert renewed[3] is False
 
 
 def test_didactica_callbacks_are_registered_without_duplicate_outputs(dash_app) -> None:
@@ -379,26 +420,12 @@ def test_dictionary_renders_general_and_per_term_source_links(monkeypatch) -> No
     card = glossary_card(bisexual, "en")
     card_hrefs = {href for item in _walk(card) if (href := getattr(item, "href", None)) is not None}
     assert card_hrefs == {UNAM_SOURCE_URL, FUNDEU_SOURCE_URL}
-    assert any(
-        getattr(item, "children", None) == bisexual.definition
-        for item in _walk(card)
-    )
+    assert any(getattr(item, "children", None) == bisexual.definition for item in _walk(card))
 
 
-def test_both_vocabulary_games_use_only_the_glossary_catalog() -> None:
-    from app.edu.game_service import true_false_question
-
+def test_guess_game_uses_only_the_glossary_catalog() -> None:
     guess_state = new_game_state("guess_term", rounds=12)
     assert all(get_glossary_term(identifier) for identifier in guess_state["order"])
-
-    true_false_state = new_game_state("true_false", rounds=12)
-    for identifier in true_false_state["order"]:
-        expected_id, shown_id = identifier.split("::")
-        assert get_glossary_term(expected_id) is not None
-        assert get_glossary_term(shown_id) is not None
-        question = true_false_question(identifier)
-        assert question is not None
-        assert question["source"] in {"UNAM", "FundéuRAE", "UNAM · FundéuRAE"}
 
 
 def test_dictionary_css_keeps_responsive_layout_and_theme_tokens() -> None:

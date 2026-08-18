@@ -100,3 +100,15 @@ def test_dash_initial_loading_text_is_replaced_by_centered_spinner() -> None:
     assert '.app-shell[data-page-ready="true"] .site-footer' not in styles
     assert "syncApplicationReadyState" not in bootstrap
     assert "data-dash-is-loading" not in bootstrap
+
+
+def test_footer_stays_out_of_the_loading_frame_without_layout_shift() -> None:
+    styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
+
+    assert ".app-shell {" in styles
+    assert "flex-direction: column;" in styles
+    assert "#page-content {" in styles
+    assert "flex: 1 0 auto;" in styles
+    assert "#page-content:empty + .site-footer" in styles
+    assert '#page-content[data-dash-is-loading="true"] + .site-footer' in styles
+    assert "visibility: hidden;" in styles

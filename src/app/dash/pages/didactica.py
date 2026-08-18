@@ -7,6 +7,7 @@ from dash.development.base_component import Component
 from flask_login import current_user
 from pymongo.errors import PyMongoError
 
+from app.analytics.home_legal_service import HOME_LEGAL_YEAR
 from app.auth.permissions import (
     Permission,
     can_access_docente_material,
@@ -21,6 +22,7 @@ from app.dash.components.didactica import (
     teacher_resource_details,
     translated,
 )
+from app.dash.components.ranking_game import ranking_game_result, ranking_game_rows
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.components.word_search import (
     word_search_board,
@@ -38,7 +40,7 @@ from app.edu.custom_game_service import (
     list_owned_games,
     save_owned_game,
 )
-from app.edu.game_service import guess_options, new_game_state, true_false_question
+from app.edu.game_service import guess_options, new_game_state
 from app.edu.glossary_service import (
     FUNDEU_SOURCE_URL,
     UNAM_SOURCE_URL,
@@ -48,6 +50,11 @@ from app.edu.glossary_service import (
 )
 from app.edu.lesson_service import get_lesson, list_lessons
 from app.edu.progress_service import complete_lesson, progress_summary, save_game_score
+from app.edu.ranking_game_service import (
+    check_ranking_game,
+    move_ranking_country,
+    new_ranking_game,
+)
 from app.edu.teacher_service import (
     generate_teacher_resource_pdf,
     get_teacher_resource,
@@ -62,17 +69,94 @@ from app.edu.word_search_service import (
 
 
 def build_didactica_layout() -> Component:
-    cards = [
-        resource_card("dictionary", "dictionary_desc", "dictionary", "Aa"),
-        resource_card("presentations", "presentations_desc", "presentations", "▤"),
-        resource_card("word_search", "word_search_desc", "word_search", "ABC"),
+    rows = [
+        _didactica_mode_row(
+            "dictionary",
+            "dictionary_desc",
+            resource_card(
+                "dictionary",
+                "dictionary_card_desc",
+                "dictionary",
+                "Aa",
+                class_name="is-compact",
+            ),
+        ),
+        _didactica_mode_row(
+            "presentations",
+            "presentations_desc",
+            resource_card(
+                "presentations",
+                "presentations_card_desc",
+                "presentations",
+                "▤",
+                class_name="is-compact",
+            ),
+        ),
     ]
     if user_has_permission(current_user, Permission.PLAY_EDU_GAMES):
-        cards.append(resource_card("games", "games_desc", "games", "◇"))
+        rows.append(
+            _didactica_mode_row(
+                "games",
+                "games_desc",
+                html.Div(
+                    [
+                        resource_card(
+                            "guess_term",
+                            "guess_desc",
+                            "games",
+                            "?",
+                            query="?game=guess_term",
+                            class_name="is-game-card",
+                        ),
+                        resource_card(
+                            "word_search",
+                            "word_search_card_desc",
+                            "word_search",
+                            "ABC",
+                            class_name="is-game-card",
+                        ),
+                        resource_card(
+                            "rank_countries",
+                            "rank_countries_card_desc",
+                            "games",
+                            "↕",
+                            query="?game=rank_countries",
+                            class_name="is-game-card",
+                        ),
+                    ],
+                    className="didactica-game-access-grid",
+                ),
+                games=True,
+            )
+        )
     if can_access_docente_material(current_user):
-        cards.append(resource_card("docente", "docente_desc", "educators", "▣"))
+        rows.append(
+            _didactica_mode_row(
+                "docente",
+                "docente_desc",
+                resource_card(
+                    "docente",
+                    "docente_card_desc",
+                    "educators",
+                    "▣",
+                    class_name="is-compact",
+                ),
+            )
+        )
     if current_user.is_authenticated:
-        cards.append(resource_card("progress", "progress_desc", "progress", "✓"))
+        rows.append(
+            _didactica_mode_row(
+                "progress",
+                "progress_desc",
+                resource_card(
+                    "progress",
+                    "progress_card_desc",
+                    "progress",
+                    "✓",
+                    class_name="is-compact",
+                ),
+            )
+        )
     return _page(
         html.Main(
             [
@@ -81,13 +165,33 @@ def build_didactica_layout() -> Component:
                     className="didactica-hero",
                 ),
                 html.Section(
-                    cards,
-                    className="didactica-resource-grid",
+                    rows,
+                    className="didactica-mode-list",
                     **dash_attrs({"aria-label": pair("learning")[0]}),
                 ),
             ],
             className="didactica-shell app-page-container",
         )
+    )
+
+
+def _didactica_mode_row(
+    title_key: str,
+    description_key: str,
+    access: Component,
+    *,
+    games: bool = False,
+) -> Component:
+    modifier = " didactica-mode-row--games" if games else ""
+    return html.Article(
+        [
+            html.Div(
+                [translated(title_key, tag=html.H2), translated(description_key, tag=html.P)],
+                className="didactica-mode-copy",
+            ),
+            html.Div(access, className="didactica-mode-access"),
+        ],
+        className=f"didactica-mode-row{modifier}",
     )
 
 
@@ -353,55 +457,31 @@ def _lesson_source_attributions(sources: tuple[dict[str, str], ...]) -> list[Com
 
 
 def build_games_layout(game_id: str | None = None) -> Component:
-    if game_id not in {"guess_term", "true_false"}:
-        return _page(
-            html.Main(
-                [
-                    _subpage_header("games", "games_desc"),
-                    html.Section(
-                        [
-                            resource_card(
-                                "guess_term", "guess_desc", "games", "?", query="?game=guess_term"
-                            ),
-                            resource_card(
-                                "true_false",
-                                "true_false_desc",
-                                "games",
-                                "✓",
-                                query="?game=true_false",
-                            ),
-                            resource_card(
-                                "word_search",
-                                "word_search_desc",
-                                "word_search",
-                                "ABC",
-                            ),
-                        ],
-                        className="didactica-resource-grid",
-                    ),
-                ],
-                className="didactica-shell app-page-container",
+    if game_id == "rank_countries":
+        return _build_ranking_game_layout()
+    if game_id != "guess_term":
+        return html.Div(
+            dcc.Location(
+                id="didactica-games-catalog-redirect",
+                href=route_path("didactica"),
+                refresh=False,
             )
         )
     state = new_game_state(game_id)
     question, options = _game_round(state, "es")
-    title_key = "guess_term" if game_id == "guess_term" else "true_false"
     return _page(
         html.Main(
             [
                 dcc.Store(id="didactica-game-state", data=state),
                 dcc.Link(
-                    text("← Todos los juegos", "← All games"),
-                    href=route_path("games"),
+                    text("← Didáctica", "← Learning"),
+                    href=route_path("didactica"),
                     className="didactica-back-link",
                 ),
                 html.Header(
                     [
-                        translated(title_key, tag=html.H1),
-                        translated(
-                            "guess_desc" if game_id == "guess_term" else "true_false_desc",
-                            tag=html.P,
-                        ),
+                        translated("guess_term", tag=html.H1),
+                        translated("guess_desc", tag=html.P),
                     ],
                     className="didactica-subpage-header",
                 ),
@@ -474,6 +554,78 @@ def build_games_layout(game_id: str | None = None) -> Component:
                     ],
                     className="didactica-game-attributions",
                 ),
+            ],
+            className="didactica-shell didactica-viewer app-page-container",
+        )
+    )
+
+
+def _build_ranking_game_layout() -> Component:
+    state = new_ranking_game()
+    return _page(
+        html.Main(
+            [
+                dcc.Store(
+                    id="didactica-ranking-state",
+                    data=state,
+                    storage_type="memory",
+                ),
+                dcc.Link(
+                    text("← Didáctica", "← Learning"),
+                    href=route_path("didactica"),
+                    className="didactica-back-link",
+                ),
+                html.Header(
+                    [
+                        translated("rank_countries", tag=html.H1),
+                        translated("rank_countries_desc", tag=html.P),
+                    ],
+                    className="didactica-subpage-header",
+                ),
+                html.P(
+                    translated("rank_countries_instructions"),
+                    className="ranking-game-instructions",
+                ),
+                html.Article(
+                    [
+                        html.Div(
+                            ranking_game_rows(state, "es"),
+                            id="didactica-ranking-list",
+                            className="ranking-game-list",
+                            **dash_attrs({"aria-live": "polite"}),
+                        ),
+                        html.Div(
+                            [
+                                html.Button(
+                                    translated("check"),
+                                    id="didactica-ranking-check",
+                                    n_clicks=0,
+                                    type="button",
+                                    disabled=len(state.get("items", [])) < 2,
+                                    className="didactica-button",
+                                ),
+                                html.Button(
+                                    translated("new_round"),
+                                    id="didactica-ranking-new",
+                                    n_clicks=0,
+                                    type="button",
+                                    className="didactica-button didactica-button-secondary",
+                                ),
+                            ],
+                            className="didactica-actions ranking-game-actions",
+                        ),
+                        html.Div(
+                            id="didactica-ranking-result",
+                            className="ranking-game-result",
+                            **dash_attrs({"aria-live": "assertive"}),
+                        ),
+                    ],
+                    className="didactica-game-card ranking-game-card",
+                ),
+                translated(
+                    "rank_countries_methodology", tag=html.P, class_name="ranking-game-note"
+                ),
+                build_source_attribution("ilga", year=HOME_LEGAL_YEAR, compact=True),
             ],
             className="didactica-shell didactica-viewer app-page-container",
         )
@@ -844,6 +996,55 @@ def register_didactica_callbacks(app: Dash) -> None:
         )
 
     @app.callback(
+        Output("didactica-ranking-list", "children"),
+        Output("didactica-ranking-result", "children"),
+        Output("didactica-ranking-state", "data"),
+        Output("didactica-ranking-check", "disabled"),
+        Input("didactica-ranking-new", "n_clicks"),
+        Input("didactica-ranking-check", "n_clicks"),
+        Input({"type": "didactica-ranking-up", "index": ALL}, "n_clicks"),
+        Input({"type": "didactica-ranking-down", "index": ALL}, "n_clicks"),
+        Input("app-language-store", "data"),
+        State("didactica-ranking-state", "data"),
+    )
+    def play_ranking_game(_new, _check, _up, _down, language, state):
+        language = _language(language)
+        current = dict(state or {})
+        triggered = ctx.triggered_id
+        if triggered == "didactica-ranking-new" or not current:
+            previous_codes = [
+                str(item.get("country_code") or "")
+                for item in current.get("items", [])
+                if isinstance(item, dict)
+            ]
+            current = new_ranking_game(previous_codes=previous_codes)
+        elif triggered == "didactica-ranking-check" and not current.get("checked"):
+            current = check_ranking_game(current)
+            if current_user.is_authenticated:
+                save_game_score(
+                    current_user.get_id(),
+                    "rank_countries",
+                    int(current.get("positions_correct") or 0),
+                )
+        elif isinstance(triggered, dict):
+            control_type = triggered.get("type")
+            if control_type in {"didactica-ranking-up", "didactica-ranking-down"}:
+                direction = -1 if control_type == "didactica-ranking-up" else 1
+                current = move_ranking_country(
+                    current,
+                    int(triggered.get("index", 0)),
+                    direction,
+                )
+        raw_items = current.get("items")
+        items: list[Any] = raw_items if isinstance(raw_items, list) else []
+        return (
+            ranking_game_rows(current, language),
+            ranking_game_result(current, language),
+            current,
+            bool(current.get("checked")) or len(items) < 2,
+        )
+
+    @app.callback(
         Output("didactica-lesson-slide", "children"),
         Output("didactica-lesson-index", "data"),
         Output("didactica-lesson-previous", "disabled"),
@@ -1181,7 +1382,7 @@ def _last_activity_labels(last: object) -> tuple[str, str]:
         lesson = get_lesson(identifier)
         if lesson:
             return lesson.title.es, lesson.title.en
-    if last.get("kind") == "game" and identifier in {"guess_term", "true_false"}:
+    if last.get("kind") == "game" and identifier in {"guess_term", "rank_countries"}:
         return pair(identifier)
     return pair("no_activity")
 
@@ -1200,44 +1401,29 @@ def _slide(slide: dict[str, Any], language: str, number: int, total: int) -> lis
 
 def _game_round(state: dict[str, Any], language: str) -> tuple[str, list[dict[str, str]]]:
     identifier = state["order"][int(state.get("index", 0))]
-    if state["game_id"] == "guess_term":
-        term = get_glossary_term(identifier)
-        if term is None:
-            raise ValueError("unknown_glossary_term")
-        return term.definition, guess_options(identifier, language)
-    question = true_false_question(identifier)
-    if question is None:
-        raise ValueError("unknown_true_false_question")
-    return question["statement"][language], [
-        {"label": tr("true", language), "value": "true"},
-        {"label": tr("false", language), "value": "false"},
-    ]
+    if state.get("game_id") != "guess_term":
+        raise ValueError("unknown_game")
+    term = get_glossary_term(identifier)
+    if term is None:
+        raise ValueError("unknown_glossary_term")
+    return term.definition, guess_options(identifier, language)
 
 
 def _check_game_answer(
     game_id: str, identifier: str, selected: str, language: str
 ) -> tuple[bool, str]:
-    if game_id == "guess_term":
-        term = get_glossary_term(identifier)
-        if term is None:
-            raise ValueError("unknown_glossary_term")
-        return selected == identifier, term.definition
-    question = true_false_question(identifier)
-    if question is None:
-        raise ValueError("unknown_true_false_question")
-    return (
-        selected == str(question["answer"]).lower(),
-        f"{question['explanation'][language]} {tr('source', language)}: {question['source']}.",
-    )
+    if game_id != "guess_term":
+        raise ValueError("unknown_game")
+    term = get_glossary_term(identifier)
+    if term is None:
+        raise ValueError("unknown_glossary_term")
+    return selected == identifier, term.definition
 
 
 def _game_hint(game_id: str, identifier: str, language: str) -> str:
-    if game_id == "guess_term":
-        term = get_glossary_term(identifier)
-        if term is None:
-            raise ValueError("unknown_glossary_term")
-        return f"{tr('hint_text', language)} «{term.term[0].upper()}»."
-    question = true_false_question(identifier)
-    if question is None:
-        raise ValueError("unknown_true_false_question")
-    return f"{tr('source', language)}: {question['source']}"
+    if game_id != "guess_term":
+        raise ValueError("unknown_game")
+    term = get_glossary_term(identifier)
+    if term is None:
+        raise ValueError("unknown_glossary_term")
+    return f"{tr('hint_text', language)} «{term.term[0].upper()}»."

@@ -4,12 +4,13 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.auth.csrf import get_csrf_token
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 
 
 def build_verify_email_layout(status: str | None = None) -> Component:
+    notice: Component | None = None
     if status == "verified":
         title = ("Correo verificado", "Email verified")
         message = (
@@ -36,6 +37,10 @@ def build_verify_email_layout(status: str | None = None) -> Component:
                 "Si la direcci\u00f3n es v\u00e1lida, recibir\u00e1s un enlace de verificaci\u00f3n.",
                 "If the address is valid, you will receive a verification link.",
             ),
+            "registration_sent": (
+                "Te hemos enviado un enlace de verificaci\u00f3n.",
+                "We sent you a verification link.",
+            ),
         }
         message = messages.get(
             status or "sent",
@@ -49,7 +54,9 @@ def build_verify_email_layout(status: str | None = None) -> Component:
             button_es="Reenviar enlace",
             button_en="Resend link",
         )
-    return _account_shell(title, message, content)
+        if status == "registration_sent":
+            notice = _registration_spam_notice()
+    return _account_shell(title, message, content, notice=notice)
 
 
 def build_forgot_password_layout(status: str | None = None) -> Component:
@@ -240,10 +247,36 @@ def _email_request_form(*, action: str, button_es: str, button_en: str) -> Compo
     )
 
 
+def _registration_spam_notice() -> Component:
+    message_es = (
+        "Revisa tambi\u00e9n tu carpeta de Spam o correo no deseado por si el mensaje "
+        "de verificaci\u00f3n hubiera llegado all\u00ed."
+    )
+    message_en = (
+        "Also check your Spam or junk mail folder in case the verification message "
+        "was delivered there."
+    )
+    return html.Div(
+        [
+            html.Span(
+                "i",
+                className="auth-secondary-notice-icon",
+                **dash_attrs({"aria-hidden": "true"}),
+            ),
+            html.P(message_es, **text_attrs(message_es, message_en)),
+        ],
+        id="registration-spam-notice",
+        className="auth-secondary-notice",
+        role="note",
+    )
+
+
 def _account_shell(
     title: tuple[str, str],
     message: tuple[str, str],
     content: Component,
+    *,
+    notice: Component | None = None,
 ) -> Component:
     return html.Div(
         [
@@ -258,6 +291,7 @@ def _account_shell(
                             ),
                             html.H1(text(*title)),
                             html.P(text(*message), className="auth-copy"),
+                            notice or "",
                             content,
                             html.A(
                                 text("Volver al inicio", "Back to home"),

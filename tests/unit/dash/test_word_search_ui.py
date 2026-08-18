@@ -109,7 +109,8 @@ def test_didactica_index_exposes_the_public_word_search_to_anonymous_users(monke
 
     # Assert
     assert route_path("word_search", "es") in hrefs
-    assert route_path("games", "es") in hrefs
+    assert f"{route_path('games', 'es')}?game=guess_term" in hrefs
+    assert f"{route_path('games', 'es')}?game=rank_countries" in hrefs
 
 
 def test_word_search_styles_cover_touch_mobile_and_dark_mode() -> None:

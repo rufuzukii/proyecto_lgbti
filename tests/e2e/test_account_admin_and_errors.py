@@ -100,7 +100,9 @@ def test_registration_verification_and_login_complete_flow(monkeypatch) -> None:
     protected_page = client.get("/es/perfil")
 
     # Assert
-    assert registration.headers["Location"].endswith("/es/verificar-correo?status=sent")
+    assert registration.headers["Location"].endswith(
+        "/es/verificar-correo?status=registration_sent"
+    )
     assert verification.headers["Location"].endswith("/es/verificar-correo?status=verified")
     assert login.headers["Location"].endswith("/es/perfil")
     assert protected_page.status_code == 200

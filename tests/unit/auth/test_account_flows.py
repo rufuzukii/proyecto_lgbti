@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import dash_app as dash_app_module
+from app.mail.service import MailDeliveryError
 from app.users.schemas import UserRead, UserRole, UserType
 from app.users.service import UserRecord
 
@@ -64,8 +65,46 @@ def test_registration_creates_unverified_account_and_sends_single_use_link(
 
     # Assert
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/es/verificar-correo?status=sent")
+    assert response.headers["Location"].endswith(
+        "/es/verificar-correo?status=registration_sent"
+    )
     assert sent == [("new@example.com", "token", "es")]
+
+
+def test_registration_delivery_failure_does_not_claim_email_was_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = UserRead(
+        id="4cf35a2f-a5df-4c31-914d-2ca72a339139",
+        username="New user",
+        email="new@example.com",
+        role=UserRole.COMMON,
+        user_type=UserType.COMUN,
+        email_verified=False,
+    )
+    monkeypatch.setattr(dash_app_module, "create_user", lambda *_args, **_kwargs: created)
+    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
+
+    def fail_delivery(*_args, **_kwargs):
+        raise MailDeliveryError("mail_delivery_failed")
+
+    monkeypatch.setattr(dash_app_module, "send_verification_email", fail_delivery)
+    app = _app(monkeypatch)
+
+    response = app.server.test_client().post(
+        "/auth/register",
+        data={
+            "csrf_token": "valid",
+            "name": "New user",
+            "email": "new@example.com",
+            "password": "a-secure-password",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(
+        "/es/verificar-correo?status=delivery_failed"
+    )
 
 
 def test_verification_link_marks_email_and_cannot_expose_token(

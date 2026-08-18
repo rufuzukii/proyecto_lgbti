@@ -7,23 +7,45 @@ TEXT = {
         "Learn about LGBTIQ+ diversity, rights and data analysis through interactive resources.",
     ),
     "dictionary": ("Diccionario LGBTIQ+", "LGBTIQ+ dictionary"),
-    "dictionary_desc": ("Consulta términos y conceptos clave.", "Explore key terms and concepts."),
+    "dictionary_desc": (
+        "Consulta conceptos relacionados con diversidad sexual, de género y corporal mediante definiciones claras y fuentes especializadas.",
+        "Explore concepts related to sexual, gender and bodily diversity through clear definitions and specialist sources.",
+    ),
+    "dictionary_card_desc": (
+        "Accede al glosario especializado.",
+        "Open the specialist glossary.",
+    ),
     "presentations": ("Presentaciones", "Presentations"),
     "presentations_desc": (
-        "Aprende mediante lecciones explicativas.",
-        "Learn through explanatory lessons.",
+        "Explora materiales visuales y presentaciones educativas para comprender conceptos, realidades y datos relacionados con el colectivo LGBTIQ+.",
+        "Explore visual resources and educational presentations about LGBTIQ+ concepts, realities and data.",
+    ),
+    "presentations_card_desc": (
+        "Abre las presentaciones educativas.",
+        "Open the educational presentations.",
     ),
     "games": ("Juegos", "Games"),
-    "games_desc": ("Pon a prueba tus conocimientos.", "Test your knowledge."),
+    "games_desc": (
+        "Pon a prueba tus conocimientos mediante actividades interactivas basadas en conceptos y datos del DataHub.",
+        "Test your knowledge through interactive activities based on DataHub concepts and data.",
+    ),
     "docente": ("Espacio Docente", "Educator space"),
     "docente_desc": (
         "Recursos, actividades y presentaciones para utilizar en clase.",
         "Resources, activities and presentations for classroom use.",
     ),
+    "docente_card_desc": (
+        "Consulta los materiales para el aula.",
+        "Browse classroom materials.",
+    ),
     "progress": ("Mi progreso", "My progress"),
     "progress_desc": (
         "Consulta las actividades y lecciones completadas.",
         "Review completed activities and lessons.",
+    ),
+    "progress_card_desc": (
+        "Revisa tu actividad guardada.",
+        "Review your saved activity.",
     ),
     "restricted": ("Acceso restringido", "Restricted access"),
     "restricted_desc": (
@@ -70,15 +92,50 @@ TEXT = {
         "Relaciona cada definición con el concepto correcto.",
         "Match each definition to the correct concept.",
     ),
-    "true_false": ("Verdadero o falso", "True or false"),
-    "true_false_desc": (
-        "Analiza afirmaciones sobre diversidad, derechos y datos.",
-        "Analyse claims about diversity, rights and data.",
-    ),
     "word_search": ("Sopa de letras", "Word search"),
     "word_search_desc": (
         "Encuentra términos del Diccionario LGBTIQ+ seleccionando su primera y última letra.",
         "Find terms from the LGBTIQ+ Dictionary by selecting their first and last letter.",
+    ),
+    "word_search_card_desc": (
+        "Encuentra conceptos del diccionario en el tablero.",
+        "Find dictionary concepts on the board.",
+    ),
+    "rank_countries": ("Ordena el ranking", "Rank the countries"),
+    "rank_countries_desc": (
+        "Ordena varios países según su puntuación legal LGBTIQ+ y comprueba cuánto conoces sobre la situación en Europa.",
+        "Order several countries by their LGBTIQ+ legal score and test what you know about the situation in Europe.",
+    ),
+    "rank_countries_card_desc": (
+        "Ordena países según su puntuación legal y aprende a interpretar los datos europeos.",
+        "Rank countries by legal score and learn to interpret European data.",
+    ),
+    "rank_countries_instructions": (
+        "Ordena los países de mayor a menor protección legal con los botones de subida y bajada. Las puntuaciones se mostrarán al comprobar.",
+        "Order the countries from higher to lower legal protection using the up and down buttons. Scores will appear after you check.",
+    ),
+    "rank_countries_methodology": (
+        "Las puntuaciones utilizadas proceden de los datos legales de ILGA-Europe disponibles en RainbowLens DataHub. Una puntuación más alta representa un mayor grado de protección y reconocimiento legal según los criterios del índice; no es una medida absoluta de bienestar.",
+        "The scores come from ILGA-Europe legal data available in RainbowLens DataHub. A higher score represents greater legal protection and recognition under the index criteria; it is not an absolute measure of wellbeing.",
+    ),
+    "check": ("Comprobar", "Check"),
+    "new_round": ("Nueva partida", "New game"),
+    "correct_order": ("Orden correcto", "Correct order"),
+    "legal_score": ("Puntuación legal", "Legal score"),
+    "move_up": ("Subir", "Move up"),
+    "move_down": ("Bajar", "Move down"),
+    "rank_all_correct": ("¡Orden correcto!", "Correct order!"),
+    "rank_positions_correct": (
+        "¡{correct} de {total} posiciones correctas!",
+        "{correct} of {total} positions correct!",
+    ),
+    "rank_result_explanation": (
+        "Las puntuaciones representan el nivel de protección legal LGBTIQ+ reflejado en los datos de ILGA-Europe.",
+        "The scores represent the level of LGBTIQ+ legal protection reflected in ILGA-Europe data.",
+    ),
+    "rank_no_data": (
+        "No hay suficientes países con puntuación legal disponible para iniciar la partida.",
+        "There are not enough countries with an available legal score to start the game.",
     ),
     "word_search_instructions": (
         "Pulsa o toca la primera letra de una palabra y después su última letra. Las palabras pueden aparecer en horizontal, vertical o diagonal y en ambos sentidos.",
@@ -110,8 +167,6 @@ TEXT = {
         "¡Has encontrado todas las palabras!",
         "You found all the words!",
     ),
-    "true": ("Verdadero", "True"),
-    "false": ("Falso", "False"),
     "answer": ("Responder", "Answer"),
     "hint": ("Pista", "Hint"),
     "choose_answer": ("Selecciona una respuesta.", "Choose an answer."),

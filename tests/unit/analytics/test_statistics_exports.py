@@ -189,6 +189,36 @@ def test_export_metadata_keeps_current_context_and_document_resolution() -> None
     assert layout.margin.t >= 82
 
 
+def test_long_chart_summary_wraps_without_truncating_the_attribution() -> None:
+    figure = go.Figure(go.Bar(x=["Spain"], y=[63]))
+
+    prepared = prepare_figure_for_export(
+        figure,
+        chart_type="ranking",
+        chart_title="Ranking comparativo",
+        indicator=(
+            "Felt discriminated in the 12 months before the survey in any of 8 areas of life"
+        ),
+        countries=["España", "Francia", "Alemania"],
+        year=2024,
+        source="FRA",
+        filters=["Respuesta: Yes", "Edad: 25-39"],
+        language="es",
+    )
+
+    layout = cast(Any, prepared).layout
+    title = str(layout.title.text)
+
+    assert (
+        "Felt discriminated in the 12 months before the survey in any of 8 areas of life" in title
+    )
+    assert "Datos adaptados y visualizados por RainbowLens Datahub." in title.replace("<br>", " ")
+    assert "Respuesta: Yes" in title
+    assert "…" not in title
+    assert title.count("<br>") >= 2
+    assert layout.margin.t > 82
+
+
 def test_exportable_graphs_share_one_client_configuration() -> None:
     config = chart_graph_config()
 

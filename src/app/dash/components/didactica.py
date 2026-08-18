@@ -28,6 +28,7 @@ def resource_card(
     icon: str,
     *,
     query: str = "",
+    class_name: str = "",
 ) -> Component:
     return dcc.Link(
         [
@@ -46,7 +47,7 @@ def resource_card(
         ],
         href=f"{route_path(route_id)}{query}",
         refresh=False,
-        className="didactica-resource-card",
+        className=f"didactica-resource-card {class_name}".strip(),
     )
 
 

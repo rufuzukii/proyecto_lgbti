@@ -51,3 +51,15 @@ def test_responsive_breakpoints_cover_desktop_tablet_and_mobile() -> None:
     assert "1100px" in about
     assert "760px" in about
     assert "680px" in didactica
+
+
+def test_user_dashboard_keeps_one_centered_column_on_large_screens() -> None:
+    auth = (ASSETS / "auth.css").read_text(encoding="utf-8")
+    dashboard_rule = auth.split(".user-dashboard-grid {", 1)[1].split("}", 1)[0]
+    shell_rule = auth.split(".user-dashboard-shell {", 1)[1].split("}", 1)[0]
+
+    assert "grid-template-columns: minmax(0, 1fr);" in dashboard_rule
+    assert "max-width: 960px;" in dashboard_rule
+    assert "margin-inline: auto;" in dashboard_rule
+    assert "max-width: 960px;" in shell_rule
+    assert "1.55fr" not in auth

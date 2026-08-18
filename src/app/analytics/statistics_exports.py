@@ -5,6 +5,7 @@ import html
 import io
 import logging
 import re
+import textwrap
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ EXPORT_WIDTH = 1600
 EXPORT_HEIGHT = 900
 EXPORT_SCALE = 2
 EXPORT_FILENAME_MAX_LENGTH = 160
+EXPORT_SUBTITLE_LINE_LENGTH = 110
 REPORT_EXPORT_WIDTH = 1400
 REPORT_EXPORT_HEIGHT = 780
 REPORT_EXPORT_SCALE = 1.25
@@ -185,11 +187,15 @@ def prepare_figure_for_export(
         *[str(value).strip() for value in filters or [] if str(value).strip()],
     ]
     subtitle = " · ".join(value for value in details if value)
-    if len(subtitle) > 180:
-        subtitle = f"{subtitle[:177].rstrip()}…"
+    subtitle_lines = textwrap.wrap(
+        subtitle,
+        width=EXPORT_SUBTITLE_LINE_LENGTH,
+        break_long_words=False,
+        break_on_hyphens=False,
+    ) or [""]
+    subtitle_html = "<br>".join(html.escape(line) for line in subtitle_lines)
     title_text = (
-        f"<b>{html.escape(str(chart_title or chart_type))}</b>"
-        f"<br><sup>{html.escape(subtitle)}</sup>"
+        f"<b>{html.escape(str(chart_title or chart_type))}</b><br><sup>{subtitle_html}</sup>"
     )
 
     margin = cast(Any, figure).layout.margin
@@ -213,7 +219,7 @@ def prepare_figure_for_export(
         margin={
             "l": margin.l if margin.l is not None else 45,
             "r": margin.r if margin.r is not None else 20,
-            "t": max(margin.t or 0, 82),
+            "t": max(margin.t or 0, 82 + 18 * (len(subtitle_lines) - 1)),
             "b": margin.b if margin.b is not None else 55,
         },
         meta={

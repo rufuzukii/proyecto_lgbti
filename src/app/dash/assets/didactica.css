@@ -36,10 +36,46 @@
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 }
 
-.didactica-resource-grid {
+.didactica-mode-list {
   display: grid;
-  gap: 1.4rem;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: clamp(1rem, 2.2vw, 1.5rem);
+}
+
+.didactica-mode-row {
+  align-items: center;
+  border-bottom: 1px solid var(--panel-border);
+  display: grid;
+  gap: clamp(1.2rem, 4vw, 3rem);
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+  padding: clamp(1.1rem, 3vw, 1.8rem) 0;
+}
+
+.didactica-mode-row--games {
+  align-items: start;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.4fr);
+}
+
+.didactica-mode-copy h2 {
+  color: var(--color-text);
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+  margin: 0 0 0.65rem;
+}
+
+.didactica-mode-copy p {
+  color: var(--color-text-muted);
+  line-height: 1.65;
+  margin: 0;
+  max-width: 68ch;
+}
+
+.didactica-mode-access {
+  min-width: 0;
+}
+
+.didactica-game-access-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .didactica-resource-card,
@@ -74,9 +110,39 @@
   transform: translateY(-3px);
 }
 
+.didactica-resource-card:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.didactica-resource-card.is-compact {
+  min-height: 205px;
+}
+
+.didactica-resource-card.is-game-card {
+  gap: 0.55rem;
+  min-height: 215px;
+  padding: 1.2rem;
+}
+
+.didactica-resource-card.is-game-card h2 {
+  font-size: 1.15rem;
+}
+
+.didactica-resource-card.is-game-card p {
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.didactica-resource-card.is-game-card .didactica-card-icon {
+  font-size: 1rem;
+  height: 42px;
+  width: 42px;
+}
+
 .didactica-resource-card:focus-visible,
 .didactica-button:focus-visible,
 .didactica-back-link:focus-visible,
+.ranking-game-move:focus-visible,
 .didactica-glossary-card summary:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--link-green) 42%, transparent);
   outline-offset: 3px;
@@ -428,6 +494,141 @@
   min-height: 1.5rem;
 }
 
+.ranking-game-instructions,
+.ranking-game-note {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.ranking-game-instructions {
+  background: color-mix(in srgb, var(--color-accent) 58%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  margin: -0.7rem 0 1.1rem;
+  padding: 0.85rem 1rem;
+}
+
+.ranking-game-card {
+  min-height: 0;
+}
+
+.ranking-game-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.ranking-game-row {
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: 2rem minmax(0, 1fr) minmax(3.8rem, auto) auto;
+  min-height: 58px;
+  padding: 0.55rem 0.65rem;
+}
+
+.ranking-game-position {
+  color: var(--color-text-muted);
+  font-weight: 800;
+  text-align: right;
+}
+
+.ranking-game-country {
+  color: var(--color-text);
+  font-weight: 700;
+  min-width: 0;
+}
+
+.ranking-game-score {
+  color: var(--link-green);
+  text-align: right;
+}
+
+.ranking-game-controls {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ranking-game-move {
+  align-items: center;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 900;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.ranking-game-move:hover:not(:disabled) {
+  border-color: var(--link-green);
+  color: var(--link-green);
+}
+
+.ranking-game-move:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.ranking-game-move:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.ranking-game-result {
+  margin-top: 1rem;
+}
+
+.ranking-game-result-panel {
+  background: color-mix(in srgb, var(--color-accent-sky) 50%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+}
+
+.ranking-game-result-panel.is-success {
+  background: color-mix(in srgb, #20835b 14%, var(--panel-bg));
+  border-color: #20835b;
+}
+
+.ranking-game-result-panel h2,
+.ranking-game-result-panel h3,
+.ranking-game-result-panel p {
+  color: var(--color-text);
+  margin-top: 0;
+}
+
+.ranking-game-correct-order {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding-left: 1.6rem;
+}
+
+.ranking-game-correct-order li {
+  color: var(--color-text);
+  padding-left: 0.25rem;
+}
+
+.ranking-game-correct-order li span {
+  display: inline-block;
+  min-width: min(70%, 280px);
+}
+
+.ranking-game-correct-order li strong {
+  color: var(--link-green);
+}
+
+.ranking-game-empty {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
 .didactica-progress-card {
   display: grid;
   gap: 0.4rem;
@@ -624,6 +825,25 @@
   }
 }
 
+@media (max-width: 1180px) and (min-width: 901px) {
+  .didactica-game-access-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .didactica-mode-row,
+  .didactica-mode-row--games {
+    align-items: stretch;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+  }
+
+  .didactica-game-access-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 680px) {
   .didactica-shell {
     padding: 1rem;
@@ -633,10 +853,13 @@
     grid-template-columns: 1fr;
   }
 
-  .didactica-resource-grid,
   .didactica-lesson-grid,
   .didactica-glossary-grid,
   .didactica-progress-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .didactica-game-access-grid {
     grid-template-columns: 1fr;
   }
 
@@ -645,8 +868,29 @@
   }
 
   .didactica-resource-card {
-    min-height: 225px;
+    min-height: 190px;
     padding: 1.4rem;
+  }
+
+  .didactica-mode-row {
+    padding: 1rem 0;
+  }
+
+  .ranking-game-row {
+    gap: 0.45rem;
+    grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+    padding: 0.5rem;
+  }
+
+  .ranking-game-score {
+    grid-column: 2;
+    grid-row: 2;
+    text-align: left;
+  }
+
+  .ranking-game-controls {
+    grid-column: 3;
+    grid-row: 1 / span 2;
   }
 
   .word-search-board-panel {
