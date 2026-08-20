@@ -11,8 +11,12 @@ from app.analytics.statistics_exports import (
     export_figures_for_report,
 )
 from app.analytics.statistics_models import FraStatisticsQuery, IlgaStatisticsQuery
-from app.analytics.statistics_service import get_fra_statistics, get_ilga_statistics
-from app.reports.builder import HRReportBuilder
+from app.analytics.statistics_service import (
+    get_combined_statistics_analysis,
+    get_fra_statistics,
+    get_ilga_statistics,
+)
+from app.reports.builder import ReportBuilder
 from app.reports.models import ReportConfiguration, ReportContent, ReportDataset
 from app.reports.pdf_exporter import PDFExporter
 
@@ -34,19 +38,35 @@ class GeneratedReport:
 def load_report_dataset(configuration: ReportConfiguration) -> ReportDataset:
     """Use one optimized statistics query for the complete report dataset."""
     started = time.perf_counter()
-    if configuration.source == "fra":
-        result = get_fra_statistics(
-            FraStatisticsQuery(
-                year=configuration.year,
-                category=configuration.category or None,
-                question_code=configuration.indicator_id or None,
-                answer=configuration.answer or None,
-                filter_a_name=configuration.filter_a_name or "All",
-                filter_a_value=configuration.filter_a_value or "All",
-                filter_b_name=configuration.filter_b_name or "All",
-                filter_b_value=configuration.filter_b_value or "All",
-            )
+    if configuration.source in {"fra", "combined"}:
+        query = FraStatisticsQuery(
+            year=configuration.year,
+            category=configuration.category or None,
+            question_code=configuration.indicator_id or None,
+            answer=configuration.answer or None,
+            filter_a_name=configuration.filter_a_name or "All",
+            filter_a_value=configuration.filter_a_value or "All",
+            filter_b_name=configuration.filter_b_name or "All",
+            filter_b_value=configuration.filter_b_value or "All",
         )
+        fra_result = get_fra_statistics(query)
+        if fra_result.get("status") != "ok":
+            result = fra_result
+        elif configuration.source == "combined":
+            combined = get_combined_statistics_analysis(query, fra_result=fra_result)
+            result = (
+                {
+                    **fra_result,
+                    "source": "FRA + ILGA-Europe",
+                    "combined_analysis": combined,
+                    "fra_median_comparison": combined.get("fra_median_comparison"),
+                    "availability": combined.get("availability"),
+                }
+                if combined.get("status") == "ok"
+                else combined
+            )
+        else:
+            result = fra_result
     else:
         result = get_ilga_statistics(
             IlgaStatisticsQuery(
@@ -65,7 +85,7 @@ def load_report_dataset(configuration: ReportConfiguration) -> ReportDataset:
 
 def build_report(configuration: ReportConfiguration) -> ReportContent:
     dataset = load_report_dataset(configuration)
-    return HRReportBuilder().build(configuration, dataset)
+    return ReportBuilder().build(configuration, dataset)
 
 
 def generate_report_pdf(configuration: ReportConfiguration) -> GeneratedReport:
@@ -95,7 +115,7 @@ def generate_report_pdf(configuration: ReportConfiguration) -> GeneratedReport:
             "total_seconds": round(time.perf_counter() - total_started, 4),
         }
         logger.info(
-            "hr_report_generated",
+            "report_generated",
             extra={
                 "source": configuration.source,
                 "year": configuration.year,
@@ -114,7 +134,7 @@ def generate_report_pdf(configuration: ReportConfiguration) -> GeneratedReport:
         raise
     except Exception as exc:
         logger.exception(
-            "hr_report_generation_failed",
+            "report_generation_failed",
             extra={
                 "source": configuration.source,
                 "year": configuration.year,
@@ -129,8 +149,8 @@ def _report_filename(
     content: ReportContent,
 ) -> str:
     png_name = build_export_filename(
-        "informe-rrhh",
-        content.indicator or "diversidad",
+        f"rainbowlens-{configuration.profile_key}",
+        content.indicator or configuration.objective or "informe",
         content.country_names,
         configuration.year,
     )

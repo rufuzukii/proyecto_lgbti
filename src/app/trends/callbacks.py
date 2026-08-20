@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from itertools import pairwise
 from typing import Any
 
 from dash import Dash, Input, Output, State, dcc, html
@@ -10,7 +11,7 @@ from app.analytics.statistics_exports import chart_graph_config
 from app.dash.components.dropdown_options import build_dropdown_options, option_value_or_none
 from app.dash.components.empty_state import build_empty_state
 from app.dash.components.ilga_methodology import build_ilga_series_normalization_note
-from app.dash.i18n import country_labels, ui_text
+from app.dash.i18n import country_labels, dash_attrs, ui_text
 from app.trends.charts import build_trend_figure
 from app.trends.forecasting_service import forecast_horizon_limit
 from app.trends.models import (
@@ -23,6 +24,7 @@ from app.trends.models import (
 from app.trends.service import generate_trend_analysis, get_historical_series, get_trend_scope
 
 logger = logging.getLogger(__name__)
+LARGE_HISTORICAL_CHANGE = 5.0
 
 
 def register_trend_callbacks(app: Dash) -> None:
@@ -195,8 +197,18 @@ def _render_result(result: ForecastResult, language: str) -> Component:
                     language,
                     "trend-state-warning",
                 ),
-                html.Section(graph, className="trend-chart-card"),
+                html.Section(
+                    [
+                        html.H2(ui_text("trends_chart_title", language)),
+                        graph,
+                        _source_distinction(language),
+                    ],
+                    className="trend-chart-card",
+                ),
+                _interpretation_guide(result, language),
+                _evolution_summary(result, language),
                 normalization_note,
+                _glossary(language),
                 _limitations(language),
             ],
             className="trend-analysis",
@@ -224,8 +236,11 @@ def _render_result(result: ForecastResult, language: str) -> Component:
                 ],
                 className="trend-chart-card",
             ),
+            _interpretation_guide(result, language),
+            _evolution_summary(result, language),
             normalization_note,
             _methodology(result, language),
+            _glossary(language),
             _limitations(language),
         ],
         className="trend-analysis",
@@ -238,10 +253,20 @@ def _summary_cards(result: ForecastResult, language: str) -> Component:
     if summary is None:
         return html.Section(className="trend-metric-grid")
     cards = [
-        _metric_card("trends_last_value", f"{summary.final_value:.1f} %", language),
+        _metric_card(
+            "trends_last_value",
+            f"{summary.final_value:.1f} {ui_text('trends_points', language)}",
+            language,
+        ),
         _metric_card("trends_trend", _direction_label(summary.direction, language), language),
         _metric_card("trends_total_change", _signed_points(summary.absolute_change, language), language),
-        _metric_card("trends_selected_model", _model_label(result.selected_model, language), language),
+        _metric_card(
+            "trends_selected_model",
+            _model_friendly_label(result.selected_model, language)
+            if result.selected_model is not None
+            else "—",
+            language,
+        ),
         _metric_card(
             "trends_mean_error",
             f"±{validation.mae:.1f} {ui_text('trends_points', language)}"
@@ -253,6 +278,179 @@ def _summary_cards(result: ForecastResult, language: str) -> Component:
     return html.Section(cards, className="trend-metric-grid")
 
 
+def _interpretation_guide(result: ForecastResult, language: str) -> Component:
+    country = country_labels(result.country_code, result.country_name)[
+        1 if language == "en" else 0
+    ]
+    items = [
+        _explanation_item(
+            "trends_time_axis_title",
+            ui_text("trends_time_axis_detail", language),
+            language,
+        ),
+        _explanation_item(
+            "trends_score_axis_title",
+            " ".join(
+                (
+                    ui_text("trends_score_axis_detail", language),
+                    ui_text("trends_score_caveat", language),
+                )
+            ),
+            language,
+        ),
+        _explanation_item(
+            "trends_history_explanation_title",
+            ui_text("trends_history_explanation", language).format(country=country),
+            language,
+        ),
+    ]
+    if result.forecast:
+        items.append(
+            _explanation_item(
+                "trends_estimate_explanation_title",
+                ui_text("trends_estimate_explanation", language),
+                language,
+            )
+        )
+    if result.uncertainty_method:
+        items.append(
+            _explanation_item(
+                "trends_uncertainty_explanation_title",
+                ui_text("trends_uncertainty_explanation", language),
+                language,
+            )
+        )
+    return html.Section(
+        [
+            html.H2(
+                ui_text("trends_interpret_title", language),
+                id="trend-interpretation-title",
+            ),
+            html.P(
+                ui_text("trends_interpret_intro", language).format(country=country),
+                className="trend-explanation-lead",
+            ),
+            html.Div(items, className="trend-explanation-grid"),
+        ],
+        className="trend-explanation-card",
+        **dash_attrs({"aria-labelledby": "trend-interpretation-title"}),
+    )
+
+
+def _explanation_item(title_key: str, body: str, language: str) -> Component:
+    return html.Article(
+        [html.H3(ui_text(title_key, language)), html.P(body)],
+        className="trend-explanation-item",
+    )
+
+
+def _evolution_summary(result: ForecastResult, language: str) -> Component:
+    summary = result.summary
+    if summary is None:
+        return html.Section(className="trend-evolution-card")
+    country = country_labels(result.country_code, result.country_name)[
+        1 if language == "en" else 0
+    ]
+    if summary.absolute_change > 0.05:
+        change_key = "trends_evolution_increase"
+    elif summary.absolute_change < -0.05:
+        change_key = "trends_evolution_decrease"
+    else:
+        change_key = "trends_evolution_same"
+    statements = [
+        ui_text(change_key, language).format(
+            start=summary.start_year,
+            end=summary.end_year,
+            initial=f"{summary.initial_value:.1f}",
+            final=f"{summary.final_value:.1f}",
+        ),
+        ui_text(f"trends_evolution_{summary.direction.value}", language),
+    ]
+    largest_change = _largest_historical_change(result)
+    if largest_change is not None and abs(largest_change[2]) >= LARGE_HISTORICAL_CHANGE:
+        statements.append(
+            ui_text("trends_largest_change", language).format(
+                start=largest_change[0],
+                end=largest_change[1],
+                change=f"{largest_change[2]:+.1f}",
+            )
+        )
+    return html.Section(
+        [
+            html.H2(
+                ui_text("trends_evolution_title", language).format(country=country),
+                id="trend-evolution-title",
+            ),
+            *[html.P(statement) for statement in statements],
+        ],
+        className="trend-evolution-card",
+        **dash_attrs({"aria-labelledby": "trend-evolution-title"}),
+    )
+
+
+def _largest_historical_change(result: ForecastResult) -> tuple[int, int, float] | None:
+    points = [
+        (int(point.year), float(point.value))
+        for point in result.historical
+        if point.year is not None and point.value is not None
+    ]
+    if len(points) < 2:
+        return None
+    changes = [
+        (previous[0], current[0], current[1] - previous[1])
+        for previous, current in pairwise(points)
+    ]
+    return max(changes, key=lambda item: abs(item[2]))
+
+
+def _selected_method_explanation(result: ForecastResult, language: str) -> Component:
+    model = result.selected_model
+    if model is None:
+        return html.Div()
+    return html.Div(
+        [
+            html.H3(_model_friendly_label(model, language)),
+            html.P(
+                ui_text("trends_statistical_method", language).format(
+                    method=_model_label(model, language)
+                ),
+                className="trend-technical-name",
+            ),
+            html.P(_model_explanation(model, language)),
+            html.P(_model_example(model, language), className="trend-method-example"),
+            html.H3(ui_text("trends_selection_title", language)),
+            html.P(_selection_text(result, language)),
+        ],
+        className="trend-selected-method",
+    )
+
+
+def _glossary(language: str) -> Component:
+    entries = (
+        ("trends_score_axis_title", "trends_glossary_score"),
+        ("trends_trend", "trends_glossary_trend"),
+        ("trends_forecast", "trends_glossary_projection"),
+        ("trends_uncertainty", "trends_glossary_uncertainty"),
+    )
+    return html.Section(
+        [
+            html.H2(ui_text("trends_glossary_title", language)),
+            html.Dl(
+                [
+                    node
+                    for title_key, detail_key in entries
+                    for node in (
+                        html.Dt(ui_text(title_key, language)),
+                        html.Dd(ui_text(detail_key, language)),
+                    )
+                ],
+                className="trend-glossary-list",
+            ),
+        ],
+        className="trend-glossary-card",
+    )
+
+
 def _methodology(result: ForecastResult, language: str) -> Component:
     summary = result.summary
     validation = result.selected_validation
@@ -262,6 +460,7 @@ def _methodology(result: ForecastResult, language: str) -> Component:
         [
             html.H2(ui_text("trends_projection_method", language)),
             html.P(ui_text("trends_method_summary", language), className="trend-method-summary"),
+            _selected_method_explanation(result, language),
             html.Dl(
                 [
                     *_definition(
@@ -366,7 +565,20 @@ def _models_step(result: ForecastResult, language: str) -> Component:
         [
             html.H3(f"3. {ui_text('trends_models_evaluated', language)}"),
             html.Ul(
-                [html.Li(_model_label(item.model, language)) for item in result.validation]
+                [
+                    html.Li(
+                        [
+                            html.Strong(_model_friendly_label(item.model, language)),
+                            html.Span(
+                                ui_text("trends_statistical_method", language).format(
+                                    method=_model_label(item.model, language)
+                                )
+                            ),
+                            html.P(_model_explanation(item.model, language)),
+                        ]
+                    )
+                    for item in result.validation
+                ]
             ),
         ],
         className="trend-method-step",
@@ -377,6 +589,7 @@ def _comparison_step(validation: tuple[ModelValidation, ...], language: str) -> 
     return html.Section(
         [
             html.H3(f"5. {ui_text('trends_error_comparison', language)}"),
+            html.P(ui_text("trends_error_metrics_explanation", language)),
             html.Div(
                 html.Table(
                     [
@@ -384,8 +597,8 @@ def _comparison_step(validation: tuple[ModelValidation, ...], language: str) -> 
                             html.Tr(
                                 [
                                     html.Th(ui_text("trends_model", language)),
-                                    html.Th("MAE"),
-                                    html.Th("RMSE"),
+                                    html.Th(ui_text("trends_mae_column", language)),
+                                    html.Th(ui_text("trends_rmse_column", language)),
                                     html.Th(ui_text("trends_validation_folds", language)),
                                 ]
                             )
@@ -442,7 +655,11 @@ def _validation_text(result: ForecastResult, language: str) -> str:
 
 
 def _selection_text(result: ForecastResult, language: str) -> str:
-    model = _model_label(result.selected_model, language)
+    model = (
+        _model_friendly_label(result.selected_model, language)
+        if result.selected_model is not None
+        else "—"
+    )
     key = (
         "trends_selection_simplicity"
         if result.selection_reason == "simpler_model_with_similar_error"
@@ -496,12 +713,25 @@ def _model_label(model: ForecastModelName | None, language: str) -> str:
     return ui_text(f"trends_model_{model.value}", language)
 
 
+def _model_friendly_label(model: ForecastModelName, language: str) -> str:
+    return ui_text(f"trends_method_friendly_{model.value}", language)
+
+
+def _model_explanation(model: ForecastModelName, language: str) -> str:
+    return ui_text(f"trends_method_explanation_{model.value}", language)
+
+
+def _model_example(model: ForecastModelName, language: str) -> str:
+    return ui_text(f"trends_model_example_{model.value}", language)
+
+
 def _direction_label(direction: TrendDirection, language: str) -> str:
     return ui_text(
         {
             TrendDirection.UPWARD: "trends_upward",
             TrendDirection.DOWNWARD: "trends_downward",
             TrendDirection.STABLE: "trends_stable",
+            TrendDirection.IRREGULAR: "trends_irregular",
         }[direction],
         language,
     )

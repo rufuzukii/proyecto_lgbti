@@ -1,31 +1,18 @@
-from typing import Literal, cast
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
-from app.reports.models import DEFAULT_REPORT_CHARTS, DEFAULT_REPORT_SECTIONS, ReportConfiguration
+from app.reports.models import ReportConfiguration
 from app.reports.service import ReportGenerationError, generate_report_pdf
+from app.reports.templates import report_objective, report_profile
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-ReportSection = Literal[
-    "executive",
-    "methodology",
-    "metrics",
-    "workplace",
-    "comparison",
-    "demographics",
-    "risks",
-    "recommendations",
-    "limitations",
-    "sources",
-]
-ReportChart = Literal["ranking", "average", "countries", "responses", "temporal", "radar"]
-
-
 class ReportRequest(BaseModel):
-    source: Literal["fra", "ilga"] = "fra"
+    source: Literal["fra", "ilga", "combined"] = "fra"
+    objective: str = Field(default="overview", max_length=80)
     category: str = Field(default="", max_length=180)
     indicator_id: str = Field(default="", max_length=120)
     indicator_label: str = Field(default="", max_length=240)
@@ -42,17 +29,27 @@ class ReportRequest(BaseModel):
     organization: str = Field(default="", max_length=120)
     author: str = Field(default="", max_length=120)
     language: Literal["es", "en"] = "es"
-    mode: Literal["automatic", "custom"] = "automatic"
-    detail_level: Literal["standard", "detailed"] = "standard"
-    sections: list[ReportSection] = Field(
-        default_factory=lambda: cast(list[ReportSection], list(DEFAULT_REPORT_SECTIONS))
-    )
-    charts: list[ReportChart] = Field(
-        default_factory=lambda: cast(list[ReportChart], list(DEFAULT_REPORT_CHARTS))
-    )
-
     def to_configuration(self) -> ReportConfiguration:
-        return ReportConfiguration.from_mapping(self.model_dump())
+        profile = report_profile("comun")
+        objective = report_objective(profile.key, self.objective)
+        charts = (
+            ["scatter", "median_difference"]
+            if self.source == "combined"
+            else [
+                key
+                for key in profile.recommended_charts
+                if key not in {"scatter", "quadrants", "median_difference", "availability"}
+            ]
+        )
+        return ReportConfiguration.from_mapping(
+            {
+                **self.model_dump(),
+                "profile_key": profile.key,
+                "objective": objective.id,
+                "sections": profile.recommended_sections,
+                "charts": charts,
+            }
+        )
 
 
 @router.post("", response_class=Response)

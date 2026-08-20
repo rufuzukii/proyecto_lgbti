@@ -14,13 +14,13 @@ from app.dates import utc_today_iso
 
 DEFAULT_REPORT_SECTIONS: tuple[str, ...] = (
     "executive",
-    "methodology",
+    "context",
     "metrics",
-    "workplace",
+    "analysis",
     "comparison",
-    "demographics",
-    "risks",
+    "interpretation",
     "recommendations",
+    "methodology",
     "limitations",
     "sources",
 )
@@ -30,8 +30,24 @@ DEFAULT_REPORT_CHARTS: tuple[str, ...] = (
     "average",
     "countries",
     "responses",
+)
+
+ALLOWED_REPORT_SECTIONS: tuple[str, ...] = (
+    *DEFAULT_REPORT_SECTIONS,
+    "workplace",
+    "demographics",
+    "education",
+    "data_quality",
+)
+
+ALLOWED_REPORT_CHARTS: tuple[str, ...] = (
+    *DEFAULT_REPORT_CHARTS,
     "temporal",
     "radar",
+    "scatter",
+    "quadrants",
+    "median_difference",
+    "availability",
 )
 
 
@@ -61,6 +77,8 @@ def normalize_report_countries(values: Any) -> tuple[str, ...]:
 class ReportConfiguration:
     template_id: str = ""
     source: str = "fra"
+    profile_key: str = "common"
+    objective: str = "overview"
     category: str = ""
     indicator_id: str = ""
     indicator_label: str = ""
@@ -77,8 +95,8 @@ class ReportConfiguration:
     organization: str = ""
     author: str = ""
     language: str = "es"
-    mode: str = "automatic"
     detail_level: str = "standard"
+    include_spanish_context: bool = False
     sections: tuple[str, ...] = DEFAULT_REPORT_SECTIONS
     charts: tuple[str, ...] = DEFAULT_REPORT_CHARTS
     generated_on: str = field(default_factory=utc_today_iso)
@@ -86,9 +104,9 @@ class ReportConfiguration:
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any] | None) -> ReportConfiguration:
         payload = values or {}
-        source = "ilga" if str(payload.get("source") or "").lower() == "ilga" else "fra"
+        requested_source = str(payload.get("source") or "").lower()
+        source = requested_source if requested_source in {"fra", "ilga", "combined"} else "fra"
         language = "en" if str(payload.get("language") or "").lower() == "en" else "es"
-        mode = "custom" if str(payload.get("mode") or "").lower() == "custom" else "automatic"
         detail_level = (
             "detailed"
             if str(payload.get("detail_level") or "").lower() == "detailed"
@@ -100,21 +118,25 @@ class ReportConfiguration:
             primary = countries[0]
         if primary and primary not in countries:
             countries = (primary, *countries)
-        if mode == "automatic":
+        sections = _allowed_values(payload.get("sections"), ALLOWED_REPORT_SECTIONS)
+        charts = _allowed_values(payload.get("charts"), ALLOWED_REPORT_CHARTS)
+        if not sections:
             sections = DEFAULT_REPORT_SECTIONS
-            charts = DEFAULT_REPORT_CHARTS
-        else:
-            sections = _allowed_values(
-                payload.get("sections"),
-                DEFAULT_REPORT_SECTIONS,
-            )
-            charts = _allowed_values(
-                payload.get("charts"),
-                DEFAULT_REPORT_CHARTS,
+        if not charts:
+            charts = (
+                ("ranking", "average", "countries", "temporal")
+                if source == "ilga"
+                else ("scatter", "median_difference")
+                if source == "combined"
+                else DEFAULT_REPORT_CHARTS
             )
         return cls(
             template_id=sanitize_report_text(payload.get("template_id"), maximum=80),
             source=source,
+            profile_key=sanitize_report_text(payload.get("profile_key"), maximum=40)
+            or "common",
+            objective=sanitize_report_text(payload.get("objective"), maximum=80)
+            or "overview",
             category=sanitize_report_text(payload.get("category"), maximum=180),
             indicator_id=sanitize_report_text(payload.get("indicator_id"), maximum=120),
             indicator_label=sanitize_report_text(payload.get("indicator_label"), maximum=240),
@@ -138,8 +160,8 @@ class ReportConfiguration:
             organization=sanitize_report_text(payload.get("organization"), maximum=120),
             author=sanitize_report_text(payload.get("author"), maximum=120),
             language=language,
-            mode=mode,
             detail_level=detail_level,
+            include_spanish_context=_safe_bool(payload.get("include_spanish_context")),
             sections=sections,
             charts=charts,
             generated_on=_safe_date(payload.get("generated_on")),
@@ -176,6 +198,9 @@ class ReportChart:
     title: str
     figure: go.Figure
     source: str
+    what_shows: str = ""
+    how_to_read: str = ""
+    observation: str = ""
 
 
 @dataclass
@@ -196,6 +221,10 @@ class ReportContent:
     charts: list[ReportChart]
     table_rows: list[dict[str, Any]]
     timings: dict[str, float] = field(default_factory=dict)
+    profile_label: str = ""
+    objective_label: str = ""
+    educational_content: list[str] = field(default_factory=list)
+    data_quality: list[str] = field(default_factory=list)
 
 
 def _allowed_values(
@@ -219,3 +248,9 @@ def _safe_date(value: Any) -> str:
         return date.fromisoformat(str(value)).isoformat()
     except TypeError, ValueError:
         return utc_today_iso()
+
+
+def _safe_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "on", "sí", "si"}

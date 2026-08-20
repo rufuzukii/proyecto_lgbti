@@ -24,7 +24,6 @@ def test_anonymous_users_receive_all_public_tool_permissions() -> None:
     assert user_has_permission(user, Permission.ACCESS_EDU)
     assert user_has_permission(user, Permission.PLAY_EDU_GAMES)
     assert user_has_permission(user, Permission.GENERATE_REPORTS)
-    assert user_has_permission(user, Permission.CONFIGURE_ADVANCED_REPORTS)
     assert user_has_permission(user, Permission.EXPORT_DATA)
     assert user_has_permission(user, Permission.EXPORT_CHARTS)
     assert user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
@@ -39,7 +38,6 @@ def test_common_user_receives_public_tools_but_not_management_permissions() -> N
     assert user_has_permission(user, Permission.PLAY_EDU_GAMES)
     assert user_has_permission(user, Permission.GENERATE_REPORTS)
     assert not user_has_permission(user, Permission.UPLOAD_DATA)
-    assert user_has_permission(user, Permission.CONFIGURE_ADVANCED_REPORTS)
     assert user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
 
     sociologist = _user(user_type=UserType.SOCIOLOGO)
@@ -50,7 +48,7 @@ def test_common_user_receives_public_tools_but_not_management_permissions() -> N
 def test_profiles_share_tools_and_only_docente_receives_authoring_permission() -> None:
     for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG, UserType.SOCIOLOGO):
         user = _user(user_type=profile)
-        assert user_has_permission(user, Permission.CONFIGURE_ADVANCED_REPORTS)
+        assert user_has_permission(user, Permission.GENERATE_REPORTS)
         assert not user_has_permission(user, Permission.UPLOAD_DATA)
         assert user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
         assert not user_has_permission(user, Permission.MANAGE_OWN_EDU_GAMES)
@@ -59,7 +57,6 @@ def test_profiles_share_tools_and_only_docente_receives_authoring_permission() -
     assert user_has_permission(docente, Permission.ACCESS_DOCENTE_RESOURCES)
     assert user_has_permission(docente, Permission.MANAGE_OWN_EDU_GAMES)
     assert not user_has_permission(docente, Permission.UPLOAD_DATA)
-    assert user_has_permission(docente, Permission.CONFIGURE_ADVANCED_REPORTS)
 
 
 def test_admin_automatically_inherits_every_current_and_future_permission() -> None:

@@ -70,8 +70,19 @@ def test_home_places_one_accessible_ranking_beside_the_existing_map(monkeypatch)
     assert "Malta" in str(ranking_rows[0])
     assert "89%" in str(ranking_rows[0])
     assert "Alemania" in str(ranking_rows[-1])
-    assert components["home-map-export-button"].to_plotly_json()["props"]["aria-label"]
+    export_props = components["home-map-export-button"].to_plotly_json()["props"]
+    error_props = components["home-map-export-status"].to_plotly_json()["props"]
+    assert export_props["aria-label"]
+    assert export_props["data-chart-export"] == "true"
+    assert export_props["data-chart-export-target"] == "home-map-graph"
+    assert export_props["aria-controls"] == "home-map-graph"
+    assert error_props["data-chart-export-error"] == "home-map-graph"
+    assert error_props["hidden"] is True
     assert components["home-map-graph"].figure.data
+    assert (
+        components["home-map-graph"].figure.layout.meta["export_filename"]
+        == "rainbowlens_mapa_legal_europa_2026"
+    )
 
 
 def test_map_and_ranking_share_one_document_query_and_translate_together(monkeypatch) -> None:
@@ -92,41 +103,19 @@ def test_map_and_ranking_share_one_document_query_and_translate_together(monkeyp
     assert len(calls) == 1
 
 
-def test_export_callback_reuses_map_and_ranking_state_without_a_database_query(
-    monkeypatch,
-) -> None:
+def test_home_map_export_reuses_the_rendered_plot_without_a_server_callback(monkeypatch) -> None:
     app = _app(monkeypatch)
-    components = {
-        component.id: component
-        for component in _walk(app.layout)
-        if isinstance(getattr(component, "id", None), str)
-    }
-    monkeypatch.setattr(home, "get_ilga_document_by_year", lambda _year: None)
-    monkeypatch.setattr(home, "export_legal_map_png", lambda _figure: b"\x89PNG\r\n\x1a\n")
-    callback = _callback(app, "download_home_legal_map")
-
-    download, status, class_name = callback(
-        {"theme": "dark", "request": 1},
-        components["home-map-graph"].figure.to_dict(),
-        components["home-legal-ranking-store"].data,
-        2026,
-        "es",
-    )
-
-    assert download["filename"] == "rainbowlens_ranking_legal_europa_2026.png"
-    assert download["type"] == "image/png"
-    assert status == ""
-    assert class_name.endswith("is-hidden")
-
-    callback_entry = next(
-        entry
+    callback_names = {
+        entry["callback"].__wrapped__.__name__
         for entry in app.callback_map.values()
         if getattr(entry.get("callback"), "__wrapped__", None)
-        and entry["callback"].__wrapped__.__name__ == "download_home_legal_map"
-    )
-    assert callback_entry["inputs"] == [
-        {"id": "home-map-export-request", "property": "data"}
-    ]
+    }
+    script = Path("src/app/dash/assets/js/35_chart_export.js").read_text(encoding="utf-8")
+
+    assert "download_home_legal_map" not in callback_names
+    assert "window.Plotly.downloadImage(graph, options)" in script
+    assert "button.parentElement" in script
+    assert "data-chart-export-error" in script
 
 
 def test_home_ranking_css_is_dark_mode_safe_and_stacks_below_the_map() -> None:

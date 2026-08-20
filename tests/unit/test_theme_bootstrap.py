@@ -38,6 +38,31 @@ def test_dark_toggle_position_uses_persistent_document_theme() -> None:
     assert ':root[data-theme="dark"] .theme-toggle .theme-toggle-dot' in styles
 
 
+def test_dark_global_background_is_flat_across_dash_roots() -> None:
+    styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
+    dark_variables = styles.split(':root[data-theme="dark"],', 1)[1].split("}", 1)[0]
+    dark_roots = styles.split('html[data-theme="dark"],', 1)[1].split("}", 1)[0]
+
+    assert "--app-background: var(--color-bg);" in dark_variables
+    assert "linear-gradient(135deg, #0a0e17 0%, #111827 52%, #1b1420 100%)" not in styles
+    assert "--body-gradient" not in styles
+    assert 'html[data-theme="dark"] #react-entry-point' in dark_roots
+    assert 'html[data-theme="dark"] #_dash-app-content' in dark_roots
+    assert 'html[data-theme="dark"] .app-shell' in dark_roots
+    assert 'html[data-theme="dark"] #page-content' in dark_roots
+    assert "background-color: var(--color-bg);" in dark_roots
+    assert "background-image: none;" in dark_roots
+
+
+def test_intentional_component_gradients_remain_available() -> None:
+    auth_styles = (ASSETS / "auth.css").read_text(encoding="utf-8")
+    privacy_styles = (ASSETS / "privacy.css").read_text(encoding="utf-8")
+
+    assert "radial-gradient" in auth_styles
+    assert ".privacy-header" in privacy_styles
+    assert "radial-gradient" in privacy_styles
+
+
 def test_dark_theme_renders_dash_option_text_in_white() -> None:
     styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
 

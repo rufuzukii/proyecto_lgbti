@@ -22,7 +22,7 @@
   --color-glass-border: rgba(255, 255, 255, 0.5);
   --shadow-md: 0 10px 22px rgba(87, 55, 69, 0.1);
   --shadow-xl: 0 20px 40px rgba(87, 55, 69, 0.14);
-  --body-gradient: linear-gradient(135deg, #fff7fa 0%, #f1f9fb 46%, #fff7f1 100%);
+  --app-background: linear-gradient(135deg, #fff7fa 0%, #f1f9fb 46%, #fff7f1 100%);
   --nav-bg: linear-gradient(135deg, rgba(255, 254, 254, 0.96), rgba(252, 228, 236, 0.82));
   --nav-border: rgba(239, 212, 223, 0.95);
   --panel-bg: rgba(255, 255, 255, 0.96);
@@ -58,7 +58,7 @@ body[data-theme="dark"] {
   --color-glass-border: rgba(238, 244, 255, 0.14);
   --shadow-md: 0 12px 24px rgba(0, 0, 0, 0.22);
   --shadow-xl: 0 22px 46px rgba(0, 0, 0, 0.28);
-  --body-gradient: linear-gradient(135deg, #0a0e17 0%, #111827 52%, #1b1420 100%);
+  --app-background: var(--color-bg);
   --nav-bg: linear-gradient(135deg, rgba(10, 14, 23, 0.98), rgba(17, 24, 39, 0.96));
   --nav-border: rgba(238, 244, 255, 0.1);
   --panel-bg: rgba(17, 24, 39, 0.96);
@@ -68,17 +68,30 @@ body[data-theme="dark"] {
 }
 
 html {
+  background-color: var(--color-bg);
+  min-height: 100%;
   scroll-behavior: smooth;
 }
 
 body {
   font-family: var(--font-sans);
-  background: var(--body-gradient);
+  background: var(--app-background);
   margin: 0;
   color: var(--color-text);
   min-height: 100vh;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
+}
+
+html[data-theme="dark"],
+body[data-theme="dark"],
+html[data-theme="dark"] #react-entry-point,
+html[data-theme="dark"] #_dash-app-content,
+html[data-theme="dark"] #_dash-app-content > div,
+html[data-theme="dark"] .app-shell,
+html[data-theme="dark"] #page-content {
+  background-color: var(--color-bg);
+  background-image: none;
 }
 
 .skip-link {
@@ -102,7 +115,7 @@ body {
 
 ._dash-loading {
   align-items: center;
-  background: var(--body-gradient);
+  background: var(--app-background);
   color: transparent;
   display: flex;
   font-size: 0;
@@ -477,7 +490,7 @@ body {
 }
 
 .error-page-shell {
-  background: var(--body-gradient);
+  background: var(--app-background);
   color: var(--color-text);
   min-height: 100vh;
 }
@@ -765,7 +778,7 @@ body[data-theme="dark"] .placeholder-card {
 
 body[data-theme="dark"] .auth-shell,
 body[data-theme="dark"] .user-page-grid {
-  background: var(--body-gradient);
+  background: var(--app-background);
 }
 
 body[data-theme="dark"] .auth-card,

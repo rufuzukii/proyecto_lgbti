@@ -41,6 +41,32 @@ def test_non_admin_country_status_card_omits_edit_button() -> None:
     assert not _contains_text(card, "Editar")
 
 
+def test_country_status_card_shows_full_context_expanded_by_default() -> None:
+    card = _country_status_card(
+        {
+            **STATUS,
+            "legal_context": "Contexto legal completo.",
+            "social_context": "Contexto social completo.",
+            "positive_developments": ["Avance destacado."],
+            "main_challenges": ["Reto principal."],
+        },
+        {"ES": "Spain"},
+        2026,
+    )
+
+    details = _find_component_by_class(card, "country-status-card__details")
+    details_props = details.to_plotly_json()["props"]
+
+    assert details_props["open"] is True
+    assert _contains_text(details, "Ver contexto completo")
+    assert _contains_text(details, "Contexto legal completo.")
+    assert _contains_text(details, "Contexto social completo.")
+    assert _contains_text(details, "Avance destacado.")
+    assert _contains_text(details, "Reto principal.")
+    assert _contains_text(card, "ILGA-EUROPE-ANNUAL-REVIEW 2026")
+    assert not _contains_text(card, "ILGA-Europe's Rainbow Map 2026")
+
+
 def test_admin_missing_country_status_card_renders_add_button() -> None:
     missing = {
         **STATUS,

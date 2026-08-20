@@ -118,7 +118,6 @@ def build_trend_figure(result: ForecastResult, *, language: str = "es") -> go.Fi
         yaxis={
             "title": ui_text("trends_legal_score", language),
             "range": [0, 100],
-            "ticksuffix": "%",
             "automargin": True,
         },
         uirevision=f"trends-{result.country_code}",
@@ -137,14 +136,16 @@ def _historical_hover(country: str, year: int, value: float, language: str) -> s
 def _forecast_hover(country: str, point: Any, language: str) -> str:
     lines = [
         f"<b>{country}</b>",
-        str(point.year),
+        f"{ui_text('trends_year', language)}: {point.year}",
         f"{ui_text('trends_estimated_value', language)}: {point.value:.1f}",
-        ui_text("trends_projection_observation", language),
+        (
+            f"{ui_text('trends_value_type', language)}: "
+            f"{ui_text('trends_projection_observation', language)}"
+        ),
     ]
     if point.lower is not None and point.upper is not None:
         lines.append(
             f"{ui_text('trends_estimated_interval', language)}: "
             f"{point.lower:.1f} - {point.upper:.1f}"
         )
-    lines.append(ui_text("trends_projection_source", language))
     return "<br>".join(lines)

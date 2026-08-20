@@ -40,14 +40,17 @@ def test_reports_dark_theme_covers_dash_controls_and_preview_content() -> None:
     assert "fill: var(--reports-text) !important;" in css
 
 
-def test_advanced_options_and_login_notice_are_responsive_and_dark_compatible() -> None:
+def test_profile_personalisation_and_login_notice_are_responsive_and_dark_compatible() -> None:
     reports_css = _reports_css()
     auth_css = AUTH_CSS.read_text(encoding="utf-8")
     global_css = GLOBAL_CSS.read_text(encoding="utf-8")
 
-    assert '.reports-advanced-toggle[aria-expanded="true"]' in reports_css
-    assert ".reports-advanced-content.is-collapsed" in reports_css
-    assert 'html[data-theme="dark"] .reports-advanced-notice' in reports_css
+    assert ".reports-profile-explanation" in reports_css
+    assert ".reports-segmentation-grid" in reports_css
+    assert ".reports-plan-summary" in reports_css
+    assert ".reports-steps" not in reports_css
+    assert ".reports-objective-options" not in reports_css
+    assert "reports-advanced" not in reports_css
     assert "@media (max-width: 820px)" in reports_css
     assert "@media (max-width: 520px)" in reports_css
     assert ".auth-toast" in auth_css

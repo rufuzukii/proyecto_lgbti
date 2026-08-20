@@ -264,9 +264,8 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
         "stats-response-comparison-graph",
         "stats-experience-legal-radar-graph",
         "stats-response-detail-graph",
-        "stats-gap-graph",
-        "stats-scatter-graph",
-        "stats-combined-heatmap",
+        "stats-quadrant-graph",
+        "stats-median-difference-graph",
     }
     assert all(
         component.to_plotly_json()["props"]["aria-controls"]

@@ -58,6 +58,13 @@
   }
 
   function findErrorStatus(button, targetId) {
+    const control = button.parentElement;
+    const localError = control && targetId
+      ? control.querySelector(`[data-chart-export-error="${targetId}"]`)
+      : null;
+    if (localError) {
+      return localError;
+    }
     const panel = button.closest(".stats-panel");
     return panel && targetId
       ? panel.querySelector(`[data-chart-export-error="${targetId}"]`)

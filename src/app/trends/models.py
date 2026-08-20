@@ -14,6 +14,7 @@ class TrendDirection(StrEnum):
     UPWARD = "upward"
     DOWNWARD = "downward"
     STABLE = "stable"
+    IRREGULAR = "irregular"
 
 
 @dataclass(frozen=True)

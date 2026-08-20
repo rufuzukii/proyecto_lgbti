@@ -21,12 +21,8 @@ from app.analytics.country_status_service import get_country_lgbti_status
 from app.analytics.figures import build_ilga_choropleth
 from app.analytics.home_legal_service import HOME_LEGAL_YEAR, get_home_legal_country_detail
 from app.analytics.legal_ranking import (
-    LegalMapExportError,
     LegalRankingEntry,
-    build_legal_map_export_figure,
     build_legal_ranking,
-    export_legal_map_png,
-    legal_map_export_filename,
     legal_ranking_payload,
 )
 from app.analytics.repository import (
@@ -190,17 +186,30 @@ def build_home_layout() -> Component:
                                                 **dash_attrs(
                                                     {
                                                         "aria-label": (
-                                                            "Descargar imagen del mapa y ranking / "
-                                                            "Download map and ranking image"
-                                                        )
+                                                            "Descargar imagen del mapa de Europa / "
+                                                            "Download Europe map image"
+                                                        ),
+                                                        "aria-controls": "home-map-graph",
+                                                        "data-chart-export": "true",
+                                                        "data-chart-export-target": "home-map-graph",
+                                                        "data-export-format": "png",
+                                                        "data-export-width": "1600",
+                                                        "data-export-height": "900",
+                                                        "data-export-scale": "2",
                                                     }
                                                 ),
                                             ),
                                             html.Span(
-                                                "",
+                                                ui_text_component("home_legal_export_error"),
                                                 id="home-map-export-status",
-                                                className="home-map-export-status is-hidden",
+                                                className="home-map-export-status",
+                                                hidden=True,
                                                 role="alert",
+                                                **dash_attrs(
+                                                    {
+                                                        "data-chart-export-error": "home-map-graph"
+                                                    }
+                                                ),
                                             ),
                                         ],
                                         className="home-map-export-control",
@@ -213,7 +222,8 @@ def build_home_layout() -> Component:
                                     dcc.Graph(
                                         id="home-map-graph",
                                         figure=_home_map_figure(
-                                            build_ilga_choropleth(ilga_document)
+                                            build_ilga_choropleth(ilga_document),
+                                            current_year,
                                         ),
                                         className="home-europe-map",
                                         config=cast(
@@ -248,8 +258,6 @@ def build_home_layout() -> Component:
                                 id="home-legal-ranking-store",
                                 data=legal_ranking_payload(initial_ranking),
                             ),
-                            dcc.Store(id="home-map-export-request"),
-                            dcc.Download(id="home-map-export-download"),
                             html.Div(
                                 [
                                     html.Div(
@@ -469,85 +477,16 @@ def register_home_callbacks(app: Dash) -> None:
         document = get_ilga_document_by_year(ilga_year)
         ranking = _localized_legal_ranking(document, language or "es")
         return (
-            _home_map_figure(build_ilga_choropleth(document, language=language or "es")),
+            _home_map_figure(
+                build_ilga_choropleth(document, language=language or "es"),
+                ilga_year,
+            ),
             text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map", language=language),
             _ilga_copy(document, language),
             _ilga_source(document, language),
             _ilga_metrics(document, language),
             _legal_ranking_content(ranking, ilga_year, language or "es"),
             legal_ranking_payload(ranking),
-        )
-
-    app.clientside_callback(
-        """
-        function(nClicks) {
-            if (!Number.isFinite(nClicks) || nClicks < 1) {
-                return window.dash_clientside.no_update;
-            }
-            const activeTheme = document.documentElement.dataset.theme === "dark"
-                ? "dark"
-                : "light";
-            return {theme: activeTheme, request: nClicks};
-        }
-        """,
-        Output("home-map-export-request", "data"),
-        Input("home-map-export-button", "n_clicks"),
-        prevent_initial_call=True,
-    )
-
-    @app.callback(
-        Output("home-map-export-download", "data"),
-        Output("home-map-export-status", "children"),
-        Output("home-map-export-status", "className"),
-        Input("home-map-export-request", "data"),
-        State("home-map-graph", "figure"),
-        State("home-legal-ranking-store", "data"),
-        State("home-map-year-select", "value"),
-        State("app-language-store", "data"),
-        prevent_initial_call=True,
-        running=[(Output("home-map-export-button", "disabled"), True, False)],
-    )
-    def download_home_legal_map(
-        export_request: dict[str, Any] | None,
-        map_figure: dict[str, Any] | None,
-        ranking_rows: list[dict[str, Any]] | None,
-        year: int | None,
-        language: str | None,
-    ):
-        if not export_request or not export_request.get("request"):
-            raise PreventUpdate
-        selected_language = language or "es"
-        selected_theme = "dark" if export_request.get("theme") == "dark" else "light"
-        if not map_figure or not ranking_rows:
-            return (
-                no_update,
-                ui_text("home_legal_export_error", selected_language),
-                "home-map-export-status",
-            )
-        try:
-            export_figure = build_legal_map_export_figure(
-                map_figure,
-                ranking_rows,
-                year=year,
-                language=selected_language,
-                theme=selected_theme,
-            )
-            image = export_legal_map_png(export_figure)
-        except (LegalMapExportError, TypeError, ValueError):
-            logger.exception("home_legal_map_export_failed", extra={"year": year})
-            return (
-                no_update,
-                ui_text("home_legal_export_error", selected_language),
-                "home-map-export-status",
-            )
-        return (
-            dcc.send_bytes(
-                image,
-                legal_map_export_filename(year),
-                type="image/png",
-            ),
-            "",
-            "home-map-export-status is-hidden",
         )
 
     @app.callback(
@@ -797,7 +736,10 @@ def register_home_callbacks(app: Dash) -> None:
         return [normalize_country_code(value) for value in country_values or []]
 
 
-def _home_map_figure(figure: Any) -> Any:
+def _home_map_figure(figure: Any, year: int | str | None = None) -> Any:
+    export_filename = "rainbowlens_mapa_legal_europa"
+    if year is not None and str(year).strip():
+        export_filename = f"{export_filename}_{year}"
     figure.update_layout(
         autosize=True,
         dragmode=False,
@@ -806,6 +748,13 @@ def _home_map_figure(figure: Any) -> Any:
             "projection": {"scale": 1.18},
         },
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        meta={
+            "export_filename": export_filename,
+            "export_format": "png",
+            "export_width": 1600,
+            "export_height": 900,
+            "export_scale": 2,
+        },
     )
     return figure
 
@@ -1014,6 +963,7 @@ def _country_status_card(
                     *details_children,
                 ],
                 className="country-status-card__details",
+                open=True,
             )
         )
     if status.get("observations"):
@@ -1531,11 +1481,24 @@ def _status_source(status: dict[str, Any]) -> Component:
                 source_year = int(year_value)
             except TypeError, ValueError:
                 source_year = None
+        annual_review_name = "ILGA-EUROPE-ANNUAL-REVIEW"
+        if source_year is not None:
+            annual_review_name = f"{annual_review_name} {source_year}"
         children.append(
             build_source_attribution(
                 "ilga",
                 year=source_year,
                 source_url=source_url or None,
+                custom_text=(
+                    (
+                        f"Fuente: {annual_review_name}. Datos adaptados y visualizados por "
+                        "RainbowLens DataHub."
+                    ),
+                    (
+                        f"Source: {annual_review_name}. Data adapted and visualised by "
+                        "RainbowLens DataHub."
+                    ),
+                ),
                 compact=True,
                 class_name="country-status-card__attribution",
             )

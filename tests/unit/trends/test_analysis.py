@@ -105,6 +105,7 @@ def test_polynomial_is_not_selected_for_training_fit_when_validation_is_worse() 
         ([20, 24, 28, 32, 36, 40], TrendDirection.UPWARD),
         ([60, 55, 50, 45, 40, 35], TrendDirection.DOWNWARD),
         ([40, 40.1, 39.9, 40.0, 40.1, 40.0], TrendDirection.STABLE),
+        ([40, 60, 42, 61, 43, 62], TrendDirection.IRREGULAR),
     ],
 )
 def test_robust_historical_direction(values, expected) -> None:
@@ -144,6 +145,17 @@ def test_fewer_than_three_observations_never_generate_forecast(observations) -> 
 
     assert result.status == "insufficient"
     assert result.forecast == ()
+
+
+def test_insufficient_sample_still_has_a_deterministic_historical_summary() -> None:
+    result = generate_forecast(
+        _series([40, 46]), country_code="ES", country_name="Spain", horizon=3
+    )
+
+    assert result.status == "insufficient"
+    assert result.summary is not None
+    assert result.summary.absolute_change == 6
+    assert result.summary.direction is TrendDirection.UPWARD
 
 
 def test_three_to_five_observations_are_exploratory_and_limited_to_one_year() -> None:

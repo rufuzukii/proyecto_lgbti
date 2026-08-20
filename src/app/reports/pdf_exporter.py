@@ -74,7 +74,8 @@ class PDFExporter:
             Paragraph(
                 _escape(
                     report.configuration.organization
-                    or _t(language, "Informe para Recursos Humanos", "Human Resources report")
+                    or report.profile_label
+                    or _t(language, "Informe RainbowLens", "RainbowLens report")
                 ),
                 styles["cover_subtitle"],
             ),
@@ -85,8 +86,8 @@ class PDFExporter:
                 _escape(
                     _t(
                         language,
-                        "Análisis agregado para apoyar decisiones de diversidad e inclusión.",
-                        "Aggregated analysis to support diversity and inclusion decisions.",
+                        f"Informe adaptado al perfil {report.profile_label}. Preparado con RainbowLens DataHub.",
+                        f"Report adapted to the {report.profile_label} profile. Prepared with RainbowLens DataHub.",
                     )
                 ),
                 styles["cover_note"],
@@ -104,12 +105,18 @@ class PDFExporter:
                     styles,
                 )
             )
-        if _enabled(report, "methodology"):
+        if _enabled(report, "context"):
             section_number += 1
             story.extend(
                 _text_section(
-                    f"{section_number}. {_t(language, 'Objetivo, alcance y metodología', 'Objective, scope and methodology')}",
-                    report.methodology,
+                    f"{section_number}. {_t(language, 'Contexto y alcance', 'Context and scope')}",
+                    [
+                        _t(
+                            language,
+                            f"Se analiza «{report.indicator}» para {report.configuration.year or 'el periodo disponible'}. La selección de contenidos se adapta al perfil {report.profile_label}.",
+                            f"The report analyses “{report.indicator}” for {report.configuration.year or 'the available period'}. Content selection is adapted to the {report.profile_label} profile.",
+                        )
+                    ],
                     styles,
                 )
             )
@@ -179,12 +186,19 @@ class PDFExporter:
                             styles["h2"],
                         ),
                         Spacer(1, 2 * mm),
-                        Image(
-                            str(image_path),
-                            width=176 * mm,
-                            height=98 * mm,
-                            kind="proportional",
-                        ),
+                        _chart_image(image_path),
+                        Paragraph(
+                            f"<b>{_escape(_t(language, 'Qué muestra', 'What it shows'))}:</b> {_escape(chart.what_shows)}",
+                            styles["body"],
+                        ) if chart.what_shows else Spacer(1, 0),
+                        Paragraph(
+                            f"<b>{_escape(_t(language, 'Cómo se interpreta', 'How to read it'))}:</b> {_escape(chart.how_to_read)}",
+                            styles["body"],
+                        ) if chart.how_to_read else Spacer(1, 0),
+                        Paragraph(
+                            f"<b>{_escape(_t(language, 'Qué observamos', 'What we observe'))}:</b> {_escape(chart.observation)}",
+                            styles["body"],
+                        ) if chart.observation else Spacer(1, 0),
                         Spacer(1, 5 * mm),
                     ]
                 )
@@ -207,12 +221,31 @@ class PDFExporter:
                     Spacer(1, 6 * mm),
                 ]
             )
-        if _enabled(report, "risks") and report.conclusions:
+        if _enabled(report, "education") and report.educational_content:
+            section_number += 1
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Propuesta didáctica', 'Learning activity')}",
+                    report.educational_content,
+                    styles,
+                    bullets=True,
+                )
+            )
+        if _enabled(report, "data_quality") and report.data_quality:
+            section_number += 1
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Disponibilidad y calidad de los datos', 'Data availability and quality')}",
+                    report.data_quality,
+                    styles,
+                )
+            )
+        if _enabled(report, "interpretation") and report.conclusions:
             section_number += 1
             story.extend(
                 _text_section(
                     f"{section_number}. "
-                    f"{_t(language, 'Conclusiones y áreas de riesgo', 'Conclusions and risk areas')}",
+                    f"{_t(language, 'Interpretación y conclusiones', 'Interpretation and conclusions')}",
                     report.conclusions,
                     styles,
                 )
@@ -233,7 +266,7 @@ class PDFExporter:
                 Paragraph(
                     _escape(
                         f"{section_number}. "
-                        f"{_t(language, 'Recomendaciones para RRHH', 'HR recommendations')}"
+                        f"{_t(language, 'Posibles líneas de actuación', 'Possible courses of action')}"
                     ),
                     styles["h1"],
                 )
@@ -244,8 +277,8 @@ class PDFExporter:
                         _escape(
                             _t(
                                 language,
-                                "Derivadas de las métricas seleccionadas",
-                                "Derived from selected metrics",
+                                "Relacionadas con los resultados observados",
+                                "Related to the observed results",
                             )
                         ),
                         styles["h2"],
@@ -258,8 +291,8 @@ class PDFExporter:
                         _escape(
                             _t(
                                 language,
-                                "Buenas prácticas generales",
-                                "General good practices",
+                                "Orientaciones generales",
+                                "General guidance",
                             )
                         ),
                         styles["h2"],
@@ -267,6 +300,15 @@ class PDFExporter:
                 )
                 story.extend(_bullet_list(general, styles))
             story.append(Spacer(1, 5 * mm))
+        if _enabled(report, "methodology") and report.methodology:
+            section_number += 1
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Metodología', 'Methodology')}",
+                    report.methodology,
+                    styles,
+                )
+            )
         if _enabled(report, "limitations") and report.limitations:
             section_number += 1
             story.extend(
@@ -384,6 +426,21 @@ def _cover_metadata(
             _paragraph(report.configuration.generated_on, styles["table"]),
         ],
         [
+            _paragraph(_t(language, "Tipo de información", "Information type"), styles["table"], bold=True),
+            _paragraph(
+                {
+                    "fra": _t(language, "Datos sociales", "Social data"),
+                    "ilga": _t(language, "Datos legales", "Legal data"),
+                    "combined": _t(language, "Análisis combinado", "Combined analysis"),
+                }.get(report.configuration.source, report.configuration.source),
+                styles["table"],
+            ),
+        ],
+        [
+            _paragraph(_t(language, "Perfil", "Profile"), styles["table"], bold=True),
+            _paragraph(report.profile_label or "N/A", styles["table"]),
+        ],
+        [
             _paragraph(_t(language, "Año de datos", "Data year"), styles["table"], bold=True),
             _paragraph(str(report.configuration.year or "N/A"), styles["table"]),
         ],
@@ -398,15 +455,18 @@ def _cover_metadata(
                 styles["table"],
             ),
         ],
-        [
-            _paragraph(
-                _t(language, "Autor o departamento", "Author or department"),
-                styles["table"],
-                bold=True,
-            ),
-            _paragraph(report.configuration.author or "N/A", styles["table"]),
-        ],
     ]
+    if report.configuration.author:
+        rows.append(
+            [
+                _paragraph(
+                    _t(language, "Autor o departamento", "Author or department"),
+                    styles["table"],
+                    bold=True,
+                ),
+                _paragraph(report.configuration.author, styles["table"]),
+            ]
+        )
     table = Table(rows, colWidths=[48 * mm, 122 * mm])
     table.setStyle(
         TableStyle(
@@ -514,6 +574,18 @@ def _comparison_table(
         )
     )
     return table
+
+
+def _chart_image(path: Path) -> Image:
+    image = Image(str(path))
+    max_width = 176 * mm
+    max_height = 185 * mm
+    width = float(image.imageWidth or 1)
+    height = float(image.imageHeight or 1)
+    scale = min(max_width / width, max_height / height)
+    image.drawWidth = width * scale
+    image.drawHeight = height * scale
+    return image
 
 
 def _text_section(

@@ -38,6 +38,9 @@ SUMMARY_TABLE_EXPORT_FIELDS = (
     "source",
     "indicator",
     "status",
+    "fra_value",
+    "ilga_score",
+    "difference_from_fra_median",
 )
 
 logger = logging.getLogger(__name__)

@@ -409,23 +409,8 @@ UI_TEXT = {
         "en": "Report generation",
     },
     "report_configuration": {
-        "es": "Configuración",
-        "en": "Configuration",
-    },
-    "report_advanced_options": {
-        "es": "Opciones avanzadas",
-        "en": "Advanced options",
-    },
-    "report_advanced_restricted": {
-        "es": (
-            "Las opciones avanzadas están disponibles únicamente para "
-            "determinados perfiles profesionales."
-        ),
-        "en": ("Advanced options are available only to selected professional profiles."),
-    },
-    "report_advanced_toggle": {
-        "es": "Mostrar u ocultar las opciones avanzadas",
-        "en": "Show or hide advanced options",
+        "es": "Selecciona el contenido",
+        "en": "Select the content",
     },
     "report_login_required": {
         "es": "Debes iniciar sesión para generar informes.",
@@ -591,47 +576,61 @@ UI_TEXT = {
     "trends_years_two": {"es": "2 años", "en": "2 years"},
     "trends_years_three": {"es": "3 años", "en": "3 years"},
     "trends_historical_data": {"es": "Datos históricos", "en": "Historical data"},
-    "trends_forecast": {"es": "Proyección", "en": "Projection"},
-    "trends_uncertainty": {"es": "Incertidumbre estimada", "en": "Estimated uncertainty"},
+    "trends_forecast": {"es": "Tendencia estimada", "en": "Estimated trend"},
+    "trends_uncertainty": {"es": "Margen de incertidumbre", "en": "Uncertainty range"},
     "trends_chart_title": {"es": "Evolución y proyección", "en": "Evolution and projection"},
     "trends_year": {"es": "Año", "en": "Year"},
     "trends_legal_score": {"es": "Puntuación legal", "en": "Legal score"},
     "trends_historical_observation": {"es": "Dato histórico", "en": "Historical observation"},
-    "trends_projection_observation": {"es": "Proyección", "en": "Projection"},
+    "trends_projection_observation": {
+        "es": "Proyección RainbowLens DataHub",
+        "en": "RainbowLens DataHub projection",
+    },
+    "trends_value_type": {"es": "Tipo", "en": "Type"},
     "trends_estimated_value": {"es": "Puntuación estimada", "en": "Estimated score"},
-    "trends_estimated_interval": {"es": "Intervalo estimado", "en": "Estimated interval"},
+    "trends_estimated_interval": {
+        "es": "Margen de incertidumbre",
+        "en": "Uncertainty range",
+    },
     "trends_forecast_starts": {"es": "Inicio de la proyección", "en": "Projection starts"},
     "trends_historical_source": {
         "es": "Datos históricos: ILGA-Europe Rainbow Map.",
         "en": "Historical data: ILGA-Europe Rainbow Map.",
     },
     "trends_projection_source": {
-        "es": "Proyección estadística: RainbowLens DataHub.",
-        "en": "Statistical projection: RainbowLens DataHub.",
+        "es": "Procesamiento y proyección: RainbowLens DataHub.",
+        "en": "Processing and projection: RainbowLens DataHub.",
     },
     "trends_upward": {"es": "Ascendente", "en": "Upward"},
     "trends_downward": {"es": "Descendente", "en": "Downward"},
     "trends_stable": {"es": "Estable", "en": "Stable"},
+    "trends_irregular": {"es": "Irregular", "en": "Irregular"},
     "trends_trend": {"es": "Tendencia", "en": "Trend"},
     "trends_total_change": {"es": "Cambio histórico", "en": "Historical change"},
     "trends_last_value": {"es": "Último valor", "en": "Latest value"},
-    "trends_selected_model": {"es": "Modelo utilizado", "en": "Model used"},
-    "trends_mean_error": {"es": "Error medio", "en": "Mean error"},
+    "trends_selected_model": {"es": "Método utilizado", "en": "Method used"},
+    "trends_mean_error": {
+        "es": "Diferencia media en las pruebas",
+        "en": "Average difference in testing",
+    },
     "trends_points": {"es": "puntos", "en": "points"},
-    "trends_projection_method": {"es": "Método de proyección", "en": "Projection method"},
+    "trends_projection_method": {
+        "es": "Método utilizado para esta proyección",
+        "en": "Method used for this projection",
+    },
     "trends_method_summary": {
-        "es": "La proyección se calcula comparando modelos estadísticos sencillos sobre los datos históricos disponibles. Se simulan predicciones sobre años ya conocidos para medir su precisión y se selecciona el modelo con menor error sin introducir complejidad innecesaria.",
-        "en": "The projection compares simple statistical models using the available historical data. Predictions are simulated for years already known to measure accuracy, and the model with the lowest error is selected without introducing unnecessary complexity.",
+        "es": "RainbowLens DataHub prueba varios métodos con los años conocidos y comprueba cuál representa mejor la evolución ya observada. Después utiliza el método más adecuado sin añadir complejidad innecesaria.",
+        "en": "RainbowLens DataHub tests several methods against known years and checks which one best represents the evolution already observed. It then uses the most suitable method without adding unnecessary complexity.",
     },
     "trends_validation_mean_error": {
-        "es": "Error medio de validación",
-        "en": "Validation mean error",
+        "es": "Diferencia media durante las pruebas",
+        "en": "Average difference during testing",
     },
     "trends_years_used": {"es": "Años utilizados", "en": "Years used"},
     "trends_observations": {"es": "Observaciones", "en": "Observations"},
     "trends_how_calculated": {
-        "es": "¿Cómo se ha calculado esta proyección?",
-        "en": "How was this projection calculated?",
+        "es": "Ver metodología detallada",
+        "en": "View detailed methodology",
     },
     "trends_data_collection": {"es": "Recopilación de datos", "en": "Data collection"},
     "trends_data_collection_detail": {
@@ -647,16 +646,16 @@ UI_TEXT = {
     "trends_models_evaluated": {"es": "Modelos evaluados", "en": "Models evaluated"},
     "trends_temporal_validation": {"es": "Validación temporal", "en": "Temporal validation"},
     "trends_temporal_validation_detail": {
-        "es": "Cada modelo se prueba mediante una ventana expansiva: se entrena con los primeros años, predice el siguiente año conocido y repite el proceso incorporando progresivamente las observaciones reales.",
-        "en": "Each model is tested with an expanding window: it is trained on the earlier years, predicts the next known year, and repeats the process while progressively adding the observed values.",
+        "es": "Cada método intenta estimar un año que ya conocemos utilizando solo los años anteriores. El proceso se repite varias veces para comprobar cómo habría funcionado antes de proyectar el futuro. Esta comprobación se denomina validación temporal.",
+        "en": "Each method tries to estimate a year we already know using only earlier years. This is repeated several times to check how it would have performed before projecting the future. This check is called temporal validation.",
     },
     "trends_error_comparison": {"es": "Comparación de errores", "en": "Error comparison"},
     "trends_model": {"es": "Modelo", "en": "Model"},
     "trends_validation_folds": {"es": "Predicciones evaluadas", "en": "Evaluated predictions"},
     "trends_model_selection": {"es": "Selección del modelo", "en": "Model selection"},
     "trends_selection_lowest_error": {
-        "es": "{model} fue seleccionado porque obtuvo el menor MAE durante la validación temporal.",
-        "en": "{model} was selected because it obtained the lowest MAE during temporal validation.",
+        "es": "Entre los métodos evaluados, {model} fue el que representó mejor la evolución histórica disponible durante las pruebas.",
+        "en": "Among the evaluated methods, {model} represented the available historical evolution most accurately during testing.",
     },
     "trends_selection_simplicity": {
         "es": "{model} fue seleccionado porque ofreció una precisión similar a modelos más complejos utilizando una estructura más sencilla y estable.",
@@ -678,8 +677,8 @@ UI_TEXT = {
         "en": "Displayed results are restricted to the Rainbow Map scale of 0 to 100. The model's raw value is retained only for diagnostics.",
     },
     "trends_uncertainty_detail": {
-        "es": "La banda de incertidumbre utiliza el RMSE observado en la validación temporal y aumenta con la raíz del horizonte. Es una banda de error empírica, no un intervalo de confianza probabilístico.",
-        "en": "The uncertainty band uses the RMSE observed during temporal validation and grows with the square root of the horizon. It is an empirical error band, not a probabilistic confidence interval.",
+        "es": "La zona alrededor de la línea muestra un margen razonable basado en los errores observados durante las pruebas. Suele ampliarse al alejarse de los datos históricos porque la estimación es menos segura. Técnicamente utiliza el RMSE y no constituye un intervalo de confianza probabilístico.",
+        "en": "The area around the line shows a reasonable range based on errors observed during testing. It usually widens further from the historical data because the estimate is less certain. Technically, it uses RMSE and is not a probabilistic confidence interval.",
     },
     "trends_uncertainty_unavailable": {
         "es": "No se muestra una banda de incertidumbre porque existen muy pocas predicciones históricas evaluables.",
@@ -687,8 +686,8 @@ UI_TEXT = {
     },
     "trends_limitations": {"es": "Limitaciones", "en": "Limitations"},
     "trends_limitations_detail": {
-        "es": "Esta proyección es una estimación matemática basada exclusivamente en la evolución histórica de la puntuación global. Los cambios legislativos pueden producir variaciones bruscas que el modelo no puede anticipar. La estimación no representa una predicción oficial de ILGA-Europe.",
-        "en": "This projection is a mathematical estimate based exclusively on the historical evolution of the overall score. Legislative changes may cause abrupt variations that the model cannot anticipate. The estimate is not an official ILGA-Europe prediction.",
+        "es": "Esta proyección utiliza exclusivamente la evolución histórica de la puntuación global. Los derechos LGBTIQ+ pueden cambiar rápidamente por nuevas leyes, decisiones judiciales, cambios políticos o reformas institucionales que el método no puede anticipar. La estimación no representa una predicción oficial de ILGA-Europe.",
+        "en": "This projection uses only the historical evolution of the overall score. LGBTIQ+ rights can change quickly because of new laws, court decisions, political changes or institutional reforms that the method cannot anticipate. The estimate is not an official ILGA-Europe prediction.",
     },
     "trends_model_linear": {"es": "Regresión lineal", "en": "Linear regression"},
     "trends_model_holt": {
@@ -698,6 +697,146 @@ UI_TEXT = {
     "trends_model_quadratic": {
         "es": "Regresión polinómica de grado 2",
         "en": "Second-degree polynomial regression",
+    },
+    "trends_interpret_title": {
+        "es": "Cómo interpretar esta gráfica",
+        "en": "How to interpret this chart",
+    },
+    "trends_interpret_intro": {
+        "es": "La gráfica muestra cómo ha evolucionado la puntuación de protección legal LGBTIQ+ de {country} y, cuando existen suficientes datos, estima cómo podría continuar durante los próximos años. La estimación no es una predicción oficial de futuros cambios legales.",
+        "en": "The chart shows how {country}'s LGBTIQ+ legal-protection score has evolved and, when enough data is available, estimates how it might continue over the next few years. The estimate is not an official prediction of future legal changes.",
+    },
+    "trends_time_axis_title": {"es": "Años", "en": "Years"},
+    "trends_time_axis_detail": {
+        "es": "La parte inferior representa el paso del tiempo. Los años anteriores muestran información histórica y los años posteriores corresponden a la estimación de RainbowLens DataHub.",
+        "en": "The lower part represents the passage of time. Earlier years show historical information and later years correspond to the RainbowLens DataHub estimate.",
+    },
+    "trends_score_axis_title": {"es": "Puntuación legal", "en": "Legal score"},
+    "trends_score_axis_detail": {
+        "es": "La altura de cada punto representa la puntuación en una escala de 0 a 100. Un valor mayor indica que el país reconoce y protege legalmente más derechos según los criterios de ILGA-Europe.",
+        "en": "The height of each point represents the score on a scale from 0 to 100. A higher value means that the country legally recognises and protects more rights under ILGA-Europe's criteria.",
+    },
+    "trends_score_caveat": {
+        "es": "La puntuación describe principalmente el marco legal: por sí sola no mide toda la calidad de vida ni la ausencia de discriminación social.",
+        "en": "The score mainly describes the legal framework: on its own, it does not measure overall quality of life or the absence of social discrimination.",
+    },
+    "trends_history_explanation_title": {"es": "Datos históricos", "en": "Historical data"},
+    "trends_history_explanation": {
+        "es": "Cada punto de un año pasado representa la puntuación registrada para {country} por ILGA-Europe.",
+        "en": "Each point for a past year represents the score recorded for {country} by ILGA-Europe.",
+    },
+    "trends_estimate_explanation_title": {
+        "es": "Tendencia estimada",
+        "en": "Estimated trend",
+    },
+    "trends_estimate_explanation": {
+        "es": "La línea discontinua prolonga los patrones observados para mostrar cómo podría continuar la evolución si se mantuvieran tendencias parecidas. No significa que esa puntuación vaya a producirse necesariamente.",
+        "en": "The dashed line extends the observed patterns to show how the evolution might continue if similar trends persisted. It does not mean that this score will necessarily occur.",
+    },
+    "trends_uncertainty_explanation_title": {
+        "es": "Margen de incertidumbre",
+        "en": "Uncertainty range",
+    },
+    "trends_uncertainty_explanation": {
+        "es": "La zona sombreada muestra un margen razonable para la estimación. Cuanto más nos alejamos de los datos históricos, mayor puede ser la incertidumbre.",
+        "en": "The shaded area shows a reasonable range for the estimate. The further it extends from the historical data, the greater the uncertainty may be.",
+    },
+    "trends_evolution_title": {
+        "es": "Qué muestra la evolución de {country}",
+        "en": "What {country}'s evolution shows",
+    },
+    "trends_evolution_increase": {
+        "es": "Entre {start} y {end}, la puntuación legal aumentó de {initial} a {final} puntos.",
+        "en": "Between {start} and {end}, the legal score increased from {initial} to {final} points.",
+    },
+    "trends_evolution_decrease": {
+        "es": "Entre {start} y {end}, la puntuación legal descendió de {initial} a {final} puntos.",
+        "en": "Between {start} and {end}, the legal score fell from {initial} to {final} points.",
+    },
+    "trends_evolution_same": {
+        "es": "Entre {start} y {end}, la puntuación comenzó y terminó en {final} puntos.",
+        "en": "Between {start} and {end}, the score started and ended at {final} points.",
+    },
+    "trends_evolution_upward": {
+        "es": "En conjunto, la puntuación siguió una tendencia ascendente durante el periodo analizado.",
+        "en": "Overall, the score followed an upward trend during the analysed period.",
+    },
+    "trends_evolution_downward": {
+        "es": "En conjunto, la puntuación siguió una tendencia descendente durante el periodo analizado.",
+        "en": "Overall, the score followed a downward trend during the analysed period.",
+    },
+    "trends_evolution_stable": {
+        "es": "La puntuación varió poco durante el periodo analizado y se mantuvo relativamente estable.",
+        "en": "The score changed little during the analysed period and remained relatively stable.",
+    },
+    "trends_evolution_irregular": {
+        "es": "La serie alternó aumentos y descensos relevantes, por lo que no presenta una dirección uniforme durante todo el periodo.",
+        "en": "The series alternated between meaningful rises and falls, so it does not show one consistent direction across the whole period.",
+    },
+    "trends_largest_change": {
+        "es": "Uno de los mayores cambios entre observaciones consecutivas se produjo entre {start} y {end}: {change} puntos.",
+        "en": "One of the largest changes between consecutive observations occurred between {start} and {end}: {change} points.",
+    },
+    "trends_method_friendly_linear": {"es": "Tendencia lineal", "en": "Linear trend"},
+    "trends_method_friendly_holt": {
+        "es": "Tendencia adaptada a los cambios recientes",
+        "en": "Trend adapted to recent changes",
+    },
+    "trends_method_friendly_quadratic": {"es": "Tendencia curva", "en": "Curved trend"},
+    "trends_statistical_method": {
+        "es": "Método estadístico: {method}",
+        "en": "Statistical method: {method}",
+    },
+    "trends_method_explanation_linear": {
+        "es": "Busca la dirección general seguida por los datos. Es adecuado cuando la puntuación aumenta o disminuye de forma relativamente constante y prolonga esa dirección hacia los próximos años.",
+        "en": "It finds the general direction followed by the data. It is suitable when the score rises or falls relatively steadily and extends that direction into the next few years.",
+    },
+    "trends_method_explanation_holt": {
+        "es": "Observa toda la evolución, pero presta especial atención a los cambios recientes. Puede adaptarse mejor cuando el ritmo de avance o retroceso ha cambiado con el tiempo.",
+        "en": "It considers the whole evolution while giving particular attention to recent changes. It can adapt better when the pace of progress or decline has changed over time.",
+    },
+    "trends_method_explanation_quadratic": {
+        "es": "Representa evoluciones que no siguen una línea completamente recta. Puede reflejar que el avance se acelera, se ralentiza o cambia progresivamente de ritmo.",
+        "en": "It represents evolutions that do not follow a completely straight line. It can reflect progress accelerating, slowing down or gradually changing pace.",
+    },
+    "trends_model_example_linear": {
+        "es": "Ejemplo sencillo: 50 → 53 → 56 → 59.",
+        "en": "Simple example: 50 → 53 → 56 → 59.",
+    },
+    "trends_model_example_holt": {
+        "es": "Ejemplo sencillo: 50 → 51 → 52 → 58 → 64.",
+        "en": "Simple example: 50 → 51 → 52 → 58 → 64.",
+    },
+    "trends_model_example_quadratic": {
+        "es": "Ejemplo sencillo: 40 → 48 → 55 → 60 → 63.",
+        "en": "Simple example: 40 → 48 → 55 → 60 → 63.",
+    },
+    "trends_selection_title": {"es": "Cómo se elige", "en": "How it is selected"},
+    "trends_error_metrics_explanation": {
+        "es": "El error medio indica cuántos puntos se alejaron las estimaciones de los valores conocidos, por término medio. La segunda medida da más importancia a los errores grandes. En ambos casos, un valor menor indica que el método reprodujo mejor los años utilizados para comprobarlo.",
+        "en": "Average error shows how many points the estimates differed from known values on average. The second measure gives greater weight to large errors. For both measures, a lower value means the method reproduced the testing years more accurately.",
+    },
+    "trends_mae_column": {"es": "Error medio (MAE)", "en": "Average error (MAE)"},
+    "trends_rmse_column": {
+        "es": "Atención a errores grandes (RMSE)",
+        "en": "Emphasis on large errors (RMSE)",
+    },
+    "trends_glossary_title": {"es": "Conceptos utilizados", "en": "Concepts used"},
+    "trends_glossary_score": {
+        "es": "Valor entre 0 y 100 que resume el reconocimiento y la protección legal LGBTIQ+ según los criterios del índice utilizado.",
+        "en": "A value from 0 to 100 summarising LGBTIQ+ legal recognition and protection under the criteria of the index used.",
+    },
+    "trends_glossary_trend": {
+        "es": "Dirección general que siguen los valores con el paso del tiempo.",
+        "en": "The general direction followed by values over time.",
+    },
+    "trends_glossary_projection": {
+        "es": "Estimación de cómo podrían continuar los valores si se mantienen patrones parecidos a los observados.",
+        "en": "An estimate of how values might continue if patterns similar to those observed persist.",
+    },
+    "trends_glossary_uncertainty": {
+        "es": "Rango que refleja que una estimación futura no puede conocerse con total precisión.",
+        "en": "A range reflecting that a future estimate cannot be known with complete precision.",
     },
     "statistics_initial_prompt": {
         "es": "Selecciona una categoría y un indicador para comenzar.",

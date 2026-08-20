@@ -11,7 +11,6 @@ class Permission(StrEnum):
     EXPORT_CHARTS = "export_charts"
     UPLOAD_DATA = "upload_data"
     GENERATE_REPORTS = "generate_reports"
-    CONFIGURE_ADVANCED_REPORTS = "configure_advanced_reports"
     ACCESS_EDU = "access_edu"
     PLAY_EDU_GAMES = "play_edu_games"
     ACCESS_DOCENTE_RESOURCES = "access_docente_resources"
@@ -25,7 +24,6 @@ ROLE_PERMISSIONS = {
         Permission.EXPORT_DATA,
         Permission.EXPORT_CHARTS,
         Permission.GENERATE_REPORTS,
-        Permission.CONFIGURE_ADVANCED_REPORTS,
         Permission.ACCESS_EDU,
         Permission.PLAY_EDU_GAMES,
         Permission.ACCESS_DOCENTE_RESOURCES,
@@ -36,7 +34,6 @@ ROLE_PERMISSIONS = {
         Permission.EXPORT_DATA,
         Permission.EXPORT_CHARTS,
         Permission.GENERATE_REPORTS,
-        Permission.CONFIGURE_ADVANCED_REPORTS,
         Permission.ACCESS_EDU,
         Permission.PLAY_EDU_GAMES,
         Permission.ACCESS_DOCENTE_RESOURCES,
@@ -100,10 +97,6 @@ def can_access_docente_material(user: object) -> bool:
 
 def can_manage_own_edu_games(user: object) -> bool:
     return user_has_permission(user, Permission.MANAGE_OWN_EDU_GAMES)
-
-
-def can_configure_advanced_reports(user: object) -> bool:
-    return user_has_permission(user, Permission.CONFIGURE_ADVANCED_REPORTS)
 
 
 def _resolved_user_type(user: object) -> UserType | None:

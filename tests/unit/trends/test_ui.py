@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -11,7 +12,7 @@ from app.dash.i18n import ui_text
 from app.trends.callbacks import register_trend_callbacks
 from app.trends.charts import build_trend_figure
 from app.trends.forecasting_service import generate_forecast
-from app.trends.models import HistoricalPoint, TrendScope
+from app.trends.models import ForecastModelName, HistoricalPoint, TrendScope
 
 
 def _walk(component):
@@ -180,6 +181,46 @@ def test_render_callback_returns_complete_result_and_methodology(monkeypatch) ->
     assert ui_text("trends_how_calculated", "es") in text
     assert "MAE" in text and "RMSE" in text
     assert ui_text("trends_limitations", "es") in text
+    assert ui_text("trends_interpret_title", "es") in text
+    assert "Qué muestra la evolución de España" in text
+    assert ui_text("trends_glossary_title", "es") in text
+
+
+def test_selected_method_uses_plain_and_statistical_names_for_every_model() -> None:
+    expected = {
+        ForecastModelName.LINEAR: ("Tendencia lineal", "Regresión lineal"),
+        ForecastModelName.HOLT: (
+            "Tendencia adaptada a los cambios recientes",
+            "Suavizado exponencial de Holt",
+        ),
+        ForecastModelName.QUADRATIC: (
+            "Tendencia curva",
+            "Regresión polinómica de grado 2",
+        ),
+    }
+    result = _result()
+    for model, labels in expected.items():
+        rendered = str(
+            trend_callbacks._selected_method_explanation(
+                replace(result, selected_model=model), "es"
+            ).to_plotly_json()
+        )
+        assert labels[0] in rendered
+        assert labels[1] in rendered
+        assert ui_text(f"trends_method_explanation_{model.value}", "es") in rendered
+
+
+def test_interpretation_and_summary_are_natural_and_localized() -> None:
+    result = _result()
+    spanish = str(trend_callbacks._interpretation_guide(result, "es").to_plotly_json())
+    english = str(trend_callbacks._interpretation_guide(result, "en").to_plotly_json())
+    summary = str(trend_callbacks._evolution_summary(result, "es").to_plotly_json())
+
+    assert "parte inferior" in spanish
+    assert "escala" in spanish and "0 a 100" in spanish
+    assert "not an official prediction" in english
+    assert "España" in summary
+    assert "Entre 2011 y 2022" in summary
 
 
 def test_insufficient_data_keeps_history_but_never_draws_fake_projection(monkeypatch) -> None:
@@ -220,6 +261,8 @@ def test_chart_distinguishes_history_forecast_uncertainty_and_missing_years() ->
     assert forecast.line.dash == "dash"
     assert figure.layout.yaxis.range == (0, 100)
     assert "RainbowLens DataHub" in str(forecast.hovertext)
+    assert "Type: RainbowLens DataHub projection" in str(forecast.hovertext)
+    assert figure.layout.yaxis.ticksuffix is None
 
 
 def test_normalization_note_is_rendered_for_2011_and_2012() -> None:
@@ -234,7 +277,7 @@ def test_normalization_note_is_rendered_for_2011_and_2012() -> None:
 def test_loading_message_and_new_methodology_are_translated() -> None:
     assert ui_text("loading_trends", "es") == "Calculando tendencia..."
     assert ui_text("loading_trends", "en") == "Calculating trend..."
-    assert ui_text("trends_how_calculated", "en") == "How was this projection calculated?"
+    assert ui_text("trends_how_calculated", "en") == "View detailed methodology"
     assert "official" in ui_text("trends_limitations_detail", "en")
 
 
@@ -245,3 +288,6 @@ def test_css_supports_dark_mode_responsive_cards_and_local_table_scroll() -> Non
     assert ".trend-table-scroll" in css and "overflow-x: auto" in css
     assert "@media (max-width: 640px)" in css
     assert ".trend-controls" in css and "grid-template-columns: 1fr" in css
+    assert ".trend-explanation-grid" in css
+    assert ".trend-glossary-list" in css
+    assert ".trend-selected-method" in css

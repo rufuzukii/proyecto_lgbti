@@ -86,11 +86,18 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
     assert social_disabled is False
     assert cleared_result is None
 
-    answer_options, answer_value, *_rest = controls_callback(
+    controls_result = controls_callback(
         "D5", "en", social, "fra_survey_iii"
     )
+    answer_options, answer_value = controls_result[:2]
     assert answer_options == [{"label": "Yes", "value": "Yes"}]
     assert answer_value == "Yes"
+    assert controls_result[8] is False
+    assert "is-hidden" not in controls_result[7]
+    assert "is-disabled" not in controls_result[7]
+    assert "is-disabled" not in controls_result[9]
+    demographic_by_value = {option["value"]: option for option in controls_result[2]}
+    assert demographic_by_value["Age"]["disabled"] is False
 
     payload = statistics_page.get_fra_control_payload("D5")
     age_options, age_value = demographic_values_callback("Age", payload, None)

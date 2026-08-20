@@ -3,11 +3,9 @@ from __future__ import annotations
 import math
 from typing import Any
 
-import pytest
 from dash import Dash, html
 
 from app.analytics.statistics_charts import (
-    build_combined_heatmap,
     build_combined_scatter,
     build_comparative_ranking_chart,
     build_eu_average_comparison_chart,
@@ -192,86 +190,6 @@ def test_response_comparison_keeps_all_46_countries_without_map_selection(
     assert "Indicator" in _trace(figure).hovertemplate
     assert _layout(figure).meta["minimum_width"] > 2000
     assert "countries_rendered=46 responses=2 missing_values=2" in caplog.text
-
-
-def test_combined_heatmap_renders_one_complete_percentage_matrix() -> None:
-    figure = build_combined_heatmap(
-        [
-            {
-                "country": "Spain",
-                "iso": "ES",
-                "ilga_value": 75.0,
-                "fra_value": 62.0,
-            },
-            {
-                "country": "France",
-                "iso": "FR",
-                "ilga_value": 70.0,
-                "fra_value": 58.0,
-            },
-        ]
-    )
-
-    assert len(_traces(figure)) == 1
-    trace = _trace(figure)
-    assert list(trace.y) == ["France", "Spain"]
-    assert trace.z.tolist() == [[70.0, 58.0], [75.0, 62.0]]
-    assert trace.zmin == 0
-    assert trace.zmax == 100
-    assert _layout(figure).height == 720
-    assert _layout(figure).meta["row_height"] == 50
-    assert _layout(figure).meta["column_width"] == 260
-    assert _layout(figure).meta["minimum_width"] == 900
-    assert len(_layout(figure).annotations) == 4
-    annotation_colors = {
-        annotation.text: annotation.font.color for annotation in _layout(figure).annotations
-    }
-    assert annotation_colors["75 %"] == "#ffffff"
-    assert annotation_colors["58 %"] == "#ffffff"
-
-
-def test_combined_heatmap_height_grows_with_country_rows() -> None:
-    figure = build_combined_heatmap(
-        [
-            {
-                "country": f"Country {index}",
-                "iso": f"X{index}",
-                "ilga_value": float(index),
-                "fra_value": float(index + 1),
-            }
-            for index in range(30)
-        ]
-    )
-
-    assert _layout(figure).height == 1690
-    assert _layout(figure).meta["row_count"] == 30
-    assert _trace(figure).xgap == 8
-    assert _trace(figure).ygap == 6
-
-
-@pytest.mark.parametrize(
-    ("row_count", "expected_height"),
-    [(10, 720), (20, 1190), (30, 1690), (36, 1990)],
-)
-def test_combined_heatmap_preserves_readable_row_height_at_scale(
-    row_count: int, expected_height: int
-) -> None:
-    figure = build_combined_heatmap(
-        [
-            {
-                "country": f"Country {index}",
-                "iso": f"X{index}",
-                "ilga_value": float(index),
-                "fra_value": float(index + 1),
-            }
-            for index in range(row_count)
-        ]
-    )
-
-    assert _layout(figure).height == expected_height
-    assert _layout(figure).meta["row_height"] == 50
-    assert _layout(figure).meta["minimum_width"] >= 900
-    assert all(annotation.font.size == 16 for annotation in _layout(figure).annotations)
 
 
 def test_average_chart_renders_selected_countries_and_a_distinct_european_average() -> None:

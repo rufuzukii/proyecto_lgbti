@@ -298,11 +298,20 @@
   display: none;
 }
 
+.country-status-anchor {
+  box-sizing: border-box;
+  max-width: 100%;
+  width: 100%;
+}
+
 .country-status-section {
   border-top: 1px solid var(--panel-border);
+  box-sizing: border-box;
   display: grid;
   gap: 1rem;
+  max-width: 100%;
   padding: 1rem 1.3rem 1.2rem;
+  width: 100%;
 }
 
 .country-status-section__header {
@@ -329,19 +338,24 @@
 .country-status-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 100%;
+  width: 100%;
 }
 
 .country-status-card {
   background: var(--panel-muted);
   border: 1px solid var(--panel-border);
   border-radius: 12px;
+  box-sizing: border-box;
   color: var(--color-text);
   display: grid;
   gap: 0.75rem;
+  max-width: 100%;
   min-width: 0;
   padding: 1rem;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  width: 100%;
 }
 
 .country-status-card:hover {
@@ -1349,7 +1363,7 @@
 
 body[data-theme="dark"] .home-data-shell,
 body[data-theme="dark"] .about-shell {
-  background: var(--body-gradient);
+  background: var(--app-background);
 }
 
 body[data-theme="dark"] .home-map-stage,

@@ -15,7 +15,6 @@ from app.analytics.statistics_charts import (
     NO_RESPONSE_COLOR,
     YES_RESPONSE_COLOR,
     _legal_hover_data,
-    build_combined_heatmap,
     build_comparative_ranking_chart,
     build_europe_choropleth,
     build_fra_response_comparison_chart,
@@ -62,7 +61,6 @@ from app.dash.pages.statistics import (
     _fra_controls_are_ready,
     _fra_segmentation_card_class,
     _has_valid_fra_selection,
-    _heatmap_graph_style,
     _methodology_text,
     _ranking_graph_style,
     _resolved_ui_filters,
@@ -182,16 +180,31 @@ def test_statistics_fra_selectors_start_empty() -> None:
 
     category = _component_by_id(controls, "stats-category-select")
     indicator = _component_by_id(controls, "fra-indicator-select")
+    answer = _component_by_id(controls, "fra-answer-select")
+    segmentation_card = _component_by_id(controls, "stats-fra-segmentation-card")
+    demographic_row = _component_by_id(controls, "stats-demographic-segmentation")
+    identity_row = _component_by_id(controls, "stats-identity-segmentation")
     assert category is not None
     assert indicator is not None
+    assert answer is not None
+    assert segmentation_card is not None
+    assert demographic_row is not None
+    assert identity_row is not None
 
     category_props = category.to_plotly_json()["props"]
     indicator_props = indicator.to_plotly_json()["props"]
+    answer_props = answer.to_plotly_json()["props"]
     assert category_props["value"] is None
     assert category_props["placeholder"] == "Selecciona una categoría"
     assert indicator_props["value"] is None
     assert indicator_props["placeholder"] == "Selecciona primero una categoría"
     assert indicator_props["disabled"] is True
+    assert answer_props["disabled"] is True
+    assert "is-hidden" not in cast(Any, segmentation_card).className.split()
+    assert "is-disabled" in cast(Any, segmentation_card).className.split()
+    assert "is-disabled" in cast(Any, demographic_row).className.split()
+    assert "is-hidden" not in cast(Any, identity_row).className.split()
+    assert "is-disabled" in cast(Any, identity_row).className.split()
     assert not _has_valid_fra_selection(None, None)
     assert not _has_valid_fra_selection("Discrimination", None)
     assert _has_valid_fra_selection("Discrimination", "D1")
@@ -1801,9 +1814,8 @@ def test_all_statistics_graphs_are_responsive_without_fixed_widths(monkeypatch) 
         "stats-response-comparison-graph",
         "stats-experience-legal-radar-graph",
         "stats-response-detail-graph",
-        "stats-gap-graph",
-        "stats-scatter-graph",
-        "stats-combined-heatmap",
+        "stats-quadrant-graph",
+        "stats-median-difference-graph",
     )
 
     layout = build_statistics_layout()
@@ -1862,22 +1874,6 @@ def test_response_comparison_graph_style_tracks_local_horizontal_width() -> None
         "height": "610px",
         "minHeight": "560px",
         "minWidth": "2358px",
-    }
-
-
-def test_heatmap_graph_style_applies_plotly_height_and_minimum_width() -> None:
-    figure = build_combined_heatmap(
-        [
-            {"country": "Spain", "iso": "ES", "ilga_value": 75.0, "fra_value": 62.0},
-            {"country": "France", "iso": "FR", "ilga_value": 70.0, "fra_value": 58.0},
-        ]
-    )
-
-    assert _heatmap_graph_style(figure) == {
-        "width": "100%",
-        "height": "720px",
-        "minHeight": "720px",
-        "minWidth": "960px",
     }
 
 

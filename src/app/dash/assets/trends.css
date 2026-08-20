@@ -257,7 +257,10 @@
 
 .trend-metric-card,
 .trend-chart-card,
+.trend-explanation-card,
+.trend-evolution-card,
 .trend-method-card,
+.trend-glossary-card,
 .trend-limitations {
   background: var(--trend-card);
   border: 1px solid var(--trend-border);
@@ -300,6 +303,93 @@
 .trend-graph {
   min-height: 470px;
   width: 100%;
+}
+
+.trend-explanation-card,
+.trend-evolution-card,
+.trend-glossary-card {
+  min-width: 0;
+  padding: 1.2rem;
+}
+
+.trend-explanation-card h2,
+.trend-evolution-card h2,
+.trend-glossary-card h2 {
+  font-size: clamp(1.05rem, 2vw, 1.3rem);
+  margin: 0 0 0.65rem;
+}
+
+.trend-explanation-lead,
+.trend-evolution-card p {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+  margin: 0 0 0.75rem;
+}
+
+.trend-evolution-card p:last-child {
+  margin-bottom: 0;
+}
+
+.trend-explanation-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.trend-explanation-item {
+  background: color-mix(in srgb, var(--trend-card) 91%, var(--trend-accent));
+  border: 1px solid var(--trend-border);
+  border-radius: 0.7rem;
+  min-width: 0;
+  padding: 0.9rem;
+}
+
+.trend-explanation-item h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+}
+
+.trend-explanation-item p {
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.trend-selected-method {
+  background: color-mix(in srgb, var(--trend-card) 90%, var(--trend-accent));
+  border: 1px solid var(--trend-border);
+  border-left: 4px solid var(--trend-accent);
+  border-radius: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 1rem;
+}
+
+.trend-selected-method h3 {
+  font-size: 1rem;
+  margin: 0 0 0.35rem;
+}
+
+.trend-selected-method h3:not(:first-child) {
+  margin-top: 0.85rem;
+}
+
+.trend-selected-method p {
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin: 0 0 0.45rem;
+}
+
+.trend-selected-method p:last-child {
+  margin-bottom: 0;
+}
+
+.trend-technical-name {
+  color: var(--color-text) !important;
+  font-weight: 750;
+}
+
+.trend-method-example {
+  font-variant-numeric: tabular-nums;
 }
 
 .trend-method-facts {
@@ -381,6 +471,21 @@
   margin: 0;
 }
 
+.trend-method-step li {
+  margin-bottom: 0.75rem;
+}
+
+.trend-method-step li span {
+  color: var(--color-text-muted);
+  display: block;
+  font-size: 0.86rem;
+  margin-top: 0.18rem;
+}
+
+.trend-method-step li p {
+  margin-top: 0.25rem;
+}
+
 .trend-table-scroll {
   -webkit-overflow-scrolling: touch;
   max-width: 100%;
@@ -411,6 +516,24 @@
 
 .trend-limitations p {
   margin-bottom: 0;
+}
+
+.trend-glossary-list {
+  display: grid;
+  gap: 0.35rem 1rem;
+  grid-template-columns: minmax(120px, 0.25fr) minmax(0, 1fr);
+  margin: 0;
+}
+
+.trend-glossary-list dt {
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.trend-glossary-list dd {
+  color: var(--color-text-muted);
+  line-height: 1.55;
+  margin: 0 0 0.55rem;
 }
 
 .trend-source-distinction {
@@ -487,8 +610,14 @@ body[data-theme="dark"] .trend-range-field .dash-slider-thumb {
 
   .trend-controls,
   .trend-metric-grid,
-  .trend-method-facts {
+  .trend-method-facts,
+  .trend-explanation-grid,
+  .trend-glossary-list {
     grid-template-columns: 1fr;
+  }
+
+  .trend-glossary-list dd {
+    margin-bottom: 0.8rem;
   }
 
   .trend-field-wide {

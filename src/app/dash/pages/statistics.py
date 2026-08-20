@@ -13,6 +13,7 @@ from dash.development.base_component import Component
 from dash.exceptions import PreventUpdate
 from flask_login import current_user
 
+from app.analytics.combined_analysis import quadrant_eligibility, quadrant_rows
 from app.analytics.percentage_display import format_percentage
 from app.analytics.repository import (
     assert_analytics_databases_available,
@@ -21,14 +22,13 @@ from app.analytics.repository import (
 )
 from app.analytics.statistics.ranking import paginate_ranking
 from app.analytics.statistics_charts import (
-    build_combined_heatmap,
-    build_combined_scatter,
+    build_combined_quadrant_chart,
     build_comparative_ranking_chart,
     build_eu_average_comparison_chart,
     build_europe_choropleth,
     build_experience_legal_radar,
+    build_fra_median_difference_chart,
     build_fra_response_comparison_chart,
-    build_legal_reality_gap_chart,
     build_response_country_comparison_chart,
     build_temporal_evolution_chart,
     prepare_fra_response_comparison_data,
@@ -48,7 +48,6 @@ from app.analytics.statistics_models import (
     FRA_FILTER_GROUP_B,
     ExperienceLegalRadarQuery,
     FraStatisticsQuery,
-    IlgaStatisticsQuery,
     StatisticsFilters,
     validate_statistics_filter_combination,
 )
@@ -58,10 +57,10 @@ from app.analytics.statistics_normalizers import (
     normalize_text_key,
 )
 from app.analytics.statistics_service import (
+    get_combined_statistics_analysis,
     get_experience_legal_radar,
     get_fra_control_payload,
     get_fra_statistics,
-    get_ilga_statistics,
 )
 from app.dash.components.dropdown_options import (
     build_dropdown_options,
@@ -124,12 +123,11 @@ CHART_EXPORT_TITLES = {
         "Real-life experience and legal protection",
     ),
     "responses": ("Detalles de respuestas", "Response details"),
-    "gap": ("Protección legal vs experiencia real", "Legal protection vs lived experience"),
-    "scatter": (
-        "Relaci\u00f3n entre protecci\u00f3n legal y experiencia reportada",
-        "Legal protection and reported experience relationship",
+    "quadrants": ("Cuadrantes FRA e ILGA-Europe", "FRA and ILGA-Europe quadrants"),
+    "median_difference": (
+        "Diferencia respecto a la mediana de los países",
+        "Difference from the country median",
     ),
-    "heatmap": ("Heatmap europeo", "European heatmap"),
 }
 
 
@@ -143,6 +141,7 @@ def build_statistics_layout() -> Component:
             dcc.Store(id="stats-ranking-page", data=0, storage_type="memory"),
             dcc.Store(id="stats-selected-countries", data=[], storage_type="session"),
             dcc.Download(id="stats-summary-table-download"),
+            dcc.Download(id="stats-combined-download"),
             html.Main(
                 [
                     _header(),
@@ -164,12 +163,19 @@ def build_statistics_layout() -> Component:
                                             id="stats-status-message",
                                             className="stats-status stats-status-warning",
                                         ),
-                                        _map_panel(),
                                         _block_header(
-                                            "Bloque A",
-                                            "Estadísticas del conjunto de datos seleccionado",
-                                            "Selected dataset statistics",
+                                            "FRA",
+                                            "Análisis de la encuesta FRA",
+                                            "FRA survey analysis",
                                         ),
+                                        html.P(
+                                            text(
+                                                "Estas visualizaciones representan las respuestas de la encuesta FRA seleccionada y permiten comparar las experiencias de las personas LGBTIQ+ entre países y segmentos de población.",
+                                                "These visualisations represent responses to the selected FRA survey and compare LGBTIQ+ people's experiences across countries and population segments.",
+                                            ),
+                                            className="stats-block-description",
+                                        ),
+                                        _map_panel(),
                                         html.Section(
                                             id="stats-metric-row",
                                             className="stats-metric-row stats-executive-grid",
@@ -206,6 +212,7 @@ def build_statistics_layout() -> Component:
                                                             ),
                                                             className="stats-response-comparison-scroll",
                                                         ),
+                                                        _chart_help("response_comparison"),
                                                         _dynamic_source_attribution(
                                                             "response-comparison"
                                                         ),
@@ -214,55 +221,6 @@ def build_statistics_layout() -> Component:
                                                     className=(
                                                         "stats-panel stats-panel-wide "
                                                         "stats-response-comparison-section is-hidden"
-                                                    ),
-                                                ),
-                                                html.Div(
-                                                    [
-                                                        _chart_panel_heading(
-                                                            "Experiencia real y protección legal",
-                                                            "Real-life experience and legal protection",
-                                                            "stats-experience-legal-radar-graph",
-                                                        ),
-                                                        _field(
-                                                            (
-                                                                "País seleccionado",
-                                                                "Selected country",
-                                                            ),
-                                                            dcc.Dropdown(
-                                                                id="stats-experience-legal-country-select",
-                                                                options=[],
-                                                                value=None,
-                                                                clearable=False,
-                                                            ),
-                                                            class_name="stats-control-field stats-radar-country-field",
-                                                        ),
-                                                        html.P(
-                                                            id="stats-experience-legal-metadata",
-                                                            className="stats-radar-metadata",
-                                                        ),
-                                                        html.Div(
-                                                            _deferred_graph_slot(
-                                                                "stats-experience-legal-radar-graph"
-                                                            ),
-                                                            id="stats-experience-legal-radar-wrapper",
-                                                            className="is-hidden",
-                                                        ),
-                                                        html.P(
-                                                            id="stats-experience-legal-empty",
-                                                            className="stats-radar-empty",
-                                                        ),
-                                                        html.P(
-                                                            id="stats-experience-legal-interpretation",
-                                                            className="stats-radar-interpretation",
-                                                        ),
-                                                        _combined_source_attribution(
-                                                            "experience-legal-radar"
-                                                        ),
-                                                    ],
-                                                    id="stats-experience-legal-radar-panel",
-                                                    className=(
-                                                        "stats-panel stats-panel-wide "
-                                                        "stats-experience-legal-radar-section"
                                                     ),
                                                 ),
                                                 html.Div(
@@ -282,6 +240,7 @@ def build_statistics_layout() -> Component:
                                                             ),
                                                             className="stats-response-detail-scroll",
                                                         ),
+                                                        _chart_help("response"),
                                                         _dynamic_source_attribution(
                                                             "response-detail"
                                                         ),
@@ -302,55 +261,12 @@ def build_statistics_layout() -> Component:
                                             ],
                                             className="stats-grid",
                                         ),
-                                        html.Section(
-                                            [
-                                                _block_header(
-                                                    "Bloque B",
-                                                    "Relación entre datos sociodemográficos y legales",
-                                                    "Sociodemographic and legal relationship",
-                                                ),
-                                                html.Section(
-                                                    id="stats-combined-metric-row",
-                                                    className="stats-metric-row stats-executive-grid",
-                                                ),
-                                                html.Div(
-                                                    [
-                                                        _graph_panel(
-                                                            "Protección legal vs experiencia real",
-                                                            "Legal protection vs lived experience",
-                                                            "stats-gap-graph",
-                                                            combined_sources=True,
-                                                        ),
-                                                        _graph_panel(
-                                                            "Relaci\u00f3n entre protecci\u00f3n legal y experiencia reportada",
-                                                            "Legal protection and reported experience relationship",
-                                                            "stats-scatter-graph",
-                                                            combined_sources=True,
-                                                        ),
-                                                        _graph_panel(
-                                                            "Heatmap europeo",
-                                                            "European heatmap",
-                                                            "stats-combined-heatmap",
-                                                            panel_class_name=(
-                                                                "stats-panel stats-panel-wide "
-                                                                "stats-heatmap-panel"
-                                                            ),
-                                                            scrollable=True,
-                                                            combined_sources=True,
-                                                        ),
-                                                    ],
-                                                    className="stats-grid",
-                                                ),
-                                            ],
-                                            id="stats-combined-block",
-                                            className="stats-analytics-block is-hidden",
-                                        ),
                                         html.Div(
                                             [
                                                 html.Div(
                                                     [
                                                         html.H2(
-                                                            text("Tabla resumida", "Summary table")
+                                                            text("Tabla FRA resumida", "FRA summary table")
                                                         ),
                                                         html.Div(
                                                             [
@@ -450,10 +366,21 @@ def build_statistics_layout() -> Component:
                                             ],
                                             className="stats-panel stats-results-table-panel",
                                         ),
-                                        html.P(
-                                            id="stats-methodology",
-                                            className="stats-methodology-note",
+                                        html.Section(
+                                            [
+                                                html.H3(
+                                                    text(
+                                                        "Qué muestran estos datos",
+                                                        "What these data show",
+                                                    )
+                                                ),
+                                                html.P(id="stats-fra-conclusion"),
+                                            ],
+                                            className=(
+                                                "stats-analysis-conclusion stats-fra-conclusion"
+                                            ),
                                         ),
+                                        _combined_analysis_panel(),
                                     ],
                                     id="stats-results-content",
                                     className="stats-results-content is-hidden",
@@ -613,7 +540,9 @@ def register_statistics_callbacks(app: Dash) -> None:
         language: str | None,
         targets: list[dict[str, str]] | None,
     ) -> list[Component]:
-        payload = (result or {}).get("experience_legal_radar") or {}
+        payload = (result or {}).get("combined_analysis") or (
+            (result or {}).get("experience_legal_radar") or {}
+        )
         fra_year = _safe_int(payload.get("fra_year"))
         ilga_year = _safe_int(payload.get("ilga_year"))
         attribution = html.Div(
@@ -737,19 +666,90 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
 
     @app.callback(
+        Output("stats-combined-download", "data"),
+        Input("stats-combined-download-button", "n_clicks"),
+        State("stats-data-store", "data"),
+        State("app-language-store", "data"),
+        prevent_initial_call=True,
+    )
+    def download_combined_table(
+        _clicks: int | None,
+        result: dict[str, Any] | None,
+        language: str | None,
+    ):
+        analysis = dict((result or {}).get("combined_analysis") or {})
+        rows = list(analysis.get("rows") or [])
+        if not rows:
+            raise PreventUpdate
+        fra_median = (analysis.get("fra_median_comparison") or {}).get("median")
+        language = language or "es"
+        export_rows = [
+            {
+                "country": row.get("country"),
+                "country_code": row.get("iso"),
+                "fra_value": row.get("fra_value"),
+                "ilga_score": row.get("ilga_value"),
+                "difference_from_fra_median": (
+                    float(row["fra_value"]) - float(fra_median)
+                    if isinstance(row.get("fra_value"), (int, float))
+                    and isinstance(fra_median, (int, float))
+                    else None
+                ),
+            }
+            for row in rows
+        ]
+        labels = {
+            "country": ("País", "Country"),
+            "country_code": ("Código del país", "Country code"),
+            "fra_value": ("Valor FRA (%)", "FRA value (%)"),
+            "ilga_score": ("Puntuación ILGA-Europe", "ILGA-Europe score"),
+            "difference_from_fra_median": (
+                "Diferencia con la mediana FRA (pp)",
+                "Difference from FRA median (pp)",
+            ),
+        }
+        columns = [
+            {
+                "field": key,
+                "headerName": pair[1 if language == "en" else 0],
+            }
+            for key, pair in labels.items()
+        ]
+        table_export = export_summary_table(
+            export_rows,
+            columns,
+            language=language,
+            metadata={
+                "indicator": f"{analysis.get('indicator') or ''} · {analysis.get('answer') or ''}",
+                "year": f"FRA {analysis.get('fra_year')} / ILGA {analysis.get('ilga_year')}",
+                "countries": [],
+                "source": "FRA + ILGA-Europe",
+            },
+        )
+        return dcc.send_string(
+            table_export.content,
+            table_export.filename.replace("estadisticas", "fra-ilga"),
+            type=table_export.mime_type,
+        )
+
+    @app.callback(
         Output("stats-category-select", "placeholder"),
         Output("fra-indicator-select", "placeholder"),
         Input("app-language-store", "data"),
+        Input("stats-category-select", "value"),
     )
-    def translate_statistics_controls(language: str | None) -> tuple[str, str]:
+    def translate_statistics_controls(
+        language: str | None,
+        category: str | None,
+    ) -> tuple[str, str]:
         if language == "en":
             return (
                 "Select a category",
-                "Select a category first",
+                "Select an indicator" if category else "Select a category first",
             )
         return (
             "Selecciona una categoría",
-            "Selecciona primero una categoría",
+            "Selecciona un indicador" if category else "Selecciona primero una categoría",
         )
 
     @app.callback(
@@ -868,6 +868,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-fra-response-help", "children"),
         Output("stats-fra-response-help", "className"),
         Output("stats-fra-segmentation-card", "className"),
+        Output("fra-answer-select", "disabled"),
+        Output("stats-demographic-segmentation", "className"),
         Input("fra-indicator-select", "value"),
         Input("app-language-store", "data"),
         State("stats-category-select", "value"),
@@ -888,7 +890,9 @@ def register_statistics_callbacks(app: Dash) -> None:
                 {},
                 None,
                 "stats-response-help is-hidden",
-                f"{_fra_segmentation_card_class()} is-hidden",
+                f"{_fra_segmentation_card_class()} is-disabled",
+                True,
+                "stats-segmentation-row stats-demographic-segmentation is-disabled",
             )
         survey = get_fra_survey(survey_id)
         if survey is None:
@@ -905,6 +909,9 @@ def register_statistics_callbacks(app: Dash) -> None:
         demographic_options = _segmentation_catalog_options(
             FRA_FILTER_GROUP_A, segmentations, language or "es"
         )
+        has_demographic_segmentation = _has_real_segmentation_option(demographic_options)
+        if not has_demographic_segmentation:
+            demographic_options = _disable_all_options(demographic_options)
         has_real_segmentation = any(
             str(option.get("value") or "") != "All"
             for option in segmentations
@@ -915,7 +922,7 @@ def register_statistics_callbacks(app: Dash) -> None:
             payload.get("default_answer")
             or (answers[0]["value"] if len(answers) == 1 else None),
             demographic_options,
-            _default_option_value(demographic_options),
+            _all_option_value(demographic_options),
             payload,
             _fra_response_help(payload.get("response_type"), language or "es"),
             (
@@ -926,7 +933,13 @@ def register_statistics_callbacks(app: Dash) -> None:
             (
                 _fra_segmentation_card_class()
                 if has_real_segmentation
-                else f"{_fra_segmentation_card_class()} is-hidden"
+                else f"{_fra_segmentation_card_class()} is-disabled"
+            ),
+            not bool(answers),
+            (
+                "stats-segmentation-row stats-demographic-segmentation"
+                if has_demographic_segmentation
+                else "stats-segmentation-row stats-demographic-segmentation is-disabled"
             ),
         )
 
@@ -947,6 +960,8 @@ def register_statistics_callbacks(app: Dash) -> None:
             values.get(segmentation or "All") or [],
             context="statistics-fra-demographic-value",
         )
+        if not _is_active_filter_type(segmentation):
+            return _disable_all_options(options), _all_option_value(options)
         return options, _explicit_filter_value(segmentation, options, current)
 
     @app.callback(
@@ -968,10 +983,12 @@ def register_statistics_callbacks(app: Dash) -> None:
             (payload or {}).get("segmentations") or [], language or "es"
         )
         options = _segmentation_catalog_options(FRA_FILTER_GROUP_B, segmentations, language or "es")
-        disabled = _is_active_filter_type(demographic_type)
+        has_identity_segmentation = _has_real_segmentation_option(options)
+        demographic_is_all = normalize_text_key(demographic_type) == "all"
+        disabled = not demographic_is_all or not has_identity_segmentation
         if disabled:
-            options = [{**option, "disabled": True} for option in options]
-            value = "All"
+            options = _disable_all_options(options)
+            value = _all_option_value(options)
         else:
             value = option_value_or_none(options, current_identity_type) or _default_option_value(
                 options
@@ -997,11 +1014,19 @@ def register_statistics_callbacks(app: Dash) -> None:
     ):
         values = (payload or {}).get("values") or {}
         if _is_active_filter_type(demographic_type):
-            return [{"label": "All", "value": "All", "disabled": True}], "All"
+            options = build_dropdown_options(
+                values.get("All") or [],
+                context="statistics-fra-identity-value",
+            )
+            return _disable_all_options(options), _all_option_value(options)
+        if normalize_text_key(demographic_type) != "all":
+            return [], None
         options = build_dropdown_options(
             values.get(segmentation or "All") or [],
             context="statistics-fra-identity-value",
         )
+        if not _is_active_filter_type(segmentation):
+            return _disable_all_options(options), _all_option_value(options)
         return options, _explicit_filter_value(segmentation, options, current)
 
     @app.callback(
@@ -1078,31 +1103,30 @@ def register_statistics_callbacks(app: Dash) -> None:
             )
         query_started = time.perf_counter()
         try:
-            result = get_fra_statistics(
-                FraStatisticsQuery(
-                    year=survey.year,
-                    category=category,
-                    question_code=fra_code,
-                    answer=answer,
-                    filter_a_name=filters.demographic_type,
-                    filter_a_value=filters.demographic_value,
-                    filter_b_name=filters.identity_type,
-                    filter_b_value=filters.identity_value,
-                )
+            fra_query = FraStatisticsQuery(
+                year=survey.year,
+                category=category,
+                question_code=fra_code,
+                answer=answer,
+                filter_a_name=filters.demographic_type,
+                filter_a_value=filters.demographic_value,
+                filter_b_name=filters.identity_type,
+                filter_b_value=filters.identity_value,
             )
+            result = get_fra_statistics(fra_query)
             query_ms = (time.perf_counter() - query_started) * 1000
             enrichment_started = time.perf_counter()
             if result.get("status") == "ok":
-                legal = get_ilga_statistics(
-                    IlgaStatisticsQuery(category="Ranking total"),
-                    include_history=False,
+                combined_analysis = get_combined_statistics_analysis(
+                    fra_query,
+                    fra_result=result,
+                    include_availability=False,
                 )
-                result["combined"] = _combine_rankings(
-                    result.get("ranking") or [], legal.get("ranking") or []
-                )
+                result["combined_analysis"] = combined_analysis
                 result["experience_legal_radar"] = get_experience_legal_radar(
                     ExperienceLegalRadarQuery(
                         fra_year=survey.year,
+                        ilga_year=combined_analysis.get("ilga_year"),
                         filter_a_name=filters.demographic_type,
                         filter_a_value=filters.demographic_value,
                         filter_b_name=filters.identity_type,
@@ -1193,13 +1217,15 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-response-detail-graph-slot", "children"),
         Output("stats-response-panel", "className"),
         Output("stats-combined-metric-row", "children"),
-        Output("stats-gap-graph-slot", "children"),
-        Output("stats-scatter-graph-slot", "children"),
-        Output("stats-combined-heatmap-slot", "children"),
+        Output("stats-quadrant-graph-slot", "children"),
+        Output("stats-quadrant-panel", "className"),
+        Output("stats-median-difference-graph-slot", "children"),
+        Output("stats-combined-intro", "children"),
+        Output("stats-combined-interpretation", "children"),
+        Output("stats-fra-conclusion", "children"),
         Output("stats-combined-block", "className"),
         Output("stats-results-table", "columnDefs"),
         Output("stats-results-table", "rowData"),
-        Output("stats-methodology", "children"),
         Output("stats-table-download-button", "disabled"),
         Output("stats-table-export-status", "children"),
         Output("stats-table-export-status", "className"),
@@ -1302,6 +1328,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-experience-legal-empty", "children"),
         Output("stats-experience-legal-metadata", "children"),
         Output("stats-experience-legal-interpretation", "children"),
+        Output("stats-experience-legal-radar-panel", "className"),
         Input("stats-data-store", "data"),
         Input("stats-experience-legal-country-select", "value"),
         Input("app-language-store", "data"),
@@ -1311,18 +1338,26 @@ def register_statistics_callbacks(app: Dash) -> None:
         result: dict[str, Any] | None,
         country_iso: str | None,
         language: str | None,
-    ) -> tuple[Any, str, str, str, str]:
+    ) -> tuple[Any, str, str, str, str, str]:
         if not result or result.get("status") != "ok":
             raise PreventUpdate
         language = language or "es"
         payload = (result or {}).get("experience_legal_radar") or {}
+        panel_class = "stats-panel stats-panel-wide stats-experience-legal-radar-section"
         if not payload or not country_iso:
-            raise PreventUpdate
+            return no_update, "is-hidden", "", "", "", f"{panel_class} is-hidden"
         figure, compatible, metadata, interpretation = build_experience_legal_radar(
             payload, country_iso, language
         )
         if not compatible:
-            return no_update, "is-hidden", interpretation, "", ""
+            return (
+                no_update,
+                "is-hidden",
+                interpretation,
+                "",
+                "",
+                f"{panel_class} is-hidden",
+            )
         country_name = next(
             (
                 option["label"]
@@ -1356,6 +1391,7 @@ def register_statistics_callbacks(app: Dash) -> None:
             "",
             metadata,
             interpretation,
+            panel_class,
         )
 
 
@@ -1414,7 +1450,11 @@ def _controls(categories: list[dict[str, Any]]) -> Component:
                             _field(
                                 "Respuesta",
                                 dcc.Dropdown(
-                                    id="fra-answer-select", options=[], value=None, clearable=False
+                                    id="fra-answer-select",
+                                    options=[],
+                                    value=None,
+                                    clearable=False,
+                                    disabled=True,
                                 ),
                             ),
                             html.Aside(
@@ -1442,6 +1482,7 @@ def _controls(categories: list[dict[str, Any]]) -> Component:
                                 "fra-demographic-type",
                                 "fra-demographic-value",
                                 FRA_FILTER_GROUP_A,
+                                element_id="stats-demographic-segmentation",
                             ),
                             _segmentation_group(
                                 "Filtro de identidad",
@@ -1458,7 +1499,7 @@ def _controls(categories: list[dict[str, Any]]) -> Component:
                     ),
                 ],
                 element_id="stats-fra-segmentation-card",
-                class_name=_fra_segmentation_card_class(),
+                class_name=f"{_fra_segmentation_card_class()} is-disabled",
             ),
         ],
         className="stats-controls",
@@ -1625,6 +1666,15 @@ def _graph_component(
     )
 
 
+def _optional_graph_component(graph_id: str, figure: Any) -> Component | Any | None:
+    """Mount an optional graph, preserving partial updates and allowing cleanup."""
+    if figure is no_update:
+        return no_update
+    if figure is None:
+        return None
+    return _graph_component(graph_id, figure)
+
+
 def _response_comparison_component(figure: Any, style: dict[str, str]) -> Component | Any:
     """Render the country key outside Plotly's plotting canvas."""
     if figure is no_update:
@@ -1697,9 +1747,128 @@ def _map_panel() -> Component:
                 className="stats-panel-hint",
             ),
             _stable_map_graph_slot(),
+            _chart_help("map"),
             _dynamic_source_attribution("map"),
         ],
         className="stats-panel stats-panel-wide stats-map-panel",
+    )
+
+
+def _combined_analysis_panel() -> Component:
+    return html.Section(
+        [
+            _block_header(
+                "FRA + ILGA-Europe",
+                "Análisis combinado: FRA + ILGA-Europe",
+                "Combined analysis: FRA + ILGA-Europe",
+            ),
+            html.P(
+                text(
+                    "Comparación de la experiencia social y la protección legal mediante cuadrantes.",
+                    "Comparison of social experience and legal protection using quadrants.",
+                ),
+                className="stats-block-description",
+            ),
+            html.Div(id="stats-combined-intro", className="stats-combined-intro"),
+            html.Button(
+                text(
+                    "Descargar datos combinados (CSV)",
+                    "Download combined data (CSV)",
+                ),
+                id="stats-combined-download-button",
+                type="button",
+                n_clicks=0,
+                className="stats-chart-export-button stats-combined-download-button",
+            ),
+            html.Section(
+                id="stats-combined-metric-row",
+                className="stats-metric-row stats-executive-grid",
+            ),
+            html.Div(
+                [
+                    _graph_panel(
+                        "Cuadrantes FRA e ILGA-Europe",
+                        "FRA and ILGA-Europe quadrants",
+                        "stats-quadrant-graph",
+                        panel_id="stats-quadrant-panel",
+                        combined_sources=True,
+                        scrollable=True,
+                        panel_class_name=(
+                            "stats-panel stats-panel-wide stats-combined-chart-panel"
+                        ),
+                    ),
+                    _graph_panel(
+                        "Diferencia respecto a la mediana de los países",
+                        "Difference from the country median",
+                        "stats-median-difference-graph",
+                        scrollable=True,
+                        panel_class_name=(
+                            "stats-panel stats-panel-wide stats-combined-chart-panel"
+                        ),
+                    ),
+                ],
+                className="stats-grid",
+            ),
+            _experience_legal_radar_panel(),
+            html.Section(
+                [
+                    html.H3(
+                        text(
+                            "Interpretación del análisis combinado",
+                            "Combined analysis interpretation",
+                        )
+                    ),
+                    html.Div(id="stats-combined-interpretation"),
+                ],
+                className="stats-analysis-conclusion",
+            ),
+        ],
+        id="stats-combined-block",
+        className="stats-analytics-block is-hidden",
+    )
+
+
+def _experience_legal_radar_panel() -> Component:
+    return html.Div(
+        [
+            _chart_panel_heading(
+                "Experiencia real y protección legal por dimensiones",
+                "Real-life experience and legal protection by dimension",
+                "stats-experience-legal-radar-graph",
+            ),
+            html.P(
+                text(
+                    "Esta vista multivariable complementa los cuadrantes: compara dimensiones FRA e ILGA expresamente equivalentes para un país, no una relación causal entre países.",
+                    "This multivariable view complements the quadrants: it compares explicitly matched FRA and ILGA dimensions for one country, not a causal relationship across countries.",
+                ),
+                className="stats-panel-hint",
+            ),
+            _field(
+                ("País seleccionado", "Selected country"),
+                dcc.Dropdown(
+                    id="stats-experience-legal-country-select",
+                    options=[],
+                    value=None,
+                    clearable=False,
+                ),
+                class_name="stats-control-field stats-radar-country-field",
+            ),
+            html.P(id="stats-experience-legal-metadata", className="stats-radar-metadata"),
+            html.Div(
+                _deferred_graph_slot("stats-experience-legal-radar-graph"),
+                id="stats-experience-legal-radar-wrapper",
+                className="is-hidden",
+            ),
+            html.P(id="stats-experience-legal-empty", className="stats-radar-empty"),
+            html.P(
+                id="stats-experience-legal-interpretation",
+                className="stats-radar-interpretation",
+            ),
+            _chart_help("radar"),
+            _combined_source_attribution("experience-legal-radar"),
+        ],
+        id="stats-experience-legal-radar-panel",
+        className="stats-panel stats-panel-wide stats-experience-legal-radar-section is-hidden",
     )
 
 
@@ -1760,6 +1929,7 @@ def _temporal_panel() -> Component:
                 _deferred_graph_slot("stats-temporal-graph"),
                 className="stats-temporal-chart-scroll",
             ),
+            _chart_help("temporal"),
             _dynamic_source_attribution("temporal"),
         ],
         className="stats-panel stats-panel-wide stats-temporal-section",
@@ -1787,10 +1957,17 @@ def _graph_panel(
     graph_content: Component = (
         html.Div(graph, className="stats-chart-horizontal-scroll") if scrollable else graph
     )
+    help_kind = {
+        "stats-ranking-graph": "ranking",
+        "stats-average-graph": "average",
+        "stats-quadrant-graph": "quadrants",
+        "stats-median-difference-graph": "median_difference",
+    }.get(graph_id)
     return html.Div(
         [
             _chart_panel_heading(title_es, title_en, graph_id),
             graph_content,
+            _chart_help(help_kind) if help_kind else None,
             footer,
             (
                 _combined_source_attribution(graph_id)
@@ -1845,6 +2022,55 @@ def _chart_panel_heading(title_es: str, title_en: str, graph_id: str) -> Compone
     )
 
 
+def _chart_help(kind: str) -> Component:
+    copy = {
+        "map": (
+            "El color representa el porcentaje de la respuesta FRA seleccionada en cada país sobre una escala 0-100. Un país sin dato no equivale a 0. La selección solo resalta países para compararlos.",
+            "Colour represents the selected FRA response percentage in each country on a 0-100 scale. A country with no data is not zero. Selection only highlights countries for comparison.",
+        ),
+        "temporal": (
+            "Cada línea sigue un país entre ediciones disponibles. Solo debe interpretarse como evolución cuando el indicador, la respuesta, los filtros y la metodología son comparables entre encuestas.",
+            "Each line follows a country across available editions. It should be read as change over time only when the indicator, response, filters and methodology are comparable between surveys.",
+        ),
+        "ranking": (
+            "Ordena los países por el porcentaje FRA seleccionado. La posición describe esta consulta concreta y no constituye una clasificación general de bienestar o derechos.",
+            "Countries are ordered by the selected FRA percentage. Rank describes this specific query and is not a general ranking of wellbeing or rights.",
+        ),
+        "average": (
+            "Compara cada país seleccionado con la media simple de países participantes que tienen un valor válido para la misma encuesta, indicador, respuesta y filtros. Los valores nulos se excluyen y los ceros reales se conservan.",
+            "Selected countries are compared with the simple mean of participating countries with a valid value for the same survey, indicator, response and filters. Null values are excluded and genuine zeros are retained.",
+        ),
+        "response_comparison": (
+            "Compara el reparto de respuestas FRA entre países. Cada serie mantiene la misma pregunta, año y segmentación; los porcentajes no disponibles no se convierten en cero.",
+            "This compares the FRA response distribution across countries. Every series keeps the same question, year and segmentation; unavailable percentages are not converted to zero.",
+        ),
+        "response": (
+            "Muestra el detalle de las opciones de respuesta para el universo de países de la consulta. Lee conjuntamente porcentajes, países disponibles y ausencias de datos.",
+            "This shows response-option detail for the query's country universe. Read percentages together with the available-country count and missing data.",
+        ),
+        "quadrants": (
+            "¿Qué muestra? Compara la protección legal y el resultado FRA de cada país. Solo aparece para respuestas Sí/No cuya interpretación sea clara o para respuestas cuantitativas. ¿Cómo se interpreta? Las líneas marcan las medianas: el valor que deja aproximadamente a la mitad de los países a cada lado. Los valores exactamente iguales quedan en el lado igual o superior. En respuestas numéricas sin una orientación clara se habla únicamente de valores FRA altos o bajos, sin calificarlos como mejores o peores. ¿Qué podemos observar? Países donde ambos resultados ocupan posiciones distintas dentro del conjunto, sin restar ni equiparar las escalas.",
+            "What does it show? It compares each country's legal protection and FRA result. It is only shown for yes/no answers with a clear interpretation or for quantitative answers. How should it be read? The lines mark the medians: the value leaving roughly half the countries on either side. Values exactly on a median belong to the at-or-above side. Numeric answers without a clear direction are described only as higher or lower FRA values, without calling them better or worse. What can we observe? Countries where both results occupy different positions within the group, without subtracting or treating the scales as equivalent.",
+        ),
+        "median_difference": (
+            "¿Qué muestra? Cuántos puntos porcentuales separan a cada país de la mediana FRA. ¿Cómo se interpreta? La línea en cero significa igual que la mediana; +8 indica ocho puntos porcentuales por encima y -8, ocho por debajo. La mediana es el valor central: aproximadamente la mitad de los países queda a cada lado y los valores extremos influyen menos en esta referencia. ¿Qué podemos observar? Estar por encima no siempre significa estar mejor: la lectura se adapta al significado de la respuesta seleccionada.",
+            "What does it show? How many percentage points separate each country from the FRA median. How should it be read? The zero line means equal to the median; +8 means eight percentage points above and -8 means eight below. The median is the central value: roughly half the countries fall on either side, and extreme values have less influence on this reference. What can we observe? Being above does not always mean doing better: the reading adapts to the selected answer's meaning.",
+        ),
+        "radar": (
+            "Cada eje representa un aspecto para el que existe una correspondencia revisada entre FRA e ILGA-Europe. Cuando una pregunta FRA describe una experiencia negativa, su orientación solo cambia si esa regla está definida de forma explícita. Revisa el significado de cada eje antes de compararlos.",
+            "Each axis represents an aspect with a reviewed match between FRA and ILGA-Europe. When an FRA question describes a negative experience, its direction changes only when that rule is explicitly defined. Check the meaning of each axis before comparing them.",
+        ),
+    }
+    es, en = copy[kind]
+    return html.Details(
+        [
+            html.Summary(text("¿Cómo interpretar esta gráfica?", "How should I read this chart?")),
+            html.P(text(es, en)),
+        ],
+        className="stats-chart-help",
+    )
+
+
 def _response_detail_graph_style(figure: Any) -> dict[str, str]:
     style = _dynamic_graph_style(figure, min_height=520)
     meta = getattr(getattr(figure, "layout", None), "meta", None)
@@ -1869,16 +2095,6 @@ def _response_comparison_graph_style(figure: Any) -> dict[str, str]:
     minimum_width = meta.get("minimum_width") if isinstance(meta, dict) else None
     if isinstance(minimum_width, (int, float)) and minimum_width > 760:
         style["minWidth"] = f"{int(minimum_width)}px"
-    return style
-
-
-def _heatmap_graph_style(figure: Any) -> dict[str, str]:
-    """Keep Plotly's calculated heatmap geometry instead of squeezing it into the panel."""
-    style = _dynamic_graph_style(figure, min_height=720)
-    meta = getattr(getattr(figure, "layout", None), "meta", None)
-    minimum_width = meta.get("minimum_width") if isinstance(meta, dict) else None
-    if isinstance(minimum_width, (int, float)) and minimum_width > 0:
-        style["minWidth"] = f"{max(960, int(minimum_width))}px"
     return style
 
 
@@ -2052,6 +2268,22 @@ def _default_option_value(options: list[dict[str, Any]]) -> Any:
     return None
 
 
+def _all_option_value(options: list[dict[str, Any]]) -> str | None:
+    return "All" if any(item.get("value") == "All" for item in options) else None
+
+
+def _has_real_segmentation_option(options: list[dict[str, Any]]) -> bool:
+    return any(
+        not option.get("disabled", False)
+        and normalize_text_key(option.get("value")) != "all"
+        for option in options
+    )
+
+
+def _disable_all_options(options: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{**option, "disabled": True} for option in options]
+
+
 def _is_active_filter_type(value: Any) -> bool:
     return bool(value and normalize_text_key(value) != "all")
 
@@ -2172,14 +2404,14 @@ def _segmentation_group(
         return html.Section(
             children,
             id=element_id,
-            className="stats-segmentation-row",
+            className="stats-segmentation-row is-disabled",
         )
     return html.Section(children, className="stats-segmentation-row")
 
 
 def _dashboard_component_outputs(outputs: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
     """Map render values to stable properties or first-mount visual graph slots."""
-    if len(outputs) != 29:
+    if len(outputs) != 31:
         raise ValueError("statistics_dashboard_output_contract_changed")
     return (
         outputs[0],
@@ -2194,30 +2426,27 @@ def _dashboard_component_outputs(outputs: tuple[Any, ...] | list[Any]) -> tuple[
             style={"width": "100%", "minWidth": "860px", "height": "680px"},
         ),
         outputs[6],
-        _graph_component("stats-ranking-graph", outputs[7], style=outputs[24]),
+        _graph_component("stats-ranking-graph", outputs[7], style=outputs[26]),
         _graph_component("stats-average-graph", outputs[8]),
         outputs[9],
-        _response_comparison_component(outputs[10], outputs[25]),
+        _response_comparison_component(outputs[10], outputs[27]),
         outputs[11],
         outputs[12],
         _graph_component("stats-response-detail-graph", outputs[13], style=outputs[14]),
         outputs[15],
         outputs[16],
-        _graph_component("stats-gap-graph", outputs[17]),
-        _graph_component("stats-scatter-graph", outputs[18]),
-        _graph_component(
-            "stats-combined-heatmap",
-            outputs[19],
-            style=_heatmap_graph_style(outputs[19]),
-            class_name="stats-chart-graph stats-heatmap-graph",
-        ),
+        _optional_graph_component("stats-quadrant-graph", outputs[17]),
+        outputs[18],
+        _graph_component("stats-median-difference-graph", outputs[19]),
         outputs[20],
         outputs[21],
         outputs[22],
         outputs[23],
-        outputs[26],
-        outputs[27],
+        outputs[24],
+        outputs[25],
         outputs[28],
+        outputs[29],
+        outputs[30],
     )
 
 
@@ -2241,7 +2470,7 @@ def _render_temporal_dashboard_update(
         selected_names=_selection_scope(result.get("ranking") or [], selected, language)["names"],
         language=language,
     )
-    outputs: list[Any] = [no_update] * 29
+    outputs: list[Any] = [no_update] * 31
     outputs[5] = temporal
     outputs[6] = (
         "stats-panel-wrapper stats-temporal-wrapper"
@@ -2286,11 +2515,11 @@ def _render_ranking_dashboard_update(
         selected_names=_selection_scope(ranking, selected, language)["names"],
         language=language,
     )
-    outputs: list[Any] = [no_update] * 29
+    outputs: list[Any] = [no_update] * 31
     outputs[7] = comparative_ranking
     outputs[8] = average
     outputs[9] = _average_panel_class(selected)
-    outputs[24] = _ranking_graph_style(comparative_ranking)
+    outputs[26] = _ranking_graph_style(comparative_ranking)
     logger.info(
         "statistics_callback_completed scope=ranking total_ms=%.2f",
         (time.perf_counter() - started_at) * 1000,
@@ -2315,7 +2544,8 @@ def _render_dashboard(
     data = list(result.get("data") or [])
     detail = list(result.get("detail_data") or data)
     history = list(result.get("history") or [])
-    combined = list(result.get("combined") or [])
+    combined_analysis = dict(result.get("combined_analysis") or {})
+    combined = list(combined_analysis.get("rows") or result.get("combined") or [])
     normalization_started_at = time.perf_counter()
     response_dataframe = prepare_fra_response_comparison_data(
         detail,
@@ -2382,27 +2612,53 @@ def _render_dashboard(
         language=language,
         prepared_data=response_dataframe,
     )
-    gap = build_legal_reality_gap_chart(combined, selected, language)
-    scatter = build_combined_scatter(combined, language, selected)
-    heatmap = build_combined_heatmap(combined, language, selected)
+    analysis_metrics = dict(combined_analysis.get("metrics") or {})
+    semantics = dict(combined_analysis.get("semantics") or {})
+    semantic_direction = str(semantics.get("direction") or "unknown")
+    eligibility = dict(
+        combined_analysis.get("quadrant_eligibility")
+        or quadrant_eligibility(result.get("indicator"), result.get("answer"))
+    )
+    quadrants_eligible = bool(eligibility.get("eligible"))
+    segmentation = " · ".join(_export_filter_labels(result, language)[1:])
+    quadrants = (
+        build_combined_quadrant_chart(
+            combined,
+            language,
+            selected,
+            semantic_direction=semantic_direction,
+            answer=str(result.get("answer") or ""),
+            metrics=analysis_metrics,
+            segmentation=segmentation,
+        )
+        if quadrants_eligible
+        else None
+    )
+    median_difference = build_fra_median_difference_chart(
+        dict(combined_analysis.get("fra_median_comparison") or {}),
+        language,
+        semantic_direction=semantic_direction,
+        answer=str(result.get("answer") or ""),
+    )
     charts_ms = (time.perf_counter() - charts_started_at) * 1000
+    figures = {
+        "map": map_figure,
+        "temporal": temporal,
+        "ranking": comparative_ranking,
+        "average": average,
+        "response_comparison": comparison,
+        "responses": response,
+        "median_difference": median_difference,
+    }
+    if quadrants is not None:
+        figures["quadrants"] = quadrants
     _prepare_dashboard_exports(
-        {
-            "map": map_figure,
-            "temporal": temporal,
-            "ranking": comparative_ranking,
-            "average": average,
-            "response_comparison": comparison,
-            "responses": response,
-            "gap": gap,
-            "scatter": scatter,
-            "heatmap": heatmap,
-        },
+        figures,
         result=result,
         selected_names=scope["names"],
         language=language,
     )
-    combined_metrics = _combined_metric_cards(combined)
+    combined_metrics = _combined_metric_cards(combined_analysis, language)
     table_rows = _table_rows(result, selected, language)
     available_count = sum(1 for row in ranking if isinstance(row.get("value"), (int, float)))
     status_detail = (
@@ -2419,11 +2675,12 @@ def _render_dashboard(
     logger.info(
         "statistics_callback_completed scope=dashboard statistics_normalization_ms=%.2f "
         "statistics_geodata_ms=%.2f statistics_charts_ms=%.2f total_ms=%.2f "
-        "chart_count=9",
+        "chart_count=%d",
         normalization_ms,
         map_ms,
         charts_ms,
         (time.perf_counter() - render_started_at) * 1000,
+        len(figures),
     )
     return (
         status,
@@ -2456,13 +2713,19 @@ def _render_dashboard(
         _response_detail_graph_style(response),
         "stats-panel stats-panel-wide stats-response-panel",
         combined_metrics,
-        gap,
-        scatter,
-        heatmap,
+        quadrants,
+        (
+            "stats-panel stats-panel-wide stats-combined-chart-panel"
+            if quadrants_eligible
+            else "stats-panel stats-panel-wide stats-combined-chart-panel is-hidden"
+        ),
+        median_difference,
+        _combined_intro(combined_analysis, language),
+        _combined_interpretation(combined_analysis, language),
+        _fra_conclusion(result, language),
         "stats-analytics-block" if combined else "stats-analytics-block is-hidden",
         _table_columns(table_rows, language),
         table_rows,
-        _methodology_text(language),
         _ranking_graph_style(comparative_ranking),
         _response_comparison_graph_style(comparison),
         not bool(table_rows),
@@ -2486,16 +2749,26 @@ def _prepare_dashboard_exports(
     )
     year = result.get("year")
     filters = _export_filter_labels(result, language)
+    combined_analysis = dict(result.get("combined_analysis") or {})
     for chart_type, figure in figures.items():
         title_es, title_en = CHART_EXPORT_TITLES[chart_type]
+        is_combined = chart_type == "quadrants"
+        export_year: int | str | None = year
+        export_source = source
+        if is_combined:
+            export_year = (
+                f"FRA-{combined_analysis.get('fra_year') or '—'}_"
+                f"ILGA-{combined_analysis.get('ilga_year') or '—'}"
+            )
+            export_source = "FRA + ILGA-Europe"
         prepare_figure_for_export(
             figure,
             chart_type=chart_type,
             chart_title=title_en if language == "en" else title_es,
             indicator=indicator,
             countries=[] if chart_type == "responses" else selected_names,
-            year=year,
-            source=("combined" if chart_type in {"gap", "scatter", "heatmap"} else source),
+            year=export_year,
+            source=export_source,
             filters=filters,
             language=language,
         )
@@ -2542,9 +2815,13 @@ def _executive_metric_cards(
     if dataframe.empty:
         return []
     mean = float(dataframe["value"].mean())
+    median = float(dataframe["value"].median())
+    standard_deviation = float(dataframe["value"].std(ddof=0))
     metrics: list[tuple[str | tuple[str, str], str]] = [
         (("Países analizados", "Countries analysed"), str(len(dataframe))),
         (("Media europea", "European average"), f"{mean:.2f}%"),
+        (("Mediana", "Median"), f"{median:.2f}%"),
+        (("Desviación estándar", "Standard deviation"), f"{standard_deviation:.2f} pp"),
         (
             ("Mayor valor", "Highest value"),
             f"{dataframe.iloc[0]['country']} · {dataframe.iloc[0]['value']:.2f}%",
@@ -2590,48 +2867,263 @@ def _executive_metric_cards(
     return [_metric_card(label, value) for label, value in metrics]
 
 
-def _combined_metric_cards(rows: list[dict[str, Any]]) -> list[Any]:
-    dataframe = pd.DataFrame(rows)
-    if dataframe.empty:
+def _combined_metric_cards(analysis: dict[str, Any], language: str = "es") -> list[Any]:
+    metrics = dict(analysis.get("metrics") or {})
+    if not metrics:
         return []
-    dataframe["ilga_value"] = pd.to_numeric(dataframe["ilga_value"], errors="coerce")
-    dataframe["fra_value"] = pd.to_numeric(dataframe["fra_value"], errors="coerce")
-    dataframe["gap"] = (dataframe["ilga_value"] - dataframe["fra_value"]).abs()
-    paired = dataframe[["ilga_value", "fra_value"]].dropna()
-    correlation = (
-        paired["ilga_value"].corr(paired["fra_value"])
-        if len(paired) >= 2
-        and paired["ilga_value"].nunique() >= 2
-        and paired["fra_value"].nunique() >= 2
-        else None
-    )
-    best = dataframe.nsmallest(1, "gap").iloc[0]
-    largest = dataframe.nlargest(1, "gap").iloc[0]
-    legal_mean = float(dataframe["ilga_value"].mean())
-    fra_mean = float(dataframe["fra_value"].mean())
-    gap_std = float(dataframe["gap"].std(ddof=0))
+    sample = {
+        "insufficient": ("Insuficiente", "Insufficient"),
+        "exploratory": ("Exploratoria", "Exploratory"),
+        "normal": ("Adecuada", "Adequate"),
+    }.get(str(metrics.get("sample_status")), ("—", "—"))
+    sample_label = sample[1 if language == "en" else 0]
+    fra_median = (metrics.get("fra") or {}).get("median")
+    ilga_median = (metrics.get("ilga") or {}).get("median")
     return [
+        _metric_card(("Países incluidos", "Countries included"), str(metrics.get("n", 0))),
         _metric_card(
-            ("Mejor equilibrio", "Best balance"), f"{best['country']} · {best['gap']:.2f} pp"
+            ("Mediana FRA", "FRA median"),
+            f"{fra_median:.1f}%" if isinstance(fra_median, (int, float)) else "—",
         ),
         _metric_card(
-            ("Mayor diferencia", "Largest gap"), f"{largest['country']} · {largest['gap']:.2f} pp"
+            ("Mediana legal", "Legal median"),
+            f"{ilga_median:.1f}" if isinstance(ilga_median, (int, float)) else "—",
         ),
         _metric_card(
-            ("Media europea", "European average"), f"ILGA {legal_mean:.1f}% · FRA {fra_mean:.1f}%"
+            ("Años comparados", "Years compared"),
+            f"FRA {analysis.get('fra_year') or '—'} · ILGA {analysis.get('ilga_year') or '—'}",
         ),
-        _metric_card(("Desviación de la brecha", "Gap standard deviation"), f"{gap_std:.2f} pp"),
-        _metric_card(
-            ("Correlación ILGA/FRA", "ILGA/FRA correlation"),
-            f"{correlation:.2f}" if correlation is not None and pd.notna(correlation) else "—",
-        ),
-        _metric_card(("Indicadores comparados", "Indicators compared"), "2"),
+        _metric_card(("Cantidad de datos", "Amount of data"), sample_label),
     ]
 
 
 def _metric_card(label: str | tuple[str, str], value: str) -> Any:
     rendered_label = text(label[0], label[1]) if isinstance(label, tuple) else label
     return html.Div([html.Span(rendered_label), html.Strong(value)], className="stats-metric-card")
+
+
+def _fra_conclusion(result: dict[str, Any], language: str = "es") -> str:
+    frame = pd.DataFrame(result.get("ranking") or [])
+    if frame.empty or "value" not in frame:
+        return (
+            "No hay valores nacionales suficientes para resumir esta selección."
+            if language != "en"
+            else "There are not enough national values to summarise this selection."
+        )
+    frame["value"] = pd.to_numeric(frame["value"], errors="coerce")
+    frame = frame.replace([float("inf"), float("-inf")], pd.NA).dropna(subset=["value"])
+    if frame.empty:
+        return (
+            "No hay valores nacionales suficientes para resumir esta selección."
+            if language != "en"
+            else "There are not enough national values to summarise this selection."
+        )
+    values = frame["value"].astype(float)
+    top = frame.nlargest(min(3, len(frame)), "value")["country"].astype(str).tolist()
+    countries = ", ".join(top)
+    if language == "en":
+        return (
+            f"Across {len(frame)} countries with valid data, the selected response ranges from "
+            f"{values.min():.1f}% to {values.max():.1f}%, with a mean of {values.mean():.1f}% "
+            f"and a central value (median) of {values.median():.1f}%. The highest values are "
+            f"observed in {countries}. Whether a high value is favourable depends on the selected answer."
+        )
+    return (
+        f"En {len(frame)} países con datos válidos, la respuesta seleccionada varía entre "
+        f"{values.min():.1f}% y {values.max():.1f}%, con una media de {values.mean():.1f}% "
+        f"y un valor central (mediana) de {values.median():.1f}%. Los valores más altos se "
+        f"observan en {countries}. Que un valor alto sea favorable depende de la respuesta seleccionada."
+    )
+
+
+def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component:
+    indicator = str(analysis.get("indicator") or "—")
+    answer = str(analysis.get("answer") or "—")
+    fra_year = analysis.get("fra_year") or "—"
+    ilga_year = analysis.get("ilga_year") or "—"
+    semantics = dict(analysis.get("semantics") or {})
+    direction = str(semantics.get("direction") or "unknown")
+    eligibility = dict(
+        analysis.get("quadrant_eligibility")
+        or quadrant_eligibility(indicator, answer)
+    )
+    quadrants_eligible = bool(eligibility.get("eligible"))
+    response_kind = str(eligibility.get("response_kind") or "unsupported")
+    if language == "en":
+        semantic_text = {
+            "adverse": "A higher FRA percentage is interpreted as a potentially less favourable outcome for this question and answer.",
+            "favourable": "A higher FRA percentage is interpreted as a potentially more favourable outcome for this question and answer.",
+            "unknown": "The meaning of a high percentage cannot be determined reliably from the wording, so no favourable/adverse conclusion is automated.",
+        }[direction]
+        hypothesis = (
+            f"The quadrant view compares the percentage for «{answer}» in «{indicator}» "
+            "with each country's overall ILGA-Europe legal-protection score."
+            if quadrants_eligible
+            else f"The quadrant view is not shown for «{answer}» in «{indicator}» because this response cannot be interpreted safely as yes/no or quantitative data."
+        )
+        reading = (
+            "Each point is a country. The central lines are the FRA and legal medians, so the chart compares positions within the available group without treating both scales as equivalent."
+            if quadrants_eligible
+            else "Choose a quantitative response or a yes/no response whose meaning is clear to enable the quadrant comparison."
+        )
+        timing = (
+            f"Temporal context: FRA {fra_year} and ILGA-Europe {ilga_year}. "
+            + (
+                "The variables refer to different years, so this is an exploratory comparison rather than a simultaneous measurement."
+                if str(fra_year) != str(ilga_year)
+                else "Both sources use the same reference year, although their constructs and collection methods still differ."
+            )
+        )
+        source_text = (
+            "Sources: European Union Agency for Fundamental Rights (FRA) and ILGA-Europe "
+            "Rainbow Map. Data processed and visualised by RainbowLens DataHub."
+        )
+        causality_text = (
+            "A country's position in a quadrant does not show that one variable causes the other."
+        )
+    else:
+        semantic_text = {
+            "adverse": "Un porcentaje FRA mayor se interpreta como un resultado potencialmente menos favorable para esta pregunta y respuesta.",
+            "favourable": "Un porcentaje FRA mayor se interpreta como un resultado potencialmente más favorable para esta pregunta y respuesta.",
+            "unknown": "No puede determinarse con fiabilidad qué significa un porcentaje alto a partir del enunciado, por lo que no se automatiza una conclusión favorable o desfavorable.",
+        }[direction]
+        hypothesis = (
+            f"La vista por cuadrantes compara el porcentaje de la respuesta «{answer}» en «{indicator}» "
+            "con la puntuación legal global ILGA-Europe de cada país."
+            if quadrants_eligible
+            else f"Los cuadrantes no se muestran para «{answer}» en «{indicator}» porque esta respuesta no puede interpretarse de forma segura como un dato Sí/No o cuantitativo."
+        )
+        reading = (
+            "Cada punto representa un país. Las líneas centrales son las medianas FRA y legal, de modo que se comparan posiciones dentro del conjunto disponible sin equiparar ambas escalas."
+            if quadrants_eligible
+            else "Selecciona una respuesta cuantitativa o una respuesta Sí/No cuyo significado sea claro para habilitar la comparación por cuadrantes."
+        )
+        timing = (
+            f"Contexto temporal: FRA {fra_year} e ILGA-Europe {ilga_year}. "
+            + (
+                "Las variables corresponden a años diferentes: es una comparación exploratoria, no una medición simultánea."
+                if str(fra_year) != str(ilga_year)
+                else "Ambas fuentes usan el mismo año de referencia, aunque miden conceptos y emplean metodologías diferentes."
+            )
+        )
+        source_text = (
+            "Fuentes: European Union Agency for Fundamental Rights (FRA) e ILGA-Europe "
+            "Rainbow Map. Datos procesados y visualizados por RainbowLens DataHub."
+        )
+        causality_text = (
+            "La posición de un país en un cuadrante no demuestra que una variable cause la otra."
+        )
+    children: list[Component] = [
+        html.P(hypothesis),
+        html.P(reading),
+        html.P(causality_text, className="stats-methodology-warning"),
+        html.P(timing, className="stats-methodology-warning"),
+        html.P(source_text, className="stats-source-summary"),
+    ]
+    if quadrants_eligible and response_kind == "yes_no":
+        children.insert(2, html.P(semantic_text))
+    normalization = dict(analysis.get("normalization") or {})
+    if normalization.get("applied"):
+        children.append(
+            html.P(
+                (
+                    "La puntuación ILGA histórica se ha normalizado a una escala 0-100; consulta la metodología de la fuente antes de comparar series."
+                    if language != "en"
+                    else "The historical ILGA score was normalised to a 0-100 scale; consult the source methodology before comparing time series."
+                ),
+                className="stats-methodology-warning",
+            )
+        )
+    return html.Div(children)
+
+
+def _combined_interpretation(analysis: dict[str, Any], language: str = "es") -> Component:
+    metrics = dict(analysis.get("metrics") or {})
+    sample_status = str(metrics.get("sample_status") or "insufficient")
+    eligibility = dict(
+        analysis.get("quadrant_eligibility")
+        or quadrant_eligibility(analysis.get("indicator"), analysis.get("answer"))
+    )
+    if not eligibility.get("eligible"):
+        conclusion = (
+            "Los cuadrantes no se interpretan para esta selección porque la respuesta no es cuantitativa ni una respuesta Sí/No con significado claro."
+            if language != "en"
+            else "The quadrants are not interpreted for this selection because the answer is neither quantitative nor a yes/no response with a clear meaning."
+        )
+    elif sample_status == "insufficient":
+        conclusion = (
+            "No hay suficientes países con datos comparables para interpretar los cuadrantes de forma fiable."
+            if language != "en"
+            else "There are not enough countries with comparable data to interpret the quadrants reliably."
+        )
+    else:
+        conclusion = _quadrant_conclusion(analysis, language)
+    warning = (
+        "Con 5-9 países, el resultado se presenta exclusivamente como exploratorio."
+        if language != "en"
+        else "With 5-9 countries, the result is presented as exploratory only."
+    ) if eligibility.get("eligible") and sample_status == "exploratory" else ""
+    method = (
+        "Las líneas utilizan las medianas de los países que tienen simultáneamente un valor FRA y una puntuación legal válidos."
+        if language != "en"
+        else "The lines use the medians of countries that simultaneously have a valid FRA value and legal score."
+    )
+    causality = (
+        "Que dos valores aparezcan relacionados no significa que uno sea la causa del otro. La realidad de cada país depende de muchos factores sociales, económicos, culturales y políticos."
+        if language != "en"
+        else "When two values appear related, it does not mean that one causes the other. Each country's reality depends on many social, economic, cultural and political factors."
+    )
+    return html.Div(
+        [
+            html.P(conclusion),
+            html.P(warning) if warning else None,
+            html.P(method) if eligibility.get("eligible") else None,
+            html.P(causality),
+        ],
+        className="stats-combined-conclusion-copy",
+    )
+
+
+def _quadrant_conclusion(analysis: dict[str, Any], language: str) -> str:
+    metrics = dict(analysis.get("metrics") or {})
+    semantics = dict(analysis.get("semantics") or {})
+    direction = str(semantics.get("direction") or "unknown")
+    eligibility = dict(
+        analysis.get("quadrant_eligibility")
+        or quadrant_eligibility(analysis.get("indicator"), analysis.get("answer"))
+    )
+    if int(metrics.get("n") or 0) < 5 or not eligibility.get("eligible"):
+        return ""
+    rows = quadrant_rows(list(analysis.get("rows") or []), direction)
+    if direction == "unknown":
+        high_high = sum(
+            1
+            for row in rows
+            if row.get("legal_level") == "high" and row.get("fra_level") == "high"
+        )
+        if language == "en":
+            return (
+                f"The quadrant view places {high_high} countr{'y' if high_high == 1 else 'ies'} "
+                "at or above both medians. For this quantitative answer, high and low describe relative position only, not a better or worse result."
+            )
+        return (
+            f"La vista por cuadrantes sitúa {high_high} país{'es' if high_high != 1 else ''} "
+            "en o por encima de ambas medianas. En esta respuesta cuantitativa, alto y bajo solo describen una posición relativa, no un resultado mejor o peor."
+        )
+    mismatch = sum(
+        1
+        for row in rows
+        if row.get("legal_level") == "high" and row.get("experience") == "unfavourable"
+    )
+    if language == "en":
+        return (
+            f"The quadrant view places {mismatch} countr{'y' if mismatch == 1 else 'ies'} "
+            "in the higher-protection / less-favourable-experience area. This identifies a position relative to the available countries, not a contradiction or a causal effect."
+        )
+    return (
+        f"La vista por cuadrantes sitúa {mismatch} país{'es' if mismatch != 1 else ''} "
+        "en la zona de mayor protección y experiencia menos favorable. Esto señala una posición respecto al conjunto disponible, no una contradicción ni un efecto causal."
+    )
 
 
 def _detail_summary(

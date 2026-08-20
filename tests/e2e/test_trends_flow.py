@@ -68,7 +68,7 @@ def test_country_horizon_and_language_round_trip_updates_entire_methodology(monk
 
     assert {option["value"] for option in options} == {"ES", "FR"}
     assert initial_country is None
-    assert "¿Cómo se ha calculado esta proyección?" in str(spanish.to_plotly_json())
+    assert "Ver metodología detallada" in str(spanish.to_plotly_json())
     assert "3 años" in str(longer.to_plotly_json())
-    assert "How was this projection calculated?" in str(french.to_plotly_json())
+    assert "View detailed methodology" in str(french.to_plotly_json())
     assert "France" in str(french.to_plotly_json())

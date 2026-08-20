@@ -138,10 +138,9 @@ def test_report_configuration_sanitizes_user_text_and_keeps_only_identifiers() -
     assert sanitize_report_text("\x00hola") == "hola"
 
 
-def test_automatic_mode_uses_professional_default_content() -> None:
+def test_empty_content_selection_uses_professional_defaults() -> None:
     config = ReportConfiguration.from_mapping(
         {
-            "mode": "automatic",
             "sections": [],
             "charts": [],
         }
@@ -149,7 +148,7 @@ def test_automatic_mode_uses_professional_default_content() -> None:
 
     assert "recommendations" in config.sections
     assert "ranking" in config.charts
-    assert len(config.charts) <= 8
+    assert len(config.charts) == 4
 
 
 def test_builder_calculates_metrics_rules_and_reuses_shared_plotly_figures() -> None:
@@ -323,7 +322,7 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert len(document) >= 3
     assert "Informe de diversidad" in extracted
     assert "Resumen ejecutivo" in extracted
-    assert "Recomendaciones para RRHH" in extracted
+    assert "Posibles líneas de actuación" in extracted
     assert "EU LGBTIQ Survey III, 2023" in extracted
     assert "España" in extracted
     assert "RainbowLens Datahub" in extracted
@@ -384,10 +383,10 @@ def test_report_permissions_are_server_side() -> None:
     )
 
 
-def test_advanced_report_configuration_is_public_for_every_profile(monkeypatch) -> None:
+def test_report_profile_and_content_rules_are_resolved_server_side(monkeypatch) -> None:
     custom = {
         **_configuration().to_dict(),
-        "mode": "custom",
+        "profile_key": "admin",
         "detail_level": "detailed",
         "sections": ["executive"],
         "charts": ["ranking"],
@@ -402,9 +401,9 @@ def test_advanced_report_configuration_is_public_for_every_profile(monkeypatch) 
         ),
     )
     basic = reports_page._report_configuration_for_user(custom)
-    assert basic.mode == "custom"
-    assert basic.detail_level == "detailed"
-    assert basic.sections == ("executive",)
+    assert basic.profile_key == "comun"
+    assert "interpretation" in basic.sections
+    assert basic.sections != ("executive",)
 
     for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG, UserType.SOCIOLOGO):
         monkeypatch.setattr(
@@ -416,84 +415,26 @@ def test_advanced_report_configuration_is_public_for_every_profile(monkeypatch) 
                 user_type=profile,
             ),
         )
-        advanced = reports_page._report_configuration_for_user(custom)
-        assert advanced.mode == "custom"
-        assert advanced.detail_level == "detailed"
-        assert advanced.sections == ("executive",)
+        configured = reports_page._report_configuration_for_user(custom)
+        assert configured.profile_key == profile.value
+        assert configured.sections != ("executive",)
 
 
-def test_advanced_content_controls_are_available_to_the_public() -> None:
-    panel = reports_page._content_panel(_configuration(), advanced_enabled=True)
-    toggle = _component_by_id(panel, "report-advanced-toggle")
-    content = _component_by_id(panel, "report-advanced-content")
+def test_profile_panel_replaces_technical_advanced_controls() -> None:
+    profile = reports_page.report_profile("rrhh")
+    panel = reports_page._profile_panel(_configuration(profile_key="rrhh"), profile)
 
-    assert toggle.disabled is False
-    assert "is-collapsed" in content.className
-    assert content.to_plotly_json()["props"]["aria-hidden"] == "true"
-    for identifier in (
-        "report-mode-select",
-        "report-detail-select",
-        "report-sections-select",
-        "report-charts-select",
-    ):
-        control = _component_by_id(panel, identifier)
-        assert all(option["disabled"] is False for option in control.options)
-
-
-def test_every_profile_can_open_and_keep_advanced_options_stable(monkeypatch) -> None:
-    app = Dash(__name__, suppress_callback_exceptions=True)
-    reports_page.register_reports_callbacks(app)
-    callback = next(
-        item["callback"].__wrapped__
-        for item in app.callback_map.values()
-        if getattr(item.get("callback"), "__wrapped__", None)
-        and item["callback"].__wrapped__.__name__ == "toggle_advanced_options"
+    identifiers = {getattr(component, "id", None) for component in _walk(panel)}
+    explanation = next(
+        component
+        for component in _walk(panel)
+        if getattr(component, "className", None) == "reports-profile-explanation"
     )
-
-    authorized_users = [
-        SimpleNamespace(
-            is_authenticated=True,
-            role=UserRole.COMMON,
-            user_type=profile,
-        )
-        for profile in (
-            UserType.COMUN,
-            UserType.RRHH,
-            UserType.DOCENTE,
-            UserType.POLITICO,
-            UserType.SOCIOLOGO,
-            UserType.ONG,
-        )
-    ]
-    authorized_users.append(
-        SimpleNamespace(
-            is_authenticated=True,
-            role=UserRole.ADMIN,
-            user_type=None,
-        )
-    )
-
-    for user in authorized_users:
-        monkeypatch.setattr(reports_page, "current_user", user)
-        assert callback(1, False) == (
-            True,
-            "reports-advanced-content",
-            "false",
-            "true",
-        )
-        assert callback(2, True) == (
-            False,
-            "reports-advanced-content is-collapsed",
-            "true",
-            "false",
-        )
-
-    monkeypatch.setattr(
-        reports_page,
-        "current_user",
-        SimpleNamespace(is_authenticated=False, role=UserRole.ANONYMOUS, user_type=None),
-    )
-    assert callback(1, False) == (True, "reports-advanced-content", "false", "true")
+    assert "informe profesional" in str(explanation)
+    assert "perfil que tienes configurado" in str(explanation)
+    assert "report-objective-select" not in identifiers
+    assert "report-advanced-toggle" not in identifiers
+    assert "report-mode-select" not in identifiers
 
 
 def _component_by_id(component: Any, identifier: str):
@@ -551,16 +492,29 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
         "report-download-button",
         "report-preview-content",
         "report-download",
-        "report-sections-select",
-        "report-charts-select",
-        "report-advanced-open-store",
-        "report-advanced-toggle",
-        "report-advanced-content",
+        "report-source-select",
+        "report-answer-select",
+        "report-filter-a-name",
+        "report-plan-summary",
     }.issubset(ids)
+    assert not {
+        "report-objective-select",
+        "report-mode-select",
+        "report-sections-select",
+        "report-advanced-toggle",
+    } & ids
     store_data = getattr(store, "data", None)
     assert isinstance(store_data, dict)
     assert "result" not in store_data
     assert "figure" not in store_data
+    source_control = _component_by_id(layout, "report-source-select")
+    assert [option["value"] for option in source_control.options] == [
+        "fra", "ilga", "combined"
+    ]
+    source_labels = " ".join(str(option["label"].to_plotly_json()) for option in source_control.options)
+    assert "Datos sociales" in source_labels
+    assert "Datos legales" in source_labels
+    assert 'children\': \'FRA\'' not in source_labels
 
 
 def test_reports_callbacks_register_preview_and_download() -> None:
@@ -596,11 +550,8 @@ def test_profile_template_callback_applies_the_selected_preset(monkeypatch) -> N
 
     assert result[0] == "Informe de situación y política pública LGBTIQ+"
     assert result[1] == "ilga"
-    assert result[2] == "custom"
-    assert result[3] == "detailed"
-    assert "recommendations" in result[4]
-    assert "temporal" in result[5]
-    assert "ranking legal" in result[6]
+    assert "evidencia territorial" in result[2]
+    assert "ranking legal" in result[3]
 
 
 def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None:
@@ -609,7 +560,6 @@ def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None
             "source": ["fra"],
             "indicator_id": ["EMP_1"],
             "countries": ["ES,FR"],
-            "sections": ["metrics,recommendations"],
             "frames": ['[{"large": "payload"}]'],
             "password": ["secret"],
         }
@@ -619,7 +569,6 @@ def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None
         "source": "fra",
         "indicator_id": "EMP_1",
         "countries": ["ES", "FR"],
-        "sections": ["metrics", "recommendations"],
     }
 
 

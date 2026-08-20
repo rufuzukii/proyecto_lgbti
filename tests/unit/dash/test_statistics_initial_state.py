@@ -92,21 +92,18 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     assert _component_by_id(layout, "ilga-criterion-select") is None
 
 
-def test_heatmap_spans_the_grid_and_uses_a_local_responsive_scroll_container(
+def test_combined_visual_slots_are_stable_and_old_boxplot_is_absent(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     layout = statistics_page.build_statistics_layout()
-    heatmap_slot = _component_by_id(layout, "stats-combined-heatmap-slot")
-    panel = next(
-        item
-        for item in _walk(layout)
-        if "stats-heatmap-panel" in str(getattr(item, "className", ""))
-    )
-
-    assert heatmap_slot is not None
-    assert "stats-panel-wide" in panel.className.split()
-    assert "stats-chart-horizontal-scroll" in str(panel)
+    assert _component_by_id(layout, "stats-boxplot-graph-slot") is None
+    assert _component_by_id(layout, "stats-quadrant-graph-slot") is not None
+    assert _component_by_id(layout, "stats-median-difference-graph-slot") is not None
+    assert _component_by_id(layout, "stats-scatter-graph-slot") is None
+    assert _component_by_id(layout, "stats-availability-graph-slot") is None
+    assert _component_by_id(layout, "stats-combined-heatmap-slot") is None
+    assert _component_by_id(layout, "stats-combined-interpretation") is not None
 
 
 def test_ranked_reason_help_is_bilingual_and_absent_for_standard_questions() -> None:
@@ -120,15 +117,16 @@ def test_ranked_reason_help_is_bilingual_and_absent_for_standard_questions() -> 
     assert statistics_page._fra_response_help("standard", "es") is None
 
 
-def test_heatmap_and_ranked_reason_styles_cover_mobile_and_dark_mode() -> None:
+def test_chart_help_and_ranked_reason_styles_cover_mobile_and_dark_mode() -> None:
     css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
 
-    assert ".stats-heatmap-panel" in css
     assert "grid-column: 1 / -1" in css
     assert ".stats-chart-horizontal-scroll" in css
     assert "overflow-x: auto" in css
     assert 'body[data-theme="dark"] .stats-response-help' in css
-    assert "min-width: 960px" in css
+    assert ".stats-combined-chart-panel" in css
+    assert "min-width: 620px" in css
+    assert ".stats-availability-legend" not in css
     assert ".stats-response-distribution-item" in css
     assert "grid-template-columns: minmax(0, 1fr) auto" in css
     assert "white-space: nowrap" in css
@@ -140,6 +138,20 @@ def test_heatmap_and_ranked_reason_styles_cover_mobile_and_dark_mode() -> None:
     assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in css
     assert "grid-auto-flow: column" in css
     assert ".stats-country-legend" in css
+
+
+def test_disabled_statistics_filters_remain_legible_and_responsive() -> None:
+    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+
+    assert ".stats-controls .Select.is-disabled > .Select-control" in css
+    assert "cursor: not-allowed" in css
+    assert "opacity: 0.78" in css
+    assert ".stats-segmentation-card.is-disabled" in css
+    assert ".stats-segmentation-row.is-disabled" in css
+    assert "background: color-mix(in srgb, var(--panel-muted)" in css
+    mobile = css.split("@media (max-width: 767px)", maxsplit=1)[1]
+    assert ".stats-indicator-card .stats-fra-controls" in mobile
+    assert "grid-template-columns: 1fr" in mobile
 
 
 def test_large_response_distribution_matches_the_compact_tablet_layout() -> None:
@@ -238,7 +250,7 @@ def test_initial_statistics_selection_does_not_run_data_services(monkeypatch) ->
         raise AssertionError("statistics service should not run without an indicator")
 
     monkeypatch.setattr(statistics_page, "get_fra_statistics", unexpected_query)
-    monkeypatch.setattr(statistics_page, "get_ilga_statistics", unexpected_query)
+    monkeypatch.setattr(statistics_page, "get_combined_statistics_analysis", unexpected_query)
 
     result = callback("fra_survey_iii", None, None, None, None, None, None, None, {})
 

@@ -3,6 +3,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.reports.templates import (
+    PROFILE_TEMPLATES,
+    REPORT_PROFILES,
     apply_template_defaults,
     find_report_template,
     report_profile_key,
@@ -43,25 +45,32 @@ def test_each_profile_resolves_its_own_templates(user, expected_profile: str) ->
 
     # Assert
     assert report_profile_key(user) == expected_profile
-    assert len(templates) == 2
-    assert len({template.id for template in templates}) == 2
+    expected_count = sum(
+        len(values) for key, values in PROFILE_TEMPLATES.items() if key != "anonymous"
+    ) if expected_profile == "admin" else 2
+    assert len(templates) == expected_count
+    assert len({template.id for template in templates}) == expected_count
     assert all(template.name_es and template.name_en for template in templates)
     assert all(template.description_es and template.description_en for template in templates)
 
 
 def test_profile_template_ids_do_not_overlap() -> None:
-    # Arrange
-    users = [
-        _user(authenticated=False, user_type=None),
-        *(_user(user_type=profile) for profile in UserType if profile != UserType.ADMIN),
-        _user(role=UserRole.ADMIN, user_type=UserType.ADMIN),
+    identifiers = [
+        template.id for templates in PROFILE_TEMPLATES.values() for template in templates
     ]
-
-    # Act
-    identifiers = [template.id for user in users for template in report_templates_for_user(user)]
 
     # Assert
     assert len(identifiers) == len(set(identifiers))
+
+
+def test_every_report_profile_has_meaningful_objectives_and_output_rules() -> None:
+    assert set(REPORT_PROFILES) == {
+        "anonymous", "comun", "docente", "rrhh", "ong", "politico", "sociologo", "admin"
+    }
+    for profile in REPORT_PROFILES.values():
+        assert len(profile.objectives) >= 2
+        assert profile.recommended_sections
+        assert profile.recommended_charts
 
 
 def test_template_defaults_preserve_an_inherited_statistics_selection() -> None:

@@ -1,150 +1,230 @@
 from __future__ import annotations
 
+from typing import Any
+
+from app.analytics.combined_analysis import infer_indicator_semantics
 from app.analytics.statistics_normalizers import normalize_text_key
 from app.reports.models import ReportRecommendation
 
-NEGATIVE_INDICATOR_TERMS = {
-    "discrimination",
-    "discriminacion",
-    "discriminación",
-    "harassment",
-    "acoso",
-    "violence",
-    "violencia",
-    "unsafe",
-    "inseguro",
-    "insegura",
-    "bullying",
-    "intimidacion",
-    "intimidación",
+WORKPLACE_TERMS = {
+    "work", "workplace", "employment", "job", "labour", "laboral", "empleo",
+    "promotion", "promocion", "recruitment", "seleccion", "colleague", "compañer",
 }
-
-POSITIVE_INDICATOR_TERMS = {
-    "openness",
-    "apertura",
-    "inclusion",
-    "inclusión",
-    "wellbeing",
-    "bienestar",
-    "confidence",
-    "confianza",
-    "safety",
-    "seguridad",
-    "equal opportunities",
-    "igualdad de oportunidades",
+DISCRIMINATION_TERMS = {
+    "discrimin", "harass", "acoso", "violence", "violencia", "hate", "odio",
+    "unsafe", "insegur", "bully", "intimid", "attack", "agres",
 }
+LEGAL_TERMS = {"legal", "law", "rights", "derecho", "legisl", "protect", "proteccion"}
 
-HR_RELEVANT_TERMS = (
-    NEGATIVE_INDICATOR_TERMS
-    | POSITIVE_INDICATOR_TERMS
-    | {
-        "work",
-        "workplace",
-        "employment",
-        "empleo",
-        "laboral",
-        "job",
-        "denuncia",
-        "reporting",
-        "promotion",
-        "promocion",
-        "promoción",
-        "recruitment",
-        "seleccion",
-        "selección",
-    }
-)
+
+def _pair(es: tuple[str, ...], en: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    return {"es": es, "en": en}
+
+
+# Central, reviewable catalogue. Entries are general orientations, never
+# individual legal, medical or clinical advice.
+RECOMMENDATION_RULES: dict[str, dict[str, dict[str, tuple[str, ...]]]] = {
+    "comun": {
+        "adverse": _pair(
+            (
+                "Consultar las fuentes oficiales y recursos especializados para comprender mejor el contexto del indicador.",
+                "Comparar el resultado con otros países y segmentos antes de extraer una conclusión general.",
+            ),
+            (
+                "Consult official sources and specialist resources to better understand the indicator's context.",
+                "Compare the result with other countries and groups before drawing a general conclusion.",
+            ),
+        ),
+        "general": _pair(
+            ("Utilizar el informe como punto de partida y revisar las limitaciones antes de comunicar sus resultados.",),
+            ("Use the report as a starting point and review its limitations before communicating the results.",),
+        ),
+    },
+    "docente": {
+        "adverse": _pair(
+            (
+                "Plantear una actividad para identificar qué factores sociales pueden influir en el resultado sin asumir una única causa.",
+                "Comparar dos países y pedir al alumnado que diferencie datos, interpretación y opinión.",
+            ),
+            (
+                "Use an activity to identify social factors that may influence the result without assuming a single cause.",
+                "Compare two countries and ask students to distinguish data, interpretation and opinion.",
+            ),
+        ),
+        "general": _pair(
+            ("Incorporar una pregunta de reflexión sobre las limitaciones y la población representada por la encuesta.",),
+            ("Include a reflection question about limitations and the population represented by the survey.",),
+        ),
+    },
+    "rrhh": {
+        "adverse": _pair(
+            (
+                "Considerar el refuerzo de protocolos frente a la discriminación y de canales confidenciales de comunicación.",
+                "Valorar formación preventiva en diversidad e inclusión para equipos y responsables de personas.",
+                "Realizar seguimiento periódico del clima laboral mediante mecanismos anónimos que protejan la privacidad.",
+            ),
+            (
+                "Consider strengthening anti-discrimination procedures and confidential communication channels.",
+                "Consider preventive diversity and inclusion training for teams and people managers.",
+                "Monitor workplace climate periodically through anonymous, privacy-preserving mechanisms.",
+            ),
+        ),
+        "general": _pair(
+            (
+                "Revisar periódicamente las políticas internas de inclusión, el lenguaje y los procesos de gestión de personas.",
+                "Tratar estos datos como contexto europeo: no describen automáticamente la situación interna de una organización concreta.",
+            ),
+            (
+                "Periodically review internal inclusion policies, language and people-management processes.",
+                "Treat these data as European context: they do not automatically describe a specific organisation's internal situation.",
+            ),
+        ),
+    },
+    "ong": {
+        "adverse": _pair(
+            (
+                "Considerar campañas de sensibilización y apoyo comunitario centradas en la brecha observada.",
+                "Documentar la evolución del indicador y colaborar con instituciones y organizaciones especializadas.",
+                "Utilizar la evidencia como apoyo para la incidencia, explicando siempre su alcance y limitaciones.",
+            ),
+            (
+                "Consider awareness and community-support initiatives focused on the observed gap.",
+                "Document the indicator over time and collaborate with institutions and specialist organisations.",
+                "Use the evidence to support advocacy while always explaining its scope and limitations.",
+            ),
+        ),
+        "general": _pair(
+            ("Mantener el seguimiento de los grupos y territorios con menor disponibilidad de información.",),
+            ("Continue monitoring groups and territories with lower data availability.",),
+        ),
+    },
+    "politico": {
+        "adverse": _pair(
+            (
+                "Considerar medidas públicas de prevención, sensibilización y formación institucional relacionadas con la brecha observada.",
+                "Reforzar la recopilación de datos y el seguimiento periódico antes de evaluar nuevas actuaciones.",
+                "Valorar la colaboración con organizaciones sociales y organismos de igualdad.",
+            ),
+            (
+                "Consider public prevention, awareness and institutional training measures related to the observed gap.",
+                "Strengthen data collection and periodic monitoring before evaluating new actions.",
+                "Consider collaboration with civil-society organisations and equality bodies.",
+            ),
+        ),
+        "general": _pair(
+            ("Contrastar el resultado con otras fuentes y con el marco territorial antes de priorizar una política pública.",),
+            ("Compare the result with other sources and territorial context before prioritising public policy.",),
+        ),
+    },
+    "sociologo": {
+        "adverse": _pair(
+            (
+                "Profundizar en la heterogeneidad entre países y segmentos mediante análisis descriptivos comparables.",
+                "Examinar hipótesis alternativas y posibles factores de confusión sin atribuir causalidad a la asociación observada.",
+            ),
+            (
+                "Explore heterogeneity across countries and groups through comparable descriptive analysis.",
+                "Examine alternative hypotheses and potential confounders without assigning causality to the observed association.",
+            ),
+        ),
+        "general": _pair(
+            ("Documentar la disponibilidad, los cambios de cuestionario y las decisiones de comparabilidad en cualquier análisis posterior.",),
+            ("Document availability, questionnaire changes and comparability decisions in any follow-up analysis.",),
+        ),
+    },
+    "admin": {
+        "adverse": _pair(
+            ("Revisar la cobertura y trazabilidad del indicador antes de publicar o reutilizar el informe.",),
+            ("Review indicator coverage and traceability before publishing or reusing the report.",),
+        ),
+        "general": _pair(
+            ("Previsualizar la plantilla del perfil destinatario y comprobar sus atribuciones y limitaciones.",),
+            ("Preview the intended audience template and verify its attributions and limitations.",),
+        ),
+    },
+}
+RECOMMENDATION_RULES["anonymous"] = RECOMMENDATION_RULES["comun"]
+
+
+def indicator_semantics(indicator: str, answer: str = "", *, source: str = "fra") -> str:
+    if source == "ilga":
+        return "favourable"
+    return infer_indicator_semantics(indicator, answer).get("direction", "unknown")
+
+
+def indicator_direction(indicator: str, answer: str = "") -> str:
+    """Backward-compatible polarity label used by older callers and tests."""
+    direction = indicator_semantics(indicator, answer)
+    return {"adverse": "negative", "favourable": "positive"}.get(direction, "neutral")
 
 
 def is_hr_relevant_indicator(indicator: str) -> bool:
     normalized = normalize_text_key(indicator)
-    return any(term in normalized for term in HR_RELEVANT_TERMS)
+    return any(term in normalized for term in WORKPLACE_TERMS | DISCRIMINATION_TERMS)
 
 
-def indicator_direction(indicator: str) -> str:
+def indicator_topic(indicator: str) -> str:
     normalized = normalize_text_key(indicator)
-    if any(term in normalized for term in NEGATIVE_INDICATOR_TERMS):
-        return "negative"
-    if any(term in normalized for term in POSITIVE_INDICATOR_TERMS):
-        return "positive"
-    return "neutral"
+    if any(term in normalized for term in WORKPLACE_TERMS):
+        return "workplace"
+    if any(term in normalized for term in DISCRIMINATION_TERMS):
+        return "discrimination"
+    if any(term in normalized for term in LEGAL_TERMS):
+        return "legal"
+    return "general"
+
+
+def result_level(
+    *,
+    semantics: str,
+    country_value: float | None,
+    benchmark: float | None,
+    threshold: float = 5.0,
+) -> str:
+    if country_value is None or benchmark is None:
+        return "unknown"
+    gap = country_value - benchmark
+    if abs(gap) < threshold or semantics == "unknown":
+        return "neutral"
+    is_adverse = (semantics == "adverse" and gap > 0) or (
+        semantics == "favourable" and gap < 0
+    )
+    return "adverse" if is_adverse else "favourable"
 
 
 def build_recommendations(
     *,
     indicator: str,
     country_value: float | None,
-    eu_average: float | None,
+    eu_average: float | None = None,
+    benchmark: float | None = None,
     language: str,
+    profile_key: str = "rrhh",
+    objective: str = "overview",
+    answer: str = "",
+    source: str = "fra",
     threshold: float = 5.0,
+    **_unused: Any,
 ) -> list[ReportRecommendation]:
-    direction = indicator_direction(indicator)
-    relevant = is_hr_relevant_indicator(indicator)
+    del objective  # Objective selection affects report structure; evidence rules stay stable.
+    reference = benchmark if benchmark is not None else eu_average
+    semantics = indicator_semantics(indicator, answer, source=source)
+    level = result_level(
+        semantics=semantics,
+        country_value=country_value,
+        benchmark=reference,
+        threshold=threshold,
+    )
+    profile_rules = RECOMMENDATION_RULES.get(profile_key, RECOMMENDATION_RULES["comun"])
+    language_key = "en" if language == "en" else "es"
     recommendations: list[ReportRecommendation] = []
-    gap = (
-        country_value - eu_average if country_value is not None and eu_average is not None else None
+    if level == "adverse":
+        recommendations.extend(
+            ReportRecommendation(text, True)
+            for text in profile_rules["adverse"][language_key]
+        )
+    recommendations.extend(
+        ReportRecommendation(text, False)
+        for text in profile_rules["general"][language_key]
     )
-
-    if relevant and gap is not None:
-        if direction == "negative" and gap > threshold:
-            recommendations.extend(_derived_negative_recommendations(language))
-        elif direction == "positive" and gap < -threshold:
-            recommendations.extend(_derived_positive_recommendations(language))
-
-    recommendations.extend(_general_recommendations(language))
-    deduplicated: list[ReportRecommendation] = []
-    for item in recommendations:
-        if item.text not in {current.text for current in deduplicated}:
-            deduplicated.append(item)
-    return deduplicated[:6]
-
-
-def _derived_negative_recommendations(language: str) -> list[ReportRecommendation]:
-    texts = (
-        [
-            "Review and reinforce internal prevention and response protocols for LGBTIQ+ discrimination.",
-            "Provide confidential reporting channels with clear response times and safeguards against retaliation.",
-            "Deliver recurring diversity training for managers, recruitment teams and people managers.",
-        ]
-        if language == "en"
-        else [
-            "Revisar y reforzar los protocolos internos de prevención y actuación frente a la discriminación LGTBIQ+.",
-            "Habilitar canales confidenciales de denuncia con plazos de respuesta y garantías frente a represalias.",
-            "Realizar formación periódica en diversidad para responsables, selección y gestión de personas.",
-        ]
-    )
-    return [ReportRecommendation(text, True) for text in texts]
-
-
-def _derived_positive_recommendations(language: str) -> list[ReportRecommendation]:
-    texts = (
-        [
-            "Measure workplace inclusion periodically and analyse differences between demographic groups.",
-            "Review recruitment, promotion and internal communication for barriers to equal opportunity.",
-            "Strengthen employee support networks and visible leadership commitment to LGBTIQ+ inclusion.",
-        ]
-        if language == "en"
-        else [
-            "Medir periódicamente la inclusión laboral y analizar diferencias entre grupos sociodemográficos.",
-            "Revisar selección, promoción y comunicación interna para detectar barreras a la igualdad de oportunidades.",
-            "Reforzar las redes internas de apoyo y el compromiso visible del liderazgo con la inclusión LGTBIQ+.",
-        ]
-    )
-    return [ReportRecommendation(text, True) for text in texts]
-
-
-def _general_recommendations(language: str) -> list[ReportRecommendation]:
-    texts = (
-        [
-            "Maintain an updated LGBTIQ+ inclusion policy and communicate it to the whole organisation.",
-            "Review gender-transition support protocols, inclusive language and people-management documentation.",
-            "Track workplace climate regularly using anonymous, privacy-preserving measures.",
-        ]
-        if language == "en"
-        else [
-            "Mantener una política de inclusión LGTBIQ+ actualizada y comunicarla a toda la organización.",
-            "Revisar los protocolos de transición de género, el lenguaje inclusivo y la documentación de gestión de personas.",
-            "Medir periódicamente el clima laboral con mecanismos anónimos que preserven la privacidad.",
-        ]
-    )
-    return [ReportRecommendation(text, False) for text in texts]
+    return list(dict.fromkeys(recommendations))[:6]

@@ -1266,6 +1266,7 @@ def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
         "indicator_label",
         "answer",
         "criterion",
+        "objective",
         "year",
         "primary_country",
         "filter_a_name",
@@ -1276,14 +1277,13 @@ def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
         "organization",
         "author",
         "language",
-        "mode",
-        "detail_level",
+        "include_spanish_context",
         "generated_on",
     }
     values: dict[str, object] = {
         key: first for key in allowed if (first := _first_param(params, key)) is not None
     }
-    for list_key in ("countries", "sections", "charts"):
+    for list_key in ("countries",):
         raw = _first_param(params, list_key)
         if raw:
             values[list_key] = [item.strip() for item in raw.split(",") if item.strip()]

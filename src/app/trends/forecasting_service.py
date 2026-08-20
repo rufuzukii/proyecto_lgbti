@@ -20,6 +20,8 @@ from app.trends.models import (
 
 DUPLICATE_VALUE_TOLERANCE = 0.01
 STABLE_TREND_THRESHOLD = 0.25
+STABLE_RANGE_THRESHOLD = 2.0
+IRREGULAR_COUNTER_MOVEMENT_SHARE = 0.35
 
 
 def generate_forecast(
@@ -137,13 +139,7 @@ def summarize_historical_series(points: tuple[HistoricalPoint, ...]) -> TrendSum
     if not years or len(years) != len(values):
         raise ValueError("empty_historical_summary")
     robust_slope = theil_sen_slope(years, values)
-    direction = (
-        TrendDirection.STABLE
-        if abs(robust_slope) < STABLE_TREND_THRESHOLD
-        else TrendDirection.UPWARD
-        if robust_slope > 0
-        else TrendDirection.DOWNWARD
-    )
+    direction = classify_historical_trend(years, values, robust_slope=robust_slope)
     missing_years = tuple(year for year in range(years[0], years[-1] + 1) if year not in years)
     return TrendSummary(
         observations=len(values),
@@ -169,6 +165,52 @@ def theil_sen_slope(years: list[int], values: list[float]) -> float:
         if years[right] != years[left]
     ]
     return float(statistics.median(slopes)) if slopes else 0.0
+
+
+def classify_historical_trend(
+    years: list[int],
+    values: list[float],
+    *,
+    robust_slope: float | None = None,
+) -> TrendDirection:
+    """Classify the whole observed period without relying on the final year alone."""
+    if len(years) < 2 or len(years) != len(values):
+        return TrendDirection.STABLE
+    slope = theil_sen_slope(years, values) if robust_slope is None else robust_slope
+    observed_range = max(values) - min(values)
+    if abs(slope) < STABLE_TREND_THRESHOLD and observed_range <= STABLE_RANGE_THRESHOLD:
+        return TrendDirection.STABLE
+
+    annualized_changes = [
+        (values[index] - values[index - 1]) / (years[index] - years[index - 1])
+        for index in range(1, len(values))
+        if years[index] != years[index - 1]
+    ]
+    movement = sum(abs(change) for change in annualized_changes)
+    if movement:
+        expected_sign = 1 if slope >= 0 else -1
+        counter_movement = sum(
+            abs(change)
+            for change in annualized_changes
+            if change * expected_sign < -STABLE_TREND_THRESHOLD
+        )
+        meaningful_signs = [
+            1 if change > 0 else -1
+            for change in annualized_changes
+            if abs(change) >= STABLE_TREND_THRESHOLD
+        ]
+        reversals = sum(
+            meaningful_signs[index] != meaningful_signs[index - 1]
+            for index in range(1, len(meaningful_signs))
+        )
+        if (
+            counter_movement / movement >= IRREGULAR_COUNTER_MOVEMENT_SHARE
+            and reversals >= 2
+        ):
+            return TrendDirection.IRREGULAR
+    if abs(slope) < STABLE_TREND_THRESHOLD:
+        return TrendDirection.IRREGULAR if observed_range > STABLE_RANGE_THRESHOLD else TrendDirection.STABLE
+    return TrendDirection.UPWARD if slope > 0 else TrendDirection.DOWNWARD
 
 
 def forecast_horizon_limit(observations: int) -> int:
