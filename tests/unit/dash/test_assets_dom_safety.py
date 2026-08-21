@@ -150,9 +150,9 @@ def test_navbar_exposes_an_accessible_collapsible_mobile_menu(monkeypatch) -> No
     assert toggle_props["data-i18n-aria-label-en"] == "Open menu"
     assert _props(navbar)["data-i18n-aria-label-en"] == "Primary navigation"
     assert menu_props["className"] == "nav-menu"
-    assert mobile_logo_props["src"].endswith("rainbow_lens_icono.png")
-    assert desktop_logo_props["src"].endswith("rainbow_lens_logo.png")
-    assert mobile_logo_props["alt"] == "RainbowLens Datahub"
+    assert mobile_logo_props["src"] == "/assets/img/rainbow_lens_icono.png?v=20260821"
+    assert desktop_logo_props["src"] == "/assets/img/rainbow_lens_logo.png?v=20260821"
+    assert mobile_logo_props["alt"] == "RainbowLens DataHub"
 
 
 def test_navbar_logo_uses_spa_home_navigation(monkeypatch) -> None:
@@ -172,7 +172,22 @@ def test_navbar_logo_uses_spa_home_navigation(monkeypatch) -> None:
 
     assert props["href"] == "/es"
     assert props["refresh"] is False
-    assert props["title"] == "RainbowLens Datahub · Inicio / Home"
+    assert props["title"] == "RainbowLens DataHub · Inicio / Home"
+
+
+def test_navbar_logo_preserves_its_proportions_in_both_breakpoints() -> None:
+    shared_css = (ASSETS_CSS / "styles.css").read_text(encoding="utf-8")
+    responsive_css = (ASSETS_CSS / "zz_responsive.css").read_text(encoding="utf-8")
+
+    desktop_rule = shared_css.split(".nav-brand-logo-desktop {", maxsplit=1)[1].split(
+        "}", maxsplit=1
+    )[0]
+    assert "aspect-ratio: 2.6 / 1;" in shared_css
+    assert "object-fit: contain;" in desktop_rule
+    assert "object-fit: cover;" not in desktop_rule
+    assert "aspect-ratio: 1;" in responsive_css
+    assert "transform: none;" in responsive_css
+    assert "scale(1.55)" not in responsive_css
 
 
 def test_admin_navbar_groups_user_and_admin_without_duplicating_link(monkeypatch) -> None:

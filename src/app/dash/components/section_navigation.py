@@ -58,6 +58,12 @@ PRIMARY_SECTIONS = (
     ),
 )
 
+PRIMARY_NAVIGATION_SECTIONS = (
+    *PRIMARY_SECTIONS[:-1],
+    PrimarySection("reports", "report_module_name"),
+    PRIMARY_SECTIONS[-1],
+)
+
 ANONYMOUS_ACCOUNT_SECTION = PrimarySection(
     "login",
     "home_login_title",

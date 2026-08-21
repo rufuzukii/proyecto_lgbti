@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections.abc import Callable
+from dataclasses import replace
 from time import perf_counter
 from typing import Any
 
@@ -28,7 +30,8 @@ from app.trends.models import (
 )
 
 logger = logging.getLogger(__name__)
-TREND_CACHE_VERSION = 2
+TREND_CACHE_VERSION = 3
+MAX_FORECAST_HORIZON = 3
 
 
 def get_trend_scope() -> TrendScope:
@@ -47,14 +50,16 @@ def get_historical_series(
         return list(cached)
 
     started = perf_counter()
-    points = country_series(
-        _historical_dataset(),
-        clean_code,
-        start_year=selected_filters.start_year,
-        end_year=selected_filters.end_year,
+    points = _cache_get_or_compute(
+        cache_key,
+        lambda: country_series(
+            _historical_dataset(),
+            clean_code,
+            start_year=selected_filters.start_year,
+            end_year=selected_filters.end_year,
+        ),
+        cache_if=bool,
     )
-    if points:
-        _cache_set(cache_key, points)
     logger.info(
         "trend_series_loaded country=%s observations=%d years=%s load_ms=%.2f",
         clean_code,
@@ -77,20 +82,22 @@ def generate_trend_analysis(
         (point.country_name for point in points if point.country_name),
         str(country_code or "").strip().upper(),
     )
-    cache_key = _forecast_cache_key(points, country_code, selected_filters, forecast_years)
+    cache_key = _forecast_cache_key(points, country_code, selected_filters)
     cached = _cache_get(cache_key)
     if isinstance(cached, ForecastResult):
-        return cached
+        return _result_for_horizon(cached, forecast_years)
 
     started = perf_counter()
-    result = generate_forecast(
-        points,
-        country_code=str(country_code or "").strip().upper(),
-        country_name=country_name,
-        horizon=forecast_years,
+    result = _cache_get_or_compute(
+        cache_key,
+        lambda: generate_forecast(
+            points,
+            country_code=str(country_code or "").strip().upper(),
+            country_name=country_name,
+            horizon=MAX_FORECAST_HORIZON,
+        ),
+        cache_if=lambda value: value.status in {"ok", "insufficient"},
     )
-    if result.status in {"ok", "insufficient"}:
-        _cache_set(cache_key, result)
     logger.info(
         "trend_forecast_completed country=%s observations=%d horizon=%d model=%s "
         "mae=%s rmse=%s calculation_ms=%.2f cache_hit=false",
@@ -102,7 +109,7 @@ def generate_trend_analysis(
         round(result.selected_validation.rmse, 3) if result.selected_validation else None,
         (perf_counter() - started) * 1000,
     )
-    return result
+    return _result_for_horizon(result, forecast_years)
 
 
 def get_country_coverage() -> tuple[CountryCoverage, ...]:
@@ -120,9 +127,11 @@ def _historical_dataset() -> tuple[HistoricalPoint, ...]:
     if isinstance(cached, tuple) and all(isinstance(item, HistoricalPoint) for item in cached):
         return cached
     started = perf_counter()
-    points = load_ilga_global_history()
-    if points:
-        _cache_set(cache_key, points)
+    points = _cache_get_or_compute(
+        cache_key,
+        load_ilga_global_history,
+        cache_if=bool,
+    )
     logger.info(
         "trend_history_dataset_loaded rows=%d years=%d query_and_normalization_ms=%.2f",
         len(points),
@@ -155,18 +164,27 @@ def _forecast_cache_key(
     points: list[HistoricalPoint],
     country_code: str,
     filters: TrendFilters,
-    horizon: int,
 ) -> str:
     identity = {
         "cache_generation": analytics_cache_generation("ilga"),
         "country": str(country_code or "").strip().upper(),
         "end_year": filters.end_year,
-        "horizon": max(1, min(3, int(horizon))),
         "series": [(point.year, point.value) for point in points],
         "start_year": filters.start_year,
         "version": TREND_CACHE_VERSION,
     }
     return _hashed_key("trend-forecast", identity)
+
+
+def _result_for_horizon(result: ForecastResult, horizon: int) -> ForecastResult:
+    requested = max(1, min(MAX_FORECAST_HORIZON, int(horizon)))
+    available = min(requested, len(result.forecast))
+    return replace(
+        result,
+        forecast=result.forecast[:available],
+        requested_horizon=requested,
+        forecast_horizon=available,
+    )
 
 
 def _hashed_key(prefix: str, identity: dict[str, Any]) -> str:
@@ -185,10 +203,17 @@ def _cache_get(key: str) -> Any:
         return None
 
 
-def _cache_set(key: str, value: Any) -> None:
+def _cache_get_or_compute[T](
+    key: str,
+    factory: Callable[[], T],
+    *,
+    cache_if: Callable[[T], bool] | None = None,
+) -> T:
     if not getattr(cache, "app", None):
-        return
-    try:
-        cache.set(key, value, timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
-    except Exception:
-        logger.debug("trend_cache_write_failed", exc_info=True)
+        return factory()
+    return cache.get_or_compute(
+        key,
+        factory,
+        timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS,
+        cache_if=cache_if,
+    )

@@ -182,16 +182,17 @@ html[data-theme="dark"] #page-content {
 
 .nav-brand {
   align-items: center;
+  aspect-ratio: 2.6 / 1;
   border-radius: 8px;
   color: var(--color-text);
   display: inline-flex;
   flex: 0 0 auto;
   font-weight: 700;
-  height: 96px;
+  height: auto;
   letter-spacing: 0.4px;
   overflow: hidden;
   text-decoration: none;
-  width: 280px;
+  width: 230px;
 }
 
 .nav-brand:focus-visible {
@@ -201,14 +202,15 @@ html[data-theme="dark"] #page-content {
 
 .nav-brand-logo {
   display: block;
+  filter: drop-shadow(0 2px 3px rgba(15, 23, 42, 0.2));
   height: 100%;
   object-fit: contain;
   width: 100%;
 }
 
 .nav-brand-logo-desktop {
-  object-fit: cover;
-  object-position: 50% 42%;
+  object-fit: contain;
+  object-position: center;
 }
 
 .nav-brand-logo-mobile {
@@ -580,29 +582,19 @@ html[data-theme="dark"] #page-content {
 }
 
 .footer-attributions-grid {
-  column-gap: clamp(2rem, 6vw, 8rem);
   display: grid;
-  grid-auto-flow: column;
+  gap: clamp(0.75rem, 2vw, 1.25rem);
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: minmax(0, 1fr);
-  justify-content: space-between;
+  align-items: stretch;
 }
 
 .footer-attribution-block {
   display: grid;
   gap: 0.65rem;
   grid-template-rows: auto 1fr auto;
-  max-width: 28rem;
   min-width: 0;
+  padding: 0.25rem 0;
   width: 100%;
-}
-
-.footer-attribution-block:nth-child(2) {
-  justify-self: center;
-}
-
-.footer-attribution-block:nth-child(3) {
-  justify-self: end;
 }
 
 .footer-attribution-block h3,
@@ -612,14 +604,21 @@ html[data-theme="dark"] #page-content {
 
 .footer-attribution-block h3 {
   color: var(--color-text);
-  font-size: 0.74rem;
+  font-size: 0.8rem;
 }
 
 .footer-attribution-block p {
   color: var(--color-text-muted);
-  font-size: 0.66rem;
+  font-size: 0.7rem;
   line-height: 1.42;
   overflow-wrap: anywhere;
+}
+
+.europe-map-container {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 .footer-attribution-link {
@@ -699,6 +698,12 @@ html[data-theme="dark"] #page-content {
   }
 }
 
+@media (max-width: 900px) {
+  .footer-attributions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 680px) {
   .site-footer {
     padding-inline: 0.8rem;
@@ -754,7 +759,7 @@ html[data-theme="dark"] #page-content {
 }
 
 body[data-theme="dark"] .nav-brand-logo {
-  filter: brightness(0.92) contrast(1.05);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.48));
 }
 
 body[data-theme="dark"] .nav-admin-cta {

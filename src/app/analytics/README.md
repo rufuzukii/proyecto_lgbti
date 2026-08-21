@@ -34,7 +34,7 @@ consumidores. Las figuras de Estadísticas se construyen en `statistics_charts.p
 
 ## Dependencias
 
-PostgreSQL, MongoDB, Flask-Caching, Plotly y Pandas.
+PostgreSQL, MongoDB, la caché TTL local acotada, Plotly y Pandas.
 
 ## Estadísticas europeas FRA
 
@@ -49,8 +49,8 @@ El dashboard usa una capa modular:
 
 El dashboard ejecuta una consulta analítica principal por selección y reutiliza el
 resultado normalizado para mapa, ranking, detalle y tabla. En producción los
-catálogos, marcos FRA por indicador/año y resultados agregados usan Redis con
-caducidad; las claves incluyen la generación de la fuente para que una importación
+catálogos, marcos FRA por indicador/año y resultados agregados usan una caché local
+acotada y con caducidad; las claves incluyen la generación de la fuente para que una importación
 invalide solo sus datos. La geometría del mapa se conserva como GeoJSON estático y
 GeoPandas se carga de forma diferida únicamente cuando hacen falta centroides.
 

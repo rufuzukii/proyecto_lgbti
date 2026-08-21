@@ -110,6 +110,8 @@ _health_check_ok_until = 0.0
 _section_cache_metrics_lock = Lock()
 _section_cache_requests = 0
 _section_cache_hits = 0
+_analytics_generation_lock = Lock()
+_analytics_generations: dict[str, int] = {}
 
 
 @dataclass(frozen=True)  # frozen=true significa que el objeto no puede ser modificado
@@ -884,7 +886,6 @@ def get_felgtbi_indicators_by_document(
         return []
 
 
-@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_felgtbi_indicator_answers(
     code: str,
     collection_name: str | None = None,
@@ -917,82 +918,18 @@ def get_felgtbi_indicator_answers(
         )
         return cached
     hit_ratio = _record_section_cache_request(hit=False)
-    document = _resolve_felgtbi_document(document_id, resolved_collection) if document_id else None
-    if document_id and document is None:
-        return None
     try:
-        query = (
-            _spain_document_query(resolved_collection, document)
-            if document is not None
-            else _spain_collection_query(resolved_collection)
-        )
-        query["code"] = clean_code
-        started_at = time.perf_counter()
-        result = _mongo_collection(resolved_collection).find_one(
-            query,
-            {
-                "_id": 0,
-                "source": 1,
-                "source_document_id": 1,
-                "original_filename": 1,
-                "code": 1,
-                "year": 1,
-                "report_title": 1,
-                "report_type": 1,
-                "category": 1,
-                "specific_category": 1,
-                "topic": 1,
-                "topics": 1,
-                "question": 1,
-                "description": 1,
-                "section_title": 1,
-                "subsection_title": 1,
-                "figure_caption": 1,
-                "figure": 1,
-                "paragraphs": 1,
-                "paragraphs_before_figure": 1,
-                "paragraphs_after_figure": 1,
-                "content_html": 1,
-                "data_points": 1,
-                "visual_context": 1,
-                "page": 1,
-                "schema_version": 1,
-                "content_order": 1,
-                "extraction": 1,
-                "sample_size": 1,
-                "fieldwork": 1,
-                "answers": 1,
-            },
-        )
-        query_ms = (time.perf_counter() - started_at) * 1000
-        if result is None:
-            return None
-        processing_started_at = time.perf_counter()
-        cleaned = sanitize_report_document(result)
-        processing_ms = (time.perf_counter() - processing_started_at) * 1000
-        serialization_started_at = time.perf_counter()
-        payload_bytes = len(_json_dumps_stable(cleaned).encode("utf-8"))
-        serialization_ms = (time.perf_counter() - serialization_started_at) * 1000
-        cache.set(
+        return cache.get_or_compute(
             section_cache_key,
-            cleaned,
+            lambda: _load_felgtbi_indicator_answer(
+                resolved_collection,
+                document_id,
+                clean_code,
+                hit_ratio,
+            ),
             timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS,
+            cache_if=lambda value: isinstance(value, dict),
         )
-        logger.debug(
-            "felgtbi_section_loaded",
-            extra={
-                "collection": resolved_collection,
-                "document": str(document_id or ""),
-                "code": clean_code,
-                "mongo_query_ms": round(query_ms, 2),
-                "processing_ms": round(processing_ms, 2),
-                "serialization_ms": round(serialization_ms, 2),
-                "payload_bytes": payload_bytes,
-                "mongo_query_count": 1,
-                "cache_hit_ratio": hit_ratio,
-            },
-        )
-        return cleaned
     except Exception:
         logger.exception(
             "felgtbi_indicator_values_read_failed",
@@ -1005,6 +942,85 @@ def get_felgtbi_indicator_answers(
         return None
 
 
+def _load_felgtbi_indicator_answer(
+    resolved_collection: str,
+    document_id: str | None,
+    clean_code: str,
+    hit_ratio: float,
+) -> dict[str, Any] | None:
+    document = _resolve_felgtbi_document(document_id, resolved_collection) if document_id else None
+    if document_id and document is None:
+        return None
+    query = (
+        _spain_document_query(resolved_collection, document)
+        if document is not None
+        else _spain_collection_query(resolved_collection)
+    )
+    query["code"] = clean_code
+    started_at = time.perf_counter()
+    result = _mongo_collection(resolved_collection).find_one(
+        query,
+        {
+            "_id": 0,
+            "source": 1,
+            "source_document_id": 1,
+            "original_filename": 1,
+            "code": 1,
+            "year": 1,
+            "report_title": 1,
+            "report_type": 1,
+            "category": 1,
+            "specific_category": 1,
+            "topic": 1,
+            "topics": 1,
+            "question": 1,
+            "description": 1,
+            "section_title": 1,
+            "subsection_title": 1,
+            "figure_caption": 1,
+            "figure": 1,
+            "paragraphs": 1,
+            "paragraphs_before_figure": 1,
+            "paragraphs_after_figure": 1,
+            "content_html": 1,
+            "data_points": 1,
+            "visual_context": 1,
+            "page": 1,
+            "schema_version": 1,
+            "content_order": 1,
+            "extraction": 1,
+            "sample_size": 1,
+            "fieldwork": 1,
+            "answers": 1,
+        },
+    )
+    query_ms = (time.perf_counter() - started_at) * 1000
+    if result is None:
+        return None
+    processing_started_at = time.perf_counter()
+    cleaned = sanitize_report_document(result)
+    processing_ms = (time.perf_counter() - processing_started_at) * 1000
+    serialization_started_at = time.perf_counter()
+    payload_bytes = len(_json_dumps_stable(cleaned).encode("utf-8"))
+    serialization_ms = (time.perf_counter() - serialization_started_at) * 1000
+    logger.debug(
+        "felgtbi_section_loaded",
+        extra={
+            "collection": resolved_collection,
+            "document": str(document_id or ""),
+            "code": clean_code,
+            "mongo_query_ms": round(query_ms, 2),
+            "processing_ms": round(processing_ms, 2),
+            "serialization_ms": round(serialization_ms, 2),
+            "payload_bytes": payload_bytes,
+            "mongo_query_count": 1,
+            "cache_hit_ratio": hit_ratio,
+        },
+    )
+    return cleaned
+
+
+@cache.memoize(timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
 def get_ilga_years() -> list[int]:
     try:
         years = _mongo_collection("Indicator_ilga").distinct(
@@ -1302,13 +1318,8 @@ def deactivate_country_lgbti_status_record(country_code: str, year: int) -> bool
 
 def analytics_cache_generation(source: str) -> int:
     clean_source = str(source or "all").strip().casefold() or "all"
-    if not getattr(cache, "app", None):
-        return 0
-    value = cache.get(f"analytics-generation:{clean_source}")
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
+    with _analytics_generation_lock:
+        return _analytics_generations.get(clean_source, 0)
 
 
 def fra_cache_namespace(year: int | None) -> str:
@@ -1321,6 +1332,8 @@ def invalidate_analytics_cache(source: str | None = None) -> None:
     clean_source = str(source or "").strip().casefold()
     if not clean_source:
         cache.clear()
+        with _analytics_generation_lock:
+            _analytics_generations.clear()
     else:
         generation_namespaces = {clean_source}
         if clean_source == "fra":
@@ -1328,12 +1341,9 @@ def invalidate_analytics_cache(source: str | None = None) -> None:
                 fra_cache_namespace(survey.year) for survey in FRA_SURVEYS if survey.enabled
             )
             generation_namespaces.add(fra_cache_namespace(None))
-        for namespace in generation_namespaces:
-            cache.set(
-                f"analytics-generation:{namespace}",
-                analytics_cache_generation(namespace) + 1,
-                timeout=0,
-            )
+        with _analytics_generation_lock:
+            for namespace in generation_namespaces:
+                _analytics_generations[namespace] = _analytics_generations.get(namespace, 0) + 1
         functions_by_source = {
             "fra": (
                 get_fra_categories,

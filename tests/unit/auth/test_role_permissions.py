@@ -26,7 +26,7 @@ def test_anonymous_users_receive_all_public_tool_permissions() -> None:
     assert user_has_permission(user, Permission.GENERATE_REPORTS)
     assert user_has_permission(user, Permission.EXPORT_DATA)
     assert user_has_permission(user, Permission.EXPORT_CHARTS)
-    assert user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
+    assert not user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
     assert not user_has_permission(user, Permission.UPLOAD_DATA)
     assert not user_has_permission(user, Permission.MANAGE_OWN_EDU_GAMES)
 
@@ -38,7 +38,7 @@ def test_common_user_receives_public_tools_but_not_management_permissions() -> N
     assert user_has_permission(user, Permission.PLAY_EDU_GAMES)
     assert user_has_permission(user, Permission.GENERATE_REPORTS)
     assert not user_has_permission(user, Permission.UPLOAD_DATA)
-    assert user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
+    assert not user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
 
     sociologist = _user(user_type=UserType.SOCIOLOGO)
     assert user_has_permission(sociologist, Permission.VIEW_DASHBOARD)
@@ -50,7 +50,7 @@ def test_profiles_share_tools_and_only_docente_receives_authoring_permission() -
         user = _user(user_type=profile)
         assert user_has_permission(user, Permission.GENERATE_REPORTS)
         assert not user_has_permission(user, Permission.UPLOAD_DATA)
-        assert user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
+        assert not user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
         assert not user_has_permission(user, Permission.MANAGE_OWN_EDU_GAMES)
 
     docente = _user(user_type=UserType.DOCENTE)

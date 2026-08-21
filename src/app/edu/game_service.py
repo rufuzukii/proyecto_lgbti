@@ -1,16 +1,30 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Sequence
 from typing import Any
 
 from app.edu.glossary_service import list_glossary_terms
 
 
-def new_game_state(game_id: str, *, rounds: int = 5) -> dict[str, Any]:
+def new_game_state(
+    game_id: str,
+    *,
+    rounds: int = 5,
+    term_ids: Sequence[str] | None = None,
+    shuffle: bool = True,
+    show_explanation: bool = True,
+) -> dict[str, Any]:
     if game_id != "guess_term":
         raise ValueError("unknown_game")
-    identifiers = [term.id for term in list_glossary_terms()]
-    random.SystemRandom().shuffle(identifiers)
+    catalog_ids = {term.id for term in list_glossary_terms()}
+    identifiers = (
+        [str(identifier) for identifier in term_ids if str(identifier) in catalog_ids]
+        if term_ids is not None
+        else list(catalog_ids)
+    )
+    if shuffle:
+        random.SystemRandom().shuffle(identifiers)
     return {
         "game_id": game_id,
         "order": identifiers[: min(rounds, len(identifiers))],
@@ -18,6 +32,7 @@ def new_game_state(game_id: str, *, rounds: int = 5) -> dict[str, Any]:
         "score": 0,
         "answered": False,
         "selected": None,
+        "show_explanation": show_explanation,
     }
 
 

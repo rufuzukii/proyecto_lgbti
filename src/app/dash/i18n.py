@@ -107,27 +107,25 @@ UI_TEXT = {
     },
     "footer_attribution_fra_text": {
         "es": (
-            "Fuente: European Union Agency for Fundamental Rights (FRA), EU "
+            "European Union Agency for Fundamental Rights (FRA), EU "
             "LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 y 2023. Datos procesados y "
             "visualizados por RainbowLens DataHub. La FRA no participa en esta adaptación."
         ),
         "en": (
-            "Source: European Union Agency for Fundamental Rights (FRA), EU "
+            "European Union Agency for Fundamental Rights (FRA), EU "
             "LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 and 2023. Data processed and "
             "visualised by RainbowLens DataHub. FRA is not involved in this adaptation."
         ),
     },
     "footer_attribution_ilga_text": {
         "es": (
-            "Agradecemos a ILGA-Europe su labor de recopilación, análisis y difusión de "
-            "información sobre la situación de los derechos LGBTI en Europa. Los datos han "
-            "sido procesados y adaptados para su visualización en RainbowLens DataHub. "
+            "ILGA-Europe. Los datos han sido procesados y adaptados para su visualización "
+            "en RainbowLens DataHub. "
             "RainbowLens DataHub no está afiliada ni representa oficialmente a ILGA-Europe."
         ),
         "en": (
-            "We thank ILGA-Europe for its work collecting, analysing and sharing information "
-            "about the situation of LGBTI rights in Europe. The data have been processed and "
-            "adapted for visualisation in RainbowLens DataHub. RainbowLens DataHub is not "
+            "ILGA-Europe. The data have been processed and adapted for visualisation in "
+            "RainbowLens DataHub. RainbowLens DataHub is not "
             "affiliated with and does not officially represent ILGA-Europe."
         ),
     },
@@ -197,8 +195,8 @@ UI_TEXT = {
         "en": "Málaga, Spain",
     },
     "privacy_identity_document_label": {
-        "es": "NIF/Pasaporte:",
-        "en": "NIF/Passport:",
+        "es": "NIF:",
+        "en": "NIF:",
     },
     "privacy_identity_document_value": {
         "es": "Disponible para el usuario que acredite su identidad y desee ejercer sus derechos ARCO",
@@ -209,7 +207,6 @@ UI_TEXT = {
         "en": "Email:",
     },
     "privacy_security": {"es": "Cómo protegemos los datos", "en": "How we protect data"},
-    "privacy_backups": {"es": "Copias de seguridad", "en": "Backups"},
     "navigation_home": {"es": "Inicio", "en": "Home"},
     "navigation_statistics": {"es": "Estadísticas", "en": "Statistics"},
     "navigation_trends": {"es": "Tendencias", "en": "Trends"},
@@ -232,12 +229,12 @@ UI_TEXT = {
     },
     "home_statistics_description": {
         "es": (
-            "Explora datos sociodemográficos y legales de Europa mediante mapas, rankings, "
-            "comparaciones y segmentaciones."
+            "Explora datos sociodemográficos y legales de Europa mediante mapas, rankings "
+            "y comparaciones."
         ),
         "en": (
             "Explore European sociodemographic and legal data through maps, rankings, "
-            "comparisons and segmentations."
+            "and comparisons."
         ),
     },
     "home_statistics_action": {
@@ -386,14 +383,8 @@ UI_TEXT = {
     },
     "home_profile_title": {"es": "Tu perfil", "en": "Your profile"},
     "home_profile_description": {
-        "es": (
-            "Accede directamente a tu perfil, tus datos de cuenta y las plantillas de "
-            "informe adaptadas a tu perfil profesional."
-        ),
-        "en": (
-            "Go directly to your profile, account details and report templates tailored "
-            "to your professional profile."
-        ),
+        "es": "Accede directamente a tu perfil y a los datos de tu cuenta.",
+        "en": "Go directly to your profile and account details.",
     },
     "home_profile_action": {"es": "Ir a mi perfil", "en": "Go to my profile"},
     "home_profile_aria": {
@@ -411,6 +402,22 @@ UI_TEXT = {
     "report_configuration": {
         "es": "Selecciona el contenido",
         "en": "Select the content",
+    },
+    "report_personalised_generation": {
+        "es": "Generación de informe personalizado",
+        "en": "Personalised report generation",
+    },
+    "report_personalised_generation_description": {
+        "es": (
+            "RainbowLens DataHub adapta la estructura, las conclusiones y las posibles "
+            "líneas de actuación del informe al perfil asociado a tu cuenta, manteniendo "
+            "siempre los datos seleccionados como base del análisis."
+        ),
+        "en": (
+            "RainbowLens DataHub adapts the report structure, conclusions and possible "
+            "courses of action to the profile associated with your account, while always "
+            "using the selected data as the basis for the analysis."
+        ),
     },
     "report_login_required": {
         "es": "Debes iniciar sesión para generar informes.",

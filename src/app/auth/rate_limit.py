@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-import logging
 import os
 import time
-from collections import defaultdict, deque
+from collections import OrderedDict, deque
 from threading import RLock
 from typing import Protocol
-from uuid import uuid4
-
-import redis
-from redis.exceptions import RedisError
-
-logger = logging.getLogger(__name__)
 
 
 class RateLimiter(Protocol):
-    """Structural contract implemented by local and Redis rate limiters."""
+    """Structural contract implemented by the process-local limiter."""
 
     def is_blocked(self, key: str) -> bool: ...
 
@@ -25,101 +18,51 @@ class RateLimiter(Protocol):
 
 
 class InMemoryRateLimiter:
-    def __init__(self, max_attempts: int, window_seconds: int) -> None:
-        self.max_attempts = max_attempts
-        self.window_seconds = window_seconds
-        self._attempts: dict[str, deque[float]] = defaultdict(deque)
+    """Bounded fixed-window limiter local to one Gunicorn worker."""
+
+    def __init__(self, max_attempts: int, window_seconds: int, *, max_keys: int = 10_000) -> None:
+        self.max_attempts = max(1, max_attempts)
+        self.window_seconds = max(1, window_seconds)
+        self.max_keys = max(1, max_keys)
+        self._attempts: OrderedDict[str, deque[float]] = OrderedDict()
         self._lock = RLock()
 
-    def _prune(self, key: str, now: float) -> None:
-        attempts = self._attempts[key]
+    def _prune(self, key: str, now: float) -> deque[float] | None:
+        attempts = self._attempts.get(key)
+        if attempts is None:
+            return None
         while attempts and (now - attempts[0]) > self.window_seconds:
             attempts.popleft()
+        if not attempts:
+            self._attempts.pop(key, None)
+            return None
+        self._attempts.move_to_end(key)
+        return attempts
 
     def is_blocked(self, key: str) -> bool:
         with self._lock:
-            now = time.time()
-            self._prune(key, now)
-            return len(self._attempts[key]) >= self.max_attempts
+            attempts = self._prune(key, time.monotonic())
+            return len(attempts) >= self.max_attempts if attempts is not None else False
 
     def record_failure(self, key: str) -> None:
         with self._lock:
-            now = time.time()
-            self._prune(key, now)
-            self._attempts[key].append(now)
+            now = time.monotonic()
+            attempts = self._prune(key, now)
+            if attempts is None:
+                while len(self._attempts) >= self.max_keys:
+                    self._attempts.popitem(last=False)
+                attempts = deque()
+                self._attempts[key] = attempts
+            attempts.append(now)
+            self._attempts.move_to_end(key)
 
     def reset(self, key: str) -> None:
         with self._lock:
             self._attempts.pop(key, None)
 
-
-class ResilientRateLimiter:
-    """Use Redis when available and retain local protection during an outage."""
-
-    def __init__(self, primary: RateLimiter, fallback: RateLimiter) -> None:
-        self.primary = primary
-        self.fallback = fallback
-
-    def is_blocked(self, key: str) -> bool:
-        try:
-            return self.primary.is_blocked(key)
-        except RedisError:
-            logger.warning("rate_limiter_redis_operation_failed")
-            return self.fallback.is_blocked(key)
-
-    def record_failure(self, key: str) -> None:
-        try:
-            self.primary.record_failure(key)
-        except RedisError:
-            logger.warning("rate_limiter_redis_operation_failed")
-            self.fallback.record_failure(key)
-
-    def reset(self, key: str) -> None:
-        try:
-            self.primary.reset(key)
-        except RedisError:
-            logger.warning("rate_limiter_redis_operation_failed")
-        self.fallback.reset(key)
-
-
-class RedisRateLimiter:
-    def __init__(
-        self,
-        *,
-        client: redis.Redis,
-        max_attempts: int,
-        window_seconds: int,
-        namespace: str,
-    ) -> None:
-        self.client = client
-        self.max_attempts = max_attempts
-        self.window_seconds = window_seconds
-        self.namespace = namespace
-
-    def is_blocked(self, key: str) -> bool:
-        redis_key = self._redis_key(key)
-        now = time.time()
-        self._prune(redis_key, now)
-        return int(self.client.zcard(redis_key)) >= self.max_attempts
-
-    def record_failure(self, key: str) -> None:
-        redis_key = self._redis_key(key)
-        now = time.time()
-        self._prune(redis_key, now)
-        member = f"{now}:{uuid4().hex}"
-        pipe = self.client.pipeline(transaction=True)
-        pipe.zadd(redis_key, {member: now})
-        pipe.expire(redis_key, self.window_seconds)
-        pipe.execute()
-
-    def reset(self, key: str) -> None:
-        self.client.delete(self._redis_key(key))
-
-    def _prune(self, redis_key: str, now: float) -> None:
-        self.client.zremrangebyscore(redis_key, 0, now - self.window_seconds)
-
-    def _redis_key(self, key: str) -> str:
-        return f"rainbowlens:rate_limit:{self.namespace}:{key}"
+    def tracked_keys(self) -> int:
+        with self._lock:
+            return len(self._attempts)
 
 
 def create_rate_limiter(
@@ -128,23 +71,16 @@ def create_rate_limiter(
     window_seconds: int,
     namespace: str = "auth",
 ) -> RateLimiter:
-    redis_url = (os.getenv("RATE_LIMIT_REDIS_URL") or os.getenv("REDIS_URL") or "").strip()
-    if not redis_url:
-        return InMemoryRateLimiter(max_attempts, window_seconds)
-
-    client = redis.Redis.from_url(redis_url)
-    try:
-        client.ping()
-    except RedisError:
-        logger.warning("rate_limiter_redis_unavailable")
-        return InMemoryRateLimiter(max_attempts, window_seconds)
-
-    return ResilientRateLimiter(
-        RedisRateLimiter(
-            client=client,
-            max_attempts=max_attempts,
-            window_seconds=window_seconds,
-            namespace=namespace,
-        ),
-        InMemoryRateLimiter(max_attempts, window_seconds),
+    del namespace
+    return InMemoryRateLimiter(
+        max_attempts,
+        window_seconds,
+        max_keys=_env_int("RATE_LIMIT_LOCAL_MAX_KEYS", 10_000),
     )
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except ValueError:
+        return default

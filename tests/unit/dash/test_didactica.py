@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from dash import no_update
+from werkzeug.exceptions import Forbidden
 
 import app.dash.pages.didactica as didactica_page
 import app.dash_app as dash_app_module
@@ -21,7 +23,6 @@ from app.edu.glossary_service import (
     search_glossary,
     validate_glossary_catalog,
 )
-from app.edu.lesson_service import list_lessons
 from app.edu.models import GlossarySource, GlossaryTerm
 from app.edu.teacher_service import generate_teacher_resource_pdf, list_teacher_resources
 from app.users.schemas import UserRole, UserType
@@ -74,22 +75,24 @@ def dash_app(monkeypatch):
     return dash_app_module.create_dash_app()
 
 
-def test_teacher_resources_are_public_and_authoring_remains_profile_specific() -> None:
+def test_teacher_space_is_restricted_to_docente_and_admin() -> None:
     assert can_access_docente_material(_user(user_type=UserType.DOCENTE))
-    assert can_access_docente_material(_user(user_type=UserType.RRHH))
-    assert can_access_docente_material(_user(user_type=UserType.ONG))
-    assert can_access_docente_material(_user(user_type=UserType.COMUN))
     assert can_access_docente_material(_user(role=UserRole.ADMIN))
-    assert can_access_docente_material(_user(authenticated=False, user_type=UserType.DOCENTE))
+    assert not can_access_docente_material(_user(user_type=UserType.RRHH))
+    assert not can_access_docente_material(_user(user_type=UserType.ONG))
+    assert not can_access_docente_material(_user(user_type=UserType.COMUN))
+    assert not can_access_docente_material(
+        _user(authenticated=False, user_type=UserType.DOCENTE)
+    )
 
 
-def test_index_exposes_public_teacher_resources_to_every_profile(monkeypatch) -> None:
+def test_index_only_exposes_teacher_space_to_authorized_profiles(monkeypatch) -> None:
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
     monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.RRHH))
     rrhh_hrefs = {
         getattr(item, "href", None) for item in _walk(didactica_page.build_didactica_layout())
     }
-    assert "/es/didactica/docentes" in rrhh_hrefs
+    assert "/es/didactica/docentes" not in rrhh_hrefs
 
     monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.DOCENTE))
     teacher_hrefs = {
@@ -114,27 +117,17 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
     assert "gender_identity" in {term.id for term in search_glossary("identidad", language="es")}
     assert all(term.category == "rights" for term in search_glossary(category="rights"))
 
-    lessons = list_lessons()
-    assert {lesson.id for lesson in lessons} >= {
-        "lgbtiq_basics",
-        "european_rights",
-        "reading_statistics",
-        "law_vs_experience",
-    }
-    assert all(lesson.slides and lesson.activity and lesson.sources for lesson in lessons)
     assert len(set(new_game_state("guess_term")["order"])) == 5
 
     assert {"didactica-glossary-search", "didactica-glossary-category"} <= _ids(
         didactica_page.build_dictionary_layout()
     )
-    lesson_layout = didactica_page.build_presentations_layout("lgbtiq_basics")
-    assert {"didactica-lesson-next", "didactica-lesson-finish"} <= _ids(lesson_layout)
-    lesson_progress = next(
-        item
-        for item in _walk(lesson_layout)
-        if getattr(item, "id", None) == "didactica-lesson-progress"
-    )
-    assert lesson_progress.value == "1"
+    presentations_layout = didactica_page.build_presentations_layout()
+    assert {
+        "didactica-presentations-list",
+        "didactica-presentations-retry",
+        "didactica-presentations-state",
+    } <= _ids(presentations_layout)
 
     game_layout = didactica_page.build_games_layout("guess_term")
     assert {"didactica-game-submit", "didactica-game-hint", "didactica-game-next"} <= _ids(
@@ -168,7 +161,9 @@ def test_teacher_resources_have_metadata_and_generate_in_memory_pdf() -> None:
     assert "/" not in filename and "\\" not in filename
 
 
-def test_direct_teacher_resource_download_is_public(dash_app, monkeypatch) -> None:
+def test_direct_teacher_resource_download_requires_teacher_permission(
+    dash_app, monkeypatch
+) -> None:
     view = dash_app.server.view_functions["download_docente_resource_direct"]
     with dash_app.server.test_request_context(
         "/didactica/docentes/descargar/rights_country_comparison"
@@ -178,12 +173,12 @@ def test_direct_teacher_resource_download_is_public(dash_app, monkeypatch) -> No
             "current_user",
             _user(authenticated=False, user_type=UserType.DOCENTE),
         )
-        response = view("rights_country_comparison")
-        assert response.status_code == 200
-        assert response.mimetype == "application/pdf"
+        with pytest.raises(Forbidden):
+            view("rights_country_comparison")
 
         monkeypatch.setattr(dash_app_module, "current_user", _user(user_type=UserType.RRHH))
-        assert view("rights_country_comparison").status_code == 200
+        with pytest.raises(Forbidden):
+            view("rights_country_comparison")
 
         monkeypatch.setattr(dash_app_module, "current_user", _user(user_type=UserType.DOCENTE))
         response = view("rights_country_comparison")
@@ -196,31 +191,29 @@ def test_direct_teacher_resource_download_is_public(dash_app, monkeypatch) -> No
         assert admin_response.mimetype == "application/pdf"
 
         monkeypatch.setattr(dash_app_module, "current_user", _user(user_type=UserType.COMUN))
-        assert view("rights_country_comparison").status_code == 200
+        with pytest.raises(Forbidden):
+            view("rights_country_comparison")
 
 
-def test_teacher_resource_callback_is_public(dash_app, monkeypatch) -> None:
+def test_teacher_resource_callback_requires_teacher_permission(dash_app, monkeypatch) -> None:
     callback = _callback(dash_app, "download_docente_resource")
     monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.ONG))
     result = callback(1, "rights_country_comparison", "en")
-    assert result[0]["type"] == "application/pdf"
-    assert result[1] == ""
+    assert result[0] is no_update
+    assert result[1]
+
+    monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.DOCENTE))
+    allowed = callback(1, "rights_country_comparison", "en")
+    assert allowed[0]["type"] == "application/pdf"
+    assert allowed[1] == ""
 
 
-def test_dictionary_lesson_and_guess_game_callbacks_work_in_english(dash_app, monkeypatch) -> None:
+def test_dictionary_and_guess_game_callbacks_work_in_english(dash_app, monkeypatch) -> None:
     monkeypatch.setattr(didactica_page, "current_user", _user())
 
     glossary = _callback(dash_app, "filter_glossary")
     cards, count = glossary("genero", "all", "en")
     assert cards and "results" in count
-
-    lesson = _callback(dash_app, "navigate_lesson")
-    monkeypatch.setattr(
-        didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-lesson-next")
-    )
-    lesson_result = lesson(None, 1, None, "en", None, "lgbtiq_basics", 0)
-    assert lesson_result[1] == 1
-    assert lesson_result[4] == "2"
 
     game = _callback(dash_app, "play_game")
     state = new_game_state("guess_term")
@@ -234,7 +227,7 @@ def test_dictionary_lesson_and_guess_game_callbacks_work_in_english(dash_app, mo
     assert game_result[9] == "1"
 
 
-def test_progress_is_stored_as_summary_not_individual_answers(monkeypatch) -> None:
+def test_game_progress_is_stored_as_summary_not_individual_answers(monkeypatch) -> None:
     class Collection:
         def __init__(self):
             self.updates = []
@@ -244,31 +237,39 @@ def test_progress_is_stored_as_summary_not_individual_answers(monkeypatch) -> No
 
     collection = Collection()
     monkeypatch.setattr(progress_service, "get_mongo_collection", lambda _name: collection)
-    progress_service.complete_lesson("user-1", "lgbtiq_basics")
     progress_service.save_game_score("user-1", "guess_term", 4)
 
-    assert collection.updates[0][1]["$addToSet"] == {"completed_lessons": "lgbtiq_basics"}
-    assert collection.updates[1][1]["$max"] == {"game_scores.guess_term": 4}
+    assert collection.updates[0][1]["$max"] == {"game_scores.guess_term": 4}
     assert all("answers" not in str(update) for _, update, _ in collection.updates)
 
 
-def test_teacher_page_stays_public_but_hides_authoring_after_role_change(
+def test_teacher_routes_redirect_unauthorized_profiles_and_keep_login_destination(
     dash_app, monkeypatch
 ) -> None:
     display_page = dash_app.callback_map["page-content.children"]["callback"].__wrapped__
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr("app.dash.pages.session.login.build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr("app.dash.pages.session.login.get_csrf_token", lambda: "csrf")
 
     teacher = _user(user_type=UserType.DOCENTE)
     monkeypatch.setattr(dash_app_module, "current_user", teacher)
     monkeypatch.setattr(didactica_page, "current_user", teacher)
-    assert "didactica-docente-select" in _ids(display_page("/es/didactica/docentes", ""))
+    monkeypatch.setattr(didactica_page, "list_owned_games", lambda _user: [])
+    assert "teacher-activity-list" in _ids(display_page("/es/didactica/docentes", ""))
 
     changed = _user(user_type=UserType.RRHH)
     monkeypatch.setattr(dash_app_module, "current_user", changed)
     monkeypatch.setattr(didactica_page, "current_user", changed)
-    public_page = display_page("/es/didactica/docentes", "")
-    assert "didactica-docente-select" in _ids(public_page)
-    assert "didactica-custom-game-save" not in _ids(public_page)
+    denied = display_page("/es/didactica/docentes", "")
+    assert "educator-access-denied-redirect" in _ids(denied)
+    assert getattr(denied, "href", "").endswith("?notice=docente_required")
+
+    anonymous = _user(authenticated=False)
+    monkeypatch.setattr(dash_app_module, "current_user", anonymous)
+    monkeypatch.setattr(didactica_page, "current_user", anonymous)
+    login = display_page("/es/didactica/docentes/crear", "?type=guess_term")
+    next_input = next(item for item in _walk(login) if getattr(item, "name", None) == "next")
+    assert next_input.value == "/es/didactica/docentes/crear?type=guess_term"
 
 
 def test_games_route_is_public(dash_app, monkeypatch) -> None:
@@ -285,7 +286,92 @@ def test_games_route_is_public(dash_app, monkeypatch) -> None:
     registered = _user(user_type=UserType.COMUN)
     monkeypatch.setattr(dash_app_module, "current_user", registered)
     monkeypatch.setattr(didactica_page, "current_user", registered)
-    assert "didactica-game-state" in _ids(display_page("/es/didactica/juegos", "?game=guess_term"))
+    assert "didactica-game-state" in _ids(
+        display_page("/es/didactica/juegos", "?game=guess_term")
+    )
+
+
+def test_teacher_activity_editor_is_vertical_and_offers_exactly_three_engines(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr(
+        didactica_page, "current_user", _user(user_type=UserType.DOCENTE)
+    )
+    monkeypatch.setattr(didactica_page, "get_ilga_years", lambda: [2026])
+    monkeypatch.setattr(didactica_page, "_legal_country_options", lambda _year: [])
+
+    layout = didactica_page.build_activity_editor_layout(initial_game_type="word_search")
+    selector = next(
+        item
+        for item in _walk(layout)
+        if getattr(item, "id", None) == "teacher-editor-game-type"
+    )
+    assert selector.value == "word_search"
+    assert {option["value"] for option in selector.options} == {
+        "guess_term",
+        "word_search",
+        "legal_ranking",
+    }
+    ordered_ids = [getattr(item, "id", None) for item in _walk(layout)]
+    assert ordered_ids.index("teacher-editor-game-type") < ordered_ids.index(
+        "teacher-editor-term-ids"
+    )
+    assert ordered_ids.index("teacher-editor-term-ids") < ordered_ids.index(
+        "teacher-editor-title"
+    )
+    assert ordered_ids.index("teacher-editor-preview") < ordered_ids.index(
+        "teacher-editor-save"
+    )
+
+
+@pytest.mark.parametrize(
+    ("game_type", "expected_store"),
+    [
+        ("guess_term", "didactica-game-state"),
+        ("word_search", "didactica-word-search-state"),
+        ("legal_ranking", "didactica-ranking-state"),
+    ],
+)
+def test_custom_activity_preview_mounts_the_existing_game_component_ids(
+    monkeypatch, game_type, expected_store
+) -> None:
+    activity = {
+        "id": "activity1",
+        "game_type": game_type,
+        "title": "Actividad",
+        "description": "",
+        "instructions": "",
+        "teacher_note": "",
+        "language": "es",
+        "configuration": {},
+    }
+    monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr(
+        didactica_page, "current_user", _user(user_type=UserType.DOCENTE)
+    )
+    monkeypatch.setattr(didactica_page, "get_owned_game", lambda _user, _id: activity)
+    states = {
+        "guess_term": new_game_state("guess_term", rounds=5),
+        "word_search": didactica_page.create_word_search_game(seed=4, word_count=6),
+        "legal_ranking": {"year": 2026, "items": [], "checked": False},
+    }
+    monkeypatch.setattr(
+        didactica_page, "build_activity_game_state", lambda _activity: states[game_type]
+    )
+
+    layout = didactica_page.build_custom_activity_layout("activity1")
+    assert expected_store in _ids(layout)
+
+
+def test_teacher_space_css_uses_theme_tokens_and_one_mobile_column() -> None:
+    stylesheet = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
+    assert ".teacher-activity-editor" in stylesheet
+    assert ".teacher-game-type-grid" in stylesheet
+    assert "var(--panel-bg)" in stylesheet
+    assert "var(--color-text)" in stylesheet
+    assert "@media (max-width: 900px)" in stylesheet
+    assert "grid-template-columns: 1fr" in stylesheet
 
 
 def test_ranking_game_callback_checks_and_starts_a_new_round_without_reload(

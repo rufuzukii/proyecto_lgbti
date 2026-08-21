@@ -128,7 +128,17 @@ def test_fra_unique_identity_includes_value_bucket(monkeypatch) -> None:
     assert {index.document.get("name") for index in docente_indexes} == {
         "docente_game_id_unique",
         "docente_games_by_owner",
+        "docente_games_by_type",
     }
+    owner_index = next(
+        index
+        for index in docente_indexes
+        if index.document.get("name") == "docente_games_by_owner"
+    )
+    assert list(owner_index.document["key"].items()) == [
+        ("owner_user_id", 1),
+        ("updated_at", -1),
+    ]
     ilga_index = captured["Indicator_ilga"][0]
     assert ilga_index.document.get("unique") is True
     mongo_indexes.initialize_mongo_indexes.cache_clear()

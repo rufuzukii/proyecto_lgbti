@@ -21,7 +21,7 @@ necesario. Las rutas HTML de producción siguen registradas dentro de `dash_app.
 
 ### `rate_limit.py`
 
-Define un limitador compartido por el servicio Flask y las rutas HTML de Dash. Usa Redis cuando existe `RATE_LIMIT_REDIS_URL` o `REDIS_URL`, de modo que varios workers comparten estado. Si Redis no está configurado o no responde, usa un fallback local en memoria para desarrollo.
+Define un limitador local acotado que comparten el servicio Flask y las rutas HTML de Dash dentro de cada worker. Las claves caducan por ventana temporal y el número de identidades retenidas se limita mediante `RATE_LIMIT_LOCAL_MAX_KEYS`.
 
 ### `csrf.py`
 

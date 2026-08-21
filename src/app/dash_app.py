@@ -45,6 +45,8 @@ from app.dash.pages.didactica import (
     build_access_denied_layout as build_didactica_access_denied_layout,
 )
 from app.dash.pages.didactica import (
+    build_activity_editor_layout,
+    build_custom_activity_layout,
     build_dictionary_layout,
     build_didactica_layout,
     build_docente_layout,
@@ -89,6 +91,7 @@ from app.dash.routes import (
     route_path,
 )
 from app.dates import utc_today
+from app.edu.custom_game_service import CustomGameAuthorizationError
 from app.edu.teacher_service import generate_teacher_resource_pdf
 from app.errors import DatabaseUnavailableError
 from app.health import register_health_endpoint
@@ -155,7 +158,7 @@ DASH_INDEX_STRING = """
                 document.documentElement.style.colorScheme = theme;
             })();
         </script>
-        <link rel="icon" type="image/png" href="/assets/img/rainbow_lens_icono.png">
+        <link rel="icon" type="image/png" href="/assets/img/rainbow_lens_icono.png?v=20260821">
         {%css%}
     </head>
     <body>
@@ -291,11 +294,11 @@ def _build_page_for_route(
     if route_id == "about":
         return build_about_layout()
     if route_id == "didactica":
-        return build_didactica_layout()
+        return build_didactica_layout(_first_param(params, "notice"))
     if route_id == "dictionary":
         return build_dictionary_layout()
     if route_id == "presentations":
-        return build_presentations_layout(_first_param(params, "lesson"))
+        return build_presentations_layout()
     if route_id == "word_search":
         return build_word_search_layout()
     if route_id == "games":
@@ -303,9 +306,54 @@ def _build_page_for_route(
             return build_didactica_access_denied_layout()
         return build_games_layout(_first_param(params, "game"))
     if route_id == "educators":
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=route_path("educators", language))
         if not can_access_docente_material(current_user):
-            return build_didactica_access_denied_layout()
+            return dcc.Location(
+                href=f"{route_path('didactica', language)}?notice=docente_required",
+                id="educator-access-denied-redirect",
+                refresh=False,
+            )
         return build_docente_layout()
+    if route_id == "educator_create":
+        if not current_user.is_authenticated:
+            return build_login_layout(
+                next_path=f"{route_path('educator_create', language)}{search or ''}"
+            )
+        if not can_access_docente_material(current_user):
+            return dcc.Location(
+                href=f"{route_path('didactica', language)}?notice=docente_required",
+                id="educator-create-access-denied-redirect",
+                refresh=False,
+            )
+        try:
+            return build_activity_editor_layout(
+                _first_param(params, "id"), _first_param(params, "type")
+            )
+        except CustomGameAuthorizationError:
+            return dcc.Location(
+                href=f"{route_path('didactica', language)}?notice=docente_required",
+                id="educator-editor-owner-denied-redirect",
+                refresh=False,
+            )
+    if route_id == "educator_activity":
+        activity_path = route_path("educator_activity", language)
+        if not current_user.is_authenticated:
+            return build_login_layout(next_path=f"{activity_path}{search or ''}")
+        if not can_access_docente_material(current_user):
+            return dcc.Location(
+                href=f"{route_path('didactica', language)}?notice=docente_required",
+                id="educator-activity-access-denied-redirect",
+                refresh=False,
+            )
+        try:
+            return build_custom_activity_layout(_first_param(params, "id"))
+        except CustomGameAuthorizationError:
+            return dcc.Location(
+                href=f"{route_path('didactica', language)}?notice=docente_required",
+                id="educator-activity-owner-denied-redirect",
+                refresh=False,
+            )
     if route_id == "progress":
         if not current_user.is_authenticated:
             return build_login_layout(next_path=route_path("progress", language))

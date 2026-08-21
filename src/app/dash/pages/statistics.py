@@ -16,10 +16,9 @@ from flask_login import current_user
 from app.analytics.combined_analysis import quadrant_eligibility, quadrant_rows
 from app.analytics.percentage_display import format_percentage
 from app.analytics.repository import (
-    assert_analytics_databases_available,
-    get_fra_categories,
-    get_fra_mongo_indicators_by_category,
+    assert_analytics_databases_available as assert_analytics_databases_available,
 )
+from app.analytics.repository import get_fra_categories, get_fra_mongo_indicators_by_category
 from app.analytics.statistics.ranking import paginate_ranking
 from app.analytics.statistics_charts import (
     build_combined_quadrant_chart,
@@ -132,7 +131,6 @@ CHART_EXPORT_TITLES = {
 
 
 def build_statistics_layout() -> Component:
-    assert_analytics_databases_available()
     categories: list[dict[str, Any]] = []
     return html.Div(
         [
@@ -1629,7 +1627,7 @@ def _stable_map_graph_slot() -> Component:
             id="stats-map-graph",
             responsive=True,
             config=fixed_europe_map_config(extra_mode_bar_buttons_to_remove=("toImage",)),
-            className="stats-mapbox-graph",
+            className="stats-mapbox-graph europe-map-container",
             style=_map_graph_style(visible=False),
         ),
         id="stats-map-graph-slot",

@@ -116,21 +116,22 @@ def test_attribution_styles_cover_dark_mode_mobile_wrapping_and_keyboard_focus()
     assert "overflow-wrap: anywhere" in component_styles
     assert ".source-attribution-link:focus-visible" in component_styles
     assert "grid-template-columns: repeat(3, minmax(0, 1fr))" in footer_styles
-    assert "grid-auto-flow: column" in footer_styles
-    assert "grid-template-rows: minmax(0, 1fr)" in footer_styles
-    assert "justify-content: space-between" in footer_styles
-    assert "column-gap: clamp(2rem, 6vw, 8rem)" in footer_styles
-    assert "font-size: 0.66rem" in footer_styles
+    assert "grid-auto-flow: column" not in footer_styles
+    assert "@media (max-width: 900px)" in footer_styles
+    assert "grid-template-columns: 1fr" in footer_styles
+    assert "align-items: stretch" in footer_styles
+    assert "gap: clamp(0.75rem, 2vw, 1.25rem)" in footer_styles
+    assert "font-size: 0.7rem" in footer_styles
     assert "font-size: 0.68rem" in footer_styles
     assert "@media (max-width: 1100px)" in footer_styles
     assert "@media (max-width: 680px)" in footer_styles
     assert "grid-template-columns: repeat(2, minmax(0, 1fr))" not in footer_styles
-    assert footer_styles.count(".footer-attributions-grid {") == 1
+    assert footer_styles.count(".footer-attributions-grid {") == 2
     block_rule = footer_styles.split(".footer-attribution-block {", 1)[1].split("}", 1)[0]
     assert "background:" not in block_rule
     assert "border:" not in block_rule
     assert "border-radius:" not in block_rule
-    assert "padding:" not in block_rule
+    assert "padding: 0.25rem 0" in block_rule
     assert ".footer-attribution-card" not in footer_styles
     assert ".footer-attribution-link:focus-visible" in footer_styles
 

@@ -73,7 +73,7 @@ def test_didactica_uses_one_row_per_section_and_exposes_games_directly(monkeypat
                 if str(getattr(item, "className", "")).startswith("didactica-mode-row")
             ]
         )
-        == 4
+        == 3
     )
     assert "/es/didactica/diccionario" in hrefs
     assert "/es/didactica/presentaciones" in hrefs

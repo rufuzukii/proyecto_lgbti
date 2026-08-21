@@ -422,7 +422,7 @@ def test_report_profile_and_content_rules_are_resolved_server_side(monkeypatch) 
 
 def test_profile_panel_replaces_technical_advanced_controls() -> None:
     profile = reports_page.report_profile("rrhh")
-    panel = reports_page._profile_panel(_configuration(profile_key="rrhh"), profile)
+    panel = reports_page._profile_panel(profile)
 
     identifiers = {getattr(component, "id", None) for component in _walk(panel)}
     explanation = next(
@@ -432,6 +432,8 @@ def test_profile_panel_replaces_technical_advanced_controls() -> None:
     )
     assert "informe profesional" in str(explanation)
     assert "perfil que tienes configurado" in str(explanation)
+    assert "Generación de informe personalizado" in str(panel)
+    assert "Recomendado para tu perfil" in str(panel)
     assert "report-objective-select" not in identifiers
     assert "report-advanced-toggle" not in identifiers
     assert "report-mode-select" not in identifiers
@@ -514,6 +516,24 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     source_labels = " ".join(str(option["label"].to_plotly_json()) for option in source_control.options)
     assert "Datos sociales" in source_labels
     assert "Datos legales" in source_labels
+    final_actions = next(
+        component
+        for component in components
+        if getattr(component, "className", None) == "reports-actions reports-final-actions"
+    )
+    assert {
+        getattr(component, "id", None) for component in _walk(final_actions)
+    } >= {"report-preview-button", "report-download-button"}
+    ordered_ids = [getattr(component, "id", None) for component in components]
+    assert ordered_ids.index("report-plan-summary") < ordered_ids.index(
+        "report-preview-button"
+    )
+    assert ordered_ids.index("report-preview-button") < ordered_ids.index(
+        "report-preview-content"
+    )
+    assert ordered_ids.index("report-download-button") < ordered_ids.index(
+        "report-preview-content"
+    )
     assert 'children\': \'FRA\'' not in source_labels
 
 
@@ -581,9 +601,9 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     assert "kaleido==1.3.0" in requirements
     assert "reportlab==4.5.1" in requirements
     assert "healthCheckPath: /health" in render_config
-    assert "type: keyvalue" in render_config
-    assert "key: REDIS_URL" in render_config
-    assert "property: connectionString" in render_config
+    assert "type: keyvalue" not in render_config
+    assert "LOCAL_CACHE_MAX_ENTRIES" in render_config
+    assert "LOCAL_CACHE_MAX_TOTAL_BYTES" in render_config
 
 
 def _walk(component):

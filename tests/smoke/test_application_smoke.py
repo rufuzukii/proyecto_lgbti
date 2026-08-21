@@ -57,8 +57,7 @@ def test_public_pages_resources_and_login_smoke(smoke_app) -> None:
         assert response.status_code == 200, route
 
     resource = client.get("/didactica/docentes/descargar/rights_country_comparison")
-    assert resource.status_code == 200
-    assert resource.mimetype == "application/pdf"
+    assert resource.status_code == 403
 
     with client.session_transaction() as browser_session:
         browser_session["_csrf_token"] = "smoke-csrf"

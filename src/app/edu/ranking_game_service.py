@@ -19,15 +19,22 @@ def new_ranking_game(
     previous_codes: Sequence[str] = (),
     document: Mapping[str, Any] | None = None,
     country_count: int = RANKING_GAME_COUNTRY_COUNT,
+    year: int = HOME_LEGAL_YEAR,
+    country_codes: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Create a short ILGA legal-ranking round from the cached map dataset."""
     source = document
     if source is None:
-        source = get_ilga_document_by_year(HOME_LEGAL_YEAR)
+        source = get_ilga_document_by_year(year)
     ranking = _unique_countries(build_legal_ranking(source))
+    requested_codes = {
+        str(code).strip().upper() for code in country_codes or () if str(code).strip()
+    }
+    if country_codes is not None:
+        ranking = [entry for entry in ranking if entry.country_code in requested_codes]
     count = min(max(2, int(country_count)), 5, len(ranking))
     if count < 2:
-        return _empty_state()
+        return _empty_state(year)
 
     excluded = {str(code).strip().upper() for code in previous_codes if str(code).strip()}
     fresh = [entry for entry in ranking if entry.country_code not in excluded]
@@ -37,7 +44,7 @@ def new_ranking_game(
     randomizer.shuffle(selected)
     return {
         "game_id": "rank_countries",
-        "year": HOME_LEGAL_YEAR,
+        "year": year,
         "items": [_entry_payload(entry) for entry in selected],
         "checked": False,
         "positions_correct": 0,
@@ -138,10 +145,10 @@ def _entry_payload(entry: LegalRankingEntry) -> dict[str, Any]:
     }
 
 
-def _empty_state() -> dict[str, Any]:
+def _empty_state(year: int = HOME_LEGAL_YEAR) -> dict[str, Any]:
     return {
         "game_id": "rank_countries",
-        "year": HOME_LEGAL_YEAR,
+        "year": year,
         "items": [],
         "checked": False,
         "positions_correct": 0,

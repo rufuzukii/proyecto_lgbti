@@ -21,9 +21,17 @@ PRIMARY_PATHS = [
     "/es/tendencias",
     "/es/espana",
     "/es/didactica",
+    "/es/informe",
     "/es/acerca-de",
 ]
-CARD_PATHS = [*PRIMARY_PATHS[1:], "/es/iniciar-sesion"]
+CARD_PATHS = [
+    "/es/estadisticas",
+    "/es/tendencias",
+    "/es/espana",
+    "/es/didactica",
+    "/es/acerca-de",
+    "/es/iniciar-sesion",
+]
 
 
 def _walk(component: Any):
@@ -48,7 +56,7 @@ def test_primary_sections_share_the_requested_order_and_existing_routes() -> Non
     ]
 
 
-def test_navbar_keeps_public_report_after_primary_sections_and_hides_import(
+def test_navbar_keeps_public_report_before_about_and_hides_import(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
@@ -65,11 +73,11 @@ def test_navbar_keeps_public_report_after_primary_sections_and_hides_import(
     )
     rendered_paths = [cast(Any, item.children).href for item in cast(list[Any], nav_list.children)]
 
-    assert rendered_paths == [*PRIMARY_PATHS, "/es/informe"]
+    assert rendered_paths == PRIMARY_PATHS
     assert "/es/importar" not in rendered_paths
 
 
-def test_navbar_keeps_report_and_upload_access_after_the_primary_sections(monkeypatch) -> None:
+def test_navbar_keeps_report_before_about_and_appends_upload(monkeypatch) -> None:
     monkeypatch.setattr(
         navigation,
         "current_user",
@@ -91,7 +99,6 @@ def test_navbar_keeps_report_and_upload_access_after_the_primary_sections(monkey
 
     assert [cast(Any, item.children).href for item in cast(list[Any], nav_list.children)] == [
         *PRIMARY_PATHS,
-        "/es/informe",
         "/es/importar",
     ]
 
@@ -177,9 +184,11 @@ def test_home_card_copy_is_complete_in_both_languages() -> None:
 
 def test_home_cards_describe_the_current_user_facing_features() -> None:
     assert (
-        "mapas, rankings, comparaciones y segmentaciones"
+        "mapas, rankings y comparaciones"
         in UI_TEXT["home_statistics_description"]["es"]
     )
+    assert "segmentaciones" not in UI_TEXT["home_statistics_description"]["es"]
+    assert "plantillas de informe" not in UI_TEXT["home_profile_description"]["es"]
     assert "no son predicciones oficiales" in UI_TEXT["home_trends_description"]["es"]
     assert "not official predictions" in UI_TEXT["home_trends_description"]["en"]
     assert "FELGTBI+" in UI_TEXT["home_spain_description"]["es"]

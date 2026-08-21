@@ -101,7 +101,7 @@ def test_dataset_and_country_series_are_cached_until_ilga_invalidation(monkeypat
     assert calls == ["load", "load"]
 
 
-def test_forecast_cache_reuses_exact_series_country_range_and_horizon(monkeypatch) -> None:
+def test_forecast_cache_reuses_model_when_only_horizon_changes(monkeypatch) -> None:
     app = Flask("trend-forecast-cache-test")
     init_cache(app)
     points = tuple(_point(2011 + index, 40 + index) for index in range(10))
@@ -122,7 +122,8 @@ def test_forecast_cache_reuses_exact_series_country_range_and_horizon(monkeypatc
 
     assert first == second
     assert third.forecast_horizon == 3
-    assert calls == ["forecast", "forecast"]
+    assert first.forecast_horizon == 2
+    assert calls == ["forecast"]
 
 
 def test_country_coverage_reports_real_missing_years(monkeypatch) -> None:

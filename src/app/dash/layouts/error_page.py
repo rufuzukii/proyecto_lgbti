@@ -148,7 +148,7 @@ def render_error_response(
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RainbowLens Datahub \u00b7 {escape(code)}</title>
   <link rel="stylesheet" href="/assets/styles.css">
-  <link rel="icon" type="image/png" href="/assets/img/rainbow_lens_icono.png">
+  <link rel="icon" type="image/png" href="/assets/img/rainbow_lens_icono.png?v=20260821">
 </head>
 <body>
   <main class="error-page-shell error-page-static">

@@ -75,7 +75,8 @@ def test_statistics_css_has_full_width_ranking_and_mobile_boundaries() -> None:
     assert ".stats-results-table-scroll {\n  max-width: 100%;" in css
     assert "overflow-x: auto;" in css
     assert ".stats-results-grid {\n    min-width: 680px;" in css
-    assert ".stats-mapbox-graph {\n    height: 400px;\n    min-height: 360px;" in css
+    assert ".stats-mapbox-graph {\n    height: min(58vh, 460px);\n    min-height: 340px;" in css
+    assert "height: clamp(520px, 66vh, 680px);" in css
     assert "overflow-x: hidden" not in css
 
 

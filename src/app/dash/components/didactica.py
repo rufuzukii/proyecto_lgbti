@@ -7,7 +7,7 @@ from dash.development.base_component import Component
 
 from app.dash.i18n import dash_attrs, text_attrs
 from app.dash.routes import route_path
-from app.edu.models import GlossaryTerm, Lesson, TeacherResource
+from app.edu.models import GlossaryTerm, TeacherResource
 from app.edu.translations import category_name, pair, tr
 
 
@@ -81,41 +81,6 @@ def glossary_card(term: GlossaryTerm, language: str) -> Component:
             ),
         ],
         className="didactica-glossary-card",
-    )
-
-
-def lesson_card(lesson: Lesson, language: str) -> Component:
-    level_es = f"Nivel: {lesson.level.es}"
-    level_en = f"Level: {lesson.level.en}"
-    duration_es = f"Duración: {lesson.duration_minutes} minutos"
-    duration_en = f"Duration: {lesson.duration_minutes} minutes"
-    return html.Article(
-        [
-            html.H2(lesson.title.get(language), **text_attrs(lesson.title.es, lesson.title.en)),
-            html.P(
-                lesson.description.get(language),
-                **text_attrs(lesson.description.es, lesson.description.en),
-            ),
-            html.Div(
-                [
-                    html.Span(
-                        level_en if language == "en" else level_es,
-                        **text_attrs(level_es, level_en),
-                    ),
-                    html.Span(
-                        duration_en if language == "en" else duration_es,
-                        **text_attrs(duration_es, duration_en),
-                    ),
-                ],
-                className="didactica-meta",
-            ),
-            dcc.Link(
-                translated("start"),
-                href=f"{route_path('presentations')}?lesson={lesson.id}",
-                className="didactica-button",
-            ),
-        ],
-        className="didactica-lesson-card",
     )
 
 

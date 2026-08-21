@@ -13,23 +13,24 @@ Plataforma para el análisis y visualización de datos del colectivo LGBTIQ+ en 
 - `AUTH_MAX_ATTEMPTS` y `AUTH_WINDOW_SECONDS`: límites de intentos para login/registro.
 
 ## Cache
-- `REDIS_URL`: activa automáticamente la caché Redis compartida entre workers Gunicorn.
 - `CACHE_DEFAULT_TIMEOUT`: duración de consultas cacheadas, 300 segundos por defecto.
 - `CACHE_VERSION`: versión incluida en el prefijo de claves para invalidar despliegues de forma controlada.
+- `LOCAL_CACHE_MAX_ENTRIES`: máximo de entradas por worker, 512 por defecto.
+- `LOCAL_CACHE_MAX_VALUE_BYTES`: tamaño máximo de un resultado cacheado, 4 MiB por defecto.
+- `LOCAL_CACHE_MAX_TOTAL_BYTES`: presupuesto total por worker, 64 MiB por defecto.
+- `HTTP_GZIP_MIN_BYTES`: tamaño mínimo para comprimir respuestas JSON/CSS/JS, 1024 bytes por defecto.
 - `STATIC_CACHE_MAX_AGE`: caché del navegador para CSS, JavaScript e imágenes; 86400 segundos por defecto.
 
-En desarrollo, si no existe `REDIS_URL`, se usa `SimpleCache`. En producción sin URL se
-usa `NullCache`, evitando una caché en memoria incoherente entre workers. Una caída temporal
-de Redis se trata como un fallo de caché y no interrumpe las peticiones. Las consultas de
-indicadores FRA y datos ILGA se invalidan automáticamente cuando un administrador aprueba una
-nueva importación.
+La caché es local, acotada, con TTL y aislada por worker. No es una fuente de verdad ni necesita
+servicios externos: tras un reinicio se reconstruye bajo demanda desde PostgreSQL, MongoDB o
+Supabase. Las consultas de indicadores FRA y datos ILGA se invalidan automáticamente cuando un
+administrador aprueba una nueva importación.
 
 ## Despliegue y salud
 
-`render.yaml` crea el servicio web y un Render Key Value privado, conecta su
-`connectionString` como `REDIS_URL` y configura `GET /health` como health check. El endpoint
-comprueba la aplicación, PostgreSQL, MongoDB, Redis y la configuración mínima sin devolver URI,
-credenciales ni trazas. Para ejecutar las pruebas de humo contra un despliegue real, define
+`render.yaml` crea un único servicio web y configura `GET /health` como health check. El endpoint
+es una comprobación ligera de vida de la aplicación y no abre conexiones externas en cada sondeo.
+Para ejecutar las pruebas de humo contra un despliegue real, define
 `RENDER_EXTERNAL_URL` antes de lanzar `pytest tests/smoke`.
 
 ## Seguridad de cuentas y correo

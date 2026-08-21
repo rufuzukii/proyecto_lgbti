@@ -121,18 +121,29 @@ def generate_word_search(
 
 
 def create_word_search_game(
-    *, seed: int | None = None, word_count: int = DEFAULT_WORD_COUNT
+    *,
+    seed: int | None = None,
+    word_count: int = DEFAULT_WORD_COUNT,
+    term_ids: Sequence[str] | None = None,
+    board_size: int | None = None,
 ) -> dict[str, Any]:
     """Build a serializable game using the same cached catalog as the dictionary."""
     effective_seed = seed if seed is not None else secrets.randbits(63)
+    catalog = glossary_service.list_glossary_terms()
+    allowed_ids = {str(identifier) for identifier in term_ids or ()}
+    candidates = (
+        tuple(term for term in catalog if term.id in allowed_ids)
+        if term_ids is not None
+        else catalog
+    )
     selected = select_word_search_terms(
-        glossary_service.list_glossary_terms(),
+        candidates,
         count=word_count,
-        max_length=DEFAULT_MAX_TERM_LENGTH,
+        max_length=board_size or DEFAULT_MAX_TERM_LENGTH,
         seed=effective_seed,
     )
     longest = max((len(normalize_word_search_term(term.term)) for term in selected), default=10)
-    size = _board_size(longest)
+    size = max(longest, min(int(board_size), MAX_BOARD_SIZE)) if board_size else _board_size(longest)
     generated = generate_word_search(
         [term.term for term in selected],
         size,

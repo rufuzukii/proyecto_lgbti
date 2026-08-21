@@ -4,11 +4,11 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from app.edu.lesson_service import list_lessons
 from app.mongo import get_mongo_collection
 
 logger = logging.getLogger(__name__)
 COLLECTION_NAME = "didactica_progress"
+STANDARD_GAME_COUNT = 3
 
 
 def get_user_progress(user_id: str) -> dict[str, Any]:
@@ -20,14 +20,6 @@ def get_user_progress(user_id: str) -> dict[str, Any]:
         logger.warning("didactica_progress_read_failed", exc_info=True)
         return _empty_progress()
     return document or _empty_progress()
-
-
-def complete_lesson(user_id: str, lesson_id: str) -> None:
-    if user_id and lesson_id:
-        _update(
-            user_id,
-            {"$addToSet": {"completed_lessons": lesson_id}, "$set": _activity("lesson", lesson_id)},
-        )
 
 
 def save_game_score(user_id: str, game_id: str, score: int) -> None:
@@ -46,7 +38,7 @@ def progress_summary(user_id: str) -> dict[str, Any]:
     progress = get_user_progress(user_id)
     completed = len(progress.get("completed_lessons", []))
     played = len(progress.get("game_scores", {}))
-    total = len(list_lessons()) + 2
+    total = max(STANDARD_GAME_COUNT, completed + played)
     return {
         **progress,
         "completed_count": completed,

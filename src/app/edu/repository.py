@@ -10,7 +10,7 @@ DATA_ROOT = Path(__file__).resolve().parent / "data"
 
 @lru_cache(maxsize=8)
 def load_json(name: str) -> Any:
-    if name not in {"glossary", "lessons", "teacher_resources"}:
+    if name not in {"glossary", "teacher_resources"}:
         raise ValueError("unsupported_educational_dataset")
     with (DATA_ROOT / f"{name}.json").open(encoding="utf-8") as source:
         return json.load(source)

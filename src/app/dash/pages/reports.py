@@ -181,6 +181,7 @@ def build_reports_layout(
                     ),
                     html.Div(
                         [
+                            _profile_panel(profile),
                             _configuration_panel(
                                 config,
                                 years,
@@ -192,71 +193,75 @@ def build_reports_layout(
                                 templates,
                                 selected_template,
                             ),
-                            _profile_panel(config, profile),
-                        ],
-                        className="reports-config-grid",
-                    ),
-                    html.Section(
-                        [
-                            html.H2(text("Resumen de la configuración", "Configuration summary")),
-                            html.Div(id="report-plan-summary"),
-                            html.P(
-                                text(
-                                    "El informe incluirá resultados, comparaciones, interpretación, conclusiones y posibles actuaciones adaptadas al uso seleccionado.",
-                                    "The report will include results, comparisons, interpretation, conclusions and possible actions adapted to the selected use.",
-                                )
+                            html.Section(
+                                [
+                                    html.H2(
+                                        text(
+                                            "Resumen de la configuración",
+                                            "Configuration summary",
+                                        )
+                                    ),
+                                    html.Div(id="report-plan-summary"),
+                                    html.P(
+                                        text(
+                                            "El informe incluirá resultados, comparaciones, interpretación, conclusiones y posibles actuaciones adaptadas al uso seleccionado.",
+                                            "The report will include results, comparisons, interpretation, conclusions and possible actions adapted to the selected use.",
+                                        )
+                                    ),
+                                ],
+                                className="reports-card reports-plan-summary",
                             ),
-                        ],
-                        className="reports-card reports-plan-summary",
-                    ),
-                    html.Div(
-                        [
-                            html.Button(
-                                text("Generar vista previa", "Generate preview"),
-                                id="report-preview-button",
-                                type="button",
-                                className="reports-primary-button",
-                                n_clicks=0,
+                            html.Div(
+                                [
+                                    html.Button(
+                                        text("Generar vista previa", "Generate preview"),
+                                        id="report-preview-button",
+                                        type="button",
+                                        className="reports-primary-button",
+                                        n_clicks=0,
+                                    ),
+                                    html.Button(
+                                        text("Descargar informe PDF", "Download PDF report"),
+                                        id="report-download-button",
+                                        type="button",
+                                        className="reports-secondary-button",
+                                        disabled=True,
+                                        n_clicks=0,
+                                    ),
+                                    html.Span(
+                                        "",
+                                        id="report-status",
+                                        role="status",
+                                        className="reports-status",
+                                        **dash_attrs({"aria-live": "polite"}),
+                                    ),
+                                ],
+                                className="reports-actions reports-final-actions",
                             ),
-                            html.Button(
-                                text("Descargar informe PDF", "Download PDF report"),
-                                id="report-download-button",
-                                type="button",
-                                className="reports-secondary-button",
-                                disabled=True,
-                                n_clicks=0,
-                            ),
-                            html.Span(
-                                "",
-                                id="report-status",
-                                role="status",
-                                className="reports-status",
-                                **dash_attrs({"aria-live": "polite"}),
-                            ),
-                        ],
-                        className="reports-actions",
-                    ),
-                    contextual_loading(
-                        html.Section(
-                            [
-                                html.Div(
+                            contextual_loading(
+                                html.Section(
                                     [
-                                        html.H2(text("Vista previa", "Preview")),
-                                        html.P(
-                                            text(
-                                                "Genera la vista previa para comprobar métricas, textos, gráficos, recomendaciones y fuentes.",
-                                                "Generate the preview to check metrics, text, charts, recommendations and sources.",
-                                            )
-                                        ),
+                                        html.Div(
+                                            [
+                                                html.H2(text("Vista previa", "Preview")),
+                                                html.P(
+                                                    text(
+                                                        "Genera la vista previa para comprobar métricas, textos, gráficos, recomendaciones y fuentes.",
+                                                        "Generate the preview to check metrics, text, charts, recommendations and sources.",
+                                                    )
+                                                ),
+                                            ],
+                                            id="report-preview-content",
+                                            className="reports-preview-empty",
+                                        )
                                     ],
-                                    id="report-preview-content",
-                                    className="reports-preview-empty",
-                                )
-                            ],
-                            className="reports-preview-shell",
-                        ),
-                        "generating_report",
-                        element_id="report-preview-loading",
+                                    className="reports-preview-shell",
+                                ),
+                                "generating_report",
+                                element_id="report-preview-loading",
+                            ),
+                        ],
+                        className="reports-workflow",
                     ),
                 ],
                 className="reports-shell app-page-container",
@@ -469,6 +474,14 @@ def register_reports_callbacks(app: Dash) -> None:
         Input("report-answer-select", "value"),
         Input("report-language-select", "value"),
         Input("report-template-select", "value"),
+        Input("report-category-select", "value"),
+        Input("report-indicator-select", "value"),
+        Input("report-criterion-select", "value"),
+        Input("report-filter-a-name", "value"),
+        Input("report-filter-a-value", "value"),
+        Input("report-filter-b-name", "value"),
+        Input("report-filter-b-value", "value"),
+        Input("report-spanish-context", "value"),
     )
     def update_report_plan_summary(
         source: str | None,
@@ -478,6 +491,14 @@ def register_reports_callbacks(app: Dash) -> None:
         answer: str | None,
         language: str | None,
         template_id: str | None,
+        category: str | None,
+        indicator: str | None,
+        criterion: str | None,
+        filter_a_name: str | None,
+        filter_a_value: str | None,
+        filter_b_name: str | None,
+        filter_b_value: str | None,
+        spanish_context: list[str] | None,
     ):
         clean_language = "en" if language == "en" else "es"
         profile_key = report_profile_key(current_user)
@@ -487,12 +508,28 @@ def register_reports_callbacks(app: Dash) -> None:
             else report_profile(profile_key)
         ) or report_profile(profile_key)
         profile_key = profile.key
+        template = find_report_template(current_user, template_id)
+        objective = report_objective(profile_key, template.objective)
         source_label = {
             "fra": _t(clean_language, "Datos sociales", "Social data"),
             "ilga": _t(clean_language, "Datos legales", "Legal data"),
             "combined": _t(clean_language, "Análisis combinado", "Combined analysis"),
         }.get(source or "fra", source or "")
         countries = [country for country in [primary_country, *(comparison_countries or [])] if country]
+        filters = [
+            f"{name}: {value}"
+            for name, value in (
+                (filter_a_name, filter_a_value),
+                (filter_b_name, filter_b_value),
+            )
+            if name and name != "All" and value
+        ]
+        if spanish_context and "include" in spanish_context:
+            filters.append(_t(clean_language, "Contexto español", "Spanish context"))
+        sections = ", ".join(
+            _t(clean_language, *SECTION_LABELS.get(key, (key, key)))
+            for key in template.sections
+        )
         return html.Dl(
             [
                 html.Dt(_t(clean_language, "Perfil", "Profile")),
@@ -501,10 +538,20 @@ def register_reports_callbacks(app: Dash) -> None:
                 html.Dd(source_label),
                 html.Dt(_t(clean_language, "Encuesta / año", "Survey / year")),
                 html.Dd(str(year or "—")),
+                html.Dt(_t(clean_language, "Categoría", "Category")),
+                html.Dd(category or "—"),
+                html.Dt(_t(clean_language, "Indicador", "Indicator")),
+                html.Dd(indicator or criterion or "—"),
                 html.Dt(_t(clean_language, "Países", "Countries")),
                 html.Dd(", ".join(countries) or _t(clean_language, "Europa", "Europe")),
                 html.Dt(_t(clean_language, "Respuesta", "Answer")),
                 html.Dd(answer or "—"),
+                html.Dt(_t(clean_language, "Filtros", "Filters")),
+                html.Dd(", ".join(filters) or _t(clean_language, "Ninguno", "None")),
+                html.Dt(_t(clean_language, "Objetivo", "Objective")),
+                html.Dd(objective.label_en if clean_language == "en" else objective.label_es),
+                html.Dt(_t(clean_language, "Secciones incluidas", "Included sections")),
+                html.Dd(sections),
             ],
             className="reports-plan-list",
         )
@@ -1050,21 +1097,30 @@ def _configuration_panel(
     )
 
 
-def _profile_panel(config: ReportConfiguration, profile) -> Component:
+def _profile_panel(profile) -> Component:
     return html.Section(
         [
-            html.P(
-                text("Recomendado para tu perfil", "Recommended for your profile"),
-                className="stats-eyebrow",
-            ),
             html.H2(
-                text("Personaliza el informe", "Personalise the report"),
+                ui_text_component("report_personalised_generation"),
                 className="reports-section-title",
             ),
             html.P(
-                text(profile.description_es, profile.description_en),
-                id="report-profile-description",
-                className="reports-profile-description",
+                ui_text_component("report_personalised_generation_description"),
+                className="reports-generation-description",
+            ),
+            html.Div(
+                [
+                    html.P(
+                        text("Recomendado para tu perfil", "Recommended for your profile"),
+                        className="stats-eyebrow",
+                    ),
+                    html.P(
+                        text(profile.description_es, profile.description_en),
+                        id="report-profile-description",
+                        className="reports-profile-description",
+                    ),
+                ],
+                className="reports-profile-recommendation",
             ),
             html.Div(
                 [

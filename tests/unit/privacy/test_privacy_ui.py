@@ -74,9 +74,19 @@ def test_privacy_page_describes_only_real_stores_and_links_rights(monkeypatch) -
     assert "PostgreSQL" in body
     assert "MongoDB" in body
     assert "Supabase" in body
-    assert "no existe un historial de informes guardado" in body
+    assert (
+        "Los informes se construyen en memoria y archivos temporales, no existe un "
+        "historial de informes guardado."
+    ) in body
+    assert "Las contraseñas se almacenan de forma segura mediante hash" in body
+    assert "texto plano" in body
     assert privacy.AEPD_RIGHTS_URL in hrefs
-    assert privacy.AEPD_COMPLAINT_URL in hrefs
+    assert "Submit a complaint" not in body
+    assert "Presentar una reclamación" not in body
+    assert "Redis" not in body
+    assert "Copias de seguridad" not in body
+    assert "Backups" not in body
+    assert "No se utiliza consentimiento" not in body
 
 
 def test_privacy_controller_is_production_ready_and_bilingual(monkeypatch) -> None:
@@ -93,12 +103,13 @@ def test_privacy_controller_is_production_ready_and_bilingual(monkeypatch) -> No
     # Assert
     assert "Málaga, España" in body
     assert "Málaga, Spain" in body
-    assert "NIF/Pasaporte:" in body
+    assert "NIF:" in body
     assert (
         "Disponible para el usuario que acredite su identidad y desee ejercer sus derechos ARCO"
         in body
     )
-    assert "NIF/Passport:" in body
+    assert "NIF/Pasaporte:" not in body
+    assert "NIF/Passport:" not in body
     assert (
         "Available to users who verify their identity and wish to exercise their data protection rights."
         in body
@@ -110,8 +121,11 @@ def test_privacy_controller_is_production_ready_and_bilingual(monkeypatch) -> No
         "privacy-data",
         "privacy-purposes",
         "privacy-retention",
+        "privacy-recipients",
+        "privacy-security",
         "privacy-rights",
     } <= ids
+    assert "privacy-backups" not in ids
 
 
 def test_personal_panel_has_export_and_reinforced_deletion_controls(monkeypatch) -> None:

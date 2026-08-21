@@ -305,12 +305,11 @@
 }
 
 .country-status-section {
-  border-top: 1px solid var(--panel-border);
   box-sizing: border-box;
   display: grid;
   gap: 1rem;
   max-width: 100%;
-  padding: 1rem 1.3rem 1.2rem;
+  padding: 0 1.3rem 1.2rem;
   width: 100%;
 }
 
@@ -1205,7 +1204,13 @@
 }
 
 #home-legal-details-loading {
-  min-height: 8rem;
+  min-height: 0;
+}
+
+.home-legal-context-divider:not(:empty) {
+  border-top: 1px solid var(--panel-border);
+  margin-top: 1rem;
+  padding-top: 1rem;
 }
 
 .home-ilga-country-summary {
@@ -1604,7 +1609,7 @@ body[data-theme="dark"] .dash-dropdown-content .dash-dropdown-option:has(input:c
   }
 
   .country-status-section {
-    padding: 0.9rem;
+    padding: 0 0.9rem 0.9rem;
   }
 
   .country-status-card__header {

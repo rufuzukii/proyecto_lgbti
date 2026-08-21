@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -26,10 +27,12 @@ def _find(component: Any, component_id: str) -> Any:
 def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) -> None:
     # Arrange
     monkeypatch.setattr(spain, "get_felgtbi_years", lambda: [2026, 2025])
+    document_queries = []
     monkeypatch.setattr(
         spain,
         "get_felgtbi_document_options",
-        lambda **_kwargs: [
+        lambda **kwargs: document_queries.append(kwargs)
+        or [
             {"label": "Estado del odio", "value": "doc-odio"},
             {"label": "El voto en la comunidad LGTBI+", "value": "doc-voto"},
         ],
@@ -48,9 +51,15 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     assert "spain-source-select" not in ids
     assert "spain-category-select" not in ids
     assert year.to_plotly_json()["props"]["value"] == 2026
+    assert [option["value"] for option in year.options] == [2026, 2025]
+    assert document_queries == [{"year": 2026}]
     assert isinstance(document, dcc.RadioItems)
     document_props = document.to_plotly_json()["props"]
     assert document_props["value"] is None
+    assert [option["value"] for option in document_props["options"]] == [
+        "doc-odio",
+        "doc-voto",
+    ]
     assert "spain-selection-control" in document_props["className"]
     assert document_label.to_plotly_json()["type"] == "Span"
     assert "htmlFor" not in document_label.to_plotly_json()["props"]
@@ -65,6 +74,81 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     )
     assert document_group.className.endswith("spain-document-field")
     assert indicator.value is None
+
+
+def test_spain_layout_falls_back_to_most_recent_available_year(monkeypatch) -> None:
+    monkeypatch.setattr(spain, "get_felgtbi_years", lambda: [2024, 2025, 2024])
+    requested_years = []
+    monkeypatch.setattr(
+        spain,
+        "get_felgtbi_document_options",
+        lambda **kwargs: requested_years.append(kwargs["year"]) or [],
+    )
+    monkeypatch.setattr(spain, "build_navbar", lambda **_kwargs: None)
+
+    layout = spain.build_spain_layout()
+
+    year = _find(layout, "spain-year-select")
+    assert year.value == 2025
+    assert [option["value"] for option in year.options] == [2025, 2024]
+    assert requested_years == [2025]
+
+
+def test_document_selector_queries_only_the_selected_year_and_resets_selection(
+    monkeypatch,
+) -> None:
+    documents_by_year = {
+        2025: [
+            {"label": "Documento A", "value": "2025-a"},
+            {"label": "Documento B", "value": "2025-b"},
+        ],
+        2026: [
+            {"label": "Documento C", "value": "2026-c"},
+            {"label": "Documento D", "value": "2026-d"},
+        ],
+    }
+    requested_years = []
+
+    def document_options(*, year: int) -> list[dict[str, str]]:
+        requested_years.append(year)
+        return documents_by_year[year]
+
+    monkeypatch.setattr(spain, "get_felgtbi_document_options", document_options)
+
+    initial_options, initial_value = spain._document_selector_state(2026)
+    changed_options, changed_value = spain._document_selector_state(2025)
+
+    assert requested_years == [2026, 2025]
+    assert [option["value"] for option in initial_options] == ["2026-c", "2026-d"]
+    assert [option["value"] for option in changed_options] == ["2025-a", "2025-b"]
+    assert initial_value is None
+    assert changed_value is None
+
+
+def test_document_selector_never_queries_all_years_without_a_valid_year(monkeypatch) -> None:
+    queries = []
+    monkeypatch.setattr(
+        spain,
+        "get_felgtbi_document_options",
+        lambda **kwargs: queries.append(kwargs) or [],
+    )
+
+    assert spain._document_selector_state(None) == ([], None)
+    assert spain._document_selector_state("not-a-year") == ([], None)
+    assert queries == []
+
+
+def test_spain_indicator_dropdown_keeps_its_natural_height() -> None:
+    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    selector_rule = css.split(".spain-topic-selector-row {", maxsplit=1)[1].split(
+        "}", maxsplit=1
+    )[0]
+
+    assert "align-items: start;" in selector_rule
+    assert "align-items: stretch;" not in selector_rule
+    assert "overflow: hidden;" not in selector_rule
+    assert ".spain-dropdown .dash-dropdown-trigger" in css
+    assert ".spain-dropdown,\n.spain-dropdown .Select-control" in css
 
 
 def test_indicator_options_keep_canonical_value_and_clean_only_label() -> None:

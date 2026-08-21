@@ -156,8 +156,12 @@ def _initialize_non_report_indexes() -> None:
         [
             IndexModel([("id", ASCENDING)], unique=True, name="docente_game_id_unique"),
             IndexModel(
-                [("owner_id", ASCENDING), ("updated_at", DESCENDING)],
+                [("owner_user_id", ASCENDING), ("updated_at", DESCENDING)],
                 name="docente_games_by_owner",
+            ),
+            IndexModel(
+                [("game_type", ASCENDING), ("created_at", DESCENDING)],
+                name="docente_games_by_type",
             ),
         ],
     )

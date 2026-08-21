@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 
@@ -47,33 +49,6 @@ class GlossaryTerm:
 
 
 @dataclass(frozen=True)
-class Lesson:
-    id: str
-    title: LocalizedText
-    description: LocalizedText
-    objectives: tuple[LocalizedText, ...]
-    level: LocalizedText
-    duration_minutes: int
-    slides: tuple[dict[str, Any], ...]
-    activity: dict[str, Any]
-    sources: tuple[dict[str, str], ...]
-
-    @classmethod
-    def from_mapping(cls, value: dict[str, Any]) -> Lesson:
-        return cls(
-            id=str(value["id"]),
-            title=LocalizedText.from_mapping(value["title"]),
-            description=LocalizedText.from_mapping(value["description"]),
-            objectives=tuple(LocalizedText.from_mapping(item) for item in value["objectives"]),
-            level=LocalizedText.from_mapping(value["level"]),
-            duration_minutes=int(value["duration_minutes"]),
-            slides=tuple(value["slides"]),
-            activity=value["activity"],
-            sources=tuple(value.get("sources", [])),
-        )
-
-
-@dataclass(frozen=True)
 class TeacherResource:
     id: str
     title: LocalizedText
@@ -103,4 +78,43 @@ class TeacherResource:
             teacher_guide=LocalizedText.from_mapping(value["teacher_guide"]),
             languages=tuple(value.get("languages", ["es", "en"])),
             formats=tuple(value.get("formats", ["pdf"])),
+        )
+
+
+class EducationalActivityStatus(StrEnum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+@dataclass(frozen=True, slots=True)
+class EducationalActivity:
+    activity_id: str
+    owner_user_id: str
+    game_type: str
+    title: str
+    description: str
+    instructions: str
+    teacher_note: str
+    language: str
+    configuration: dict[str, Any]
+    status: EducationalActivityStatus
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_mapping(cls, value: dict[str, Any]) -> EducationalActivity:
+        return cls(
+            activity_id=str(value["id"]),
+            owner_user_id=str(value["owner_user_id"]),
+            game_type=str(value["game_type"]),
+            title=str(value["title"]),
+            description=str(value.get("description") or ""),
+            instructions=str(value.get("instructions") or ""),
+            teacher_note=str(value.get("teacher_note") or ""),
+            language=str(value.get("language") or "es"),
+            configuration=dict(value.get("configuration") or {}),
+            status=EducationalActivityStatus(str(value.get("status") or "DRAFT")),
+            created_at=value["created_at"],
+            updated_at=value["updated_at"],
         )

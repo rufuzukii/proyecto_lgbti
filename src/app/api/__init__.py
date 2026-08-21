@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api.routers import edu, reports, users
+from app.api.routers import reports, users
 from app.api.security import require_admin_api_key, require_api_key
 from app.config import get_app_config
 from app.health import build_health_report
@@ -26,7 +26,6 @@ def create_api_app() -> FastAPI:
     admin_only = [Depends(require_admin_api_key)]
     app.include_router(users.router, dependencies=admin_only)
     app.include_router(reports.router, dependencies=protected)
-    app.include_router(edu.router, dependencies=protected)
 
     @app.get("/health")
     def health() -> JSONResponse:

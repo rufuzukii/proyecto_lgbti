@@ -102,6 +102,31 @@
   color: var(--color-text);
 }
 
+:root[data-theme="dark"] .admin-user-search-button,
+:root[data-theme="dark"] .admin-user-search-button:hover,
+:root[data-theme="dark"] .admin-user-search-button:active,
+:root[data-theme="dark"] .admin-user-search-button:focus-visible,
+:root[data-theme="dark"] .admin-user-search-button:disabled,
+:root[data-theme="dark"] .admin-user-search-clear,
+:root[data-theme="dark"] .admin-pagination-link {
+  color: var(--color-text);
+}
+
+.admin-user-search-button:hover:not(:disabled),
+.admin-user-search-button:active:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.admin-user-search-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-primary) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.admin-user-search-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
 .admin-users-result-count {
   color: var(--color-text-muted);
   font-size: 0.9rem;

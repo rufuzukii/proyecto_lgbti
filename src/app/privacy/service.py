@@ -79,7 +79,7 @@ def get_personal_data_inventory(user_id: str) -> PersonalDataInventory:
             {"user_id": user_id}
         )
         teacher_games = get_mongo_collection(GAMES_COLLECTION).count_documents(
-            {"owner_id": user_id}
+            _teacher_activity_owner_query(user_id)
         )
         security_audit = get_mongo_collection(SECURITY_AUDIT_COLLECTION).count_documents(
             {"user_id": user_id}
@@ -191,7 +191,8 @@ def build_personal_data_export(user_id: str) -> dict[str, Any]:
     )
     games = list(
         get_mongo_collection(GAMES_COLLECTION).find(
-            {"owner_id": user_id}, {"_id": 0, "owner_id": 0}
+            _teacher_activity_owner_query(user_id),
+            {"_id": 0, "owner_id": 0, "owner_user_id": 0},
         )
     )
     return _json_safe(
@@ -375,11 +376,18 @@ def _complete_job(user_id: str, subject_ref: str) -> None:
 
 def _delete_private_mongo_data(user_id: str) -> dict[str, int]:
     progress = get_mongo_collection(PROGRESS_COLLECTION).delete_many({"user_id": user_id})
-    games = get_mongo_collection(GAMES_COLLECTION).delete_many({"owner_id": user_id})
+    games = get_mongo_collection(GAMES_COLLECTION).delete_many(
+        _teacher_activity_owner_query(user_id)
+    )
     return {
         "learning_progress": int(progress.deleted_count),
         "teacher_games": int(games.deleted_count),
     }
+
+
+def _teacher_activity_owner_query(user_id: str) -> dict[str, Any]:
+    """Include pre-schema-v2 records while treating owner_user_id as canonical."""
+    return {"$or": [{"owner_user_id": user_id}, {"owner_id": user_id}]}
 
 
 def _delete_personal_supabase_objects(_user_id: str) -> int:

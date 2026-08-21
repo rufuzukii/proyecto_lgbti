@@ -102,7 +102,7 @@ def client_ip() -> str:
 
 
 def rate_limit_key(*, subject: str = "", scope: str = "") -> str:
-    """Build a non-identifying key suitable for Redis and local limiters."""
+    """Build a non-identifying key suitable for the local rate limiter."""
     identity = f"{scope}|{client_ip()}|{subject[:254]}"
     return hashlib.sha256(
         identity.encode("utf-8"),

@@ -8,7 +8,7 @@
 - `dash_app.py`: composición Dash/Flask, rutas, sesiones y callbacks.
 - `api/`: FastAPI separado para integraciones locales.
 - `health.py`: contrato de salud compartido por Dash y FastAPI.
-- `config.py` y `cache.py`: configuración y caché Redis/fallback seguro.
+- `config.py` y `cache.py`: configuración y caché TTL local acotada.
 
 ## Subpaquetes activos
 

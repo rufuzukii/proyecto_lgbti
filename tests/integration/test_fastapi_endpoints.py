@@ -37,10 +37,7 @@ def test_fastapi_health_uses_the_real_health_contract(
         "status": "unavailable",
         "services": {
             "application": "ok",
-            "postgresql": "unavailable",
-            "mongodb": "ok",
-            "redis": "degraded",
-            "configuration": "ok",
+            "local_cache": "unavailable",
         },
     }
     monkeypatch.setattr(api_module, "build_health_report", lambda: report)
@@ -53,21 +50,6 @@ def test_fastapi_health_uses_the_real_health_contract(
     assert response.status_code == 503
     assert response.json() == report
     assert "uri" not in response.text.casefold()
-
-
-def test_education_endpoint_returns_real_lightweight_units(api_client: TestClient) -> None:
-    # Arrange
-    headers = {"X-API-Key": GENERAL_KEY}
-
-    # Act
-    response = api_client.get("/edu/units", headers=headers)
-
-    # Assert
-    assert response.status_code == 200
-    units = response.json()
-    assert units
-    assert set(units[0]) == {"id", "title", "description", "duration_minutes"}
-    assert set(units[0]["title"]) == {"es", "en"}
 
 
 def test_report_endpoint_generates_a_pdf_from_validated_input(
@@ -183,7 +165,6 @@ def test_fastapi_has_no_duplicate_application_routes(api_client: TestClient) -> 
     # Assert
     assert {
         ("GET", "/health"),
-        ("GET", "/edu/units"),
         ("POST", "/reports"),
     }.issubset(set(registered))
     assert len(registered) == len(set(registered))

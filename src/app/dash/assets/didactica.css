@@ -28,7 +28,6 @@
   margin: 0;
 }
 
-.didactica-lesson-grid,
 .didactica-glossary-grid,
 .didactica-progress-grid {
   display: grid;
@@ -79,10 +78,8 @@
 }
 
 .didactica-resource-card,
-.didactica-lesson-card,
 .didactica-glossary-card,
 .didactica-progress-card,
-.didactica-slide,
 .didactica-game-card,
 .didactica-teacher-detail,
 .didactica-progress-detail,
@@ -149,7 +146,6 @@
 }
 
 .didactica-resource-card h2,
-.didactica-lesson-card h2,
 .didactica-glossary-card h2 {
   color: var(--color-text);
   margin: 0;
@@ -164,7 +160,6 @@
 }
 
 .didactica-resource-card p,
-.didactica-lesson-card p,
 .didactica-glossary-card p,
 .didactica-teacher-detail p {
   color: var(--color-text-muted);
@@ -232,7 +227,6 @@
 }
 
 .didactica-glossary-card,
-.didactica-lesson-card,
 .didactica-progress-card,
 .didactica-teacher-detail,
 .didactica-progress-detail {
@@ -345,6 +339,19 @@
   color: var(--link-green);
 }
 
+:root[data-theme="dark"] .didactica-button-secondary,
+:root[data-theme="dark"] .didactica-button-secondary:hover,
+:root[data-theme="dark"] .didactica-button-secondary:active,
+:root[data-theme="dark"] .didactica-button-secondary:focus-visible,
+:root[data-theme="dark"] .didactica-button-secondary:disabled {
+  color: var(--color-text);
+}
+
+.didactica-button-secondary:hover:not(:disabled),
+.didactica-button-secondary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--link-green) 12%, transparent);
+}
+
 .didactica-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -367,16 +374,156 @@
   padding: clamp(1rem, 3vw, 1.75rem);
 }
 
-.didactica-game-editor {
+.teacher-space-hero {
+  align-items: start;
   display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
 }
 
-.didactica-game-editor > .didactica-actions,
-.didactica-game-editor > .didactica-feedback,
-.didactica-game-editor > .didactica-field:first-child {
-  grid-column: 1 / -1;
+.teacher-space-create-button {
+  justify-self: start;
+}
+
+.teacher-activity-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.teacher-activity-card,
+.teacher-game-type-card,
+.teacher-editor-step,
+.teacher-note-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+}
+
+.teacher-activity-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.teacher-activity-card__header {
+  align-items: center;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.teacher-activity-card__header h3,
+.teacher-activity-card__header p {
+  margin: 0;
+}
+
+.teacher-activity-card__icon,
+.teacher-game-type-card__icon {
+  align-items: center;
+  background: color-mix(in srgb, var(--link-green) 14%, var(--panel-bg));
+  border-radius: var(--radius-sm);
+  color: var(--link-green);
+  display: inline-flex;
+  font-weight: 900;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.teacher-activity-status {
+  background: var(--panel-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.35rem 0.65rem;
+}
+
+.teacher-activity-delete {
+  background: transparent;
+  border-color: var(--color-danger, #b42318);
+  color: var(--color-danger, #b42318);
+}
+
+.teacher-game-type-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.teacher-game-type-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1.15rem;
+  text-decoration: none;
+}
+
+.teacher-game-type-card:hover {
+  border-color: var(--link-green);
+  transform: translateY(-2px);
+}
+
+.teacher-game-type-card:focus-visible,
+.teacher-activity-card a:focus-visible,
+.teacher-activity-card button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--link-green) 42%, transparent);
+  outline-offset: 3px;
+}
+
+.teacher-activity-editor {
+  max-width: 860px;
+}
+
+.teacher-editor-step {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding: clamp(1rem, 3vw, 1.75rem);
+}
+
+.teacher-editor-step h2 {
+  margin: 0;
+}
+
+.teacher-game-type-selector {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.teacher-game-type-selector label {
+  background: var(--panel-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+.teacher-game-type-selector label:focus-within {
+  border-color: var(--link-green);
+  outline: 3px solid color-mix(in srgb, var(--link-green) 30%, transparent);
+}
+
+.teacher-editor-options {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.teacher-activity-preview {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.teacher-engine,
+.teacher-note-panel {
+  margin-top: 1rem;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+}
+
+.teacher-note-panel {
+  border-left: 4px solid var(--link-green);
 }
 
 .didactica-input,
@@ -395,16 +542,6 @@
   resize: vertical;
 }
 
-@media (max-width: 720px) {
-  .didactica-game-editor {
-    grid-template-columns: 1fr;
-  }
-
-  .didactica-game-editor > * {
-    grid-column: 1;
-  }
-}
-
 .didactica-viewer {
   max-width: 900px;
 }
@@ -416,33 +553,104 @@
   width: 100%;
 }
 
-.didactica-slide,
 .didactica-game-card {
   min-height: 280px;
   padding: clamp(1.2rem, 4vw, 2.2rem);
 }
 
-.didactica-slide h2,
 .didactica-game-prompt {
   font-size: clamp(1.35rem, 3vw, 2rem);
   line-height: 1.3;
 }
 
-.didactica-slide p {
-  font-size: 1.1rem;
-  line-height: 1.7;
+.didactica-presentations-library {
+  display: grid;
+  gap: 1rem;
+  max-width: 1100px;
 }
 
-.didactica-slide-number {
-  color: var(--link-green);
-  font-weight: 900;
+.didactica-presentations-list {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
 }
 
-.didactica-activity {
-  background: var(--color-accent-sky);
+.didactica-presentations-list.is-empty,
+.didactica-presentations-list.is-error,
+.didactica-presentations-list.is-loading {
+  background: var(--panel-muted);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
-  padding: clamp(1.2rem, 4vw, 2rem);
+  color: var(--color-text-muted);
+  padding: 1.25rem;
+}
+
+.didactica-presentations-list > p {
+  margin: 0;
+}
+
+.didactica-presentation-card {
+  align-items: center;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 1rem 1.1rem;
+}
+
+.didactica-presentation-info {
+  align-items: center;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.didactica-presentation-icon {
+  align-items: center;
+  background: var(--color-accent);
+  border-radius: 10px;
+  color: var(--link-green);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.didactica-presentation-card h2 {
+  color: var(--color-text);
+  font-size: 1.05rem;
+  margin: 0 0 0.35rem;
+  overflow-wrap: anywhere;
+}
+
+.didactica-presentation-metadata {
+  color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+  gap: 0.2rem;
+  margin: 0;
+}
+
+.didactica-presentation-updated {
+  flex-basis: 100%;
+}
+
+.didactica-presentation-download {
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.didactica-presentations-note {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  margin: 1.25rem 0 0;
 }
 
 .is-hidden {
@@ -842,6 +1050,11 @@
   .didactica-game-access-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .teacher-game-type-grid,
+  .teacher-game-type-selector {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 680px) {
@@ -853,7 +1066,6 @@
     grid-template-columns: 1fr;
   }
 
-  .didactica-lesson-grid,
   .didactica-glossary-grid,
   .didactica-progress-grid {
     grid-template-columns: 1fr;
@@ -865,6 +1077,30 @@
 
   .didactica-actions .didactica-button {
     flex: 1 1 140px;
+  }
+
+  .didactica-presentation-card {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .didactica-presentation-download {
+    width: 100%;
+  }
+
+  .teacher-activity-card__header {
+    align-items: start;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .teacher-activity-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .teacher-activity-actions > * {
+    flex: 1 1 100%;
+    width: 100%;
   }
 
   .didactica-resource-card {

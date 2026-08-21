@@ -5,7 +5,7 @@ from dash.development.base_component import Component
 from flask_login import current_user
 
 from app.auth.permissions import Permission, user_has_permission
-from app.dash.components.section_navigation import PRIMARY_SECTIONS
+from app.dash.components.section_navigation import PRIMARY_NAVIGATION_SECTIONS
 from app.dash.i18n import attribute_attrs, dash_attrs, text, text_attrs, ui_text
 from app.dash.routes import route_path
 from app.users.schemas import UserRole
@@ -19,16 +19,10 @@ def build_navbar(active: str | None = None) -> Component:
             section.key,
             section.key,
         )
-        for section in PRIMARY_SECTIONS
+        for section in PRIMARY_NAVIGATION_SECTIONS
     ]
     links.extend(
         [
-            (
-                ui_text("report_module_name", "es"),
-                ui_text("report_module_name", "en"),
-                "reports",
-                "reports",
-            ),
             ("Importar datos", "Import data", "upload", "upload"),
         ]
     )
@@ -44,20 +38,20 @@ def build_navbar(active: str | None = None) -> Component:
             dcc.Link(
                 [
                     html.Img(
-                        src="/assets/img/rainbow_lens_logo.png",
-                        alt="RainbowLens Datahub",
+                        src="/assets/img/rainbow_lens_logo.png?v=20260821",
+                        alt="RainbowLens DataHub",
                         className="nav-brand-logo nav-brand-logo-desktop",
                     ),
                     html.Img(
-                        src="/assets/img/rainbow_lens_icono.png",
-                        alt="RainbowLens Datahub",
+                        src="/assets/img/rainbow_lens_icono.png?v=20260821",
+                        alt="RainbowLens DataHub",
                         className="nav-brand-logo nav-brand-logo-mobile",
                     ),
                 ],
                 href=route_path("home"),
                 refresh=False,
                 className="nav-brand",
-                title="RainbowLens Datahub · Inicio / Home",
+                title="RainbowLens DataHub · Inicio / Home",
             ),
             html.Div(
                 [

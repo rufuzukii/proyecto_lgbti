@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
@@ -8,6 +9,8 @@ from flask_login import current_user
 from pymongo.errors import PyMongoError
 
 from app.analytics.home_legal_service import HOME_LEGAL_YEAR
+from app.analytics.legal_ranking import build_legal_ranking
+from app.analytics.repository import get_ilga_document_by_year, get_ilga_years
 from app.auth.permissions import (
     Permission,
     can_access_docente_material,
@@ -17,11 +20,11 @@ from app.auth.permissions import (
 from app.dash.components.didactica import (
     access_denied,
     glossary_card,
-    lesson_card,
     resource_card,
     teacher_resource_details,
     translated,
 )
+from app.dash.components.loading import contextual_loading
 from app.dash.components.ranking_game import ranking_game_result, ranking_game_rows
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.components.word_search import (
@@ -29,16 +32,20 @@ from app.dash.components.word_search import (
     word_search_progress,
     word_search_words,
 )
-from app.dash.i18n import dash_attrs, text, text_attrs
+from app.dash.i18n import attribute_attrs, country_labels, dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
-from app.dash.routes import route_path
+from app.dash.routes import current_route_language, route_path
 from app.edu.custom_game_service import (
+    GAME_TYPE_DEFINITIONS,
     CustomGameAuthorizationError,
     CustomGameValidationError,
+    build_activity_game_state,
     delete_owned_game,
+    duplicate_owned_game,
     get_owned_game,
     list_owned_games,
     save_owned_game,
+    validate_activity,
 )
 from app.edu.game_service import guess_options, new_game_state
 from app.edu.glossary_service import (
@@ -46,10 +53,14 @@ from app.edu.glossary_service import (
     UNAM_SOURCE_URL,
     get_glossary_term,
     glossary_categories,
+    list_glossary_terms,
     search_glossary,
 )
-from app.edu.lesson_service import get_lesson, list_lessons
-from app.edu.progress_service import complete_lesson, progress_summary, save_game_score
+from app.edu.presentation_service import (
+    DidacticPresentationStorageError,
+    list_didactic_presentations,
+)
+from app.edu.progress_service import progress_summary, save_game_score
 from app.edu.ranking_game_service import (
     check_ranking_game,
     move_ranking_country,
@@ -58,7 +69,6 @@ from app.edu.ranking_game_service import (
 from app.edu.teacher_service import (
     generate_teacher_resource_pdf,
     get_teacher_resource,
-    list_teacher_resources,
 )
 from app.edu.translations import CATEGORIES, pair, tr
 from app.edu.word_search_service import (
@@ -68,7 +78,7 @@ from app.edu.word_search_service import (
 )
 
 
-def build_didactica_layout() -> Component:
+def build_didactica_layout(notice: str | None = None) -> Component:
     rows = [
         _didactica_mode_row(
             "dictionary",
@@ -164,6 +174,13 @@ def build_didactica_layout() -> Component:
                     [translated("learning", tag=html.H1), translated("intro", tag=html.P)],
                     className="didactica-hero",
                 ),
+                translated(
+                    "docente_required_notice",
+                    tag=html.P,
+                    class_name="didactica-feedback is-error didactica-route-notice",
+                )
+                if notice == "docente_required"
+                else None,
                 html.Section(
                     rows,
                     className="didactica-mode-list",
@@ -284,176 +301,48 @@ def build_dictionary_layout() -> Component:
     )
 
 
-def build_presentations_layout(lesson_id: str | None = None) -> Component:
-    lesson = get_lesson(lesson_id or "")
-    if lesson is None:
-        return _page(
-            html.Main(
-                [
-                    _subpage_header("presentations", "presentations_desc"),
-                    html.Section(
-                        [lesson_card(item, "es") for item in list_lessons()],
-                        className="didactica-lesson-grid",
-                    ),
-                ],
-                className="didactica-shell app-page-container",
-            )
-        )
-    activity = lesson.activity
-    options = [
-        {"label": text(option["label"]["es"], option["label"]["en"]), "value": option["id"]}
-        for option in activity["options"]
-    ]
+def build_presentations_layout() -> Component:
     return _page(
         html.Main(
             [
-                dcc.Store(id="didactica-lesson-id", data=lesson.id),
-                dcc.Store(id="didactica-lesson-index", data=0),
-                dcc.Link(
-                    text("← Todas las presentaciones", "← All presentations"),
-                    href=route_path("presentations"),
-                    className="didactica-back-link",
+                _subpage_header("presentations", "presentations_desc"),
+                dcc.Store(
+                    id="didactica-presentations-state",
+                    data={"status": "LOADING", "count": 0},
+                    storage_type="memory",
                 ),
-                html.Header(
-                    [
-                        html.H1(lesson.title.es, **text_attrs(lesson.title.es, lesson.title.en)),
-                        html.P(
-                            lesson.description.es,
-                            **text_attrs(lesson.description.es, lesson.description.en),
-                        ),
-                        html.Div(
-                            [
-                                html.Span(
-                                    f"Nivel: {lesson.level.es}",
-                                    **text_attrs(
-                                        f"Nivel: {lesson.level.es}", f"Level: {lesson.level.en}"
-                                    ),
-                                ),
-                                html.Span(
-                                    f"Duración: {lesson.duration_minutes} minutos",
-                                    **text_attrs(
-                                        f"Duración: {lesson.duration_minutes} minutos",
-                                        f"Duration: {lesson.duration_minutes} minutes",
-                                    ),
-                                ),
-                            ],
-                            className="didactica-meta",
-                        ),
-                        html.Section(
-                            [
-                                translated("objectives", tag=html.H2),
-                                html.Ul(
-                                    [
-                                        html.Li(
-                                            objective.es,
-                                            **text_attrs(objective.es, objective.en),
-                                        )
-                                        for objective in lesson.objectives
-                                    ]
-                                ),
-                            ],
-                            className="didactica-objectives",
-                        ),
-                    ],
-                    className="didactica-subpage-header",
-                ),
-                html.Progress(
-                    id="didactica-lesson-progress",
-                    value="1",
-                    max=len(lesson.slides) + 1,
-                    className="didactica-progress",
-                    **dash_attrs({"aria-label": pair("progress")[0]}),
-                ),
-                html.Article(id="didactica-lesson-slide", className="didactica-slide"),
-                html.Section(
-                    [
-                        translated("final_activity", tag=html.H2),
-                        html.P(
-                            activity["question"]["es"],
-                            **text_attrs(activity["question"]["es"], activity["question"]["en"]),
-                        ),
-                        dcc.RadioItems(
-                            id="didactica-lesson-answer",
-                            options=options,
-                            className="didactica-radio-group",
-                        ),
-                        html.Button(
-                            translated("finish"),
-                            id="didactica-lesson-finish",
-                            type="button",
-                            className="didactica-button",
-                        ),
-                    ],
-                    id="didactica-lesson-activity",
-                    className="didactica-activity is-hidden",
-                ),
-                html.P(
-                    id="didactica-lesson-status",
-                    className="didactica-feedback",
-                    **dash_attrs({"aria-live": "polite"}),
-                ),
-                html.Div(
-                    [
-                        html.Button(
-                            translated("previous"),
-                            id="didactica-lesson-previous",
-                            type="button",
-                            className="didactica-button didactica-button-secondary",
-                        ),
-                        html.Button(
-                            translated("next"),
-                            id="didactica-lesson-next",
-                            type="button",
-                            className="didactica-button",
-                        ),
-                    ],
-                    className="didactica-actions",
+                dcc.Interval(
+                    id="didactica-presentations-load",
+                    interval=1,
+                    max_intervals=1,
                 ),
                 html.Section(
                     [
-                        translated("sources", tag=html.H2),
-                        html.Ul(
-                            [
-                                html.Li(
-                                    html.A(
-                                        source["label"],
-                                        href=source["url"],
-                                        target="_blank",
-                                        rel="noopener noreferrer",
-                                    )
-                                )
-                                for source in lesson.sources
-                            ]
+                        contextual_loading(
+                            html.Div(
+                                translated("presentations_loading", tag=html.P),
+                                id="didactica-presentations-list",
+                                className="didactica-presentations-list is-loading",
+                                **dash_attrs({"aria-live": "polite"}),
+                            ),
+                            "presentations_loading",
+                            element_id="didactica-presentations-loading",
                         ),
-                        *_lesson_source_attributions(lesson.sources),
+                        html.Button(
+                            translated("retry"),
+                            id="didactica-presentations-retry",
+                            type="button",
+                            className="didactica-button didactica-button-secondary is-hidden",
+                            n_clicks=0,
+                        ),
                     ],
-                    className="didactica-sources",
+                    className="didactica-presentations-library",
                 ),
+                translated("presentations_material_note", tag=html.P, class_name="didactica-presentations-note"),
             ],
-            className="didactica-shell didactica-viewer app-page-container",
+            className="didactica-shell didactica-presentations-page app-page-container",
         )
     )
-
-
-def _lesson_source_attributions(sources: tuple[dict[str, str], ...]) -> list[Component]:
-    attributions: list[Component] = []
-    seen: set[str] = set()
-    for source in sources:
-        label = str(source.get("label") or "")
-        normalized = label.casefold()
-        key = "fra" if "fra" in normalized else "ilga" if "ilga" in normalized else ""
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        attributions.append(
-            build_source_attribution(
-                key,
-                year=2023 if key == "fra" and "survey iii" in normalized else None,
-                source_url=str(source.get("url") or "").strip() or None,
-                compact=True,
-            )
-        )
-    return attributions
 
 
 def build_games_layout(game_id: str | None = None) -> Component:
@@ -707,171 +596,269 @@ def build_word_search_layout(*, seed: int | None = None) -> Component:
 def build_docente_layout() -> Component:
     if not can_access_docente_material(current_user):
         return _page(access_denied())
-    resources = list_teacher_resources()
-    options = [
-        {"label": text(item.title.es, item.title.en), "value": item.id} for item in resources
-    ]
-    first = resources[0]
-    can_manage_games = can_manage_own_edu_games(current_user)
-    if can_manage_games:
-        try:
-            custom_games = list_owned_games(current_user)
-        except PyMongoError, RuntimeError:
-            custom_games = []
-    else:
-        custom_games = []
-    game_options = [
-        {"label": text(item["title_es"], item["title_en"]), "value": item["id"]}
-        for item in custom_games
-    ]
+    try:
+        activities = list_owned_games(current_user)
+    except PyMongoError, RuntimeError:
+        activities = []
     return _page(
         html.Main(
             [
-                _subpage_header("docente_resources", "docente_desc"),
+                dcc.Link(
+                    translated("back_learning"),
+                    href=route_path("didactica"),
+                    className="didactica-back-link",
+                ),
+                html.Header(
+                    [
+                        translated("docente", tag=html.H1),
+                        translated("docente_desc", tag=html.P),
+                        dcc.Link(
+                            [html.Span("+", **dash_attrs({"aria-hidden": "true"})), " ", translated("game_creator")],
+                            href=route_path("educator_create"),
+                            className="didactica-button teacher-space-create-button",
+                        ),
+                    ],
+                    className="didactica-hero teacher-space-hero",
+                ),
                 html.Section(
                     [
-                        translated("docente_presentations", tag=html.H2),
-                        translated("docente_presentations_desc", tag=html.P),
+                        translated("my_games", tag=html.H2),
                         html.Div(
-                            [lesson_card(item, "es") for item in list_lessons()],
-                            className="didactica-lesson-grid",
+                            [_activity_card(item) for item in activities]
+                            if activities
+                            else [translated("no_custom_activities", tag=html.P)],
+                            id="teacher-activity-list",
+                            className="teacher-activity-list",
+                        ),
+                        html.P(
+                            id="teacher-activity-list-status",
+                            className="didactica-feedback",
+                            **dash_attrs({"aria-live": "polite"}),
+                        ),
+                    ],
+                    className="didactica-docente-section teacher-activities-section",
+                ),
+                html.Section(
+                    [
+                        translated("available_game_types", tag=html.H2),
+                        html.Div(
+                            [_activity_type_card(game_type) for game_type in GAME_TYPE_DEFINITIONS],
+                            className="teacher-game-type-grid",
                         ),
                     ],
                     className="didactica-docente-section",
                 ),
-                translated("docente_downloads", tag=html.H2),
-                html.Div(
-                    [
-                        html.Label(
-                            translated("select_resource"),
-                            htmlFor="didactica-docente-select",
-                        ),
-                        dcc.Dropdown(
-                            id="didactica-docente-select",
-                            options=options,
-                            value=first.id,
-                            clearable=False,
-                            className="didactica-dropdown",
-                        ),
-                    ],
-                    className="didactica-field",
+            ],
+            className="didactica-shell teacher-space app-page-container",
+        )
+    )
+
+
+def build_activity_editor_layout(
+    activity_id: str | None = None, initial_game_type: str | None = None
+) -> Component:
+    if not can_manage_own_edu_games(current_user):
+        return _page(access_denied())
+    activity = get_owned_game(current_user, activity_id) if activity_id else None
+    if activity_id and activity is None:
+        return _page(access_denied())
+    values = _activity_editor_values(activity)
+    if activity is None and initial_game_type in GAME_TYPE_DEFINITIONS:
+        values["game_type"] = initial_game_type
+    terms = list_glossary_terms()
+    years = sorted((int(year) for year in get_ilga_years()), reverse=True)
+    year = int(values["year"] or (years[0] if years else HOME_LEGAL_YEAR))
+    country_options = _legal_country_options(year)
+    return _page(
+        html.Main(
+            [
+                dcc.Store(id="teacher-editor-activity-id", data=activity_id),
+                dcc.Link(
+                    translated("back_teacher_space"),
+                    href=route_path("educators"),
+                    className="didactica-back-link",
                 ),
-                html.Div(
-                    id="didactica-docente-detail", children=teacher_resource_details(first, "es")
-                ),
-                html.Div(
-                    [
-                        html.Button(
-                            translated("download_pdf"),
-                            id="didactica-docente-download-button",
-                            type="button",
-                            className="didactica-button",
-                        ),
-                        dcc.Download(id="didactica-docente-download"),
-                    ],
-                    className="didactica-actions",
-                ),
-                html.P(
-                    id="didactica-docente-status",
-                    className="didactica-feedback",
-                    **dash_attrs({"aria-live": "polite"}),
+                html.Header(
+                    [translated("game_creator", tag=html.H1), translated("create_activity_lead", tag=html.P)],
+                    className="didactica-subpage-header",
                 ),
                 html.Section(
                     [
-                        translated("game_creator", tag=html.H2),
-                        translated("game_creator_desc", tag=html.P),
+                        translated("step_type", tag=html.H2),
+                        dcc.RadioItems(
+                            id="teacher-editor-game-type",
+                            options=[
+                                {
+                                    "label": text(*pair(definition["label_key"])),
+                                    "value": game_type,
+                                }
+                                for game_type, definition in GAME_TYPE_DEFINITIONS.items()
+                            ],
+                            value=values["game_type"],
+                            className="teacher-game-type-selector",
+                        ),
+                    ],
+                    className="teacher-editor-step",
+                ),
+                html.Section(
+                    [
+                        translated("step_content", tag=html.H2),
                         html.Div(
                             [
-                                html.Label(
-                                    translated("my_games"),
-                                    htmlFor="didactica-custom-game-select",
-                                ),
+                                html.Label(translated("select_terms"), htmlFor="teacher-editor-term-ids"),
                                 dcc.Dropdown(
-                                    id="didactica-custom-game-select",
-                                    options=game_options,
-                                    value=None,
-                                    placeholder=pair("new_game")[0],
-                                    clearable=True,
+                                    id="teacher-editor-term-ids",
+                                    options=[{"label": term.term, "value": term.id} for term in terms],
+                                    value=values["term_ids"],
+                                    multi=True,
                                     className="didactica-dropdown",
+                                ),
+                            ],
+                            id="teacher-editor-glossary-content",
+                            className="didactica-field",
+                        ),
+                        html.Div(
+                            [
+                                html.Label(translated("legal_year"), htmlFor="teacher-editor-year"),
+                                dcc.Dropdown(
+                                    id="teacher-editor-year",
+                                    options=[{"label": str(item), "value": item} for item in years],
+                                    value=year,
+                                    clearable=False,
+                                    className="didactica-dropdown",
+                                ),
+                                html.Label(translated("select_countries"), htmlFor="teacher-editor-country-codes"),
+                                dcc.Dropdown(
+                                    id="teacher-editor-country-codes",
+                                    options=country_options,
+                                    value=values["country_codes"],
+                                    multi=True,
+                                    className="didactica-dropdown",
+                                ),
+                                translated("ranking_required_note", tag=html.P, class_name="ranking-game-note"),
+                            ],
+                            id="teacher-editor-ranking-content",
+                            className="didactica-field is-hidden",
+                        ),
+                    ],
+                    className="teacher-editor-step",
+                ),
+                html.Section(
+                    [
+                        translated("step_configuration", tag=html.H2),
+                        _editor_field("title", "teacher-editor-title", values["title"], required=True),
+                        _editor_field("description", "teacher-editor-description", values["description"], multiline=True),
+                        _editor_field("custom_instructions", "teacher-editor-instructions", values["instructions"], multiline=True),
+                        _editor_field("teacher_note", "teacher-editor-teacher-note", values["teacher_note"], multiline=True, help_key="teacher_note_help"),
+                        html.Div(
+                            [
+                                html.Label(translated("language"), htmlFor="teacher-editor-language"),
+                                dcc.RadioItems(
+                                    id="teacher-editor-language",
+                                    options=[{"label": "Español", "value": "es"}, {"label": "English", "value": "en"}],
+                                    value=values["language"],
+                                    inline=True,
                                 ),
                             ],
                             className="didactica-field",
                         ),
                         html.Div(
                             [
-                                html.Div(
-                                    [
-                                        html.Span(
-                                            translated("game_type"),
-                                            id="didactica-custom-game-type-label",
-                                            className="didactica-field-label",
-                                        ),
-                                        dcc.RadioItems(
-                                            id="didactica-custom-game-type",
-                                            options=[
-                                                {
-                                                    "label": text(*pair("multiple_choice")),
-                                                    "value": "multiple_choice",
-                                                },
-                                                {
-                                                    "label": text(*pair("guess_term")),
-                                                    "value": "guess_term",
-                                                },
-                                            ],
-                                            value="multiple_choice",
-                                            inline=True,
-                                        ),
+                                html.Span(translated("manual_selection"), id="teacher-selection-mode-label", className="didactica-field-label"),
+                                dcc.RadioItems(
+                                    id="teacher-editor-selection-mode",
+                                    options=[
+                                        {"label": translated("manual_selection"), "value": "manual"},
+                                        {"label": translated("random_selection"), "value": "random"},
                                     ],
-                                    className="didactica-field",
-                                    role="group",
-                                    **dash_attrs(
-                                        {"aria-labelledby": ("didactica-custom-game-type-label")}
-                                    ),
-                                ),
-                                *_bilingual_game_fields(),
-                                html.Div(
-                                    [
-                                        html.Button(
-                                            translated("save_game"),
-                                            id="didactica-custom-game-save",
-                                            type="button",
-                                            className="didactica-button",
-                                        ),
-                                        html.Button(
-                                            translated("delete_game"),
-                                            id="didactica-custom-game-delete",
-                                            type="button",
-                                            className="didactica-button didactica-button-secondary",
-                                        ),
-                                    ],
-                                    className="didactica-actions",
-                                ),
-                                html.P(
-                                    id="didactica-custom-game-status",
-                                    className="didactica-feedback",
-                                    **dash_attrs({"aria-live": "polite"}),
+                                    value=values["selection_mode"],
+                                    inline=True,
                                 ),
                             ],
-                            className="didactica-game-editor",
+                            className="didactica-field",
+                            role="group",
+                            **dash_attrs({"aria-labelledby": "teacher-selection-mode-label"}),
+                        ),
+                        _number_field("question_count", "teacher-editor-question-count", values["question_count"], 5, 20),
+                        _number_field("word_count", "teacher-editor-word-count", values["word_count"], 6, 10, hidden=True),
+                        _number_field("board_size", "teacher-editor-board-size", values["board_size"], 10, 15, hidden=True),
+                        _number_field("country_count", "teacher-editor-country-count", values["country_count"], 2, 5, hidden=True),
+                        dcc.Checklist(
+                            id="teacher-editor-options",
+                            options=[
+                                {"label": translated("shuffle_order"), "value": "shuffle"},
+                                {"label": translated("show_explanation"), "value": "show_explanation"},
+                            ],
+                            value=values["options"],
+                            className="teacher-editor-options",
+                        ),
+                        html.Div(
+                            [
+                                html.Label(translated("activity_status"), htmlFor="teacher-editor-status"),
+                                dcc.Dropdown(
+                                    id="teacher-editor-status",
+                                    options=[
+                                        {"label": translated("draft"), "value": "DRAFT"},
+                                        {"label": translated("active"), "value": "ACTIVE"},
+                                        {"label": translated("archived"), "value": "ARCHIVED"},
+                                    ],
+                                    value=values["status"],
+                                    clearable=False,
+                                    className="didactica-dropdown",
+                                ),
+                            ],
+                            className="didactica-field",
                         ),
                     ],
-                    className="didactica-docente-section",
-                )
-                if can_manage_games
-                else html.Section(
+                    className="teacher-editor-step",
+                ),
+                html.Section(
                     [
-                        translated("game_creator", tag=html.H2),
-                        html.P(
-                            text(
-                                "La consulta y descarga son públicas. Inicia sesión con un perfil Docente aprobado para crear y guardar juegos propios.",
-                                "Viewing and downloading are public. Sign in with an approved Educator profile to create and save your own games.",
-                            )
-                        ),
+                        translated("step_preview", tag=html.H2),
+                        html.Button(translated("generate_preview"), id="teacher-editor-preview", type="button", className="didactica-button didactica-button-secondary"),
+                        html.Div(id="teacher-editor-preview-content", className="teacher-activity-preview"),
                     ],
-                    className="didactica-docente-section",
+                    className="teacher-editor-step",
+                ),
+                html.Section(
+                    [
+                        translated("step_save", tag=html.H2),
+                        html.Button(translated("save_game"), id="teacher-editor-save", type="button", className="didactica-button"),
+                        html.P(id="teacher-editor-status-message", className="didactica-feedback", **dash_attrs({"aria-live": "assertive"})),
+                    ],
+                    className="teacher-editor-step",
                 ),
             ],
-            className="didactica-shell app-page-container",
+            className="didactica-shell teacher-activity-editor app-page-container",
+        )
+    )
+
+
+def build_custom_activity_layout(activity_id: str | None) -> Component:
+    if not activity_id or not can_manage_own_edu_games(current_user):
+        return _page(access_denied())
+    activity = get_owned_game(current_user, activity_id)
+    if activity is None:
+        return _page(access_denied())
+    state = build_activity_game_state(activity)
+    return _page(
+        html.Main(
+            [
+                dcc.Link(translated("back_teacher_space"), href=route_path("educators"), className="didactica-back-link"),
+                html.Header(
+                    [html.H1(activity["title"]), html.P(activity.get("description") or "")],
+                    className="didactica-subpage-header",
+                ),
+                html.P(activity.get("instructions") or "", className="teacher-activity-instructions"),
+                _activity_engine(activity, state),
+                html.Aside(
+                    [translated("teacher_note", tag=html.H2), html.P(activity.get("teacher_note") or "")],
+                    className="teacher-note-panel",
+                )
+                if activity.get("teacher_note")
+                else None,
+            ],
+            className="didactica-shell teacher-activity-player app-page-container",
         )
     )
 
@@ -947,6 +934,38 @@ def register_didactica_callbacks(app: Dash) -> None:
         ], f"{len(results)} {tr('results', language)}"
 
     @app.callback(
+        Output("didactica-presentations-list", "children"),
+        Output("didactica-presentations-list", "className"),
+        Output("didactica-presentations-retry", "className"),
+        Output("didactica-presentations-state", "data"),
+        Input("didactica-presentations-load", "n_intervals"),
+        Input("didactica-presentations-retry", "n_clicks"),
+    )
+    def load_didactic_presentations(_load: int | None, _retry: int | None):
+        try:
+            presentations = list_didactic_presentations()
+        except DidacticPresentationStorageError:
+            return (
+                translated("presentations_error", tag=html.P),
+                "didactica-presentations-list is-error",
+                "didactica-button didactica-button-secondary",
+                {"status": "ERROR", "count": 0},
+            )
+        if not presentations:
+            return (
+                translated("presentations_empty", tag=html.P),
+                "didactica-presentations-list is-empty",
+                "didactica-button didactica-button-secondary is-hidden",
+                {"status": "EMPTY", "count": 0},
+            )
+        return (
+            [_presentation_card(item.to_dict()) for item in presentations],
+            "didactica-presentations-list is-ready",
+            "didactica-button didactica-button-secondary is-hidden",
+            {"status": "READY", "count": len(presentations)},
+        )
+
+    @app.callback(
         Output("didactica-word-search-grid", "children"),
         Output("didactica-word-search-words", "children"),
         Output("didactica-word-search-progress", "children"),
@@ -963,7 +982,22 @@ def register_didactica_callbacks(app: Dash) -> None:
         triggered = ctx.triggered_id
         status = ""
         if triggered == "didactica-word-search-new" or not isinstance(state, dict):
-            state = create_word_search_game()
+            configuration = dict(state.get("_activity_configuration") or {}) if isinstance(state, dict) else {}
+            state = (
+                create_word_search_game(
+                    word_count=int(configuration.get("word_count") or 8),
+                    term_ids=(
+                        configuration.get("term_ids")
+                        if configuration.get("selection_mode") == "manual"
+                        else None
+                    ),
+                    board_size=int(configuration.get("board_size") or 12),
+                )
+                if configuration
+                else create_word_search_game()
+            )
+            if configuration:
+                state["_activity_configuration"] = configuration
         elif (
             isinstance(triggered, dict)
             and triggered.get("type") == "didactica-word-search-cell"
@@ -1017,7 +1051,19 @@ def register_didactica_callbacks(app: Dash) -> None:
                 for item in current.get("items", [])
                 if isinstance(item, dict)
             ]
-            current = new_ranking_game(previous_codes=previous_codes)
+            configuration = dict(current.get("_activity_configuration") or {})
+            current = new_ranking_game(
+                previous_codes=previous_codes,
+                year=int(configuration.get("year") or HOME_LEGAL_YEAR),
+                country_count=int(configuration.get("country_count") or 4),
+                country_codes=(
+                    configuration.get("country_codes")
+                    if configuration.get("selection_mode") == "manual"
+                    else None
+                ),
+            )
+            if configuration:
+                current["_activity_configuration"] = configuration
         elif triggered == "didactica-ranking-check" and not current.get("checked"):
             current = check_ranking_game(current)
             if current_user.is_authenticated:
@@ -1042,74 +1088,6 @@ def register_didactica_callbacks(app: Dash) -> None:
             ranking_game_result(current, language),
             current,
             bool(current.get("checked")) or len(items) < 2,
-        )
-
-    @app.callback(
-        Output("didactica-lesson-slide", "children"),
-        Output("didactica-lesson-index", "data"),
-        Output("didactica-lesson-previous", "disabled"),
-        Output("didactica-lesson-next", "disabled"),
-        Output("didactica-lesson-progress", "value"),
-        Output("didactica-lesson-activity", "className"),
-        Output("didactica-lesson-status", "children"),
-        Output("didactica-lesson-status", "className"),
-        Input("didactica-lesson-previous", "n_clicks"),
-        Input("didactica-lesson-next", "n_clicks"),
-        Input("didactica-lesson-finish", "n_clicks"),
-        Input("app-language-store", "data"),
-        State("didactica-lesson-answer", "value"),
-        State("didactica-lesson-id", "data"),
-        State("didactica-lesson-index", "data"),
-    )
-    def navigate_lesson(_previous, _next, _finish, language, answer, lesson_id, index):
-        language = _language(language)
-        lesson = get_lesson(str(lesson_id or ""))
-        if lesson is None:
-            return (
-                tr("not_found", language),
-                0,
-                True,
-                True,
-                "0",
-                "is-hidden",
-                "",
-                "didactica-feedback",
-            )
-        index = max(0, min(int(index or 0), len(lesson.slides)))
-        if ctx.triggered_id == "didactica-lesson-previous":
-            index = max(0, index - 1)
-        elif ctx.triggered_id == "didactica-lesson-next":
-            index = min(len(lesson.slides), index + 1)
-        status, status_class = "", "didactica-feedback"
-        if ctx.triggered_id == "didactica-lesson-finish":
-            if not answer:
-                status = tr("choose_answer", language)
-                status_class += " is-error"
-            else:
-                correct = answer == lesson.activity["correct"]
-                explanation = lesson.activity["explanation"][language]
-                status = f"{tr('correct' if correct else 'incorrect', language)}. {explanation} "
-                if current_user.is_authenticated:
-                    complete_lesson(current_user.get_id(), lesson.id)
-                    status += tr("lesson_complete", language)
-                else:
-                    status += tr("lesson_complete_anon", language)
-                status_class += " is-success" if correct else " is-error"
-        activity_visible = index == len(lesson.slides)
-        content = (
-            ""
-            if activity_visible
-            else _slide(lesson.slides[index], language, index + 1, len(lesson.slides))
-        )
-        return (
-            content,
-            index,
-            index == 0,
-            activity_visible,
-            str(index + 1),
-            ("didactica-activity" if activity_visible else "didactica-activity is-hidden"),
-            status,
-            status_class,
         )
 
     @app.callback(
@@ -1155,6 +1133,8 @@ def register_didactica_callbacks(app: Dash) -> None:
                 correct, explanation = _check_game_answer(
                     state["game_id"], order[index], selected, language
                 )
+                if not state.get("show_explanation", True):
+                    explanation = ""
                 state["answered"] = True
                 state["selected"] = selected
                 if correct:
@@ -1220,133 +1200,472 @@ def register_didactica_callbacks(app: Dash) -> None:
             return no_update, tr("download_error", language)
         return dcc.send_bytes(payload, filename, type="application/pdf"), ""
 
-    _register_custom_game_callbacks(app)
+    _register_teacher_activity_callbacks(app)
 
 
-def _register_custom_game_callbacks(app: Dash) -> None:
-    field_ids = (
-        "title-es",
-        "title-en",
-        "prompt-es",
-        "prompt-en",
-        "answer-es",
-        "answer-en",
-        "distractors-es",
-        "distractors-en",
-        "explanation-es",
-        "explanation-en",
+def _register_teacher_activity_callbacks(app: Dash) -> None:
+    @app.callback(
+        Output("teacher-editor-glossary-content", "className"),
+        Output("teacher-editor-ranking-content", "className"),
+        Output("teacher-editor-question-count-field", "className"),
+        Output("teacher-editor-word-count-field", "className"),
+        Output("teacher-editor-board-size-field", "className"),
+        Output("teacher-editor-country-count-field", "className"),
+        Output("teacher-editor-options", "className"),
+        Input("teacher-editor-game-type", "value"),
     )
+    def show_activity_configuration(game_type: str | None):
+        selected = game_type if game_type in GAME_TYPE_DEFINITIONS else "guess_term"
+        return (
+            "didactica-field" if selected != "legal_ranking" else "didactica-field is-hidden",
+            "didactica-field" if selected == "legal_ranking" else "didactica-field is-hidden",
+            "didactica-field" if selected == "guess_term" else "didactica-field is-hidden",
+            "didactica-field" if selected == "word_search" else "didactica-field is-hidden",
+            "didactica-field" if selected == "word_search" else "didactica-field is-hidden",
+            "didactica-field" if selected == "legal_ranking" else "didactica-field is-hidden",
+            "teacher-editor-options" if selected == "guess_term" else "teacher-editor-options is-hidden",
+        )
 
     @app.callback(
-        Output("didactica-custom-game-type", "value"),
-        *(Output(f"didactica-custom-game-{field_id}", "value") for field_id in field_ids),
-        Input("didactica-custom-game-select", "value"),
+        Output("teacher-editor-country-codes", "options"),
+        Output("teacher-editor-country-codes", "value"),
+        Input("teacher-editor-year", "value"),
+        State("teacher-editor-country-codes", "value"),
     )
-    def load_custom_game(game_id: str | None):
-        empty = ("multiple_choice", *("" for _ in field_ids))
-        if not game_id or not can_manage_own_edu_games(current_user):
-            return empty
-        try:
-            game = get_owned_game(current_user, game_id)
-        except PyMongoError, RuntimeError:
-            return empty
-        if not game:
-            return empty
-        values = []
-        for field_id in field_ids:
-            value = game.get(field_id.replace("-", "_"), "")
-            values.append("\n".join(value) if isinstance(value, list) else value)
-        return game["game_type"], *values
+    def update_activity_country_options(year: int | None, selected: list[str] | None):
+        options = _legal_country_options(int(year or HOME_LEGAL_YEAR))
+        allowed = {str(item["value"]) for item in options}
+        return options, [code for code in selected or [] if code in allowed]
+
+    editor_states = _teacher_editor_states()
 
     @app.callback(
-        Output("didactica-custom-game-select", "options"),
-        Output("didactica-custom-game-select", "value"),
-        Output("didactica-custom-game-status", "children"),
-        Input("didactica-custom-game-save", "n_clicks"),
-        Input("didactica-custom-game-delete", "n_clicks"),
-        State("didactica-custom-game-select", "value"),
-        State("didactica-custom-game-type", "value"),
-        *(State(f"didactica-custom-game-{field_id}", "value") for field_id in field_ids),
+        Output("teacher-editor-preview-content", "children"),
+        Input("teacher-editor-preview", "n_clicks"),
+        *editor_states,
         State("app-language-store", "data"),
         prevent_initial_call=True,
     )
-    def mutate_custom_game(
-        _save_clicks: int | None,
-        _delete_clicks: int | None,
-        game_id: str | None,
-        game_type: str | None,
-        *state_values: Any,
-    ):
-        language = _language(state_values[-1])
-        field_values = state_values[:-1]
+    def preview_teacher_activity(_clicks: int | None, *values: Any):
+        language = _language(values[-1])
         if not can_manage_own_edu_games(current_user):
-            return no_update, no_update, tr("download_denied", language)
+            return html.P(tr("docente_required_notice", language), className="is-error")
         try:
-            if ctx.triggered_id == "didactica-custom-game-delete":
-                if game_id:
-                    delete_owned_game(current_user, game_id)
-                selected = None
-                message = tr("game_deleted", language)
-            else:
-                values = {
-                    "game_type": game_type,
-                    **{
-                        field_id.replace("-", "_"): value
-                        for field_id, value in zip(field_ids, field_values, strict=True)
-                    },
-                }
-                saved = save_owned_game(current_user, game_id, values)
-                selected = saved["id"]
-                message = tr("game_saved", language)
-            games = list_owned_games(current_user)
-        except CustomGameAuthorizationError, CustomGameValidationError:
-            return no_update, no_update, tr("game_validation_error", language)
-        except PyMongoError, RuntimeError:
-            return no_update, no_update, tr("game_storage_error", language)
-        options = [
-            {
-                "label": text(item["title_es"], item["title_en"]),
-                "value": item["id"],
-            }
-            for item in games
-        ]
-        return options, selected, message
+            activity = validate_activity(_teacher_activity_payload(values[:-1]))
+            state = build_activity_game_state(activity)
+            return _activity_engine(activity, state)
+        except CustomGameValidationError as exc:
+            return html.P(_activity_validation_message(str(exc), language), className="is-error")
+        except (PyMongoError, RuntimeError, ValueError):
+            return html.P(tr("game_storage_error", language), className="is-error")
 
-
-def _bilingual_game_fields() -> list[Component]:
-    definitions = (
-        ("title_es", "title-es", False),
-        ("title_en", "title-en", False),
-        ("prompt_es", "prompt-es", True),
-        ("prompt_en", "prompt-en", True),
-        ("answer_es", "answer-es", False),
-        ("answer_en", "answer-en", False),
-        ("distractors_es", "distractors-es", True),
-        ("distractors_en", "distractors-en", True),
-        ("explanation_es", "explanation-es", True),
-        ("explanation_en", "explanation-en", True),
+    @app.callback(
+        Output("teacher-editor-status-message", "children"),
+        Output("teacher-editor-activity-id", "data"),
+        Input("teacher-editor-save", "n_clicks"),
+        State("teacher-editor-activity-id", "data"),
+        *editor_states,
+        State("app-language-store", "data"),
+        prevent_initial_call=True,
     )
-    components: list[Component] = []
-    for key, suffix, multiline in definitions:
-        component_id = f"didactica-custom-game-{suffix}"
-        control = (
-            dcc.Textarea(id=component_id, maxLength=800, className="didactica-textarea")
-            if multiline
-            else dcc.Input(
-                id=component_id,
-                type="text",
-                maxLength=160,
-                className="didactica-input",
+    def save_teacher_activity(
+        _clicks: int | None, activity_id: str | None, *values: Any
+    ):
+        language = _language(values[-1])
+        if not can_manage_own_edu_games(current_user):
+            return tr("docente_required_notice", language), no_update
+        try:
+            saved = save_owned_game(
+                current_user, activity_id, _teacher_activity_payload(values[:-1])
             )
+            return tr("game_saved", language), saved["id"]
+        except CustomGameAuthorizationError:
+            return tr("docente_required_notice", language), no_update
+        except CustomGameValidationError as exc:
+            return _activity_validation_message(str(exc), language), no_update
+        except PyMongoError, RuntimeError:
+            return tr("game_storage_error", language), no_update
+
+    @app.callback(
+        Output("teacher-activity-list", "children"),
+        Output("teacher-activity-list-status", "children"),
+        Input({"type": "teacher-activity-duplicate", "index": ALL}, "n_clicks"),
+        Input({"type": "teacher-activity-delete", "index": ALL}, "n_clicks"),
+        State("app-language-store", "data"),
+        prevent_initial_call=True,
+    )
+    def manage_teacher_activities(_duplicate: list[int], _delete: list[int], language):
+        clean_language = _language(language)
+        triggered = ctx.triggered_id
+        if not can_manage_own_edu_games(current_user) or not isinstance(triggered, dict):
+            return no_update, tr("docente_required_notice", clean_language)
+        activity_id = str(triggered.get("index") or "")
+        try:
+            if triggered.get("type") == "teacher-activity-delete":
+                delete_owned_game(current_user, activity_id)
+                message = tr("game_deleted", clean_language)
+            else:
+                duplicate_owned_game(current_user, activity_id)
+                message = tr("game_duplicated", clean_language)
+            activities = list_owned_games(current_user)
+            children = [_activity_card(item) for item in activities]
+            return children or [translated("no_custom_activities", tag=html.P)], message
+        except CustomGameAuthorizationError:
+            return no_update, tr("docente_required_notice", clean_language)
+        except CustomGameValidationError:
+            return no_update, tr("game_validation_error", clean_language)
+        except PyMongoError, RuntimeError:
+            return no_update, tr("game_storage_error", clean_language)
+
+
+def _activity_card(activity: dict[str, Any]) -> Component:
+    activity_id = str(activity["id"])
+    game_type = str(activity.get("game_type") or "")
+    definition = GAME_TYPE_DEFINITIONS.get(game_type, GAME_TYPE_DEFINITIONS["guess_term"])
+    updated = activity.get("updated_at")
+    date_label = str(updated)[:10] if updated else ""
+    return html.Article(
+        [
+            html.Div(
+                [
+                    html.Span(str(definition["icon"]), className="teacher-activity-card__icon"),
+                    html.Div(
+                        [
+                            html.H3(str(activity.get("title") or "")),
+                            html.P(translated(str(definition["label_key"]))),
+                        ]
+                    ),
+                    html.Span(
+                        translated(str(activity.get("status") or "draft").lower()),
+                        className="teacher-activity-status",
+                    ),
+                ],
+                className="teacher-activity-card__header",
+            ),
+            html.Time(date_label, dateTime=date_label),
+            html.Div(
+                [
+                    dcc.Link(
+                        translated("play"),
+                        href=f"{route_path('educator_activity')}?id={activity_id}",
+                        className="didactica-button",
+                    ),
+                    dcc.Link(
+                        translated("edit"),
+                        href=f"{route_path('educator_create')}?id={activity_id}",
+                        className="didactica-button didactica-button-secondary",
+                    ),
+                    html.Button(
+                        translated("duplicate"),
+                        id={"type": "teacher-activity-duplicate", "index": activity_id},
+                        type="button",
+                        className="didactica-button didactica-button-secondary",
+                    ),
+                    dcc.ConfirmDialogProvider(
+                        html.Button(
+                            translated("delete"),
+                            id={"type": "teacher-activity-delete", "index": activity_id},
+                            type="button",
+                            className="didactica-button teacher-activity-delete",
+                        ),
+                        message=tr("delete_confirmation", current_route_language()),
+                    ),
+                ],
+                className="didactica-actions teacher-activity-actions",
+            ),
+        ],
+        className="teacher-activity-card",
+        **dash_attrs({"data-activity-id": activity_id}),
+    )
+
+
+def _activity_type_card(game_type: str) -> Component:
+    definition = GAME_TYPE_DEFINITIONS[game_type]
+    return dcc.Link(
+        [
+            html.Span(str(definition["icon"]), className="teacher-game-type-card__icon"),
+            translated(str(definition["label_key"]), tag=html.H3),
+            translated(
+                {
+                    "guess_term": "guess_desc",
+                    "word_search": "word_search_desc",
+                    "legal_ranking": "rank_countries_desc",
+                }[game_type],
+                tag=html.P,
+            ),
+        ],
+        href=f"{route_path('educator_create')}?type={game_type}",
+        className="teacher-game-type-card",
+    )
+
+
+def _activity_editor_values(activity: dict[str, Any] | None) -> dict[str, Any]:
+    configuration = dict((activity or {}).get("configuration") or {})
+    return {
+        "game_type": (activity or {}).get("game_type") or "guess_term",
+        "title": (activity or {}).get("title") or "",
+        "description": (activity or {}).get("description") or "",
+        "instructions": (activity or {}).get("instructions") or "",
+        "teacher_note": (activity or {}).get("teacher_note") or "",
+        "language": (activity or {}).get("language") or "es",
+        "status": (activity or {}).get("status") or "DRAFT",
+        "selection_mode": configuration.get("selection_mode") or "manual",
+        "term_ids": configuration.get("term_ids") or [],
+        "question_count": configuration.get("question_count") or 5,
+        "word_count": configuration.get("word_count") or 6,
+        "board_size": configuration.get("board_size") or 12,
+        "country_codes": configuration.get("country_codes") or [],
+        "country_count": configuration.get("country_count") or 5,
+        "year": configuration.get("year") or HOME_LEGAL_YEAR,
+        "options": [
+            key
+            for key in ("shuffle", "show_explanation")
+            if configuration.get(key, True)
+        ],
+    }
+
+
+def _editor_field(
+    label_key: str,
+    component_id: str,
+    value: Any,
+    *,
+    multiline: bool = False,
+    required: bool = False,
+    help_key: str | None = None,
+) -> Component:
+    control: Component = (
+        dcc.Textarea(
+            id=component_id,
+            value=value,
+            maxLength=800,
+            className="didactica-textarea",
         )
-        children: list[Component] = [
-            html.Label(translated(key), htmlFor=component_id),
-            control,
-        ]
-        if key.startswith("distractors"):
-            children.append(translated("one_option_per_line", tag=html.Small))
-        components.append(html.Div(children, className="didactica-field"))
-    return components
+        if multiline
+        else dcc.Input(
+            id=component_id,
+            value=value,
+            type="text",
+            required=required,
+            maxLength=120,
+            className="didactica-input",
+        )
+    )
+    children: list[Component] = [html.Label(translated(label_key), htmlFor=component_id), control]
+    if help_key:
+        children.append(translated(help_key, tag=html.Small))
+    return html.Div(children, className="didactica-field")
+
+
+def _number_field(
+    label_key: str,
+    component_id: str,
+    value: int,
+    minimum: int,
+    maximum: int,
+    *,
+    hidden: bool = False,
+) -> Component:
+    return html.Div(
+        [
+            html.Label(translated(label_key), htmlFor=component_id),
+            dcc.Input(
+                id=component_id,
+                value=value,
+                type="number",
+                min=minimum,
+                max=maximum,
+                step=1,
+                className="didactica-input",
+            ),
+        ],
+        id=f"{component_id}-field",
+        className="didactica-field is-hidden" if hidden else "didactica-field",
+    )
+
+
+def _legal_country_options(year: int) -> list[dict[str, Any]]:
+    ranking = build_legal_ranking(get_ilga_document_by_year(year))
+    return [
+        {
+            "label": text(*country_labels(entry.country_code, entry.country_name)),
+            "value": entry.country_code,
+        }
+        for entry in ranking
+    ]
+
+
+def _teacher_editor_states() -> list[State]:
+    return [
+        State("teacher-editor-game-type", "value"),
+        State("teacher-editor-title", "value"),
+        State("teacher-editor-description", "value"),
+        State("teacher-editor-instructions", "value"),
+        State("teacher-editor-teacher-note", "value"),
+        State("teacher-editor-language", "value"),
+        State("teacher-editor-selection-mode", "value"),
+        State("teacher-editor-term-ids", "value"),
+        State("teacher-editor-question-count", "value"),
+        State("teacher-editor-word-count", "value"),
+        State("teacher-editor-board-size", "value"),
+        State("teacher-editor-year", "value"),
+        State("teacher-editor-country-codes", "value"),
+        State("teacher-editor-country-count", "value"),
+        State("teacher-editor-options", "value"),
+        State("teacher-editor-status", "value"),
+    ]
+
+
+def _teacher_activity_payload(values: tuple[Any, ...]) -> dict[str, Any]:
+    (
+        game_type,
+        title,
+        description,
+        instructions,
+        teacher_note,
+        language,
+        selection_mode,
+        term_ids,
+        question_count,
+        word_count,
+        board_size,
+        year,
+        country_codes,
+        country_count,
+        options,
+        status,
+    ) = values
+    selected_options = set(options or [])
+    return {
+        "game_type": game_type,
+        "title": title,
+        "description": description,
+        "instructions": instructions,
+        "teacher_note": teacher_note,
+        "language": language,
+        "status": status,
+        "configuration": {
+            "selection_mode": selection_mode,
+            "term_ids": term_ids or [],
+            "question_count": question_count,
+            "word_count": word_count,
+            "board_size": board_size,
+            "year": year,
+            "country_codes": country_codes or [],
+            "country_count": country_count,
+            "shuffle": "shuffle" in selected_options,
+            "show_explanation": "show_explanation" in selected_options,
+        },
+    }
+
+
+def _activity_validation_message(code: str, language: str) -> str:
+    messages = {
+        "missing_title": ("Introduce un título para la actividad.", "Enter an activity title."),
+        "not_enough_terms": ("Selecciona suficientes términos.", "Select enough terms."),
+        "word_does_not_fit": (
+            "Una o más palabras no caben en el tablero seleccionado.",
+            "One or more words do not fit on the selected board.",
+        ),
+        "not_enough_countries": (
+            "Selecciona suficientes países para la ronda.",
+            "Select enough countries for the round.",
+        ),
+        "not_enough_distinct_scores": (
+            "No hay suficientes países con puntuaciones diferentes para crear esta ronda.",
+            "There are not enough countries with different scores to create this round.",
+        ),
+    }
+    pair_value = messages.get(code, pair("game_validation_error"))
+    return pair_value[1] if language == "en" else pair_value[0]
+
+
+def _activity_engine(activity: dict[str, Any], state: dict[str, Any]) -> Component:
+    game_type = str(activity["game_type"])
+    language = str(activity.get("language") or "es")
+    state = dict(state)
+    state["_activity_configuration"] = dict(activity.get("configuration") or {})
+    if game_type == "guess_term":
+        question, options = _game_round(state, language)
+        return html.Div(
+            [
+                dcc.Store(id="didactica-game-state", data=state),
+                html.Div(
+                    [html.Strong(id="didactica-game-round"), html.Strong(id="didactica-game-score")],
+                    className="didactica-game-stats",
+                ),
+                html.Progress(id="didactica-game-progress", value="1", max=len(state["order"]), className="didactica-progress"),
+                html.Article(
+                    [
+                        html.P(question, id="didactica-game-prompt", className="didactica-game-prompt"),
+                        dcc.RadioItems(id="didactica-game-answer", options=options, className="didactica-radio-group"),
+                        html.P(id="didactica-game-hint-text", className="didactica-hint", **dash_attrs({"aria-live": "polite"})),
+                        html.P(id="didactica-game-feedback", className="didactica-feedback", **dash_attrs({"aria-live": "assertive"})),
+                        html.Div(
+                            [
+                                html.Button(translated("hint"), id="didactica-game-hint", type="button", className="didactica-button didactica-button-secondary"),
+                                html.Button(translated("answer"), id="didactica-game-submit", type="button", className="didactica-button"),
+                                html.Button(translated("next"), id="didactica-game-next", type="button", className="didactica-button", disabled=True),
+                            ],
+                            className="didactica-actions",
+                        ),
+                    ],
+                    className="didactica-game-card",
+                ),
+            ],
+            className="teacher-engine teacher-engine--guess",
+        )
+    if game_type == "word_search":
+        return html.Div(
+            [
+                dcc.Store(id="didactica-word-search-state", data=state, storage_type="memory"),
+                html.Div(
+                    [
+                        html.Section(
+                            [
+                                html.Div(word_search_progress(state, language), id="didactica-word-search-progress", className="word-search-progress"),
+                                html.Div(word_search_board(state, language), id="didactica-word-search-grid"),
+                            ],
+                            className="word-search-board-panel",
+                        ),
+                        html.Aside(
+                            [
+                                translated("words", tag=html.H2),
+                                html.Div(word_search_words(state, language), id="didactica-word-search-words"),
+                                html.P(id="didactica-word-search-feedback", className="didactica-feedback word-search-feedback"),
+                                html.Button(translated("new_word_search"), id="didactica-word-search-new", type="button", className="didactica-button"),
+                            ],
+                            className="word-search-sidebar",
+                        ),
+                    ],
+                    className="word-search-layout",
+                ),
+            ],
+            className="teacher-engine teacher-engine--word-search",
+        )
+    return html.Div(
+        [
+            dcc.Store(id="didactica-ranking-state", data=state, storage_type="memory"),
+            translated("ranking_order_instruction", tag=html.P, class_name="ranking-game-instructions"),
+            html.Article(
+                [
+                    html.Div(ranking_game_rows(state, language), id="didactica-ranking-list", className="ranking-game-list"),
+                    html.Div(
+                        [
+                            html.Button(translated("check"), id="didactica-ranking-check", type="button", className="didactica-button"),
+                            html.Button(translated("new_round"), id="didactica-ranking-new", type="button", className="didactica-button didactica-button-secondary"),
+                        ],
+                        className="didactica-actions ranking-game-actions",
+                    ),
+                    html.Div(id="didactica-ranking-result", className="ranking-game-result"),
+                ],
+                className="didactica-game-card ranking-game-card",
+            ),
+            translated("ranking_required_note", tag=html.P, class_name="ranking-game-note"),
+            build_source_attribution("ilga", year=int(state.get("year") or HOME_LEGAL_YEAR), compact=True),
+        ],
+        className="teacher-engine teacher-engine--ranking",
+    )
 
 
 def _page(content: Component) -> Component:
@@ -1374,14 +1693,88 @@ def _metric(value: str, label_key: str) -> Component:
     )
 
 
+def _presentation_card(item: dict[str, Any]) -> Component:
+    display_name = str(item.get("display_name") or item.get("name") or "")
+    filename = str(item.get("name") or "")
+    file_type = str(item.get("file_type") or "")
+    size_es, size_en = _file_size_labels(item.get("size"))
+    metadata: list[Component | str] = [html.Span(file_type)]
+    if size_es:
+        metadata.extend([" · ", html.Span(size_es, **text_attrs(size_es, size_en))])
+    updated_es, updated_en = _updated_labels(item.get("updated_at"))
+    if updated_es:
+        metadata.append(
+            html.Span(
+                updated_es,
+                className="didactica-presentation-updated",
+                **text_attrs(updated_es, updated_en),
+            )
+        )
+    download_es = f"Descargar {display_name}"
+    download_en = f"Download {display_name}"
+    return html.Article(
+        [
+            html.Div(
+                [
+                    html.Span(
+                        "PPT" if file_type == "PowerPoint" else "PDF",
+                        className="didactica-presentation-icon",
+                        **dash_attrs({"aria-hidden": "true"}),
+                    ),
+                    html.Div(
+                        [
+                            html.H2(display_name),
+                            html.P(metadata, className="didactica-presentation-metadata"),
+                        ],
+                    ),
+                ],
+                className="didactica-presentation-info",
+            ),
+            html.A(
+                [translated("download"), html.Span("↓", **dash_attrs({"aria-hidden": "true"}))],
+                href=str(item.get("download_url") or ""),
+                download=filename,
+                className="didactica-button didactica-presentation-download",
+                **dash_attrs(
+                    {
+                        "aria-label": download_es,
+                        **attribute_attrs("aria-label", download_es, download_en),
+                    }
+                ),
+            ),
+        ],
+        className="didactica-presentation-card",
+    )
+
+
+def _file_size_labels(value: object) -> tuple[str, str]:
+    if not isinstance(value, int | float) or value < 0:
+        return "", ""
+    size = float(value)
+    units = ("B", "KB", "MB", "GB")
+    unit = units[0]
+    for candidate in units:
+        unit = candidate
+        if size < 1024 or candidate == units[-1]:
+            break
+        size /= 1024
+    number = f"{size:.0f}" if unit == "B" or size >= 100 else f"{size:.1f}"
+    return f"{number.replace('.', ',')} {unit}", f"{number} {unit}"
+
+
+def _updated_labels(value: object) -> tuple[str, str]:
+    try:
+        updated = datetime.fromisoformat(str(value or ""))
+    except ValueError:
+        return "", ""
+    date_label = updated.strftime("%d/%m/%Y")
+    return f"Actualizado: {date_label}", f"Updated: {date_label}"
+
+
 def _last_activity_labels(last: object) -> tuple[str, str]:
     if not isinstance(last, dict):
         return pair("no_activity")
     identifier = str(last.get("id") or "")
-    if last.get("kind") == "lesson":
-        lesson = get_lesson(identifier)
-        if lesson:
-            return lesson.title.es, lesson.title.en
     if last.get("kind") == "game" and identifier in {"guess_term", "rank_countries"}:
         return pair(identifier)
     return pair("no_activity")
@@ -1389,14 +1782,6 @@ def _last_activity_labels(last: object) -> tuple[str, str]:
 
 def _language(value: str | None) -> str:
     return "en" if value == "en" else "es"
-
-
-def _slide(slide: dict[str, Any], language: str, number: int, total: int) -> list[Component]:
-    return [
-        html.P(f"{number}/{total}", className="didactica-slide-number"),
-        html.H2(slide["title"][language]),
-        html.P(slide["body"][language]),
-    ]
 
 
 def _game_round(state: dict[str, Any], language: str) -> tuple[str, list[dict[str, str]]]:

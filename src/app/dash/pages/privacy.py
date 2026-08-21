@@ -18,7 +18,6 @@ from app.dash.i18n import (
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 from app.privacy.policy import (
-    AEPD_COMPLAINT_URL,
     AEPD_RIGHTS_URL,
     PrivacyPolicyConfig,
     get_privacy_policy_config,
@@ -31,7 +30,6 @@ _PRIVACY_SECTION_IDS = {
     "privacy_recipients": "privacy-recipients",
     "privacy_security": "privacy-security",
     "privacy_rights": "privacy-rights",
-    "privacy_backups": "privacy-backups",
 }
 
 
@@ -76,7 +74,6 @@ def build_privacy_layout() -> Component:
                             _recipients_card(config),
                             _security_card(),
                             _rights_card(config),
-                            _backup_card(config),
                         ],
                         className="privacy-content-grid",
                     ),
@@ -128,6 +125,8 @@ def _privacy_navigation() -> Component:
         ("privacy_purposes", "#privacy-purposes"),
         ("privacy_data_collected", "#privacy-data"),
         ("privacy_retention", "#privacy-retention"),
+        ("privacy_recipients", "#privacy-recipients"),
+        ("privacy_security", "#privacy-security"),
         ("privacy_rights", "#privacy-rights"),
         ("privacy_contact", "#privacy-contact"),
     )
@@ -278,8 +277,8 @@ def _data_inventory_card() -> Component:
             ),
             html.P(
                 text(
-                    "Los informes se construyen en memoria y archivos temporales; no existe un historial de informes guardado. Los adjuntos de contacto se envían por SMTP y no se guardan en PostgreSQL, MongoDB ni Supabase. Supabase contiene figuras de informes públicos, no archivos personales de usuarios.",
-                    "Reports are built in memory and temporary files; no saved report history exists. Contact attachments are sent by SMTP and are not stored in PostgreSQL, MongoDB or Supabase. Supabase contains figures from public reports, not users' personal files.",
+                    "Los informes se construyen en memoria y archivos temporales, no existe un historial de informes guardado.",
+                    "Reports are built in memory and temporary files; no saved report history exists.",
                 ),
                 className="privacy-fact-note",
             ),
@@ -314,12 +313,6 @@ def _purposes_card() -> Component:
                 "Send an optional role request, message or attachment to the responsible team.",
                 "Consentimiento mediante el envío voluntario; puede retirarse contactando con el responsable.",
                 "Consent through voluntary submission; it can be withdrawn by contacting the controller.",
-            ),
-            html.P(
-                text(
-                    "No se utiliza consentimiento para tratamientos necesarios para mantener la cuenta. Si una obligación legal exigiera conservar un dato concreto, se documentaría y limitaría a ese dato y plazo.",
-                    "Consent is not used for processing required to maintain the account. If a legal obligation required a specific record to be retained, it would be documented and limited to that data and period.",
-                )
             ),
         ],
         secondary_key="privacy_legal_basis",
@@ -368,7 +361,7 @@ def _retention_card(config: PrivacyPolicyConfig) -> Component:
 
 def _recipients_card(config: PrivacyPolicyConfig) -> Component:
     providers = [
-        ("Render para alojar la aplicación y Redis.", "Render for application hosting and Redis."),
+        ("Render para alojar la aplicación.", "Render for application hosting."),
         (
             f"PostgreSQL{_provider_suffix(config.postgres_provider)} para cuentas y cargas pendientes.",
             f"PostgreSQL{_provider_suffix(config.postgres_provider)} for accounts and pending uploads.",
@@ -406,8 +399,8 @@ def _security_card() -> Component:
         [
             html.P(
                 text(
-                    "Las contraseñas se guardan como hash; los tokens también se almacenan como hash. Las cookies son HttpOnly, SameSite y Secure en producción. Hay CSRF, reautenticación, limitación de intentos, validación en servidor, TLS obligatorio para PostgreSQL y MongoDB en producción, y registros sin contraseñas ni secretos.",
-                    "Passwords are stored as hashes and tokens are also hashed. Cookies are HttpOnly, SameSite and Secure in production. The service uses CSRF protection, reauthentication, rate limiting, server-side validation, mandatory TLS for PostgreSQL and MongoDB in production, and logs without passwords or secrets.",
+                    "Las contraseñas se almacenan de forma segura mediante hash y nunca se guardan en texto plano.",
+                    "Passwords are stored securely using password hashing and are never stored in plain text.",
                 )
             )
         ],
@@ -457,39 +450,8 @@ def _rights_card(config: PrivacyPolicyConfig) -> Component:
             ],
             className="privacy-actions",
         ),
-        html.P(
-            [
-                text(
-                    "Si no recibes una respuesta adecuada, puedes reclamar ante la Agencia Española de Protección de Datos. Antes debes dirigirte al responsable cuando así lo exija el procedimiento.",
-                    "If you do not receive an adequate response, you may complain to the Spanish Data Protection Agency. You must first contact the controller where the procedure requires it.",
-                ),
-                " ",
-                html.A(
-                    text("Presentar una reclamación", "Submit a complaint"),
-                    href=AEPD_COMPLAINT_URL,
-                    target="_blank",
-                    rel="noopener noreferrer",
-                ),
-            ]
-        ),
     ]
     return _card("privacy_rights", actions)
-
-
-def _backup_card(config: PrivacyPolicyConfig) -> Component:
-    retention = config.backup_retention or "la rotación normal configurada por el operador"
-    retention_en = config.backup_retention or "the normal rotation configured by the operator"
-    return _card(
-        "privacy_backups",
-        [
-            html.P(
-                text(
-                    f"Los datos pueden permanecer temporalmente en copias inmutables hasta {retention}. No se modifican copias individuales. Una restauración debe volver a ejecutar las eliminaciones pendientes y nunca reactivar una cuenta eliminada.",
-                    f"Data may remain temporarily in immutable backups until {retention_en}. Individual backups are not modified. A restore must re-run pending deletions and must never reactivate a deleted account.",
-                )
-            )
-        ],
-    )
 
 
 def _card(

@@ -293,7 +293,7 @@
 }
 
 .spain-topic-selector-row {
-  align-items: stretch;
+  align-items: start;
   display: grid;
   gap: 0.75rem;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -338,12 +338,14 @@
   margin-bottom: 0.5rem;
 }
 
+.spain-dropdown,
 .spain-dropdown .Select-control {
   border-radius: var(--stats-radius-sm) !important;
   height: auto !important;
   min-height: 58px;
 }
 
+.spain-dropdown .dash-dropdown-trigger,
 .spain-dropdown .Select-input {
   min-height: 56px;
 }
@@ -1189,7 +1191,8 @@
 }
 
 .stats-mapbox-graph {
-  height: 430px;
+  height: clamp(520px, 66vh, 680px);
+  min-height: 520px;
   max-width: 100%;
   min-width: 0;
   width: 100%;
@@ -2269,8 +2272,8 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
   }
 
   .stats-mapbox-graph {
-    height: 400px;
-    min-height: 360px;
+    height: min(58vh, 460px);
+    min-height: 340px;
   }
 
   .stats-results-table-scroll {
@@ -2291,10 +2294,12 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
     gap: 1rem;
   }
 
+  .spain-dropdown,
   .spain-dropdown .Select-control {
     min-height: 62px;
   }
 
+  .spain-dropdown .dash-dropdown-trigger,
   .spain-dropdown .Select-placeholder,
   .spain-dropdown.Select--single > .Select-control .Select-value {
     min-height: 60px;
@@ -2339,7 +2344,7 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
   }
 
   .stats-mapbox-graph {
-    height: 360px;
-    min-height: 340px;
+    height: 380px;
+    min-height: 320px;
   }
 }

@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
 from typing import Any, cast
@@ -601,9 +602,11 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         )
         return deepcopy(cached)
 
-    result = _build_fra_statistics(query)
-    if result.get("status") == "ok":
-        _server_cache_set(cache_key, deepcopy(result))
+    result = _server_cache_get_or_compute(
+        cache_key,
+        lambda: _build_fra_statistics(query),
+        cache_if=lambda value: isinstance(value, dict) and value.get("status") == "ok",
+    )
     logger.info(
         "statistics_loaded source=fra indicator=%s status=%s total_ms=%.2f cache_hit=false",
         query.question_code,
@@ -1090,6 +1093,26 @@ def _server_cache_set(key: str, value: Any) -> None:
         cache.set(key, value, timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS)
     except Exception:
         logger.debug("statistics_cache_write_failed", extra={"cache_key": key}, exc_info=True)
+
+
+def _server_cache_get_or_compute(
+    key: str,
+    factory: Callable[[], Any],
+    *,
+    cache_if: Callable[[Any], bool] | None = None,
+) -> Any:
+    if not getattr(cache, "app", None):
+        return factory()
+    try:
+        return cache.get_or_compute(
+            key,
+            factory,
+            timeout=ANALYTICS_CACHE_TIMEOUT_SECONDS,
+            cache_if=cache_if,
+        )
+    except Exception:
+        logger.debug("statistics_cache_compute_failed", extra={"cache_key": key}, exc_info=True)
+        raise
 
 
 def get_experience_legal_radar(

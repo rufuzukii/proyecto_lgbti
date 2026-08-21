@@ -39,8 +39,8 @@ main {
   }
 
   .nav-brand {
-    height: 76px;
-    width: 210px;
+    height: auto;
+    width: 200px;
   }
 
   .nav-menu,
@@ -90,9 +90,10 @@ main {
   }
 
   .nav-brand {
-    height: 70px;
+    aspect-ratio: 1;
+    height: 64px;
     order: 0;
-    width: 70px;
+    width: 64px;
   }
 
   .nav-brand-logo-desktop {
@@ -102,8 +103,8 @@ main {
   .nav-brand-logo-mobile {
     display: block;
     object-fit: contain;
-    transform: scale(1.55);
-    transform-origin: center;
+    padding: 0.15rem;
+    transform: none;
   }
 
   .nav-header-actions {
@@ -344,8 +345,8 @@ main {
   }
 
   .nav-brand {
-    height: 66px;
-    width: 66px;
+    height: 58px;
+    width: 58px;
   }
 
   .nav-header-actions {
@@ -443,8 +444,8 @@ main {
   }
 
   .nav-brand {
-    height: 62px;
-    width: 62px;
+    height: 54px;
+    width: 54px;
   }
 
   .nav-header-actions,

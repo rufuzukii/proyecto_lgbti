@@ -26,7 +26,6 @@ ROLE_PERMISSIONS = {
         Permission.GENERATE_REPORTS,
         Permission.ACCESS_EDU,
         Permission.PLAY_EDU_GAMES,
-        Permission.ACCESS_DOCENTE_RESOURCES,
     },
     UserRole.ANONYMOUS: {
         Permission.VIEW_PUBLIC_CONTENT,
@@ -36,7 +35,6 @@ ROLE_PERMISSIONS = {
         Permission.GENERATE_REPORTS,
         Permission.ACCESS_EDU,
         Permission.PLAY_EDU_GAMES,
-        Permission.ACCESS_DOCENTE_RESOURCES,
     },
 }
 
@@ -45,6 +43,7 @@ USER_TYPE_PERMISSIONS = {
     UserType.POLITICO: set(),
     UserType.ONG: set(),
     UserType.DOCENTE: {
+        Permission.ACCESS_DOCENTE_RESOURCES,
         Permission.MANAGE_OWN_EDU_GAMES,
     },
     UserType.ADMIN: set(),

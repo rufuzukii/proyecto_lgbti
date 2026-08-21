@@ -7,7 +7,7 @@ from html import escape as escape_html
 from typing import Any, cast
 
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, State, ctx, dcc, html
+from dash import Dash, Input, Output, ctx, dcc, html
 from dash.development.base_component import Component
 
 from app.analytics.repository import (
@@ -61,13 +61,14 @@ SPAIN_IMAGE_CLASS = "spain-pdf-figure spain-content-slot"
 SPAIN_IMAGE_HIDDEN_CLASS = "spain-pdf-figure spain-content-slot is-hidden"
 SPAIN_GRAPH_CLASS = "spain-section-graph spain-content-slot"
 SPAIN_GRAPH_HIDDEN_CLASS = "spain-section-graph spain-content-slot is-hidden"
+SPAIN_DEFAULT_YEAR = 2026
 
 
 def build_spain_layout() -> Component:
-    years = _year_options()
-    initial_year = years[0]["value"] if years else None
-    documents = _document_options(initial_year)
-    initial_document = documents[0]["value"] if len(documents) == 1 else None
+    available_years = _available_years()
+    years = _year_options(available_years)
+    initial_year = _resolve_initial_year(available_years)
+    documents, initial_document = _document_selector_state(initial_year)
 
     return html.Div(
         [
@@ -226,20 +227,11 @@ def register_spain_callbacks(app: Dash) -> None:
         Output("spain-document-select", "options"),
         Output("spain-document-select", "value"),
         Input("spain-year-select", "value"),
-        State("spain-document-select", "value"),
     )
     def update_document_selector(
         year: int | str | None,
-        current_document: str | None,
     ) -> tuple[list[dict[str, str]], str | None]:
-        documents = _document_options(year)
-        if not documents:
-            return [], None
-        values = {option["value"] for option in documents}
-        value = current_document if current_document in values else None
-        if value is None and len(documents) == 1:
-            value = documents[0]["value"]
-        return documents, value
+        return _document_selector_state(year)
 
     @app.callback(
         Output("spain-topic-select", "options"),
@@ -566,14 +558,52 @@ def _felgtbi_document_attribution(document: dict[str, Any]) -> Component:
 
 
 def _document_options(year: int | str | None = None) -> list[dict[str, str]]:
-    return get_felgtbi_document_options(year=year)
+    clean_year = _clean_year(year)
+    if clean_year is None:
+        return []
+    return get_felgtbi_document_options(year=clean_year)
 
 
-def _year_options() -> list[dict[str, Any]]:
+def _available_years() -> list[int]:
+    years = {
+        clean_year
+        for year in get_felgtbi_years()
+        if (clean_year := _clean_year(year)) is not None
+    }
+    return sorted(years, reverse=True)
+
+
+def _year_options(years: list[int] | None = None) -> list[dict[str, Any]]:
+    available_years = (
+        _available_years() if years is None else sorted(set(years), reverse=True)
+    )
     return [
         {"label": str(year), "value": year}
-        for year in get_felgtbi_years()
+        for year in available_years
     ]
+
+
+def _resolve_initial_year(years: list[int]) -> int | None:
+    if SPAIN_DEFAULT_YEAR in years:
+        return SPAIN_DEFAULT_YEAR
+    return years[0] if years else None
+
+
+def _document_selector_state(
+    year: int | str | None,
+) -> tuple[list[dict[str, str]], str | None]:
+    documents = _document_options(year)
+    selected_document = documents[0]["value"] if len(documents) == 1 else None
+    return documents, selected_document
+
+
+def _clean_year(year: int | str | None) -> int | None:
+    if year in (None, ""):
+        return None
+    try:
+        return int(year)
+    except TypeError, ValueError:
+        return None
 
 
 def _indicator_options(indicators: list[Any]) -> list[dict[str, str]]:

@@ -101,7 +101,6 @@ def test_source_invalidation_changes_generation_without_global_clear(
 ) -> None:
     # Arrange
     application = Flask(__name__)
-    monkeypatch.delenv("REDIS_URL", raising=False)
     monkeypatch.setenv("APP_ENV", "development")
     init_cache(application)
     cache.set("unrelated", "preserved")

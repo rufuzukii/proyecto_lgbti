@@ -225,7 +225,7 @@ def build_home_layout() -> Component:
                                             build_ilga_choropleth(ilga_document),
                                             current_year,
                                         ),
-                                        className="home-europe-map",
+                                        className="home-europe-map europe-map-container",
                                         config=cast(
                                             dcc.Graph.Config,
                                             {
@@ -341,7 +341,7 @@ def _home_legal_country_section() -> Component:
                         ),
                         html.Div(
                             id="home-legal-country-status",
-                            className="country-status-anchor",
+                            className="country-status-anchor home-legal-context-divider",
                         ),
                     ],
                     className="home-legal-results",
