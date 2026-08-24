@@ -286,6 +286,26 @@ def test_statistics_view_states_are_explicit() -> None:
         )
         is StatisticsViewState.LOADING_INDICATORS
     )
+    assert (
+        resolve_statistics_view_state(
+            None,
+            None,
+            {"phase": "awaiting_indicator", "query_token": "category-ready"},
+            category="Education",
+            indicator=None,
+        )
+        is StatisticsViewState.AWAITING_INDICATOR
+    )
+    assert (
+        resolve_statistics_view_state(
+            None,
+            None,
+            {"phase": "initial"},
+            category="Education",
+            indicator=None,
+        )
+        is StatisticsViewState.LOADING_INDICATORS
+    )
 
 
 def test_indicator_catalog_prevents_initial_prompt_during_category_loading() -> None:
@@ -296,6 +316,7 @@ def test_indicator_catalog_prevents_initial_prompt_during_category_loading() -> 
     assert source.index('phase = "loading_indicators"') < source.index(
         'phase = "initial"'
     )
+    assert 'phase = "awaiting_indicator"' in source
 
 
 def test_initial_statistics_selection_does_not_run_data_services(monkeypatch) -> None:

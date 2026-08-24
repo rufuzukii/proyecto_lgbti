@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import plotly.graph_objects as go
-from dash import no_update
+from dash import Dash, no_update
+from dash._utils import to_json
 
 from app.dash.pages import statistics
+
+
+def _callback(app: Dash, name: str):
+    return next(
+        value["callback"].__wrapped__
+        for value in app.callback_map.values()
+        if getattr(value.get("callback"), "__wrapped__", None)
+        and value["callback"].__wrapped__.__name__ == name
+    )
 
 
 def _result() -> dict:
@@ -39,6 +50,99 @@ def test_partial_dashboard_update_does_not_touch_the_stable_map() -> None:
 
     assert converted[2] is no_update
     assert converted[3] is no_update
+
+
+def test_hidden_temporal_and_average_panels_accept_missing_figures() -> None:
+    """A hidden optional panel must not turn a valid dashboard into HTTP 500."""
+    outputs: list[Any] = [no_update] * 33
+    outputs[6] = None
+    outputs[7] = "stats-panel-wrapper stats-temporal-wrapper is-hidden"
+    outputs[9] = None
+    outputs[10] = "stats-panel stats-average-panel is-hidden"
+
+    converted = statistics._dashboard_component_outputs(outputs)
+
+    assert converted[7] is None
+    assert converted[8].endswith("is-hidden")
+    assert converted[10] is None
+    assert converted[11].endswith("is-hidden")
+
+
+def test_main_statistics_callback_returns_complete_json_safe_contract(monkeypatch) -> None:
+    app = Dash("statistics-full-callback-contract", suppress_callback_exceptions=True)
+    statistics.register_statistics_callbacks(app)
+    callback = _callback(app, "render_statistics")
+    figure = go.Figure(go.Bar(x=["ES", "FR"], y=[0, None]))
+    dashboard: list[Any] = [no_update] * 33
+    dashboard[0:28] = [
+        "ready",
+        "stats-status stats-status-ok",
+        figure,
+        [],
+        True,
+        [],
+        None,
+        "stats-panel-wrapper stats-temporal-wrapper is-hidden",
+        figure,
+        None,
+        "stats-panel stats-average-panel is-hidden",
+        figure,
+        "stats-panel",
+        [],
+        figure,
+        {"width": "100%"},
+        "stats-panel",
+        [],
+        None,
+        "stats-panel is-hidden",
+        None,
+        "stats-panel is-hidden",
+        [],
+        None,
+        "stats-analytics-block is-hidden",
+        None,
+        [{"field": "value"}],
+        [{"country": "Spain", "value": 0}, {"country": "France", "value": None}],
+    ]
+    dashboard[28:33] = [{"width": "100%"}, {"width": "100%"}, False, "", "hidden"]
+    monkeypatch.setattr(statistics, "ctx", SimpleNamespace(triggered_id="stats-data-store"))
+    monkeypatch.setattr(statistics, "_render_dashboard", lambda *_args, **_kwargs: dashboard)
+
+    returned = callback(
+        {"status": "ok", "query_token": "q1"}, [], [], "es", 0, {"query_token": "q1"}
+    )
+
+    assert len(returned) == 32
+    assert returned[7] is None
+    assert returned[10] is None
+    assert returned[27][0]["value"] == 0
+    assert returned[27][1]["value"] is None
+    assert returned[31] == {"query_token": "q1", "status": "ready"}
+    assert to_json(returned)
+
+
+def test_component_mapping_failure_finishes_in_error_state_instead_of_http_500(
+    monkeypatch,
+) -> None:
+    app = Dash("statistics-callback-error-boundary", suppress_callback_exceptions=True)
+    statistics.register_statistics_callbacks(app)
+    callback = _callback(app, "render_statistics")
+    monkeypatch.setattr(statistics, "ctx", SimpleNamespace(triggered_id="stats-data-store"))
+    monkeypatch.setattr(statistics, "_render_dashboard", lambda *_args, **_kwargs: [None] * 33)
+    monkeypatch.setattr(
+        statistics,
+        "_dashboard_component_outputs",
+        lambda _outputs: (_ for _ in ()).throw(ValueError("invalid-output")),
+    )
+
+    # The callback boundary logs the traceback and returns a terminal ERROR state.
+    returned = callback(
+        {"status": "ok", "query_token": "q2"}, [], [], "es", 0, {"query_token": "q2"}
+    )
+
+    assert len(returned) == 32
+    assert all(value is no_update for value in returned[:31])
+    assert returned[31] == {"query_token": "q2", "status": "error"}
 
 
 def test_map_country_selection_ignores_missing_click_data() -> None:
@@ -167,7 +271,7 @@ def test_dashboard_render_cache_is_bounded_to_an_exact_query_identity(monkeypatc
         )
         or tuple(range(33)),
     )
-    result = {**_result(), "_query_token": "survey:2023:indicator"}
+    result = {**_result(), "query_token": "survey:2023:indicator"}
 
     first = statistics._render_dashboard(result, [], "es")
     second = statistics._render_dashboard(result, [], "es")

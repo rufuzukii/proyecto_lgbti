@@ -422,7 +422,7 @@ def register_statistics_callbacks(app: Dash) -> None:
             } else if (catalogReady && indicatorCatalogReady && !indicatorCatalog.has_data) {
                 phase = "survey_empty";
             } else if (catalogReady && indicatorCatalogReady && !hasIndicator) {
-                phase = "initial";
+                phase = "awaiting_indicator";
             } else if (catalogReady && hasIndicator) {
                 phase = "loading_statistics";
             }
@@ -499,6 +499,8 @@ def register_statistics_callbacks(app: Dash) -> None:
             message_key = "statistics_survey_empty"
         elif query_state is StatisticsViewState.NO_DATA:
             message_key = "statistics_no_data"
+        elif query_state is StatisticsViewState.AWAITING_INDICATOR:
+            message_key = "statistics_indicator_prompt"
         else:
             message_key = "statistics_initial_prompt"
         return (
@@ -1329,6 +1331,7 @@ def register_statistics_callbacks(app: Dash) -> None:
                 temporal_countries=_normalize_selected_countries(temporal_countries),
                 ranking_page=ranking_page,
             )
+            component_outputs = _dashboard_component_outputs(dashboard)
         except Exception:
             logger.exception(
                 "statistics_figures_failed indicator=%s query_token=%s",
@@ -1339,11 +1342,11 @@ def register_statistics_callbacks(app: Dash) -> None:
                 "query_token": result_token,
                 "status": StatisticsViewState.ERROR.value,
             }
-            return (*_dashboard_component_outputs([no_update] * 33), failed_ready)
+            return (*([no_update] * 31), failed_ready)
         ready_state = (
             no_update if ctx.triggered_id == "stats-selected-countries" else ready_payload
         )
-        return (*_dashboard_component_outputs(dashboard), ready_state)
+        return (*component_outputs, ready_state)
 
 def _controls(categories: list[dict[str, Any]]) -> Component:
     return html.Section(
@@ -1690,13 +1693,26 @@ def _graph_component(
     )
 
 
-def _optional_graph_component(graph_id: str, figure: Any) -> Component | Any | None:
+def _optional_graph_component(
+    graph_id: str,
+    figure: Any,
+    *,
+    style: dict[str, str] | None = None,
+    class_name: str = "stats-chart-graph",
+    config: dcc.Graph.Config | None = None,
+) -> Component | Any | None:
     """Mount an optional graph, preserving partial updates and allowing cleanup."""
     if figure is no_update:
         return no_update
     if figure is None:
         return None
-    return _graph_component(graph_id, figure)
+    return _graph_component(
+        graph_id,
+        figure,
+        style=style,
+        class_name=class_name,
+        config=config,
+    )
 
 
 def _response_comparison_component(figure: Any, style: dict[str, str]) -> Component | Any:
@@ -2419,14 +2435,14 @@ def _dashboard_component_outputs(outputs: tuple[Any, ...] | list[Any]) -> tuple[
         outputs[3],
         outputs[4],
         outputs[5],
-        _graph_component(
+        _optional_graph_component(
             "stats-temporal-graph",
             outputs[6],
             style={"width": "100%", "minWidth": "860px", "height": "680px"},
         ),
         outputs[7],
         _graph_component("stats-ranking-graph", outputs[8], style=outputs[28]),
-        _graph_component("stats-average-graph", outputs[9]),
+        _optional_graph_component("stats-average-graph", outputs[9]),
         outputs[10],
         _response_comparison_component(outputs[11], outputs[29]),
         outputs[12],
@@ -2571,7 +2587,7 @@ def _statistics_dashboard_cache_key(
     temporal_countries: list[str] | None,
     ranking_page: int | None,
 ) -> str | None:
-    query_token = str(result.get("_query_token") or "").strip()
+    query_token = str(result.get("query_token") or "").strip()
     if not query_token or not getattr(cache, "app", None):
         return None
     result_payload = json.dumps(

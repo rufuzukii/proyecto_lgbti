@@ -61,6 +61,14 @@ def test_initial_category_and_ready_lifecycle_never_exposes_plotly_placeholders(
         None,
         "es",
     )
+    awaiting_indicator = query_state(
+        None,
+        None,
+        {"query_token": "category-a", "phase": "awaiting_indicator"},
+        "Education",
+        None,
+        "es",
+    )
     stale = query_state(
         {"status": "ok", "query_token": "category-a"},
         {"query_token": "category-a"},
@@ -90,6 +98,9 @@ def test_initial_category_and_ready_lifecycle_never_exposes_plotly_placeholders(
     assert loading_indicators[1].endswith("is-hidden")
     assert loading_indicators[2].endswith("is-hidden")
     assert "Selecciona una categoría" not in str(loading_indicators[0])
+    assert "Selecciona una categoría y un indicador" not in str(awaiting_indicator[0])
+    assert "Selecciona un indicador para continuar." in str(awaiting_indicator[0])
+    assert awaiting_indicator[2].endswith("is-hidden")
     assert stale[2].endswith("is-hidden")
     assert rendering[2].endswith("is-hidden")
     assert ready[2] == "stats-results-content"

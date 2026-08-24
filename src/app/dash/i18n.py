@@ -826,6 +826,10 @@ UI_TEXT = {
         "es": "Selecciona una categoría y un indicador para comenzar.",
         "en": "Select a category and an indicator to get started.",
     },
+    "statistics_indicator_prompt": {
+        "es": "Selecciona un indicador para continuar.",
+        "en": "Select an indicator to continue.",
+    },
     "statistics_survey_empty": {
         "es": "Todavía no hay datos disponibles para esta encuesta.",
         "en": "No data is available for this survey yet.",
