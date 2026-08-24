@@ -134,11 +134,11 @@ body[data-theme="dark"] .upload-area-content small {
   padding: 1.25rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #fffefe 0%, #eff8fa 100%);
+  background: var(--panel-bg);
 }
 
 body[data-theme="dark"] .upload-info-card {
-  background: linear-gradient(135deg, #121927 0%, #122820 100%);
+  background: var(--panel-bg);
   border-color: var(--panel-border);
   color: var(--color-text);
 }

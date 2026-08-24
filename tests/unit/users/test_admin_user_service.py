@@ -74,7 +74,7 @@ def test_last_administrator_cannot_be_demoted(monkeypatch: pytest.MonkeyPatch) -
             email="admin@example.com",
             role="comun",
             organization="RainbowLens",
-            actor_user_id=current["id"],
+            actor_user_id="00000000-0000-0000-0000-000000000099",
             expected_version=service._user_version(current),
         )
     assert connection.committed is False
@@ -146,14 +146,15 @@ def test_like_search_escapes_wildcards() -> None:
     assert service._escape_like("50%_team\\") == "50\\%\\_team\\\\"
 
 
-def test_admin_cannot_deactivate_their_own_account() -> None:
-    # Arrange
+def test_admin_cannot_modify_their_own_account_from_user_management() -> None:
     user_id = "00000000-0000-0000-0000-000000000001"
 
-    # Act / Assert
-    with pytest.raises(ValueError, match="self_deactivate"):
-        service.set_user_active_as_admin(
+    with pytest.raises(ValueError, match="self_manage"):
+        service.update_user_as_admin(
             user_id=user_id,
-            active=False,
+            username="Admin",
+            email="admin@example.com",
+            role="admin",
+            organization="RainbowLens",
             actor_user_id=user_id,
         )

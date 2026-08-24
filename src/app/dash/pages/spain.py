@@ -17,6 +17,7 @@ from app.analytics.repository import (
     get_felgtbi_years,
 )
 from app.dash.components.loading import contextual_loading
+from app.dash.components.page_structure import build_page_header
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
@@ -75,31 +76,25 @@ def build_spain_layout() -> Component:
             build_navbar(active="spain"),
             html.Main(
                 [
-                    html.Header(
-                        [
-                            html.P(
-                                "España", className="stats-eyebrow", **text_attrs("España", "Spain")
-                            ),
-                            html.H1(
-                                text("Indicadores estatales LGBTIQ+", "National LGBTIQ+ indicators")
-                            ),
-                            html.P(
-                                text(
-                                    "Explora información estatal sobre derechos, percepción social y experiencias de las personas LGBTIQ+.",
-                                    "Explore national information on rights, social perception, and experiences of LGBTIQ+ people.",
-                                ),
-                                className="stats-lead",
-                            ),
-                        ],
-                        className="stats-header",
+                    build_page_header(
+                        eyebrow=text("España", "Spain"),
+                        title=text(
+                            "Indicadores estatales LGBTIQ+", "National LGBTIQ+ indicators"
+                        ),
+                        description=text(
+                            "Explora información estatal sobre derechos, percepción social y experiencias de las personas LGBTIQ+.",
+                            "Explore national information on rights, social perception, and experiences of LGBTIQ+ people.",
+                        ),
+                        class_name="stats-header spain-header",
                     ),
                     html.Section(
                         [
                             html.Div(
                                 [
-                                    html.Label(
+                                    html.Span(
                                         "Año",
-                                        htmlFor="spain-year-select",
+                                        id="spain-year-select-label",
+                                        className="stats-control-label",
                                         **text_attrs("Año", "Year"),
                                     ),
                                     dcc.Dropdown(
@@ -113,6 +108,8 @@ def build_spain_layout() -> Component:
                                     ),
                                 ],
                                 className="stats-control-field spain-control-field spain-year-field",
+                                role="group",
+                                **dash_attrs({"aria-labelledby": "spain-year-select-label"}),
                             ),
                             html.Div(
                                 [
@@ -139,9 +136,10 @@ def build_spain_layout() -> Component:
                             ),
                             html.Div(
                                 [
-                                    html.Label(
+                                    html.Span(
                                         "Indicador",
-                                        htmlFor="spain-topic-select",
+                                        id="spain-topic-select-label",
+                                        className="stats-control-label",
                                         **text_attrs("Indicador", "Indicator"),
                                     ),
                                     html.Div(
@@ -181,6 +179,8 @@ def build_spain_layout() -> Component:
                                     ),
                                 ],
                                 className="stats-control-field spain-control-field spain-topic-field",
+                                role="group",
+                                **dash_attrs({"aria-labelledby": "spain-topic-select-label"}),
                             ),
                             html.P(
                                 "Selecciona un documento.",
@@ -204,7 +204,7 @@ def build_spain_layout() -> Component:
                         element_id="spain-content-loading",
                     ),
                 ],
-                className="stats-shell app-page-container",
+                className="stats-shell app-page app-page-container",
             ),
         ]
     )

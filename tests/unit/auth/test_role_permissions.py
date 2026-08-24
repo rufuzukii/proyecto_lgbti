@@ -42,14 +42,14 @@ def test_common_user_receives_public_tools_but_not_management_permissions() -> N
 
     sociologist = _user(user_type=UserType.SOCIOLOGO)
     assert user_has_permission(sociologist, Permission.VIEW_DASHBOARD)
-    assert not user_has_permission(sociologist, Permission.UPLOAD_DATA)
+    assert user_has_permission(sociologist, Permission.UPLOAD_DATA)
 
 
-def test_profiles_share_tools_and_only_docente_receives_authoring_permission() -> None:
+def test_professional_profiles_can_import_and_docente_keeps_educational_permissions() -> None:
     for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG, UserType.SOCIOLOGO):
         user = _user(user_type=profile)
         assert user_has_permission(user, Permission.GENERATE_REPORTS)
-        assert not user_has_permission(user, Permission.UPLOAD_DATA)
+        assert user_has_permission(user, Permission.UPLOAD_DATA)
         assert not user_has_permission(user, Permission.ACCESS_DOCENTE_RESOURCES)
         assert not user_has_permission(user, Permission.MANAGE_OWN_EDU_GAMES)
 

@@ -164,18 +164,18 @@ def test_expired_token_is_rejected(monkeypatch) -> None:
     assert account_security.consume_security_token(token, "email_verification") is None
 
 
-def test_deactivation_and_session_version_are_persistent(monkeypatch) -> None:
+def test_session_version_is_persistent_without_changing_technical_active_state(
+    monkeypatch,
+) -> None:
     # Arrange
     _collections(monkeypatch)
     account_security.initialize_new_account("user-1")
 
     # Act
-    deactivated = account_security.set_account_active("user-1", active=False)
     session_version = account_security.increment_session_version("user-1")
     loaded = account_security.get_account_security("user-1")
 
     # Assert
-    assert deactivated.active is False
     assert session_version == 1
-    assert loaded.active is False
+    assert loaded.active is True
     assert loaded.session_version == 1

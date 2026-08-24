@@ -125,8 +125,10 @@ def test_fra_unique_identity_includes_value_bucket(monkeypatch) -> None:
         ("code", 1),
     ]
     docente_indexes = captured["didactica_docente_games"]
+    assert "didactica_progress" not in captured
     assert {index.document.get("name") for index in docente_indexes} == {
         "docente_game_id_unique",
+        "docente_game_public_id_unique",
         "docente_games_by_owner",
         "docente_games_by_type",
     }

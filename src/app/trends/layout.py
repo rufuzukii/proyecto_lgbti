@@ -5,6 +5,7 @@ from dash.development.base_component import Component
 
 from app.dash.components.empty_state import build_empty_state
 from app.dash.components.loading import contextual_loading
+from app.dash.components.page_structure import build_page_header
 from app.dash.i18n import dash_attrs, text, ui_text
 from app.dash.layouts.navigation import build_navbar
 
@@ -32,33 +33,25 @@ def build_trends_layout() -> Component:
                         message_id="trends-loading-message",
                     ),
                 ],
-                className="trend-shell app-page-container",
+                className="trend-shell app-page app-page-container",
             ),
         ]
     )
 
 
 def _header() -> Component:
-    return html.Header(
-        [
-            html.P(
-                text(ui_text("trends_eyebrow", "es"), ui_text("trends_eyebrow", "en")),
-                className="trend-eyebrow",
-            ),
-            html.H1(text(ui_text("trends_title", "es"), ui_text("trends_title", "en"))),
-            html.P(
-                text(ui_text("trends_lead", "es"), ui_text("trends_lead", "en")),
-                className="trend-lead",
-            ),
-            html.P(
+    return build_page_header(
+        eyebrow=text(ui_text("trends_eyebrow", "es"), ui_text("trends_eyebrow", "en")),
+        title=text(ui_text("trends_title", "es"), ui_text("trends_title", "en")),
+        description=text(ui_text("trends_lead", "es"), ui_text("trends_lead", "en")),
+        meta=html.P(
                 text(
                     ui_text("trends_historical_source", "es"),
                     ui_text("trends_historical_source", "en"),
                 ),
                 className="trend-source-note",
-            ),
-        ],
-        className="trend-header",
+        ),
+        class_name="trend-header",
     )
 
 
@@ -133,7 +126,8 @@ def _field(label_key: str, control: Component, *, class_name: str = "trend-field
     control_id = getattr(control, "id", None)
     label_id = f"{control_id}-label" if control_id else None
     label = text(ui_text(label_key, "es"), ui_text(label_key, "en"))
-    if isinstance(control, dcc.RangeSlider):
+    is_native_form_control = control.__class__.__name__ in {"Input", "Textarea"}
+    if control_id and not is_native_form_control:
         label_node = html.Span(label, id=label_id, className="trend-field-label")
         return html.Div(
             [label_node, control],

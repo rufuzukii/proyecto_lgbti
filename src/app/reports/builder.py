@@ -10,17 +10,17 @@ from app.analytics.statistics_charts import (
     build_combined_quadrant_chart,
     build_combined_scatter,
     build_comparative_ranking_chart,
-    build_data_availability_matrix,
     build_eu_average_comparison_chart,
     build_experience_legal_radar,
-    build_fra_median_difference_chart,
     build_fra_response_comparison_chart,
     build_ilga_response_details_chart,
+    build_ranking_position_gap_chart,
     build_response_country_comparison_chart,
     build_temporal_evolution_chart,
 )
 from app.analytics.statistics_exports import prepare_figure_for_export
 from app.analytics.statistics_normalizers import normalize_country_code
+from app.reports.hr_reporting import hr_report_focus_label, hr_report_objective
 from app.reports.models import (
     ReportChart,
     ReportConfiguration,
@@ -34,7 +34,6 @@ from app.reports.recommendations import (
     is_hr_relevant_indicator,
     result_level,
 )
-from app.reports.templates import report_objective, report_profile
 from app.source_attribution import attribution_for_sources
 
 
@@ -52,7 +51,7 @@ def _first_comparable_radar_country(payload: dict[str, Any]) -> str | None:
 
 
 class ReportBuilder:
-    """Build deterministic, profile-aware report content from one analytical payload."""
+    """Build deterministic HR-oriented content from one analytical payload."""
 
     def build(
         self,
@@ -108,8 +107,6 @@ class ReportBuilder:
             country_value=primary_value,
             benchmark=eu_median,
             language=configuration.language,
-            profile_key=configuration.profile_key,
-            objective=configuration.objective,
             answer=configuration.answer,
             source=configuration.source,
         )
@@ -145,7 +142,6 @@ class ReportBuilder:
                 configuration.language,
                 source_name,
                 result.get("year"),
-                include_spanish_context=configuration.include_spanish_context,
                 combined_analysis=dict(result.get("combined_analysis") or {}),
             ),
             charts=charts[:8],
@@ -154,14 +150,10 @@ class ReportBuilder:
                 "query_seconds": round(dataset.query_seconds, 4),
                 "build_seconds": round(time.perf_counter() - started, 4),
             },
-            profile_label=report_profile(configuration.profile_key).name(
+            focus_label=hr_report_focus_label(configuration.language),
+            objective_label=hr_report_objective(configuration.objective).label(
                 configuration.language
             ),
-            objective_label=report_objective(
-                configuration.profile_key, configuration.objective
-            ).label(configuration.language),
-            educational_content=_educational_content(configuration, indicator),
-            data_quality=_data_quality(configuration, result, ranking),
         )
         return content
 
@@ -403,21 +395,12 @@ def _charts(
                     ),
                 ),
                 (
-                    "median_difference",
-                    _t(language, "Diferencia frente a la mediana", "Difference from the median"),
-                    lambda: build_fra_median_difference_chart(
-                        dict(combined.get("fra_median_comparison") or result.get("fra_median_comparison") or {}),
+                    "ranking_gap",
+                    _t(language, "Diferencia de posiciones entre rankings", "Difference in ranking positions"),
+                    lambda: build_ranking_position_gap_chart(
+                        dict(combined.get("ranking_gap") or result.get("ranking_gap") or {}),
                         language,
-                        semantic_direction=semantics,
                         answer=config.answer,
-                    ),
-                ),
-                (
-                    "availability",
-                    _t(language, "Matriz de disponibilidad de datos", "Data availability matrix"),
-                    lambda: build_data_availability_matrix(
-                        dict(combined.get("availability") or result.get("availability") or {}),
-                        language,
                     ),
                 ),
             ]
@@ -445,8 +428,13 @@ def _charts(
             )
 
     charts: list[ReportChart] = []
+    combined_support = dict(
+        (result.get("combined_analysis") or {}).get("supported_analyses") or {}
+    )
     for key, title, factory in builders:
         if key not in config.charts:
+            continue
+        if key in {"quadrants", "ranking_gap"} and not combined_support.get(key, False):
             continue
         figure = factory()
         if not figure.data:
@@ -531,13 +519,7 @@ def _conclusions(
     if config.source == "combined":
         return _combined_conclusions(config, combined)
     if primary_value is None or benchmark is None:
-        return [
-            _t(
-                config.language,
-                "No hay datos suficientes para formular una conclusión nacional comparativa.",
-                "There is insufficient data for a comparative national conclusion.",
-            )
-        ]
+        return []
     difference = primary_value - benchmark
     semantics = indicator_semantics(indicator, config.answer, source=config.source)
     level = result_level(
@@ -747,7 +729,6 @@ def _sources(
     source: str,
     year: Any,
     *,
-    include_spanish_context: bool = False,
     combined_analysis: dict[str, Any] | None = None,
 ) -> list[str]:
     clean_year = int(year) if isinstance(year, int | float) else None
@@ -758,8 +739,6 @@ def _sources(
     if "ilga" in source_value or "rainbow map" in source_value:
         source_keys.append("ilga")
     if "felgtbi" in source_value or "felgtb" in source_value:
-        source_keys.append("felgtbi")
-    if include_spanish_context and "felgtbi" not in source_keys:
         source_keys.append("felgtbi")
     if "fra" in source_keys and "ilga" in source_keys:
         combined = combined_analysis or {}
@@ -862,13 +841,7 @@ def _combined_conclusions(
     n = int(metrics.get("n") or 0)
     correlation = _number(metrics.get("spearman"))
     if n < 5 or correlation is None:
-        return [
-            _t(
-                config.language,
-                "No hay suficientes países con datos comparables para realizar una interpretación estadística fiable.",
-                "There are not enough countries with comparable data for a reliable statistical interpretation.",
-            )
-        ]
+        return []
     strengths_es = {
         "very_weak": "muy débil", "weak": "débil", "moderate": "moderada",
         "strong": "fuerte", "very_strong": "muy fuerte",
@@ -948,13 +921,9 @@ def _chart_explanation(
             _t(language, "Sitúa cada país respecto a la mediana legal y la mediana social del conjunto comparable.", "Places each country relative to the legal and social medians of the comparable set."),
             _t(language, "Las zonas permiten detectar combinaciones distintas sin restar dos escalas que miden aspectos diferentes.", "The areas reveal different combinations without subtracting scales that measure different things."),
         ),
-        "median_difference": (
-            _t(language, "Indica cuántos puntos porcentuales separan a cada país del valor central del conjunto.", "Shows how many percentage points separate each country from the midpoint of the set."),
-            _t(language, "El cero equivale a la mediana; estar por encima no significa necesariamente estar mejor.", "Zero equals the median; being above it is not necessarily better."),
-        ),
-        "availability": (
-            _t(language, "Identifica dónde hay datos, dónde faltan y qué países no participaron.", "Identifies available data, missing data and non-participating countries."),
-            _t(language, "La leyenda distingue ausencia, no participación y falta de comparabilidad sin usar el cero como sustituto.", "The legend separates missingness, non-participation and non-comparability without using zero as a substitute."),
+        "ranking_gap": (
+            _t(language, "Compara la posición legal y la posición social de cada país.", "Compares each country's legal and social positions."),
+            _t(language, "Una separación grande muestra posiciones relativas distintas, pero no demuestra causalidad.", "A large gap shows different relative positions but does not establish causality."),
         ),
     }
     what_shows, how_to_read = explanations.get(
@@ -964,9 +933,14 @@ def _chart_explanation(
             _t(language, "Interprétalo junto con la fuente y los filtros indicados.", "Read it together with the stated source and filters."),
         ),
     )
+    combined_notes = (
+        _combined_conclusions(config, dict(result.get("combined_analysis") or {}))
+        if key in {"scatter", "quadrants", "ranking_gap"}
+        else []
+    )
     observation = (
-        _combined_conclusions(config, dict(result.get("combined_analysis") or {}))[0]
-        if key in {"scatter", "quadrants"}
+        combined_notes[0]
+        if combined_notes
         else _t(
             language,
             "La gráfica resume los datos válidos de la selección actual.",
@@ -974,40 +948,6 @@ def _chart_explanation(
         )
     )
     return what_shows, how_to_read, observation
-
-
-def _educational_content(config: ReportConfiguration, indicator: str) -> list[str]:
-    if config.profile_key != "docente":
-        return []
-    return [
-        _t(
-            config.language,
-            f"Pregunta para el aula: ¿qué información adicional necesitaríamos para explicar las diferencias observadas en «{indicator}»?",
-            f"Classroom question: what additional information would we need to explain the differences observed in “{indicator}”?",
-        ),
-        _t(
-            config.language,
-            "Actividad sugerida: elegir dos países, describir primero los datos y separar después las posibles explicaciones de los hechos observados.",
-            "Suggested activity: choose two countries, describe the data first, and then separate possible explanations from observed facts.",
-        ),
-    ]
-
-
-def _data_quality(
-    config: ReportConfiguration,
-    result: dict[str, Any],
-    ranking: pd.DataFrame,
-) -> list[str]:
-    if config.profile_key not in {"sociologo", "admin"} and config.source != "combined":
-        return []
-    missing = sum(1 for row in result.get("ranking") or [] if _number(row.get("value")) is None)
-    return [
-        _t(
-            config.language,
-            f"El análisis utiliza {len(ranking)} países con valor válido y conserva {missing} ausencias como datos no disponibles.",
-            f"The analysis uses {len(ranking)} countries with a valid value and keeps {missing} missing values as unavailable data.",
-        )
-    ]
 
 
 def _number(value: Any) -> float | None:

@@ -39,15 +39,15 @@ ROLE_PERMISSIONS = {
 }
 
 USER_TYPE_PERMISSIONS = {
-    UserType.RRHH: set(),
-    UserType.POLITICO: set(),
-    UserType.ONG: set(),
+    UserType.RRHH: {Permission.UPLOAD_DATA},
+    UserType.POLITICO: {Permission.UPLOAD_DATA},
+    UserType.ONG: {Permission.UPLOAD_DATA},
     UserType.DOCENTE: {
         Permission.ACCESS_DOCENTE_RESOURCES,
         Permission.MANAGE_OWN_EDU_GAMES,
     },
     UserType.ADMIN: set(),
-    UserType.SOCIOLOGO: set(),
+    UserType.SOCIOLOGO: {Permission.UPLOAD_DATA},
     UserType.COMUN: set(),
 }
 

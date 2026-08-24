@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 from app.users.contact_service import CONTACT_RECIPIENT
 
-PRIVACY_NOTICE_VERSION = "2026-08-06-v1"
 AEPD_RIGHTS_URL = "https://www.aepd.es/derechos-y-deberes/conoce-tus-derechos"
 AEPD_COMPLAINT_URL = "https://www.aepd.es/la-agencia/en-que-podemos-ayudarte"
 

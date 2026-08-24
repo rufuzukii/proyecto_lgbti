@@ -45,8 +45,10 @@ def test_profile_personalisation_and_login_notice_are_responsive_and_dark_compat
     auth_css = AUTH_CSS.read_text(encoding="utf-8")
     global_css = GLOBAL_CSS.read_text(encoding="utf-8")
 
-    assert ".reports-profile-explanation" in reports_css
-    assert ".reports-segmentation-grid" in reports_css
+    assert ".reports-hr-explanation" in reports_css
+    assert ".reports-filters-grid" in reports_css
+    assert ".reports-field.has-error .Select-control" in reports_css
+    assert ".reports-field-error" in reports_css
     assert ".reports-plan-summary" in reports_css
     assert ".reports-steps" not in reports_css
     assert ".reports-objective-options" not in reports_css

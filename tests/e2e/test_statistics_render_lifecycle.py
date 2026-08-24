@@ -52,29 +52,37 @@ def test_initial_category_and_ready_lifecycle_never_exposes_plotly_placeholders(
     statistics_page.register_statistics_callbacks(app)
     query_state = _callback(app, "update_statistics_query_state")
 
-    initial = query_state(None, None, None, "es")
+    initial = query_state(None, None, None, None, None, "es")
     loading_indicators = query_state(
         None,
         None,
         {"query_token": "category-a", "phase": "loading_indicators"},
+        "Education",
+        None,
         "es",
     )
     stale = query_state(
         {"status": "ok", "query_token": "category-a"},
         {"query_token": "category-a"},
         {"query_token": "category-b"},
+        "Education",
+        "C9_E",
         "es",
     )
     rendering = query_state(
         {"status": "ok", "query_token": "category-b"},
         {"query_token": "category-a"},
         {"query_token": "category-b"},
+        "Education",
+        "C9_E",
         "es",
     )
     ready = query_state(
         {"status": "ok", "query_token": "category-b"},
         {"query_token": "category-b"},
         {"query_token": "category-b"},
+        "Education",
+        "C9_E",
         "es",
     )
 

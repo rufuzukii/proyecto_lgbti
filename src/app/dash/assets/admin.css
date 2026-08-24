@@ -1,19 +1,14 @@
 .admin-shell {
   min-height: calc(100vh - 64px);
   padding: 2.5rem 1.2rem;
-  background:
-    radial-gradient(circle at top right, rgba(255, 227, 216, 0.72), transparent 30rem),
-    radial-gradient(circle at bottom left, rgba(223, 247, 239, 0.68), transparent 34rem),
-    linear-gradient(135deg, #fbf8ff 0%, #f7f1ff 100%);
+  background: var(--color-bg);
 }
 
 .admin-card {
-  background:
-    linear-gradient(180deg, rgba(255, 254, 254, 0.96), rgba(247, 241, 255, 0.92)),
-    var(--color-surface);
+  background: var(--panel-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--surface-shadow);
   margin: 0 auto;
   max-width: 1280px;
   padding: 2rem;
@@ -21,7 +16,7 @@
 
 .admin-review-panel {
   align-items: center;
-  background: linear-gradient(135deg, #eff8fa 0%, #fff6f1 100%);
+  background: var(--panel-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   display: flex;
@@ -64,12 +59,11 @@
 .admin-user-search-controls {
   display: grid;
   gap: 0.6rem;
-  grid-template-columns: minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(180px, 1fr) auto;
 }
 
 .admin-user-search-input,
 .admin-user-search-button,
-.admin-user-search-clear,
 .admin-pagination-link {
   border: 1px solid var(--color-border);
   border-radius: 999px;
@@ -85,7 +79,6 @@
 }
 
 .admin-user-search-button,
-.admin-user-search-clear,
 .admin-pagination-link {
   align-items: center;
   background: var(--color-primary);
@@ -97,17 +90,11 @@
   text-decoration: none;
 }
 
-.admin-user-search-clear {
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
 :root[data-theme="dark"] .admin-user-search-button,
 :root[data-theme="dark"] .admin-user-search-button:hover,
 :root[data-theme="dark"] .admin-user-search-button:active,
 :root[data-theme="dark"] .admin-user-search-button:focus-visible,
 :root[data-theme="dark"] .admin-user-search-button:disabled,
-:root[data-theme="dark"] .admin-user-search-clear,
 :root[data-theme="dark"] .admin-pagination-link {
   color: var(--color-text);
 }
@@ -130,6 +117,10 @@
 .admin-users-result-count {
   color: var(--color-text-muted);
   font-size: 0.9rem;
+}
+
+.admin-users-local-loading {
+  min-height: 5rem;
 }
 
 .admin-users-empty {
@@ -183,8 +174,8 @@
   border-bottom: 1px solid var(--color-border);
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: 92px minmax(170px, 1.1fr) minmax(220px, 1.25fr) minmax(180px, 1fr) 130px 120px 96px;
-  min-width: 1120px;
+  grid-template-columns: 92px minmax(170px, 1.1fr) minmax(220px, 1.25fr) minmax(180px, 1fr) 130px 96px;
+  min-width: 980px;
   padding: 0.75rem;
 }
 
@@ -210,6 +201,20 @@
 
 .admin-table-row.is-saving .admin-action-button {
   pointer-events: none;
+}
+
+.admin-table-row.is-current-user {
+  background: color-mix(in srgb, var(--panel-muted) 82%, var(--panel-bg));
+  opacity: 0.76;
+}
+
+.admin-table-row.is-current-user:hover {
+  background: color-mix(in srgb, var(--panel-muted) 82%, var(--panel-bg));
+}
+
+.admin-table-row.is-current-user .admin-action-button,
+.admin-table-row.is-current-user .admin-input {
+  cursor: not-allowed;
 }
 
 .admin-table-header {
@@ -275,32 +280,6 @@
 .admin-delete-button {
   background: #fee2e2;
   color: #991b1b;
-}
-
-.admin-status-cell {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.admin-account-status {
-  font-size: 0.75rem;
-  font-weight: 850;
-  text-align: center;
-}
-
-.admin-account-status.is-active {
-  color: #13795b;
-}
-
-.admin-account-status.is-inactive {
-  color: #991b1b;
-}
-
-.admin-active-button {
-  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
-  color: var(--color-text);
-  font-size: 0.74rem;
-  padding: 0.45rem 0.55rem;
 }
 
 .admin-edit-button:hover,
@@ -416,7 +395,7 @@
 
 .admin-import-file {
   align-items: center;
-  background: linear-gradient(135deg, #fffefe 0%, #eff8fa 100%);
+  background: var(--panel-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   color: var(--color-text);

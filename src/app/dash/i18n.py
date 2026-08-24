@@ -108,12 +108,12 @@ UI_TEXT = {
     "footer_attribution_fra_text": {
         "es": (
             "European Union Agency for Fundamental Rights (FRA), EU "
-            "LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 y 2023. Datos procesados y "
+            "LGBTI/LGBTIQ Surveys 2019 y 2023. Datos procesados y "
             "visualizados por RainbowLens DataHub. La FRA no participa en esta adaptación."
         ),
         "en": (
             "European Union Agency for Fundamental Rights (FRA), EU "
-            "LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 and 2023. Data processed and "
+            "LGBTI/LGBTIQ Surveys 2019 and 2023. Data processed and "
             "visualised by RainbowLens DataHub. FRA is not involved in this adaptation."
         ),
     },
@@ -144,7 +144,6 @@ UI_TEXT = {
     "source_fra_label": {"es": "FRA", "en": "FRA"},
     "source_ilga_label": {"es": "ILGA-Europe", "en": "ILGA-Europe"},
     "source_felgtbi_label": {"es": "FELGTBI+", "en": "FELGTBI+"},
-    "fra_survey_2012": {"es": "Encuesta FRA 2012", "en": "FRA Survey 2012"},
     "fra_survey_2019": {"es": "Encuesta FRA 2019", "en": "FRA Survey 2019"},
     "fra_survey_2023": {"es": "Encuesta FRA 2023", "en": "FRA Survey 2023"},
     "about_primary_sources_title": {
@@ -170,11 +169,10 @@ UI_TEXT = {
         "es": "Tu cuenta y los datos personales asociados han sido eliminados.",
         "en": "Your account and associated personal data have been deleted.",
     },
-    "privacy_notice": {
+    "registration_privacy_notice": {
         "es": "RainbowLens DataHub utiliza los datos necesarios para gestionar tu cuenta y ofrecer las funcionalidades solicitadas. Puedes consultar qué información se conserva y solicitar la eliminación de tu cuenta en cualquier momento.",
         "en": "RainbowLens DataHub uses the data required to manage your account and provide the requested features. You can review what information is stored and request the deletion of your account at any time.",
     },
-    "privacy_understood": {"es": "Entendido", "en": "Got it"},
     "privacy_deleted_heading": {"es": "Cuenta eliminada", "en": "Account deleted"},
     "privacy_controller": {
         "es": "Responsable del tratamiento",
@@ -368,13 +366,8 @@ UI_TEXT = {
     },
     "home_login_title": {"es": "Inicia sesión", "en": "Sign in"},
     "home_login_description": {
-        "es": (
-            "Accede a tu cuenta para consultar tu perfil y utilizar tus plantillas de "
-            "informe personalizadas."
-        ),
-        "en": (
-            "Access your account to view your profile and use your personalised report templates."
-        ),
+        "es": "Accede a tu cuenta para consultar tu perfil y generar informes de inclusión.",
+        "en": "Access your account to view your profile and generate inclusion reports.",
     },
     "home_login_action": {"es": "Iniciar sesión", "en": "Sign in"},
     "home_login_aria": {
@@ -402,22 +395,6 @@ UI_TEXT = {
     "report_configuration": {
         "es": "Selecciona el contenido",
         "en": "Select the content",
-    },
-    "report_personalised_generation": {
-        "es": "Generación de informe personalizado",
-        "en": "Personalised report generation",
-    },
-    "report_personalised_generation_description": {
-        "es": (
-            "RainbowLens DataHub adapta la estructura, las conclusiones y las posibles "
-            "líneas de actuación del informe al perfil asociado a tu cuenta, manteniendo "
-            "siempre los datos seleccionados como base del análisis."
-        ),
-        "en": (
-            "RainbowLens DataHub adapts the report structure, conclusions and possible "
-            "courses of action to the profile associated with your account, while always "
-            "using the selected data as the basis for the analysis."
-        ),
     },
     "report_login_required": {
         "es": "Debes iniciar sesión para generar informes.",

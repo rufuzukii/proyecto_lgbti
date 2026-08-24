@@ -355,12 +355,5 @@
     "definition": "Persona cuyo género no coincide con el sexo que le fue asignado al nacer, con independencia de que siga o no algún tratamiento.",
     "category": "gender_identity",
     "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
-  },
-  {
-    "id": "transsexual",
-    "term": "Transexual",
-    "definition": "Persona que se ha sometido a tratamiento hormonal o a una cirugía de reasignación sexual para obtener la apariencia física del sexo opuesto.",
-    "category": "gender_identity",
-    "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
   }
 ]

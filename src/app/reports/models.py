@@ -36,8 +36,6 @@ ALLOWED_REPORT_SECTIONS: tuple[str, ...] = (
     *DEFAULT_REPORT_SECTIONS,
     "workplace",
     "demographics",
-    "education",
-    "data_quality",
 )
 
 ALLOWED_REPORT_CHARTS: tuple[str, ...] = (
@@ -46,8 +44,7 @@ ALLOWED_REPORT_CHARTS: tuple[str, ...] = (
     "radar",
     "scatter",
     "quadrants",
-    "median_difference",
-    "availability",
+    "ranking_gap",
 )
 
 
@@ -75,10 +72,8 @@ def normalize_report_countries(values: Any) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class ReportConfiguration:
-    template_id: str = ""
     source: str = "fra"
-    profile_key: str = "common"
-    objective: str = "overview"
+    objective: str = "inclusion_context"
     category: str = ""
     indicator_id: str = ""
     indicator_label: str = ""
@@ -96,7 +91,6 @@ class ReportConfiguration:
     author: str = ""
     language: str = "es"
     detail_level: str = "standard"
-    include_spanish_context: bool = False
     sections: tuple[str, ...] = DEFAULT_REPORT_SECTIONS
     charts: tuple[str, ...] = DEFAULT_REPORT_CHARTS
     generated_on: str = field(default_factory=utc_today_iso)
@@ -126,17 +120,14 @@ class ReportConfiguration:
             charts = (
                 ("ranking", "average", "countries", "temporal")
                 if source == "ilga"
-                else ("scatter", "median_difference")
+                else ("scatter", "ranking_gap")
                 if source == "combined"
                 else DEFAULT_REPORT_CHARTS
             )
         return cls(
-            template_id=sanitize_report_text(payload.get("template_id"), maximum=80),
             source=source,
-            profile_key=sanitize_report_text(payload.get("profile_key"), maximum=40)
-            or "common",
             objective=sanitize_report_text(payload.get("objective"), maximum=80)
-            or "overview",
+            or "inclusion_context",
             category=sanitize_report_text(payload.get("category"), maximum=180),
             indicator_id=sanitize_report_text(payload.get("indicator_id"), maximum=120),
             indicator_label=sanitize_report_text(payload.get("indicator_label"), maximum=240),
@@ -161,7 +152,6 @@ class ReportConfiguration:
             author=sanitize_report_text(payload.get("author"), maximum=120),
             language=language,
             detail_level=detail_level,
-            include_spanish_context=_safe_bool(payload.get("include_spanish_context")),
             sections=sections,
             charts=charts,
             generated_on=_safe_date(payload.get("generated_on")),
@@ -221,10 +211,8 @@ class ReportContent:
     charts: list[ReportChart]
     table_rows: list[dict[str, Any]]
     timings: dict[str, float] = field(default_factory=dict)
-    profile_label: str = ""
+    focus_label: str = ""
     objective_label: str = ""
-    educational_content: list[str] = field(default_factory=list)
-    data_quality: list[str] = field(default_factory=list)
 
 
 def _allowed_values(

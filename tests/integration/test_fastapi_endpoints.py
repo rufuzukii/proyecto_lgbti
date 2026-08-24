@@ -127,22 +127,6 @@ def test_report_endpoint_hides_generation_details(
     assert "mongo secret" not in response.text
 
 
-def test_removed_placeholder_routes_are_not_registered(api_client: TestClient) -> None:
-    # Arrange
-    general_headers = {"X-API-Key": GENERAL_KEY}
-    admin_headers = {"X-API-Key": ADMIN_KEY}
-
-    # Act
-    chart_response = api_client.get("/charts/export", headers=general_headers)
-    data_response = api_client.get("/data/export", headers=admin_headers)
-    legacy_report_response = api_client.get("/reports", headers=general_headers)
-
-    # Assert
-    assert chart_response.status_code == 404
-    assert data_response.status_code == 404
-    assert legacy_report_response.status_code == 405
-
-
 def test_fastapi_has_no_duplicate_application_routes(api_client: TestClient) -> None:
     # Arrange
     ignored_paths = {"/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"}

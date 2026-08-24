@@ -10,6 +10,7 @@ from app.edu.word_search_service import (
     generate_word_search,
     is_word_search_complete,
     normalize_word_search_term,
+    placements_have_exclusive_cells,
     select_word_search_terms,
 )
 
@@ -133,8 +134,19 @@ def test_valid_collisions_share_only_matching_letters() -> None:
             uses_by_cell[key] = uses_by_cell.get(key, 0) + 1
 
     # Assert
-    assert any(uses > 1 for uses in uses_by_cell.values())
     assert all(len(letters) == 1 for letters in letters_by_cell.values())
+    assert placements_have_exclusive_cells(generated["placements"])
+
+
+def test_contained_words_keep_at_least_one_exclusive_cell() -> None:
+    # Arrange / Act
+    generated = generate_word_search(
+        ["GENERO", "AGENERO"], 10, 10, seed=11, directions=["right"]
+    )
+
+    # Assert
+    assert set(generated["words_used"]) == {"GENERO", "AGENERO"}
+    assert placements_have_exclusive_cells(generated["placements"])
 
 
 def test_detection_accepts_a_word_in_both_selection_orders() -> None:

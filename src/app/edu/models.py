@@ -90,6 +90,7 @@ class EducationalActivityStatus(StrEnum):
 @dataclass(frozen=True, slots=True)
 class EducationalActivity:
     activity_id: str
+    public_id: str
     owner_user_id: str
     game_type: str
     title: str
@@ -106,6 +107,7 @@ class EducationalActivity:
     def from_mapping(cls, value: dict[str, Any]) -> EducationalActivity:
         return cls(
             activity_id=str(value["id"]),
+            public_id=str(value.get("public_id") or ""),
             owner_user_id=str(value["owner_user_id"]),
             game_type=str(value["game_type"]),
             title=str(value["title"]),

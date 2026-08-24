@@ -52,7 +52,7 @@ def _normalize_country_codes(country_codes: list[str]) -> list[str]:
 
 
 def _clean_status_record(record: dict[str, Any]) -> dict[str, Any]:
-    return {
+    cleaned = {
         "available": True,
         "country_code": _plain_text(record.get("country_code")).upper(),
         "country": _plain_text(record.get("country")),
@@ -69,6 +69,21 @@ def _clean_status_record(record: dict[str, Any]) -> dict[str, Any]:
         "reviewed_at": _plain_text(record.get("reviewed_at")),
         "active": bool(record.get("active", True)),
     }
+    for key in (
+        "title",
+        "summary",
+        "legal_context",
+        "social_context",
+        "observations",
+    ):
+        translations = _plain_text_translations(record.get(f"{key}_i18n"))
+        if translations:
+            cleaned[f"{key}_i18n"] = translations
+    for key in ("positive_developments", "main_challenges"):
+        translations = _plain_text_list_translations(record.get(f"{key}_i18n"))
+        if translations:
+            cleaned[f"{key}_i18n"] = translations
+    return cleaned
 
 
 def _missing_status(country_code: str, requested_year: int | None) -> dict[str, Any]:
@@ -103,6 +118,26 @@ def _plain_text_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [_plain_text(item) for item in value if _plain_text(item)]
+
+
+def _plain_text_translations(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        language: cleaned
+        for language in ("es", "en")
+        if (cleaned := _plain_text(value.get(language)))
+    }
+
+
+def _plain_text_list_translations(value: Any) -> dict[str, list[str]]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        language: cleaned
+        for language in ("es", "en")
+        if (cleaned := _plain_text_list(value.get(language)))
+    }
 
 
 def _safe_int(value: Any) -> int | None:

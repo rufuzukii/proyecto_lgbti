@@ -98,6 +98,10 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         "Education": {"es": "Educaci\u00f3n", "en": "Education"},
         "Employment": {"es": "Empleo", "en": "Employment"},
         "Health": {"es": "Salud", "en": "Health"},
+        "Health and mental health": {
+            "es": "Salud y salud mental",
+            "en": "Health and mental health",
+        },
         "Housing": {"es": "Vivienda", "en": "Housing"},
         "Family": {"es": "Familia", "en": "Family"},
         "Hate crime & hate speech": {"es": "Delitos y discursos de odio", "en": "Hate crime and hate speech"},
@@ -112,6 +116,14 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         "Living openly and daily life": {
             "es": "Vida abierta y vida cotidiana",
             "en": "Living openly and daily life",
+        },
+        "Living openly as LGBTIQ": {
+            "es": "Vivir abiertamente como persona LGBTIQ+",
+            "en": "Living openly as LGBTIQ",
+        },
+        "LGBTIQ-parented families and free movement": {
+            "es": "Familias con progenitores LGBTIQ+ y libre circulación",
+            "en": "LGBTIQ-parented families and free movement",
         },
         "Social attitudes and government response": {
             "es": "Actitudes sociales y respuesta gubernamental",

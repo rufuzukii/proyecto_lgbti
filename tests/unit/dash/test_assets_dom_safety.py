@@ -273,6 +273,27 @@ def test_anonymous_navbar_does_not_expose_upload_action(monkeypatch) -> None:
     assert not any(getattr(component, "href", None) == "/upload" for component in components)
 
 
+def test_rrhh_navbar_exposes_upload_without_admin_navigation(monkeypatch) -> None:
+    monkeypatch.setattr(
+        navigation,
+        "current_user",
+        SimpleNamespace(
+            is_authenticated=True,
+            username="RRHH",
+            email="rrhh@example.com",
+            role="common",
+            user_type="rrhh",
+        ),
+    )
+
+    components = list(_walk(navigation.build_navbar()))
+
+    assert any(getattr(component, "href", None) == "/es/importar" for component in components)
+    assert not any(
+        "nav-admin-cta" in getattr(component, "className", "") for component in components
+    )
+
+
 def test_navbar_icon_controls_have_initial_accessible_names(monkeypatch) -> None:
     monkeypatch.setattr(
         navigation,

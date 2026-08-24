@@ -102,10 +102,6 @@ def get_account_security_many(user_ids: list[str]) -> dict[str, AccountSecurityS
     }
 
 
-def set_account_active(user_id: str, *, active: bool) -> AccountSecurityState:
-    return _update_account_state(user_id, {"active": bool(active)}, upsert_defaults=True)
-
-
 def mark_email_verified(user_id: str) -> AccountSecurityState:
     return _update_account_state(user_id, {"email_verified": True}, upsert_defaults=True)
 

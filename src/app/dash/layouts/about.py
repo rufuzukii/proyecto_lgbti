@@ -9,7 +9,8 @@ from app.dash.components.contact_form import (
     build_contact_panel,
     register_contact_form_callbacks,
 )
-from app.dash.i18n import dash_attrs, text_attrs, ui_text, ui_text_component
+from app.dash.components.page_structure import build_page_header
+from app.dash.i18n import dash_attrs, text, text_attrs, ui_text, ui_text_component
 from app.dash.layouts.navigation import build_navbar
 from app.source_attribution import FELGTBI_REPORTS_URL, FRA_SURVEYS, ILGA_RAINBOW_MAP_URL
 
@@ -63,11 +64,11 @@ PRIMARY_SOURCES = [
             for year, survey in FRA_SURVEYS.items()
         ],
         "description": (
-            "Resultados de las encuestas europeas de 2012, 2019 y 2023 sobre las "
+            "Resultados de las encuestas europeas de 2019 y 2023 sobre las "
             "experiencias, condiciones de vida y discriminación de las personas LGBTIQ+."
         ),
         "description_en": (
-            "Results from the 2012, 2019 and 2023 European surveys on the experiences, "
+            "Results from the 2019 and 2023 European surveys on the experiences, "
             "living conditions and discrimination of LGBTIQ+ people."
         ),
         "details": [
@@ -242,39 +243,17 @@ def build_about_layout() -> Component:
             build_navbar(active="about"),
             html.Main(
                 [
-                    html.Section(
-                        [
-                            html.P(
-                                "Fuentes y metodología",
-                                className="about-eyebrow",
-                                **text_attrs("Fuentes y metodología", "Sources and methodology"),
-                            ),
-                            html.H1(
-                                "Acerca de RainbowLens Datahub",
-                                **text_attrs(
-                                    "Acerca de RainbowLens Datahub",
-                                    "About RainbowLens Datahub",
-                                ),
-                            ),
-                            html.P(
-                                (
-                                    "RainbowLens Datahub integra fuentes oficiales para analizar la "
-                                    "situación legal y social de las personas LGBTIQ+ en Europa."
-                                ),
-                                className="about-lead",
-                                **text_attrs(
-                                    (
-                                        "RainbowLens Datahub integra fuentes oficiales para analizar la "
-                                        "situación legal y social de las personas LGBTIQ+ en Europa."
-                                    ),
-                                    (
-                                        "RainbowLens Datahub integrates official sources to analyse the "
-                                        "legal and social situation of LGBTIQ+ people in Europe."
-                                    ),
-                                ),
-                            ),
-                        ],
-                        className="about-header",
+                    build_page_header(
+                        eyebrow=text("Fuentes y metodología", "Sources and methodology"),
+                        title=text(
+                            "Acerca de RainbowLens Datahub",
+                            "About RainbowLens Datahub",
+                        ),
+                        description=text(
+                            "RainbowLens Datahub integra fuentes oficiales para analizar la situación legal y social de las personas LGBTIQ+ en Europa.",
+                            "RainbowLens Datahub integrates official sources to analyse the legal and social situation of LGBTIQ+ people in Europe.",
+                        ),
+                        class_name="about-header",
                     ),
                     _source_cards_section(
                         ui_text("about_primary_sources_title", "es"),
@@ -286,11 +265,6 @@ def build_about_layout() -> Component:
                         [
                             html.Div(
                                 [
-                                    html.P(
-                                        "Para profundizar",
-                                        className="about-eyebrow",
-                                        **text_attrs("Para profundizar", "Further reading"),
-                                    ),
                                     html.H2(
                                         "Fuentes recomendadas para profundizar",
                                         **text_attrs(
@@ -330,7 +304,7 @@ def build_about_layout() -> Component:
                     ),
                     build_contact_panel(),
                 ],
-                className="about-shell app-page-container",
+                className="about-shell app-page app-page-container",
             ),
         ]
     )
@@ -347,11 +321,6 @@ def _source_cards_section(
         [
             html.Div(
                 [
-                    html.P(
-                        "Fuentes oficiales",
-                        className="about-eyebrow",
-                        **text_attrs("Fuentes oficiales", "Official sources"),
-                    ),
                     html.H2(title_es, **text_attrs(title_es, title_en)),
                 ],
                 className="about-section-header",

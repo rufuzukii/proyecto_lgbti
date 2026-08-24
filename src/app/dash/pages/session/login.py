@@ -145,10 +145,10 @@ def build_login_layout(
                                         className="auth-switch",
                                     ),
                                 ],
-                                className="auth-card",
+                                className="auth-card app-surface",
                             )
                         ],
-                        className="auth-shell",
+                        className="auth-shell app-page",
                     )
                 ],
                 className="page-shell",

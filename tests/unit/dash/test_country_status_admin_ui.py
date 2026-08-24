@@ -6,6 +6,7 @@ from app.dash.layouts.home import (
     _any_clicks,
     _country_status_card,
     _country_status_editor,
+    _country_status_section,
     _empty_country_status_editor_record,
     build_home_layout,
     register_home_callbacks,
@@ -63,8 +64,72 @@ def test_country_status_card_shows_full_context_expanded_by_default() -> None:
     assert _contains_text(details, "Contexto social completo.")
     assert _contains_text(details, "Avance destacado.")
     assert _contains_text(details, "Reto principal.")
+    assert _contains_text(card, "Última revisión: 2026-03-15")
     assert _contains_text(card, "ILGA-EUROPE-ANNUAL-REVIEW 2026")
+    assert _contains_text(card, "Consultar fuente original")
+    assert not _contains_text(card, "ILGA-Europe Annual Review 2026")
     assert not _contains_text(card, "ILGA-Europe's Rainbow Map 2026")
+
+
+def test_country_status_card_uses_bilingual_descriptions_when_available() -> None:
+    card = _country_status_card(
+        {
+            **STATUS,
+            "title_i18n": {"es": "Situación general", "en": "Overall situation"},
+            "summary_i18n": {"es": "Resumen.", "en": "Summary."},
+            "legal_context": "Contexto legal.",
+            "legal_context_i18n": {"es": "Contexto legal.", "en": "Legal context."},
+            "positive_developments": ["Avance."],
+            "positive_developments_i18n": {
+                "es": ["Avance."],
+                "en": ["Progress."],
+            },
+        },
+        {"ES": "España"},
+        2026,
+    )
+
+    translated = {
+        item.to_plotly_json()["props"].get("data-i18n-en")
+        for item in _walk(card)
+        if hasattr(item, "to_plotly_json")
+    }
+    assert {"Overall situation", "Summary.", "Legal context.", "Progress."} <= translated
+
+
+def test_country_status_section_localizes_structural_headings() -> None:
+    section = _country_status_section([STATUS], {"ES": "España"}, 2026)
+    translations = {
+        item.to_plotly_json()["props"].get("data-i18n-en")
+        for item in _walk(section)
+        if hasattr(item, "to_plotly_json")
+    }
+
+    assert _contains_text(section, "Contexto del país")
+    assert _contains_text(section, "Información LGBTIQ+ de España")
+    assert "Country context" in translations
+    assert "LGBTIQ+ information for Spain" in translations
+
+
+def test_country_status_card_labels_overall_status_and_removes_editorial_caveat() -> None:
+    card = _country_status_card(
+        {
+            **STATUS,
+            "observations": (
+                "Síntesis elaborada a partir del informe anual; el 'estado general' "
+                "es una síntesis editorial y no una categoría oficial de ILGA-Europe."
+            ),
+        },
+        {"ES": "España"},
+        2026,
+    )
+
+    subtitle = _find_component_by_class(card, "country-status-card__subtitle")
+    assert type(subtitle).__name__ == "H4"
+    assert _contains_text(subtitle, "Estado general")
+    assert _contains_text(card, "Situacion general")
+    assert _contains_text(card, "Síntesis elaborada a partir del informe anual")
+    assert not _contains_text(card, "síntesis editorial y no una categoría oficial")
 
 
 def test_admin_missing_country_status_card_renders_add_button() -> None:
@@ -150,7 +215,7 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
         == "Explore Europe and view the overall LGBTIQ+ legal protection score."
     )
     assert helper_props["className"] == "home-map-helper-text"
-    assert type(helper).__name__ == "H2"
+    assert type(helper).__name__ == "P"
     assert "escala de 0 a 100" in _text_content(explanation)
     assert (
         explanation.to_plotly_json()["props"]["data-i18n-en"]
@@ -298,6 +363,16 @@ def _contains_text(component: Any, expected: str) -> bool:
     if hasattr(children, "children"):
         return _contains_text(children, expected)
     return False
+
+
+def _walk(component: Any):
+    yield component
+    children = getattr(component, "children", None)
+    if not isinstance(children, (list, tuple)):
+        children = [children]
+    for child in children:
+        if hasattr(child, "to_plotly_json"):
+            yield from _walk(child)
 
 
 def _component_ids(component: Any) -> set[str]:

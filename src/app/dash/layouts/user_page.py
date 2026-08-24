@@ -135,7 +135,7 @@ def build_user_page_layout(
                         className="user-dashboard-shell",
                     )
                 ],
-                className="user-page-grid app-page-container",
+                className="user-page-grid app-page app-page-container",
             ),
         ]
     )
@@ -162,11 +162,11 @@ def _dashboard_header(
                         **text_attrs(f"Hola, {display_name}", f"Hi, {display_name}"),
                     ),
                     html.P(
-                        "Gestiona tu perfil, utiliza tus herramientas y vuelve rápido a las áreas principales.",
+                        "Gestiona tu perfil.",
                         className="user-lead",
                         **text_attrs(
-                            "Gestiona tu perfil, utiliza tus herramientas y vuelve rápido a las áreas principales.",
-                            "Manage your profile, use your tools, and jump back into the main work areas.",
+                            "Gestiona tu perfil.",
+                            "Manage your profile.",
                         ),
                     ),
                 ],
@@ -188,7 +188,7 @@ def _dashboard_header(
                 className="user-role-badge",
             ),
         ],
-        className="user-dashboard-header",
+        className="user-dashboard-header app-page-header",
     )
 
 
@@ -246,9 +246,17 @@ def _profile_card(
             html.Div(
                 [
                     _detail_row(
-                        "Nombre visible", "Display name", username or "No definido", "Not set"
+                        "Nombre visible",
+                        "Display name",
+                        username or "No definido",
+                        username or "Not set",
                     ),
-                    _detail_row("Email", "Email", email or "No definido", "Not set"),
+                    _detail_row(
+                        "Correo electrónico",
+                        "Email",
+                        email or "No definido",
+                        email or "Not set",
+                    ),
                     _detail_row(
                         "Correo verificado",
                         "Verified email",
@@ -294,16 +302,6 @@ def _privacy_zone(
 
     content_items: list[Component] = []
     if inventory is not None:
-        if inventory.learning_progress:
-            content_items.append(
-                html.Li(
-                    "Tu progreso y puntuaciones didácticas.",
-                    **text_attrs(
-                        "Tu progreso y puntuaciones didácticas.",
-                        "Your learning progress and scores.",
-                    ),
-                )
-            )
         if inventory.teacher_games:
             content_items.append(
                 html.Li(
@@ -529,10 +527,10 @@ def _privacy_zone(
         [
             html.H2("Zona de privacidad", **text_attrs("Zona de privacidad", "Privacy area")),
             html.P(
-                "Esta acción eliminará tu cuenta y los datos personales asociados que no sea necesario conservar por una obligación legal.",
+                "Esta acción eliminará tu cuenta y los datos personales asociados.",
                 **text_attrs(
-                    "Esta acción eliminará tu cuenta y los datos personales asociados que no sea necesario conservar por una obligación legal.",
-                    "This action will delete your account and associated personal data unless retention is required by law.",
+                    "Esta acción eliminará tu cuenta y los datos personales asociados.",
+                    "This action will delete your account and associated personal data.",
                 ),
             ),
             html.Div(

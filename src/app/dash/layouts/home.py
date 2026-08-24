@@ -36,6 +36,7 @@ from app.dash.components.ilga_criteria import (
     build_ilga_country_criteria_panel,
 )
 from app.dash.components.loading import contextual_loading
+from app.dash.components.page_structure import build_page_header
 from app.dash.components.section_navigation import build_home_section_navigation
 from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
@@ -90,27 +91,30 @@ def build_home_layout() -> Component:
             build_navbar(active="home"),
             html.Main(
                 [
+                    build_page_header(
+                        eyebrow=text("RainbowLens DataHub", "RainbowLens DataHub"),
+                        title=text("Inicio", "Home"),
+                        description=text(
+                            "Explora datos legales y sociales sobre la realidad LGBTIQ+ en Europa.",
+                            "Explore legal and social data on LGBTIQ+ realities across Europe.",
+                        ),
+                        class_name="home-page-header",
+                        title_id="home-page-title",
+                    ),
                     html.Section(
                         [
                             html.Div(
                                 [
                                     html.Div(
                                         [
-                                            html.P(
-                                                "RainbowLens Datahub",
-                                                className="home-map-eyebrow",
-                                                **text_attrs(
-                                                    "RainbowLens Datahub", "RainbowLens Datahub"
-                                                ),
-                                            ),
-                                            html.H1(
+                                            html.H2(
                                                 text(
                                                     "Mapa europeo LGBTIQ+", "European LGBTIQ+ map"
                                                 ),
                                                 id="home-map-title",
                                                 className="home-map-heading",
                                             ),
-                                            html.H2(
+                                            html.P(
                                                 ui_text("home_legal_map_helper", "es"),
                                                 id="home-map-helper-text",
                                                 className="home-map-helper-text",
@@ -274,14 +278,14 @@ def build_home_layout() -> Component:
                                 className="home-map-footer",
                             ),
                         ],
-                        className="home-map-stage",
+                        className="home-map-stage app-surface app-chart-card",
                     ),
                     _home_legal_country_section(),
                     build_home_section_navigation(
                         authenticated=bool(getattr(current_user, "is_authenticated", False))
                     ),
                 ],
-                className="home-data-shell app-page-container",
+                className="home-data-shell app-page app-page-container",
             ),
         ]
     )
@@ -899,20 +903,30 @@ def _country_status_card(
             )
         return html.Article(children, className="country-status-card country-status-card--empty")
 
+    title_es, title_en = _status_translated_text(status, "title")
+    summary_es, summary_en = _status_translated_text(status, "summary")
+    legal_es, legal_en = _status_translated_text(status, "legal_context")
+    social_es, social_en = _status_translated_text(status, "social_context")
+    progress_es, progress_en = _status_translated_list(status, "positive_developments")
+    challenges_es, challenges_en = _status_translated_list(status, "main_challenges")
+    observations_es, observations_en = _status_translated_text(status, "observations")
+
     details_children = []
     details_children.extend(
-        _status_text_block("Contexto legal", status.get("legal_context"), "Legal context")
+        _status_text_block("Contexto legal", legal_es, "Legal context", legal_en)
     )
     details_children.extend(
-        _status_text_block("Contexto social", status.get("social_context"), "Social context")
+        _status_text_block("Contexto social", social_es, "Social context", social_en)
     )
     details_children.extend(
         _status_list_block(
-            "Avances destacados", status.get("positive_developments"), "Key progress"
+            "Avances destacados", progress_es, "Key progress", progress_en
         )
     )
     details_children.extend(
-        _status_list_block("Retos principales", status.get("main_challenges"), "Main challenges")
+        _status_list_block(
+            "Retos principales", challenges_es, "Main challenges", challenges_en
+        )
     )
 
     children: list[Any] = [
@@ -937,9 +951,20 @@ def _country_status_card(
             className="country-status-card__header",
         ),
     ]
-    if status.get("title"):
+    if title_es:
         children.append(
-            html.H4(str(status.get("title")), className="country-status-card__subtitle")
+            html.H4(
+                "Estado general",
+                className="country-status-card__subtitle",
+                **text_attrs("Estado general", "Overall status"),
+            )
+        )
+        children.append(
+            html.P(
+                title_es,
+                className="country-status-card__status",
+                **text_attrs(title_es, title_en),
+            )
         )
     if requested_year and year and int(year) != int(requested_year):
         notice_es = f"Información disponible para {year}."
@@ -951,7 +976,24 @@ def _country_status_card(
                 **text_attrs(notice_es, notice_en),
             )
         )
-    children.append(html.P(status.get("summary"), className="country-status-card__summary"))
+    children.append(
+        html.P(
+            summary_es,
+            className="country-status-card__summary",
+            **text_attrs(summary_es, summary_en),
+        )
+    )
+    if _status_uses_language_fallback(status):
+        children.append(
+            html.P(
+                "Algunos textos solo están disponibles en su idioma original.",
+                className="country-status-card__translation-note",
+                **text_attrs(
+                    "Algunos textos solo están disponibles en su idioma original.",
+                    "Some descriptions are only available in their original language.",
+                ),
+            )
+        )
     if details_children:
         children.append(
             html.Details(
@@ -966,11 +1008,14 @@ def _country_status_card(
                 open=True,
             )
         )
-    if status.get("observations"):
+    observations_es = _clean_status_observations(observations_es)
+    observations_en = _clean_status_observations(observations_en)
+    if observations_es:
         children.append(
             html.P(
-                str(status.get("observations")),
+                observations_es,
                 className="country-status-card__observations",
+                **text_attrs(observations_es, observations_en),
             )
         )
     children.append(_status_source(status))
@@ -1322,6 +1367,23 @@ def _any_clicks(*groups: Sequence[int | None] | None) -> bool:
 
 
 def _editor_field(label: str, control: Any, error: str | None = None) -> Component:
+    control_id = getattr(control, "id", None)
+    if control_id and control.__class__.__name__ not in {"Input", "Textarea"}:
+        label_id = f"{control_id}-label"
+        return html.Div(
+            [
+                html.Span(
+                    label,
+                    id=label_id,
+                    **text_attrs(label, EDITOR_LABELS_EN.get(label, label)),
+                ),
+                control,
+                _editor_error(error),
+            ],
+            className="country-status-editor-field",
+            role="group",
+            **dash_attrs({"aria-labelledby": label_id}),
+        )
     return html.Label(
         [
             html.Span(label, **text_attrs(label, EDITOR_LABELS_EN.get(label, label))),
@@ -1432,19 +1494,78 @@ def _status_translated_text(status: dict[str, Any], key: str) -> tuple[str, str]
     return es, en
 
 
-def _status_text_block(title: str, value: Any, title_en: str) -> list[Any]:
+def _status_translated_list(status: dict[str, Any], key: str) -> tuple[list[str], list[str]]:
+    fallback_value = status.get(key)
+    fallback = [str(item) for item in fallback_value] if isinstance(fallback_value, list) else []
+    translations = status.get(f"{key}_i18n")
+    if not isinstance(translations, dict):
+        return fallback, fallback
+    es_value = translations.get("es")
+    en_value = translations.get("en")
+    es = [str(item) for item in es_value] if isinstance(es_value, list) else fallback
+    en = [str(item) for item in en_value] if isinstance(en_value, list) else es
+    return es, en
+
+
+def _status_uses_language_fallback(status: dict[str, Any]) -> bool:
+    scalar_keys = ("title", "summary", "legal_context", "social_context", "observations")
+    list_keys = ("positive_developments", "main_challenges")
+    for key in (*scalar_keys, *list_keys):
+        if not status.get(key):
+            continue
+        translations = status.get(f"{key}_i18n")
+        if not isinstance(translations, dict) or not translations.get("es") or not translations.get("en"):
+            return True
+    return False
+
+
+def _clean_status_observations(value: Any) -> str:
+    text_value = str(value or "").strip()
+    caveats = (
+        "; el 'estado general' es una síntesis editorial y no una categoría oficial de ILGA-Europe.",
+        "; the 'overall status' is an editorial synthesis and not an official ILGA-Europe category.",
+    )
+    folded_value = text_value.casefold()
+    for caveat in caveats:
+        marker_index = folded_value.find(caveat.casefold())
+        if marker_index >= 0:
+            return text_value[:marker_index].rstrip()
+    return text_value
+
+
+def _status_text_block(
+    title: str, value: Any, title_en: str, value_en: Any | None = None
+) -> list[Any]:
     text_value = str(value or "").strip()
     if not text_value:
         return []
-    return [html.H4(title, **text_attrs(title, title_en)), html.P(text_value)]
-
-
-def _status_list_block(title: str, values: Any, title_en: str) -> list[Any]:
-    if not isinstance(values, list) or not values:
-        return []
+    english_value = str(value_en or text_value).strip()
     return [
         html.H4(title, **text_attrs(title, title_en)),
-        html.Ul([html.Li(str(value)) for value in values if str(value).strip()]),
+        html.P(text_value, **text_attrs(text_value, english_value)),
+    ]
+
+
+def _status_list_block(
+    title: str, values: Any, title_en: str, values_en: Any | None = None
+) -> list[Any]:
+    if not isinstance(values, list) or not values:
+        return []
+    english_values = values_en if isinstance(values_en, list) else values
+    items = []
+    for index, value in enumerate(values):
+        clean_value = str(value).strip()
+        if not clean_value:
+            continue
+        english_value = (
+            str(english_values[index]).strip()
+            if index < len(english_values) and str(english_values[index]).strip()
+            else clean_value
+        )
+        items.append(html.Li(clean_value, **text_attrs(clean_value, english_value)))
+    return [
+        html.H4(title, **text_attrs(title, title_en)),
+        html.Ul(items),
     ]
 
 
@@ -1453,18 +1574,6 @@ def _status_source(status: dict[str, Any]) -> Component:
     source_url = str(status.get("source_url") or "").strip()
     reviewed_at = str(status.get("reviewed_at") or "").strip()
     children: list[Any] = []
-    if source_name and source_url:
-        children.append(
-            html.A(
-                source_name,
-                href=source_url,
-                target="_blank",
-                rel="noopener noreferrer",
-                className="country-status-card__source-link",
-            )
-        )
-    elif source_name:
-        children.append(html.Span(source_name))
     if reviewed_at:
         children.append(
             html.Span(
@@ -1596,6 +1705,20 @@ def _control_field(
     if field_id:
         props["id"] = field_id
     control_id = getattr(control, "id", None)
+    if control_id and control.__class__.__name__ not in {"Input", "Textarea"}:
+        label_id = f"{control_id}-label"
+        return html.Div(
+            [
+                html.Span(
+                    text(label[0], label[1]),
+                    id=label_id,
+                    className="home-control-label",
+                ),
+                control,
+            ],
+            role="group",
+            **dash_attrs({**props, "aria-labelledby": label_id}),
+        )
     return html.Div(
         [
             html.Label(text(label[0], label[1]), htmlFor=control_id),

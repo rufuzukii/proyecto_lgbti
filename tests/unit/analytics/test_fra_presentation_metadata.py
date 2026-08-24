@@ -145,7 +145,7 @@ def test_ranked_reason_control_payload_preserves_values_and_semantic_order() -> 
     ]
 
 
-def test_ranked_reason_chart_keeps_categories_and_localizes_without_numeric_scoring() -> None:
+def test_ranked_reason_chart_keeps_canonical_english_categories_without_numeric_scoring() -> None:
     rows = [
         {
             "country": "Spain",
@@ -162,9 +162,9 @@ def test_ranked_reason_chart_keeps_categories_and_localizes_without_numeric_scor
 
     trace = cast(Any, figure.data[0])
     assert list(trace.x) == [
-        "1st — Primera razón",
-        "2nd — Segunda razón",
-        "3rd — Tercera razón",
-        "Not selected — No seleccionada",
+        "1st",
+        "2nd",
+        "3rd",
+        "Not Selected",
     ]
     assert list(trace.y) == [20.0, 15.0, 10.0, 55.0]

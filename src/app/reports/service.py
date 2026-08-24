@@ -59,8 +59,7 @@ def load_report_dataset(configuration: ReportConfiguration) -> ReportDataset:
                     **fra_result,
                     "source": "FRA + ILGA-Europe",
                     "combined_analysis": combined,
-                    "fra_median_comparison": combined.get("fra_median_comparison"),
-                    "availability": combined.get("availability"),
+                    "ranking_gap": combined.get("ranking_gap"),
                 }
                 if combined.get("status") == "ok"
                 else combined
@@ -149,7 +148,7 @@ def _report_filename(
     content: ReportContent,
 ) -> str:
     png_name = build_export_filename(
-        f"rainbowlens-{configuration.profile_key}",
+        "rainbowlens-rrhh-inclusion",
         content.indicator or configuration.objective or "informe",
         content.country_names,
         configuration.year,

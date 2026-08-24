@@ -18,7 +18,7 @@ class FraSurveyConfig:
 
     def label(self, language: str = "es") -> str:
         prefix = "Survey" if language == "en" else "Encuesta"
-        return f"{prefix} {self.sequence} · {self.year}"
+        return f"{prefix} {self.year}"
 
 
 FRA_SURVEYS: Final[tuple[FraSurveyConfig, ...]] = (
@@ -39,23 +39,10 @@ FRA_SURVEYS: Final[tuple[FraSurveyConfig, ...]] = (
         survey_id="fra_survey_ii",
         sequence="II",
         year=2019,
-        collection="Indicador_fra_2019",
+        collection="Indicator_fra_2019",
         dataset_code="eu_lgbti_survey_ii",
         source_name="EU LGBTI Survey II",
         source_url="https://fra.europa.eu/en/project/2018/eu-lgbti-survey-ii",
-        csv_versions=("legacy_long",),
-    ),
-    FraSurveyConfig(
-        survey_id="fra_survey_i",
-        sequence="I",
-        year=2012,
-        collection="Indicador_fra_2013",
-        dataset_code="eu_lgbt_survey_i",
-        source_name="EU LGBT Survey",
-        source_url=(
-            "https://fra.europa.eu/en/publications-and-resources/data-and-maps/"
-            "survey-fundamental-rights-lesbian-gay-bisexual-and"
-        ),
         csv_versions=("legacy_long",),
     ),
 )

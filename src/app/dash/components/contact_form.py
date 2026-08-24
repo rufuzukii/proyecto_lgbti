@@ -117,9 +117,10 @@ def build_contact_panel() -> Component:
                     ),
                     html.Div(
                         [
-                            html.Label(
+                            html.Span(
                                 "Documentaci\u00f3n acreditativa",
-                                htmlFor="about-contact-files",
+                                id="about-contact-files-label",
+                                className="about-contact-field-label",
                                 **text_attrs(
                                     "Documentaci\u00f3n acreditativa",
                                     "Supporting documentation",
@@ -143,6 +144,10 @@ def build_contact_panel() -> Component:
                             ),
                         ],
                         className="about-contact-field",
+                        role="group",
+                        **dash_attrs(
+                            {"aria-labelledby": "about-contact-files-label"}
+                        ),
                     ),
                     html.Button(
                         "Enviar",
@@ -276,9 +281,26 @@ def register_contact_form_callbacks(app: Dash) -> None:
 
 def _contact_field(label_es: str, label_en: str, control: Component) -> Component:
     control_id = getattr(control, "id", None)
+    is_native_form_control = control.__class__.__name__ in {"Input", "Textarea"}
+    props: dict[str, object] = {"className": "about-contact-field"}
+    if control_id and not is_native_form_control:
+        label_id = f"{control_id}-label"
+        label_node = html.Span(
+            label_es,
+            id=label_id,
+            className="about-contact-field-label",
+            **text_attrs(label_es, label_en),
+        )
+        props.update({"role": "group", "aria-labelledby": label_id})
+    else:
+        label_node = html.Label(
+            label_es,
+            htmlFor=control_id,
+            **text_attrs(label_es, label_en),
+        )
     return html.Div(
-        [html.Label(label_es, htmlFor=control_id, **text_attrs(label_es, label_en)), control],
-        className="about-contact-field",
+        [label_node, control],
+        **dash_attrs(props),
     )
 
 

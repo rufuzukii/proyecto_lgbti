@@ -144,7 +144,7 @@ def access_denied() -> Component:
                 className="didactica-denied",
             )
         ],
-        className="didactica-shell app-page-container",
+        className="didactica-shell app-page app-page-container",
     )
 
 

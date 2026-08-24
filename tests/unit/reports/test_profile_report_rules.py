@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from app.reports import service
 from app.reports.models import ReportConfiguration
 from app.reports.recommendations import (
@@ -13,32 +11,26 @@ from app.reports.recommendations import (
 )
 
 
-@pytest.mark.parametrize(
-    "profile_key",
-    ["comun", "docente", "rrhh", "ong", "politico", "sociologo", "admin"],
-)
-def test_every_profile_receives_its_own_rule_based_guidance(profile_key: str) -> None:
+def test_reports_use_one_hr_rule_based_guidance_catalogue() -> None:
     recommendations = build_recommendations(
         indicator="Felt discriminated at work",
         answer="Yes",
         country_value=70.0,
         benchmark=45.0,
         language="es",
-        profile_key=profile_key,
     )
 
     assert recommendations
     assert any(item.derived_from_metrics for item in recommendations)
 
 
-def test_hr_adverse_result_does_not_return_teacher_guidance() -> None:
+def test_hr_adverse_result_does_not_return_legacy_profile_guidance() -> None:
     recommendations = build_recommendations(
         indicator="Felt discriminated at work",
         answer="Yes",
         country_value=70.0,
         benchmark=45.0,
         language="es",
-        profile_key="rrhh",
     )
     text = " ".join(item.text for item in recommendations).casefold()
 
@@ -79,8 +71,7 @@ def test_combined_report_reuses_one_fra_result_for_shared_analysis(monkeypatch) 
         "ilga_year": 2023,
         "rows": [{"country": "Spain", "iso": "ES", "fra_value": 30.0, "ilga_value": 75.0}],
         "metrics": {"n": 1},
-        "fra_median_comparison": {"median": 30.0, "rows": []},
-        "availability": {"rows": []},
+        "ranking_gap": {"available": False, "rows": []},
     }
     calls = {"fra": 0, "combined": 0}
 

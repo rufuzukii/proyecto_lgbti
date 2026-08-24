@@ -38,11 +38,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "bandit==1.9.4",
-    "coverage==7.10.4",
+    "coverage==7.15.4",
     "httpx2==2.10.0",
     "pip-audit==2.10.0",
     "pyright==1.1.411",
     "pytest==9.1.1",
+    "pytest-cov==7.1.0",
     "ruff==0.16.0",
     "vulture==2.16",
 ]
@@ -62,6 +63,19 @@ where = ["src"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = ["-p", "no:cacheprovider", "-p", "no:dash"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+fail_under = 73
+precision = 1
+show_missing = true
+skip_empty = true
+
+[tool.coverage.html]
+directory = "htmlcov"
 
 [tool.ruff]
 target-version = "py314"

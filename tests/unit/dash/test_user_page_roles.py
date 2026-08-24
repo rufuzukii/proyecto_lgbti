@@ -67,6 +67,20 @@ def test_dashboard_blocks_are_single_column_with_privacy_last(monkeypatch) -> No
     ]
 
 
+def test_account_details_keep_real_values_in_english(monkeypatch) -> None:
+    layout = _layout(monkeypatch, UserType.COMUN)
+    values = [
+        component.to_plotly_json()["props"]
+        for component in _walk(layout)
+        if getattr(component, "className", "") == "profile-detail-value"
+    ]
+
+    assert values[0]["data-i18n-en"] == "Alex"
+    assert values[1]["data-i18n-en"] == "alex@example.test"
+    assert values[0]["data-i18n-en"] != "Not set"
+    assert values[1]["data-i18n-en"] != "Not set"
+
+
 def _walk(component: Any):
     yield component
     children = getattr(component, "children", None)

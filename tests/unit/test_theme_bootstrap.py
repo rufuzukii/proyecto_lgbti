@@ -54,13 +54,13 @@ def test_dark_global_background_is_flat_across_dash_roots() -> None:
     assert "background-image: none;" in dark_roots
 
 
-def test_intentional_component_gradients_remain_available() -> None:
+def test_structural_page_gradients_are_removed() -> None:
     auth_styles = (ASSETS / "auth.css").read_text(encoding="utf-8")
     privacy_styles = (ASSETS / "privacy.css").read_text(encoding="utf-8")
 
-    assert "radial-gradient" in auth_styles
-    assert ".privacy-header" in privacy_styles
-    assert "radial-gradient" in privacy_styles
+    assert "radial-gradient" not in auth_styles
+    assert "radial-gradient" not in privacy_styles
+    assert "background: var(--color-bg);" in auth_styles
 
 
 def test_dark_theme_renders_dash_option_text_in_white() -> None:
@@ -69,6 +69,9 @@ def test_dark_theme_renders_dash_option_text_in_white() -> None:
     assert ':root[data-theme="dark"] span.dash-options-list-option-text' in styles
     assert 'body[data-theme="dark"] span.dash-options-list-option-text' in styles
     assert "color: #fff !important;" in styles
+    assert ':where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option' in styles
+    assert ".dash-options-list-option-wrapper" in styles
+    assert "background-color: transparent;" in styles
 
 
 def test_europe_map_keeps_the_normal_ocean_colour_in_dark_mode() -> None:

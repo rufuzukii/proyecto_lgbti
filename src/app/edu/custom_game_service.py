@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import secrets
 import unicodedata
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -18,12 +20,14 @@ from app.edu.word_search_service import (
     MAX_BOARD_SIZE,
     MAX_WORD_COUNT,
     MIN_WORD_COUNT,
+    calculate_required_board_size,
     create_word_search_game,
     normalize_word_search_term,
 )
 from app.mongo import get_mongo_collection
 
 COLLECTION_NAME = "didactica_docente_games"
+logger = logging.getLogger(__name__)
 ACTIVITY_STATUSES = frozenset({"DRAFT", "ACTIVE", "ARCHIVED"})
 GAME_TYPE_DEFINITIONS: dict[str, dict[str, Any]] = {
     "guess_term": {
@@ -31,24 +35,22 @@ GAME_TYPE_DEFINITIONS: dict[str, dict[str, Any]] = {
         "route_id": "games",
         "icon": "?",
         "configuration": (
-            "selection_mode",
             "term_ids",
             "question_count",
             "shuffle",
-            "show_explanation",
         ),
     },
     "word_search": {
         "label_key": "word_search",
         "route_id": "word_search",
         "icon": "ABC",
-        "configuration": ("selection_mode", "term_ids", "word_count", "board_size"),
+        "configuration": ("term_ids", "word_count", "board_size"),
     },
     "legal_ranking": {
         "label_key": "rank_countries",
         "route_id": "games",
         "icon": "↕",
-        "configuration": ("selection_mode", "country_codes", "country_count", "year"),
+        "configuration": ("country_codes", "country_count", "year"),
     },
 }
 GAME_TYPES = frozenset(GAME_TYPE_DEFINITIONS)
@@ -64,7 +66,8 @@ class CustomGameValidationError(ValueError):
 
 def list_owned_games(user: object) -> list[dict[str, Any]]:
     owner_id = _authorized_user_id(user)
-    documents = get_mongo_collection(COLLECTION_NAME).find(
+    collection = get_mongo_collection(COLLECTION_NAME)
+    documents = collection.find(
         {"owner_user_id": owner_id},
         {
             "_id": 0,
@@ -75,8 +78,19 @@ def list_owned_games(user: object) -> list[dict[str, Any]]:
             "teacher_note": 0,
         },
     )
+    normalized: list[dict[str, Any]] = []
+    for item in documents:
+        document = dict(item)
+        if not document.get("public_id"):
+            public_id = _new_public_id()
+            collection.update_one(
+                {"id": document["id"], "public_id": {"$exists": False}},
+                {"$set": {"public_id": public_id}},
+            )
+            document["public_id"] = public_id
+        normalized.append(document)
     return sorted(
-        (dict(item) for item in documents),
+        normalized,
         key=lambda item: item.get("updated_at") or datetime.min.replace(tzinfo=UTC),
         reverse=True,
     )
@@ -102,12 +116,26 @@ def get_owned_game(user: object, game_id: str) -> dict[str, Any] | None:
     return dict(document)
 
 
+def get_public_game(public_id: str) -> dict[str, Any] | None:
+    """Load the read-only game configuration addressed by its public token."""
+    document = get_mongo_collection(COLLECTION_NAME).find_one(
+        {"public_id": _public_identifier(public_id)},
+        {"_id": 0, "owner_user_id": 0},
+    )
+    if not document or str(document.get("status") or "").upper() == "ARCHIVED":
+        return None
+    public = dict(document)
+    public.pop("owner_user_id", None)
+    return public
+
+
 def save_owned_game(
     user: object,
     game_id: str | None,
     values: Mapping[str, Any],
 ) -> dict[str, Any]:
     owner_id = _authorized_user_id(user)
+    logger.info("teacher_game_save_started", extra={"is_update": bool(game_id)})
     collection = get_mongo_collection(COLLECTION_NAME)
     now = datetime.now(UTC)
     if game_id:
@@ -119,24 +147,35 @@ def save_owned_game(
             raise CustomGameAuthorizationError("custom_game_not_owned")
         activity_owner = str(existing.get("owner_user_id") or "")
         created_at = existing.get("created_at") or now
+        public_id = str(existing.get("public_id") or _new_public_id())
     else:
         clean_id = uuid4().hex
         activity_owner = owner_id
         created_at = now
+        public_id = _new_public_id()
 
-    document = _validated_activity(values)
+    try:
+        document = _validated_activity(values)
+    except CustomGameValidationError:
+        logger.info("teacher_game_validation_failed", extra={"is_update": bool(game_id)})
+        raise
     document.update(
         {
             "id": clean_id,
+            "public_id": public_id,
             "owner_user_id": activity_owner,
             "created_at": created_at,
             "updated_at": now,
         }
     )
-    collection.update_one(
-        {"id": clean_id},
-        {"$set": document, "$setOnInsert": {"created_at": created_at}},
-        upsert=True,
+    try:
+        collection.update_one({"id": clean_id}, {"$set": document}, upsert=True)
+    except Exception:
+        logger.exception("teacher_game_repository_failed", extra={"is_update": bool(game_id)})
+        raise
+    logger.info(
+        "teacher_game_saved",
+        extra={"game_type": document["game_type"], "is_update": bool(game_id)},
     )
     return {key: value for key, value in document.items() if key != "owner_user_id"}
 
@@ -148,7 +187,7 @@ def duplicate_owned_game(user: object, game_id: str) -> dict[str, Any]:
     copy_values = {
         key: value
         for key, value in source.items()
-        if key not in {"id", "owner_user_id", "created_at", "updated_at"}
+        if key not in {"id", "public_id", "owner_user_id", "created_at", "updated_at"}
     }
     copy_values["title"] = _text(f"{copy_values['title']} (copia)", 120)
     copy_values["status"] = "DRAFT"
@@ -156,45 +195,61 @@ def duplicate_owned_game(user: object, game_id: str) -> dict[str, Any]:
 
 
 def delete_owned_game(user: object, game_id: str) -> bool:
-    activity = get_owned_game(user, game_id)
-    if activity is None:
+    owner_id = _authorized_user_id(user)
+    clean_id = _identifier(game_id)
+    admin = is_admin_user(user)
+    logger.info("teacher_activity_delete_started", extra={"is_admin": admin})
+    collection = get_mongo_collection(COLLECTION_NAME)
+    try:
+        activity = collection.find_one(
+            {"id": clean_id},
+            {"_id": 0, "owner_user_id": 1},
+        )
+        if activity is None:
+            logger.info("teacher_activity_delete_not_found")
+            return False
+        if str(activity.get("owner_user_id") or "") != owner_id and not admin:
+            logger.warning("teacher_activity_delete_denied")
+            raise CustomGameAuthorizationError("custom_game_not_owned")
+        query = {"id": clean_id}
+        if not admin:
+            query["owner_user_id"] = owner_id
+        result = collection.delete_one(query)
+    except CustomGameAuthorizationError:
+        raise
+    except Exception:
+        logger.exception("teacher_activity_delete_failed")
+        raise
+    if int(result.deleted_count or 0) != 1:
+        logger.warning("teacher_activity_delete_not_found")
         return False
-    result = get_mongo_collection(COLLECTION_NAME).delete_one(
-        {"id": _identifier(game_id)}
-    )
-    return bool(result.deleted_count)
+    logger.info("teacher_activity_deleted", extra={"is_admin": admin})
+    return True
 
 
 def build_activity_game_state(activity: Mapping[str, Any], *, seed: int | None = None):
     game_type = str(activity.get("game_type") or "")
     configuration = dict(activity.get("configuration") or {})
-    selection_mode = configuration.get("selection_mode")
     if game_type == "guess_term":
-        term_ids = configuration.get("term_ids") if selection_mode == "manual" else None
         return new_game_state(
             "guess_term",
             rounds=int(configuration["question_count"]),
-            term_ids=term_ids,
+            term_ids=configuration.get("term_ids"),
             shuffle=bool(configuration.get("shuffle", True)),
-            show_explanation=bool(configuration.get("show_explanation", True)),
         )
     if game_type == "word_search":
-        term_ids = configuration.get("term_ids") if selection_mode == "manual" else None
         return create_word_search_game(
             seed=seed,
             word_count=int(configuration["word_count"]),
-            term_ids=term_ids,
+            term_ids=configuration.get("term_ids"),
             board_size=int(configuration["board_size"]),
         )
     if game_type == "legal_ranking":
-        country_codes = (
-            configuration.get("country_codes") if selection_mode == "manual" else None
-        )
         return new_ranking_game(
             seed=seed,
             year=int(configuration["year"]),
             country_count=int(configuration["country_count"]),
-            country_codes=country_codes,
+            country_codes=configuration.get("country_codes"),
         )
     raise CustomGameValidationError("invalid_game_type")
 
@@ -227,23 +282,20 @@ def _validated_activity(values: Mapping[str, Any]) -> dict[str, Any]:
         "language": language,
         "configuration": configuration,
         "status": status,
-        "schema_version": 2,
+        "schema_version": 3,
     }
 
 
 def _validated_configuration(game_type: str, raw: Any) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise CustomGameValidationError("invalid_configuration")
-    mode = str(raw.get("selection_mode") or "manual").strip().lower()
-    if mode not in {"manual", "random"}:
-        raise CustomGameValidationError("invalid_selection_mode")
     if game_type in {"guess_term", "word_search"}:
-        return _validated_glossary_configuration(game_type, mode, raw)
-    return _validated_ranking_configuration(mode, raw)
+        return _validated_glossary_configuration(game_type, raw)
+    return _validated_ranking_configuration(raw)
 
 
 def _validated_glossary_configuration(
-    game_type: str, mode: str, raw: Mapping[str, Any]
+    game_type: str, raw: Mapping[str, Any]
 ) -> dict[str, Any]:
     catalog = {term.id: term for term in list_glossary_terms()}
     term_ids = _identifier_list(raw.get("term_ids"))
@@ -252,35 +304,34 @@ def _validated_glossary_configuration(
     minimum = 5 if game_type == "guess_term" else MIN_WORD_COUNT
     maximum = 20 if game_type == "guess_term" else MAX_WORD_COUNT
     count_key = "question_count" if game_type == "guess_term" else "word_count"
-    count = _bounded_integer(raw.get(count_key), minimum, maximum, count_key)
-    if mode == "manual" and len(term_ids) < count:
+    count = (
+        _bounded_integer(raw.get(count_key), minimum, maximum, count_key)
+        if game_type == "guess_term"
+        else len(term_ids)
+    )
+    if len(term_ids) < count or count < minimum or count > maximum:
         raise CustomGameValidationError("not_enough_terms")
-    if mode == "random" and term_ids:
-        term_ids = []
     configuration: dict[str, Any] = {
-        "selection_mode": mode,
         "term_ids": term_ids,
         count_key: count,
     }
     if game_type == "guess_term":
         configuration.update(
             shuffle=_boolean(raw.get("shuffle"), default=True),
-            show_explanation=_boolean(raw.get("show_explanation"), default=True),
         )
         return configuration
-    board_size = _bounded_integer(raw.get("board_size") or 12, 10, MAX_BOARD_SIZE, "board_size")
-    if mode == "manual":
-        normalized = [normalize_word_search_term(catalog[item].term) for item in term_ids]
-        if any(not word or len(word) > board_size for word in normalized):
-            raise CustomGameValidationError("word_does_not_fit")
-        if len(set(normalized)) != len(normalized):
-            raise CustomGameValidationError("duplicate_words")
+    normalized = [normalize_word_search_term(catalog[item].term) for item in term_ids]
+    if any(not word or len(word) > MAX_BOARD_SIZE for word in normalized):
+        raise CustomGameValidationError("word_does_not_fit")
+    if len(set(normalized)) != len(normalized):
+        raise CustomGameValidationError("duplicate_words")
+    board_size = calculate_required_board_size(normalized)
     configuration["board_size"] = board_size
     return configuration
 
 
 def _validated_ranking_configuration(
-    mode: str, raw: Mapping[str, Any]
+    raw: Mapping[str, Any]
 ) -> dict[str, Any]:
     year = _bounded_integer(raw.get("year"), 2000, 2100, "year")
     available_years = {int(item) for item in get_ilga_years()}
@@ -289,18 +340,12 @@ def _validated_ranking_configuration(
     ranking = build_legal_ranking(get_ilga_document_by_year(year))
     available_codes = {entry.country_code for entry in ranking}
     country_codes = [item.upper() for item in _identifier_list(raw.get("country_codes"))]
-    country_count = _bounded_integer(raw.get("country_count"), 2, 5, "country_count")
-    if mode == "manual":
-        if len(country_codes) < country_count:
-            raise CustomGameValidationError("not_enough_countries")
-        if any(code not in available_codes for code in country_codes):
-            raise CustomGameValidationError("invalid_country_codes")
-    else:
-        country_codes = []
-        if len({entry.score for entry in ranking}) < country_count:
-            raise CustomGameValidationError("not_enough_distinct_scores")
+    country_count = len(country_codes)
+    if not 2 <= country_count <= 5:
+        raise CustomGameValidationError("not_enough_countries")
+    if any(code not in available_codes for code in country_codes):
+        raise CustomGameValidationError("invalid_country_codes")
     return {
-        "selection_mode": mode,
         "country_codes": country_codes,
         "country_count": country_count,
         "year": year,
@@ -354,4 +399,19 @@ def _identifier(value: Any) -> str:
     clean = str(value or "").strip().casefold()
     if not clean or len(clean) > 64 or not all(character.isalnum() for character in clean):
         raise CustomGameValidationError("invalid_game_id")
+    return clean
+
+
+def _new_public_id() -> str:
+    return secrets.token_urlsafe(18)
+
+
+def _public_identifier(value: Any) -> str:
+    clean = str(value or "").strip()
+    if (
+        not clean
+        or len(clean) > 64
+        or not all(character.isalnum() or character in {"-", "_"} for character in clean)
+    ):
+        raise CustomGameValidationError("invalid_public_id")
     return clean

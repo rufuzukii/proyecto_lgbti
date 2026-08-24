@@ -8,6 +8,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.auth.csrf import get_csrf_token
+from app.dash.components.page_structure import build_page_header
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.loading_modal import build_loading_modal
 from app.dash.layouts.navigation import build_navbar
@@ -88,26 +89,22 @@ def build_admin_imports_layout(
                                         href=route_path("admin"),
                                         className="profile-back-link admin-imports-back",
                                     ),
-                                    html.P(
-                                        "Administración",
-                                        className="auth-eyebrow",
-                                        **text_attrs("Administración", "Administration"),
-                                    ),
-                                    html.H1(
-                                        text("Revisar archivos pendientes", "Review pending files")
-                                    ),
-                                    html.P(
-                                        text(
+                                    build_page_header(
+                                        eyebrow=text("Administración", "Administration"),
+                                        title=text(
+                                            "Revisar archivos pendientes", "Review pending files"
+                                        ),
+                                        description=text(
                                             "Revisa el contenido pendiente agrupado por usuario antes de aprobarlo.",
                                             "Review pending content grouped by user before approving it.",
                                         ),
-                                        className="auth-copy",
+                                        class_name="admin-page-header",
                                     ),
                                     _message(status, is_error=False),
                                     _message(error, is_error=True),
                                     _build_grouped_imports(logs),
                                 ],
-                                className="admin-card admin-imports-card",
+                                className="admin-card admin-imports-card app-surface",
                             ),
                             *_build_import_modals(logs),
                             build_loading_modal(
@@ -119,7 +116,7 @@ def build_admin_imports_layout(
                                 ),
                             ),
                         ],
-                        className="admin-shell",
+                        className="admin-shell app-page",
                     )
                 ],
                 className="page-shell app-page-container",

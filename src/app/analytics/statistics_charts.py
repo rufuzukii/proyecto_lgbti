@@ -10,12 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from app.analytics.combined_analysis import (
-    AVAILABLE,
-    FRA_MISSING,
-    ILGA_MISSING,
     MINIMUM_ANALYSIS_N,
-    NOT_COMPARABLE,
-    NOT_PARTICIPATING,
     combined_metrics,
     quadrant_rows,
 )
@@ -29,7 +24,6 @@ from app.analytics.fra_metadata import (
 from app.analytics.geography import ISO2_TO_ISO3
 from app.analytics.geography_service import (
     europe_centroids,
-    europe_view_bounds,
     prepare_europe_map_data,
 )
 from app.analytics.legal_criteria import (
@@ -404,6 +398,10 @@ def build_europe_choropleth(
                 ),
                 "ticksuffix": "%",
                 "thickness": 13,
+                "len": 0.7,
+                "x": -0.035,
+                "xanchor": "right",
+                "y": 0.5,
                 "tickvals": [0, 20, 40, 60, 80, 100],
             },
             hovertemplate="%{hovertext}<extra></extra>",
@@ -413,11 +411,6 @@ def build_europe_choropleth(
         str(value or "").strip().upper()
         for value in [*(selected_isos or []), selected_iso]
         if str(value or "").strip()
-    }
-    minimum_x, minimum_y, maximum_x, maximum_y = europe_view_bounds(sorted(selected_codes))
-    map_center = {
-        "lon": (minimum_x + maximum_x) / 2,
-        "lat": (minimum_y + maximum_y) / 2,
     }
     selected = dataframe[dataframe["iso"].isin(selected_codes)]
     centroids = europe_centroids() if not selected.empty else {}
@@ -494,9 +487,8 @@ def build_europe_choropleth(
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
-            "center": map_center,
-            "lonaxis": {"range": [minimum_x, maximum_x]},
-            "lataxis": {"range": [minimum_y, maximum_y]},
+            "center": {"lon": 20, "lat": 54},
+            "projection": {"scale": 1.18},
             "showframe": False,
             "showcoastlines": True,
             "coastlinecolor": "#b9c0ca",
@@ -511,14 +503,17 @@ def build_europe_choropleth(
             "orientation": "h",
             "x": 0,
             "xanchor": "left",
-            "y": -0.02,
-            "yanchor": "top",
-            "font": {"size": 11},
+            "y": 0.01,
+            "yanchor": "bottom",
+            "bgcolor": "rgba(15,23,42,0.82)",
+            "bordercolor": "rgba(148,163,184,0.55)",
+            "borderwidth": 1,
+            "font": {"size": 11, "color": "#f8fafc"},
         },
     )
     _apply_base_layout(
         figure,
-        margin={"l": 0, "r": 0, "t": 12, "b": 55 if has_verified_fra_scope else 0},
+        margin={"l": 88, "r": 0, "t": 0, "b": 0},
     )
     if not unavailable.empty and not has_verified_fra_scope:
         figure.add_annotation(
@@ -1423,16 +1418,11 @@ def _response_labels(dataframe: pd.DataFrame, *, language: str = "es") -> dict[s
     raw_values = list(
         dataframe.get("response_raw", dataframe.get("response_label", pd.Series(dtype=str)))
     )
-    response_type = detect_fra_response_type(raw_values)
     for raw in raw_values:
         label = " ".join(str(raw or "").strip().split())
         key = _response_key(label)
         if key and key not in labels:
-            labels[key] = (
-                taxonomy_label("fra_response", label, language)
-                if response_type is FraResponseType.RANKED_REASON
-                else label
-            )
+            labels[key] = label
     if not labels and "response_key" in dataframe:
         labels = {str(key): str(key) for key in dataframe["response_key"].dropna().unique()}
     return labels
@@ -2690,7 +2680,7 @@ def build_combined_scatter(
     response_label = answer or _chart_text(language, "Respuesta seleccionada", "Selected answer")
     y_title = (
         f"{_chart_text(language, 'Personas que respondieron', 'People answering')} "
-        f"«{response_label}» (%)"
+        f'"{response_label}" (%)'
     )
     customdata = [
         [
@@ -2928,163 +2918,115 @@ def build_combined_quadrant_chart(
             ),
             "range": [0, 100],
         },
-        yaxis={"title": f"FRA «{response_label}» (%)", "range": [0, 100]},
+        yaxis={"title": f'FRA "{response_label}" (%)', "range": [0, 100]},
         annotations=annotations,
     )
     _apply_base_layout(figure, margin={"l": 70, "r": 25, "t": 35, "b": 70})
     return figure
 
 
-def build_fra_median_difference_chart(
+def build_ranking_position_gap_chart(
     comparison: dict[str, Any],
     language: str = "es",
     *,
-    semantic_direction: str = "unknown",
     answer: str = "",
 ) -> go.Figure:
+    """Show legal and social positions with one connected row per country."""
     rows = list(comparison.get("rows") or [])
-    median = comparison.get("median")
-    if not rows or not isinstance(median, (int, float)):
-        return empty_figure(
-            _chart_text(language, "No hay datos FRA suficientes.", "There is not enough FRA data.")
+    if not comparison.get("available") or not rows:
+        raise ValueError("ranking_position_gap_requires_interpretable_rows")
+
+    language_index = 1 if language == "en" else 0
+    localized_rows = []
+    for row in rows:
+        country = country_labels(
+            str(row.get("iso") or ""), str(row.get("country") or "")
+        )[language_index]
+        localized_rows.append({**row, "localized_country": country})
+    localized_rows.sort(
+        key=lambda row: (
+            -int(row.get("absolute_rank_difference") or 0),
+            str(row["localized_country"]).casefold(),
         )
-    frame = pd.DataFrame(rows).sort_values(["difference_pp", "country"], ascending=[False, True])
-    frame["country"] = [
-        country_labels(str(row.iso), str(row.country))[1 if language == "en" else 0]
-        for row in frame.itertuples()
+    )
+
+    countries = [str(row["localized_country"]) for row in localized_rows]
+    line_x: list[int | None] = []
+    line_y: list[str | None] = []
+    for row in localized_rows:
+        line_x.extend([int(row["ilga_rank"]), int(row["fra_rank"]), None])
+        line_y.extend([str(row["localized_country"]), str(row["localized_country"]), None])
+
+    figure = go.Figure()
+    figure.add_trace(
+        go.Scatter(
+            x=line_x,
+            y=line_y,
+            mode="lines",
+            line={"color": "#94a3b8", "width": 3},
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    answer_label = answer or _chart_text(language, "Respuesta seleccionada", "Selected answer")
+    customdata = [
+        [
+            row["localized_country"],
+            int(row["ilga_rank"]),
+            int(row["fra_rank"]),
+            int(row["absolute_rank_difference"]),
+            float(row["ilga_value"]),
+            float(row["fra_value"]),
+        ]
+        for row in localized_rows
     ]
-    positive_colour = "#16855b" if semantic_direction == "favourable" else (
-        "#c2415d" if semantic_direction == "adverse" else "#2563eb"
+    hover = (
+        f"<b>{_chart_text(language, 'País', 'Country')}: %{{customdata[0]}}</b><br>"
+        f"{_chart_text(language, 'Posición legal', 'Legal position')}: %{{customdata[1]}}<br>"
+        f"{_chart_text(language, 'Posición social', 'Social position')}: %{{customdata[2]}}<br>"
+        f"{_chart_text(language, 'Diferencia', 'Difference')}: %{{customdata[3]}} "
+        f"{_chart_text(language, 'posiciones', 'positions')}<br>"
+        f"{_chart_text(language, 'Puntuación legal', 'Legal score')}: %{{customdata[4]:.1f}}<br>"
+        f'FRA "{answer_label}": %{{customdata[5]:.1f}}%<extra></extra>'
     )
-    negative_colour = "#c2415d" if semantic_direction == "favourable" else (
-        "#16855b" if semantic_direction == "adverse" else "#d97706"
-    )
-    colours = [positive_colour if value >= 0 else negative_colour for value in frame["difference_pp"]]
-    response_label = answer or _chart_text(language, "Respuesta seleccionada", "Selected answer")
-    figure = go.Figure(
-        go.Bar(
-            x=frame["difference_pp"],
-            y=frame["country"],
-            orientation="h",
-            marker={"color": colours},
-            text=[f"{value:+.1f} pp" for value in frame["difference_pp"]],
-            textposition="outside",
-            cliponaxis=False,
-            customdata=frame[["fra_value"]].to_numpy(),
-            hovertemplate=(
-                f"<b>{_chart_text(language, 'País', 'Country')}: %{{y}}</b><br>"
-                f"FRA «{response_label}»: %{{customdata[0]:.1f}}%<br>"
-                f"{_chart_text(language, 'Mediana de los países', 'Country median')}: {median:.1f}%<br>"
-                f"{_chart_text(language, 'Diferencia', 'Difference')}: %{{x:+.1f}} "
-                f"{_chart_text(language, 'puntos porcentuales', 'percentage points')}"
-                "<extra></extra>"
-            ),
+    for key, label_es, label_en, colour, symbol in (
+        ("ilga_rank", "Posición legal", "Legal position", "#7c3aed", "diamond"),
+        ("fra_rank", "Posición social", "Social position", "#16855b", "circle"),
+    ):
+        figure.add_trace(
+            go.Scatter(
+                x=[int(row[key]) for row in localized_rows],
+                y=countries,
+                mode="markers",
+                name=_chart_text(language, label_es, label_en),
+                marker={"color": colour, "size": 12, "symbol": symbol},
+                customdata=customdata,
+                hovertemplate=hover,
+            )
         )
+    max_rank = max(
+        max(int(row["ilga_rank"]), int(row["fra_rank"])) for row in localized_rows
     )
-    figure.add_vline(x=0, line_color="#475569", line_width=2)
     figure.update_layout(
         xaxis={
             "title": _chart_text(
                 language,
-                "Diferencia respecto a la mediana (puntos porcentuales)",
-                "Difference from the median (percentage points)",
+                "Posición en cada ranking (1 = mejor posición)",
+                "Position in each ranking (1 = best position)",
             ),
-            "zeroline": False,
+            "range": [0.5, max_rank + 0.5],
+            "dtick": 1,
         },
-        yaxis={"autorange": "reversed", "title": ""},
-        showlegend=False,
+        yaxis={
+            "autorange": "reversed",
+            "title": "",
+            "categoryorder": "array",
+            "categoryarray": countries,
+        },
+        legend={"orientation": "h", "x": 0, "y": 1.08},
+        height=max(440, 34 * len(localized_rows) + 150),
     )
-    height = max(520, 30 * len(frame) + 150)
-    figure.update_layout(height=height)
-    _apply_base_layout(figure, margin={"l": 130, "r": 80, "t": 25, "b": 75})
-    return figure
-
-
-def build_data_availability_matrix(
-    availability: dict[str, Any], language: str = "es"
-) -> go.Figure:
-    rows = list(availability.get("rows") or [])
-    years = sorted(int(year) for year in availability.get("fra_years") or [])
-    ilga_year = availability.get("ilga_year") or "—"
-    if not rows:
-        return empty_figure(
-            _chart_text(language, "No hay información de disponibilidad.", "No availability information is available.")
-        )
-    columns = [f"FRA {year}" for year in years] + [f"ILGA {ilga_year}"]
-    states = [AVAILABLE, FRA_MISSING, ILGA_MISSING, NOT_PARTICIPATING, NOT_COMPARABLE]
-    state_number = {state: index for index, state in enumerate(states)}
-    symbols = {
-        AVAILABLE: "✓", FRA_MISSING: "—", ILGA_MISSING: "—",
-        NOT_PARTICIPATING: "NP", NOT_COMPARABLE: "NC",
-    }
-    descriptions_es = {
-        AVAILABLE: "dato disponible",
-        FRA_MISSING: "dato FRA no disponible",
-        ILGA_MISSING: "puntuación ILGA no disponible",
-        NOT_PARTICIPATING: "el país no participó en esta encuesta",
-        NOT_COMPARABLE: "la pregunta o respuesta no está disponible como comparable",
-    }
-    descriptions_en = {
-        AVAILABLE: "data available",
-        FRA_MISSING: "FRA data unavailable",
-        ILGA_MISSING: "ILGA score unavailable",
-        NOT_PARTICIPATING: "the country did not participate in this survey",
-        NOT_COMPARABLE: "the question or answer is not available as comparable",
-    }
-    descriptions = descriptions_en if language == "en" else descriptions_es
-    z: list[list[int]] = []
-    text_values: list[list[str]] = []
-    hover: list[list[str]] = []
-    localized_names = [
-        country_labels(str(row.get("iso") or ""), str(row.get("country") or ""))[
-            1 if language == "en" else 0
-        ]
-        for row in rows
-    ]
-    for row, localized_name in zip(rows, localized_names, strict=True):
-        row_states = [str((row.get("fra") or {}).get(str(year), NOT_COMPARABLE)) for year in years]
-        row_states.append(str(row.get("ilga") or ILGA_MISSING))
-        z.append([state_number[state] for state in row_states])
-        text_values.append([symbols[state] for state in row_states])
-        hover.append(
-            [
-                f"<b>{_chart_text(language, 'País', 'Country')}: {localized_name}</b><br>"
-                f"{column}: {descriptions[state]}"
-                for column, state in zip(columns, row_states, strict=True)
-            ]
-        )
-    colours = ["#16855b", "#94a3b8", "#d97706", "#64748b", "#7c3aed"]
-    scale: list[list[Any]] = []
-    for index, colour in enumerate(colours):
-        lower = max(0.0, (index - 0.5) / (len(colours) - 1))
-        upper = min(1.0, (index + 0.5) / (len(colours) - 1))
-        scale.extend([[lower, colour], [upper, colour]])
-    figure = go.Figure(
-        go.Heatmap(
-            z=z,
-            x=columns,
-            y=localized_names,
-            text=text_values,
-            texttemplate="%{text}",
-            textfont={"size": 13, "color": "#ffffff"},
-            customdata=hover,
-            hovertemplate="%{customdata}<extra></extra>",
-            colorscale=scale,
-            zmin=0,
-            zmax=len(colours) - 1,
-            showscale=False,
-            xgap=2,
-            ygap=2,
-        )
-    )
-    figure.update_layout(
-        xaxis={"side": "top", "title": ""},
-        yaxis={"autorange": "reversed", "title": ""},
-        showlegend=False,
-        meta={"minimum_width": 680},
-    )
-    figure.update_layout(height=max(560, 27 * len(rows) + 145))
-    _apply_base_layout(figure, margin={"l": 145, "r": 25, "t": 70, "b": 35})
+    _apply_base_layout(figure, margin={"l": 145, "r": 30, "t": 70, "b": 75})
     return figure
 
 

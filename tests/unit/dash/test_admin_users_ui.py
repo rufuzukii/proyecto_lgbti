@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import app.dash.pages.admin.users as admin_users
@@ -30,6 +31,7 @@ def test_admin_layout_builds_accessible_search_form_with_supported_dash_props(mo
     )
     assert search.__class__.__name__ == "Input"
     assert _props(search)["type"] == "search"
+    assert _props(search)["debounce"] is True
     assert "data-i18n-aria-label-es" not in _props(search)
     assert _props(label)["htmlFor"] == _props(search)["id"]
 
@@ -66,8 +68,8 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     assert _props(delete)["data-admin-user-delete"] == "true"
     assert len(editable_fields) == 3
     assert all("readOnly" not in _props(field) for field in editable_fields)
-    assert all("disabled" not in _props(field) for field in editable_fields)
-    assert "disabled" not in _props(role)
+    assert all(_props(field)["disabled"] is False for field in editable_fields)
+    assert _props(role)["disabled"] is False
     role_options = _props(role)["children"]
     assert [_props(option)["value"] for option in role_options] == [
         "comun",
@@ -102,7 +104,7 @@ def test_non_admin_canonical_role_is_preserved_in_options() -> None:
     assert _props(options[0])["value"] == UserType.DOCENTE.value
 
 
-def test_current_user_cannot_delete_self_from_admin_table(monkeypatch) -> None:
+def test_current_user_row_is_fully_disabled_in_admin_table(monkeypatch) -> None:
     monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
     user = UserRead(
         id="user-1",
@@ -116,16 +118,88 @@ def test_current_user_cannot_delete_self_from_admin_table(monkeypatch) -> None:
     row = admin_users._build_user_row(user, current_user_id="user-1", search="adm", page=2)
 
     components = list(_walk(row))
+    edit = _component_with_class(components, "admin-edit-button")
+    save = _component_with_class(components, "admin-save-button")
     delete = _component_with_class(components, "admin-delete-button")
+    editable_fields = [
+        component for component in components if "admin-editable-input" in _classes(component)
+    ]
+    role = _component_with_class(components, "admin-role-select")
     hidden_values = {
         _props(component).get("name"): _props(component).get("value")
         for component in components
         if _props(component).get("type") == "hidden"
     }
+    assert "is-current-user" in _classes(row)
+    assert _props(row)["aria-disabled"] == "true"
+    assert _props(edit)["disabled"] is True
+    assert _props(save)["disabled"] is True
     assert _props(delete)["disabled"] is True
+    assert all(_props(field)["disabled"] is True for field in editable_fields)
+    assert _props(role)["disabled"] is True
     assert hidden_values["version"] == "version-1"
     assert hidden_values["q"] == "adm"
     assert hidden_values["page"] == "2"
+
+
+def test_admin_user_table_has_no_account_status_or_activation_controls(monkeypatch) -> None:
+    monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
+    user = UserRead(
+        id="user-2",
+        username="María",
+        email="maria@example.com",
+        role=UserRole.COMMON,
+    )
+
+    table = admin_users._build_users_table([user])
+    rendered = _text_content(table)
+    props = [_props(component) for component in _walk(table)]
+
+    assert "Estado" not in rendered
+    assert "Activar" not in rendered
+    assert "Desactivar" not in rendered
+    assert not any(item.get("value") == "toggle_active" for item in props)
+
+
+def test_admin_search_callback_updates_only_results_component(monkeypatch) -> None:
+    monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
+    monkeypatch.setattr(admin_users, "build_navbar", lambda **_kwargs: "")
+    admin = SimpleNamespace(
+        is_authenticated=True,
+        role=UserRole.ADMIN,
+        user_type=UserType.ADMIN,
+        get_id=lambda: "admin-1",
+    )
+    result_user = UserRead(
+        id="user-2",
+        username="María",
+        email="maria@example.com",
+        role=UserRole.COMMON,
+    )
+    monkeypatch.setattr(admin_users, "current_user", admin)
+    monkeypatch.setattr(
+        admin_users,
+        "list_users_page",
+        lambda **kwargs: SimpleNamespace(
+            users=[result_user], page=1, page_count=1, total=1, query=kwargs
+        ),
+    )
+    from dash import Dash
+
+    app = Dash(__name__, suppress_callback_exceptions=True)
+    app.layout = admin_users.build_admin_users_layout([], current_user_id="admin-1")
+    admin_users.register_admin_users_callbacks(app)
+    callback = app.callback_map["admin-users-results.children"]["callback"].__wrapped__
+
+    result = callback(1, None, "maria")
+
+    result_components = list(_walk(SimpleNamespace(children=result)))
+    assert any(
+        _props(component).get("value") == "María"
+        for component in result_components
+        if hasattr(component, "to_plotly_json")
+    )
+    assert set(app.callback_map) == {"admin-users-results.children"}
 
 
 def test_admin_pagination_preserves_search() -> None:
@@ -198,8 +272,8 @@ def test_admin_assets_define_editing_and_saving_states() -> None:
     assert "dialog.showModal()" in javascript
     assert "submitAdminUserDelete(deleteButton)" in javascript
     assert "row.requestSubmit(deleteButton)" in javascript
-    assert "data-admin-user-deactivate" in javascript
-    assert "window.confirm(question" in javascript
+    assert "data-admin-user-deactivate" not in javascript
+    assert "deactivateConfirmed" not in javascript
     assert ".admin-table-row.is-editing" in css
     assert ".admin-input:disabled" in css
     assert "background: #ffffff" in css

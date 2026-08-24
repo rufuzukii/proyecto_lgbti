@@ -7,24 +7,16 @@ import re
 import time
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import replace
 from typing import Any, cast
 
 import pandas as pd
 
-from app.analytics.combined_analysis import (
-    build_availability_rows,
-    build_combined_analysis,
-    median_difference_rows,
-    nearest_ilga_year,
-)
+from app.analytics.combined_analysis import build_combined_analysis, nearest_ilga_year
 from app.analytics.fra_metadata import (
     RESPONSE_TYPES,
     detect_fra_response_type,
-    fra_survey_participant_codes,
     order_fra_responses,
 )
-from app.analytics.geography_service import europe_country_catalog
 from app.analytics.legal_criteria import get_criterion_status
 from app.analytics.percentage_display import (
     coerce_percentage,
@@ -620,7 +612,6 @@ def get_combined_statistics_analysis(
     query: FraStatisticsQuery,
     *,
     fra_result: dict[str, Any] | None = None,
-    include_availability: bool = True,
 ) -> dict[str, Any]:
     """Return one cached FRA/ILGA analytical dataset for all combined visuals."""
     query = normalize_fra_query(query)
@@ -644,11 +635,10 @@ def get_combined_statistics_analysis(
         "filter_b_value": query.filter_b_value,
         "countries": sorted(str(country) for country in query.countries),
         "ilga_year": ilga_year,
-        "include_availability": include_availability,
-        "analysis_version": 3,
+        "analysis_version": 4,
     }
     serialized = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    cache_key = f"fra-ilga-analysis-v3:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+    cache_key = f"fra-ilga-analysis-v4:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
         return deepcopy(cached)
@@ -663,109 +653,13 @@ def get_combined_statistics_analysis(
     if legal_payload.get("status") != "ok":
         return _status("empty", "No hay datos ILGA-Europe comparables.")
     analysis = build_combined_analysis(fra_payload, legal_payload)
-    availability = (
-        _combined_availability(query, fra_payload, legal_payload)
-        if include_availability
-        else None
-    )
     result = {
         "status": "ok",
         "message": "",
         **analysis,
-        "fra_median_comparison": median_difference_rows(
-            [
-                {
-                    "country": row.get("country"),
-                    "iso": row.get("iso"),
-                    "fra_value": row.get("value"),
-                }
-                for row in fra_payload.get("ranking") or []
-            ]
-        ),
     }
-    if availability is not None:
-        result["availability"] = availability
     _server_cache_set(cache_key, deepcopy(result))
     return result
-
-
-def _combined_availability(
-    query: FraStatisticsQuery,
-    fra_payload: dict[str, Any],
-    legal_payload: dict[str, Any],
-) -> dict[str, Any]:
-    """Resolve historical indicator availability once for the shared payload.
-
-    Only the same canonical question code and selected answer are considered
-    comparable. Similar wording is deliberately not inferred.
-    """
-    years = [survey.year for survey in FRA_SURVEYS if survey.enabled]
-    values_by_year: dict[int, set[str]] = {}
-    indicator_available: dict[int, bool] = {}
-    current_year = _safe_int(fra_payload.get("year"))
-    for year in years:
-        if year == current_year:
-            rows = list(fra_payload.get("ranking") or [])
-            indicator_available[year] = bool(rows)
-            values_by_year[year] = {
-                normalize_country_code(row.get("iso"), row.get("country"))
-                for row in rows
-                if _safe_float(row.get("value")) is not None
-            }
-            continue
-        dataframe = _fra_dataframe_for_code(
-            str(query.question_code or ""), query.category, year
-        )
-        answer = str(query.answer or "").strip()
-        answer_exists = bool(
-            not dataframe.empty
-            and "answer" in dataframe
-            and dataframe["answer"].fillna("").astype(str).str.strip().eq(answer).any()
-        )
-        year_query = replace(query, year=year, countries=[])
-        filters_available = validate_statistics_filter_combination(
-            StatisticsFilters.from_raw(
-                year_query.filter_a_name,
-                year_query.filter_a_value,
-                year_query.filter_b_name,
-                year_query.filter_b_value,
-            ),
-            available_values=_available_filter_values(dataframe),
-        ).ok
-        indicator_available[year] = answer_exists and filters_available
-        if not indicator_available[year]:
-            values_by_year[year] = set()
-            continue
-        filtered = filter_fra_dataframe(dataframe, year_query, effective_answer=answer)
-        filtered = filtered.copy()
-        filtered["percentage"] = pd.to_numeric(filtered["percentage"], errors="coerce")
-        values_by_year[year] = {
-            normalize_country_code(row.iso, row.country)
-            for row in filtered.dropna(subset=["percentage"]).itertuples()
-            if normalize_country_code(row.iso, row.country)
-        }
-
-    countries = [
-        {
-            "country": row.get("name_en"),
-            "iso": row.get("country_code"),
-        }
-        for row in europe_country_catalog()
-    ]
-    rows = build_availability_rows(
-        countries,
-        fra_values_by_year=values_by_year,
-        indicator_available_by_year=indicator_available,
-        participant_codes_by_year={
-            year: fra_survey_participant_codes(year) for year in years
-        },
-        ilga_rows=list(legal_payload.get("ranking") or []),
-    )
-    return {
-        "rows": rows,
-        "fra_years": years,
-        "ilga_year": _safe_int(legal_payload.get("year")),
-    }
 
 
 def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:

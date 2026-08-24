@@ -11,6 +11,7 @@ class Collection:
     def __init__(self):
         self.documents: list[dict] = []
         self.find_calls = 0
+        self.last_delete_query = None
 
     def find(self, query, _projection):
         self.find_calls += 1
@@ -31,6 +32,7 @@ class Collection:
         document.update(update["$set"])
 
     def delete_one(self, query):
+        self.last_delete_query = dict(query)
         before = len(self.documents)
         self.documents = [item for item in self.documents if not _matches(item, query)]
         return SimpleNamespace(deleted_count=before - len(self.documents))
@@ -64,11 +66,9 @@ def _guess_values():
         "language": "es",
         "status": "ACTIVE",
         "configuration": {
-            "selection_mode": "manual",
             "term_ids": term_ids,
             "question_count": 5,
             "shuffle": True,
-            "show_explanation": True,
         },
     }
 
@@ -82,6 +82,7 @@ def test_docente_crud_duplicate_and_owner_are_enforced(monkeypatch) -> None:
     stored = custom_game_service.get_owned_game(owner, saved["id"])
     assert stored is not None
     assert stored["owner_user_id"] == "docente-1"
+    assert stored["public_id"] == saved["public_id"]
     assert "<script>" not in stored["title"]
     assert stored["configuration"]["term_ids"] == _guess_values()["configuration"]["term_ids"]
     assert "definition" not in str(stored["configuration"])
@@ -101,6 +102,11 @@ def test_docente_crud_duplicate_and_owner_are_enforced(monkeypatch) -> None:
     assert collection.find_calls == 1
 
     assert custom_game_service.delete_owned_game(owner, duplicate["id"])
+    assert collection.last_delete_query == {
+        "id": duplicate["id"],
+        "owner_user_id": "docente-1",
+    }
+    assert custom_game_service.get_owned_game(owner, duplicate["id"]) is None
 
 
 def test_admin_can_access_and_manage_another_owner_activity(monkeypatch) -> None:
@@ -118,6 +124,22 @@ def test_admin_can_access_and_manage_another_owner_activity(monkeypatch) -> None
     assert updated is not None
     assert updated["title"] == changed["title"]
     assert len(custom_game_service.list_all_games(admin)) == 1
+    assert custom_game_service.delete_owned_game(admin, saved["id"]) is True
+    assert collection.last_delete_query == {"id": saved["id"]}
+    assert custom_game_service.get_owned_game(admin, saved["id"]) is None
+
+
+def test_public_id_loads_game_without_exposing_owner(monkeypatch) -> None:
+    collection = Collection()
+    monkeypatch.setattr(custom_game_service, "get_mongo_collection", lambda _name: collection)
+    saved = custom_game_service.save_owned_game(_user("docente-1"), None, _guess_values())
+
+    public = custom_game_service.get_public_game(saved["public_id"])
+
+    assert public is not None
+    assert public["id"] == saved["id"]
+    assert "owner_user_id" not in public
+    assert custom_game_service.get_public_game("missing-share-id") is None
 
 
 def test_only_three_real_game_types_are_accepted(monkeypatch) -> None:
@@ -132,7 +154,7 @@ def test_only_three_real_game_types_are_accepted(monkeypatch) -> None:
         custom_game_service.validate_activity(invalid)
 
 
-def test_word_search_uses_glossary_ids_and_board_limits() -> None:
+def test_word_search_uses_glossary_ids_and_calculates_board_size() -> None:
     fitting = [
         term.id
         for term in list_glossary_terms()
@@ -144,16 +166,37 @@ def test_word_search_uses_glossary_ids_and_board_limits() -> None:
             "title": "Identidades",
             "language": "es",
             "configuration": {
-                "selection_mode": "manual",
                 "term_ids": fitting,
-                "word_count": 6,
-                "board_size": 10,
             },
         }
     )
     state = custom_game_service.build_activity_game_state(activity, seed=42)
     assert {word["id"] for word in state["words"]} <= set(fitting)
-    assert state["rows"] == 10
+    assert 10 <= state["rows"] <= 15
+    assert len(state["words"]) == 6
+
+
+def test_word_search_activity_can_be_saved_and_rebuilt(monkeypatch) -> None:
+    collection = Collection()
+    monkeypatch.setattr(custom_game_service, "get_mongo_collection", lambda _name: collection)
+    owner = _user("docente-1")
+    term_ids = [
+        term.id
+        for term in list_glossary_terms()
+        if len(custom_game_service.normalize_word_search_term(term.term)) <= 12
+    ][:6]
+    values = {
+        "game_type": "word_search",
+        "title": "Conceptos de identidad",
+        "language": "es",
+        "status": "ACTIVE",
+        "configuration": {"term_ids": term_ids},
+    }
+
+    saved = custom_game_service.save_owned_game(owner, None, values)
+    loaded = custom_game_service.get_owned_game(owner, saved["id"])
+    assert loaded is not None
+    state = custom_game_service.build_activity_game_state(loaded, seed=9)
     assert len(state["words"]) == 6
 
 
@@ -174,15 +217,20 @@ def test_ranking_validates_real_year_codes_zero_and_ties(monkeypatch) -> None:
             "title": "Situación legal 2026",
             "language": "es",
             "configuration": {
-                "selection_mode": "manual",
                 "country_codes": ["ES", "PT", "DE", "PL", "IT"],
-                "country_count": 5,
                 "year": 2026,
             },
         }
     )
     assert activity["configuration"]["source_dataset_version"] == "ilga-2026"
     assert "PL" in activity["configuration"]["country_codes"]
+
+    collection = Collection()
+    monkeypatch.setattr(custom_game_service, "get_mongo_collection", lambda _name: collection)
+    saved = custom_game_service.save_owned_game(_user("docente-1"), None, activity)
+    loaded = custom_game_service.get_owned_game(_user("docente-1"), saved["id"])
+    assert loaded is not None
+    assert loaded["configuration"]["country_codes"] == ["ES", "PT", "DE", "PL", "IT"]
 
 
 def test_non_docente_cannot_call_service_directly(monkeypatch) -> None:

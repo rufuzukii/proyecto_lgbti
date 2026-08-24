@@ -5,7 +5,7 @@ import os
 from typing import Any
 
 import dash_ag_grid as dag
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 from dash.development.base_component import Component
 from flask_login import current_user
 
@@ -14,7 +14,6 @@ from app.analytics.repository import (
     get_fra_categories,
     get_fra_mongo_indicators_by_category,
     get_fra_years,
-    get_ilga_criteria_by_year,
     get_ilga_criteria_categories_by_year,
     get_ilga_years,
 )
@@ -24,6 +23,7 @@ from app.analytics.statistics_service import get_fra_control_payload
 from app.auth.permissions import Permission, user_has_permission
 from app.auth.rate_limit import create_rate_limiter
 from app.dash.components.loading import contextual_loading
+from app.dash.components.page_structure import build_page_header
 from app.dash.i18n import (
     country_labels,
     dash_attrs,
@@ -36,22 +36,17 @@ from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 from app.dates import utc_today_iso
 from app.http_security import rate_limit_key
-from app.reports.models import ReportConfiguration, normalize_report_countries
+from app.reports.hr_reporting import (
+    HR_REPORT_OBJECTIVES,
+    HR_REPORT_SECTIONS,
+    hr_report_charts,
+    hr_report_objective,
+)
+from app.reports.models import ReportConfiguration
 from app.reports.service import (
     ReportGenerationError,
     build_report,
     generate_report_pdf,
-)
-from app.reports.templates import (
-    ReportTemplate,
-    apply_template_defaults,
-    find_report_template,
-    report_objective,
-    report_profile,
-    report_profile_for_template,
-    report_profile_for_user,
-    report_profile_key,
-    report_templates_for_user,
 )
 from app.taxonomy import taxonomy_pair
 
@@ -105,8 +100,6 @@ SECTION_LABELS = {
     "workplace": ("Entorno laboral", "Workplace"),
     "comparison": ("Comparaciones", "Comparisons"),
     "demographics": ("Diferencias sociodemográficas", "Sociodemographic differences"),
-    "education": ("Actividad didáctica", "Learning activity"),
-    "data_quality": ("Disponibilidad de datos", "Data availability"),
     "interpretation": ("Interpretación", "Interpretation"),
     "recommendations": ("Posibles actuaciones", "Possible actions"),
     "methodology": ("Metodología", "Methodology"),
@@ -125,12 +118,7 @@ def build_reports_layout(
     assert_analytics_databases_available()
     values = {**(initial_values or {})}
     values.setdefault("language", default_language)
-    language = "en" if values.get("language") == "en" else "es"
-    templates = report_templates_for_user(current_user)
-    selected_template = find_report_template(current_user, str(values.get("template_id") or ""))
-    values = apply_template_defaults(values, selected_template, language=language)
-    config = _report_configuration_for_user(values)
-    profile = report_profile(config.profile_key)
+    config = _hr_report_configuration(values)
     years = _year_options(config.source)
     year = config.year or (years[0]["value"] if years else None)
     categories = _category_options(config.source, year)
@@ -158,30 +146,21 @@ def build_reports_layout(
             dcc.Download(id="report-download"),
             html.Main(
                 [
-                    html.Header(
-                        [
-                            html.P(
-                                ui_text("report_generation_eyebrow", "es"),
-                                className="stats-eyebrow",
-                                **text_attrs(
-                                    ui_text("report_generation_eyebrow", "es"),
-                                    ui_text("report_generation_eyebrow", "en"),
-                                ),
-                            ),
-                            html.H1(text("Crear informe", "Create report")),
-                            html.P(
-                                text(
-                                    "Configura, previsualiza y descarga un informe basado en las estadísticas europeas actuales.",
-                                    "Configure, preview and download a report based on the current European statistics.",
-                                ),
-                                className="reports-lead",
-                            ),
-                        ],
-                        className="reports-header",
+                    build_page_header(
+                        eyebrow=text(
+                            ui_text("report_generation_eyebrow", "es"),
+                            ui_text("report_generation_eyebrow", "en"),
+                        ),
+                        title=text("Informe de inclusión LGBTIQ+", "LGBTIQ+ inclusion report"),
+                        description=text(
+                            "Genera un informe basado en datos para comprender el contexto LGBTIQ+, detectar posibles áreas de atención y apoyar la mejora de las políticas de diversidad e inclusión.",
+                            "Generate a data-informed report to understand the LGBTIQ+ context, identify possible areas for attention and support improvements to diversity and inclusion policies.",
+                        ),
+                        class_name="reports-header",
                     ),
                     html.Div(
                         [
-                            _profile_panel(profile),
+                            _hr_purpose_panel(),
                             _configuration_panel(
                                 config,
                                 years,
@@ -190,8 +169,6 @@ def build_reports_layout(
                                 category,
                                 indicators,
                                 country_options,
-                                templates,
-                                selected_template,
                             ),
                             html.Section(
                                 [
@@ -204,8 +181,8 @@ def build_reports_layout(
                                     html.Div(id="report-plan-summary"),
                                     html.P(
                                         text(
-                                            "El informe incluirá resultados, comparaciones, interpretación, conclusiones y posibles actuaciones adaptadas al uso seleccionado.",
-                                            "The report will include results, comparisons, interpretation, conclusions and possible actions adapted to the selected use.",
+                                            "El informe incluirá resultados, comparaciones y posibles líneas de actuación para RRHH cuando los datos permitan sustentarlas.",
+                                            "The report will include results, comparisons and possible courses of action for HR when supported by the data.",
                                         )
                                     ),
                                 ],
@@ -264,7 +241,7 @@ def build_reports_layout(
                         className="reports-workflow",
                     ),
                 ],
-                className="reports-shell app-page-container",
+                className="reports-shell app-page app-page-container",
             ),
         ]
     )
@@ -288,7 +265,7 @@ def build_reports_access_denied_layout() -> Component:
                         href=route_path("statistics"),
                     ),
                 ],
-                className="reports-access-denied",
+                className="reports-access-denied app-page app-page-container",
             ),
         ]
     )
@@ -305,31 +282,6 @@ def register_reports_callbacks(app: Dash) -> None:
         window_seconds=max(60, int(os.getenv("REPORT_RATE_WINDOW_SECONDS", "3600"))),
         namespace="report-downloads",
     )
-
-    @app.callback(
-        Output("report-title-input", "value"),
-        Output("report-source-select", "value"),
-        Output("report-profile-description", "children"),
-        Output("report-template-description", "children"),
-        Input("report-template-select", "value"),
-        Input("report-language-select", "value"),
-        prevent_initial_call=True,
-    )
-    def apply_selected_report_template(template_id: str | None, language: str | None):
-        clean_language = "en" if language == "en" else "es"
-        template = find_report_template(current_user, template_id)
-        defaults = template.defaults(clean_language)
-        profile = (
-            report_profile_for_template(template.id)
-            if report_profile_key(current_user) == "admin"
-            else report_profile_for_user(current_user)
-        ) or report_profile_for_user(current_user)
-        return (
-            defaults["title"],
-            defaults["source"],
-            profile.description(clean_language),
-            template.description(clean_language),
-        )
 
     @app.callback(
         Output("report-year-select", "options"),
@@ -364,42 +316,63 @@ def register_reports_callbacks(app: Dash) -> None:
     @app.callback(
         Output("report-indicator-select", "options"),
         Output("report-indicator-select", "value"),
-        Output("report-indicator-field", "className"),
-        Output("report-criterion-field", "className"),
-        Output("report-criterion-select", "options"),
-        Output("report-criterion-select", "value"),
+        Output("report-indicator-select", "disabled"),
         Input("report-source-select", "value"),
         Input("report-category-select", "value"),
         Input("report-year-select", "value"),
         State("report-indicator-select", "value"),
-        State("report-criterion-select", "value"),
     )
     def update_report_indicators(
         source: str | None,
         category: str | None,
         year: int | None,
         current_indicator: str | None,
-        current_criterion: str | None,
     ):
         options = _indicator_options(source or "fra", category or "", year)
         values = {item["value"] for item in options}
         value = current_indicator if current_indicator in values else None
-        is_social = source in {"fra", "combined"}
-        criterion_options = [] if is_social else _criterion_options(year, category or "")
-        criterion_values = {item["value"] for item in criterion_options}
-        return (
-            options,
-            value,
-            "reports-field" if is_social else "reports-field is-hidden",
-            "reports-field is-hidden" if is_social else "reports-field",
-            criterion_options,
-            current_criterion if current_criterion in criterion_values else None,
-        )
+        enabled = _requires_social_indicator(source) and bool(category) and bool(options)
+        return options, value, not enabled
+
+    @app.callback(
+        Output("report-indicator-field", "className"),
+        Output("report-indicator-error", "children"),
+        Output("report-indicator-error", "className"),
+        Input("report-source-select", "value"),
+        Input("report-category-select", "value"),
+        Input("report-indicator-select", "value"),
+        Input("report-preview-button", "n_clicks"),
+        Input("report-language-select", "value"),
+    )
+    def update_report_indicator_validation(
+        source: str | None,
+        category: str | None,
+        indicator: str | None,
+        preview_clicks: int | None,
+        language: str | None,
+    ) -> tuple[str, str, str]:
+        if not _requires_social_indicator(source):
+            return "reports-field is-hidden", "", "reports-field-error is-hidden"
+        invalid = bool(category) and not indicator
+        attempted = ctx.triggered_id == "report-preview-button" and bool(preview_clicks)
+        if invalid and attempted:
+            return (
+                "reports-field has-error",
+                _t(
+                    language,
+                    "Selecciona un indicador social para continuar.",
+                    "Select a social indicator to continue.",
+                ),
+                "reports-field-error",
+            )
+        return "reports-field", "", "reports-field-error is-hidden"
 
     @app.callback(
         Output("report-answer-select", "options"),
         Output("report-answer-select", "value"),
         Output("report-answer-select", "disabled"),
+        Output("report-answer-field", "className"),
+        Output("report-filters-section", "className"),
         Output("report-filter-a-name", "options"),
         Output("report-filter-a-name", "value"),
         Output("report-filter-a-name", "disabled"),
@@ -433,9 +406,12 @@ def register_reports_callbacks(app: Dash) -> None:
         current_b_name: str | None,
         current_b_value: str | None,
     ):
-        enabled = source in {"fra", "combined"} and bool(indicator)
+        social_enabled = _requires_social_indicator(source) and bool(indicator)
+        filters_enabled = source == "fra" and bool(indicator)
         payload = (
-            get_fra_control_payload(indicator or "", category, year) if enabled else {}
+            get_fra_control_payload(indicator or "", category, year)
+            if social_enabled
+            else {}
         )
         answers = list(payload.get("answers") or [])
         answer_values = {item["value"] for item in answers}
@@ -444,7 +420,7 @@ def register_reports_callbacks(app: Dash) -> None:
             if current_answer in answer_values
             else payload.get("default_answer")
         )
-        segmentations = list(payload.get("segmentations") or [])
+        segmentations = list(payload.get("segmentations") or []) if filters_enabled else []
         segmentation_values = {item["value"] for item in segmentations}
         a_name = current_a_name if current_a_name in segmentation_values else "All"
         b_name = current_b_name if current_b_name in segmentation_values else "All"
@@ -455,12 +431,18 @@ def register_reports_callbacks(app: Dash) -> None:
         b_values = {item["value"] for item in b_options}
         a_value = current_a_value if current_a_value in a_values else "All"
         b_value = current_b_value if current_b_value in b_values else "All"
-        b_enabled = enabled and a_name == "All"
+        b_enabled = filters_enabled and a_name == "All"
+        if not filters_enabled:
+            a_name, a_value, a_options = "All", "All", []
+            b_name, b_value, b_options = "All", "All", []
         if not b_enabled:
             b_name, b_value, b_options = "All", "All", list(values_by_type.get("All") or [])
         return (
-            answers, answer, not enabled, segmentations, a_name, not enabled,
-            a_options, a_value, not enabled or a_name == "All",
+            answers, answer, not social_enabled,
+            "reports-field" if _requires_social_indicator(source) else "reports-field is-hidden",
+            "reports-filters-section" if source == "fra" else "reports-filters-section is-hidden",
+            segmentations, a_name, not filters_enabled,
+            a_options, a_value, not filters_enabled or a_name == "All",
             segmentations, b_name, not b_enabled,
             b_options, b_value, not b_enabled or b_name == "All",
         )
@@ -468,48 +450,36 @@ def register_reports_callbacks(app: Dash) -> None:
     @app.callback(
         Output("report-plan-summary", "children"),
         Input("report-source-select", "value"),
+        Input("report-objective-select", "value"),
         Input("report-year-select", "value"),
         Input("report-primary-country", "value"),
         Input("report-comparison-countries", "value"),
         Input("report-answer-select", "value"),
         Input("report-language-select", "value"),
-        Input("report-template-select", "value"),
         Input("report-category-select", "value"),
         Input("report-indicator-select", "value"),
-        Input("report-criterion-select", "value"),
         Input("report-filter-a-name", "value"),
         Input("report-filter-a-value", "value"),
         Input("report-filter-b-name", "value"),
         Input("report-filter-b-value", "value"),
-        Input("report-spanish-context", "value"),
     )
     def update_report_plan_summary(
         source: str | None,
+        objective_id: str | None,
         year: int | None,
         primary_country: str | None,
         comparison_countries: list[str] | None,
         answer: str | None,
         language: str | None,
-        template_id: str | None,
         category: str | None,
         indicator: str | None,
-        criterion: str | None,
         filter_a_name: str | None,
         filter_a_value: str | None,
         filter_b_name: str | None,
         filter_b_value: str | None,
-        spanish_context: list[str] | None,
     ):
         clean_language = "en" if language == "en" else "es"
-        profile_key = report_profile_key(current_user)
-        profile = (
-            report_profile_for_template(template_id)
-            if profile_key == "admin"
-            else report_profile(profile_key)
-        ) or report_profile(profile_key)
-        profile_key = profile.key
-        template = find_report_template(current_user, template_id)
-        objective = report_objective(profile_key, template.objective)
+        objective = hr_report_objective(objective_id)
         source_label = {
             "fra": _t(clean_language, "Datos sociales", "Social data"),
             "ilga": _t(clean_language, "Datos legales", "Legal data"),
@@ -524,37 +494,51 @@ def register_reports_callbacks(app: Dash) -> None:
             )
             if name and name != "All" and value
         ]
-        if spanish_context and "include" in spanish_context:
-            filters.append(_t(clean_language, "Contexto español", "Spanish context"))
         sections = ", ".join(
             _t(clean_language, *SECTION_LABELS.get(key, (key, key)))
-            for key in template.sections
+            for key in HR_REPORT_SECTIONS
         )
-        return html.Dl(
-            [
-                html.Dt(_t(clean_language, "Perfil", "Profile")),
-                html.Dd(profile.name(clean_language)),
+        summary_items: list[Component] = [
+                html.Dt(_t(clean_language, "Enfoque", "Focus")),
+                html.Dd(_t(clean_language, "RRHH y diversidad e inclusión", "HR and diversity and inclusion")),
                 html.Dt(_t(clean_language, "Tipo de información", "Information type")),
                 html.Dd(source_label),
                 html.Dt(_t(clean_language, "Encuesta / año", "Survey / year")),
                 html.Dd(str(year or "—")),
                 html.Dt(_t(clean_language, "Categoría", "Category")),
                 html.Dd(category or "—"),
-                html.Dt(_t(clean_language, "Indicador", "Indicator")),
-                html.Dd(indicator or criterion or "—"),
+        ]
+        if _requires_social_indicator(source):
+            summary_items.extend(
+                [
+                    html.Dt(_t(clean_language, "Indicador social", "Social indicator")),
+                    html.Dd(indicator or "—"),
+                    html.Dt(_t(clean_language, "Respuesta", "Answer")),
+                    html.Dd(answer or "—"),
+                ]
+            )
+        summary_items.extend(
+            [
                 html.Dt(_t(clean_language, "Países", "Countries")),
                 html.Dd(", ".join(countries) or _t(clean_language, "Europa", "Europe")),
-                html.Dt(_t(clean_language, "Respuesta", "Answer")),
-                html.Dd(answer or "—"),
-                html.Dt(_t(clean_language, "Filtros", "Filters")),
-                html.Dd(", ".join(filters) or _t(clean_language, "Ninguno", "None")),
+            ]
+        )
+        if source == "fra":
+            summary_items.extend(
+                [
+                    html.Dt(_t(clean_language, "Filtros", "Filters")),
+                    html.Dd(", ".join(filters) or _t(clean_language, "Ninguno", "None")),
+                ]
+            )
+        summary_items.extend(
+            [
                 html.Dt(_t(clean_language, "Objetivo", "Objective")),
                 html.Dd(objective.label_en if clean_language == "en" else objective.label_es),
                 html.Dt(_t(clean_language, "Secciones incluidas", "Included sections")),
                 html.Dd(sections),
-            ],
-            className="reports-plan-list",
+            ]
         )
+        return html.Dl(summary_items, className="reports-plan-list")
 
     @app.callback(
         Output("report-preview-content", "children"),
@@ -565,13 +549,12 @@ def register_reports_callbacks(app: Dash) -> None:
         Output("report-download-button", "disabled"),
         Input("report-preview-button", "n_clicks"),
         State("report-title-input", "value"),
-        State("report-template-select", "value"),
         State("report-organization-input", "value"),
         State("report-author-input", "value"),
         State("report-source-select", "value"),
+        State("report-objective-select", "value"),
         State("report-category-select", "value"),
         State("report-indicator-select", "value"),
-        State("report-criterion-select", "value"),
         State("report-year-select", "value"),
         State("report-primary-country", "value"),
         State("report-comparison-countries", "value"),
@@ -581,7 +564,6 @@ def register_reports_callbacks(app: Dash) -> None:
         State("report-filter-a-value", "value"),
         State("report-filter-b-name", "value"),
         State("report-filter-b-value", "value"),
-        State("report-spanish-context", "value"),
         State("report-generated-on", "date"),
         State("report-config-store", "data"),
         prevent_initial_call=True,
@@ -597,13 +579,12 @@ def register_reports_callbacks(app: Dash) -> None:
     def preview_report(
         _clicks: int | None,
         title: str | None,
-        template_id: str | None,
         organization: str | None,
         author: str | None,
         source: str | None,
+        objective: str | None,
         category: str | None,
         indicator: str | None,
-        criterion: str | None,
         year: int | None,
         primary_country: str | None,
         comparison_countries: list[str] | None,
@@ -613,10 +594,22 @@ def register_reports_callbacks(app: Dash) -> None:
         filter_a_value: str | None,
         filter_b_name: str | None,
         filter_b_value: str | None,
-        spanish_context: list[str] | None,
         generated_on: str | None,
         inherited_configuration: dict[str, Any] | None,
     ):
+        if _missing_social_indicator(source, category, indicator):
+            return (
+                no_update,
+                no_update,
+                _t(
+                    language,
+                    "Selecciona un indicador social para continuar.",
+                    "Select a social indicator to continue.",
+                ),
+                "reports-status reports-status-error",
+                no_update,
+                True,
+            )
         if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
             return (
                 no_update,
@@ -645,38 +638,37 @@ def register_reports_callbacks(app: Dash) -> None:
                 True,
             )
         preview_rate_limiter.record_failure(limiter_key)
-        config = _configuration_from_controls(
-            title=title,
-            template_id=template_id,
-            organization=organization,
-            author=author,
-            source=source,
-            category=category,
-            indicator=indicator,
-            criterion=criterion,
-            year=year,
-            primary_country=primary_country,
-            comparison_countries=comparison_countries,
-            language=language,
-            answer=answer,
-            filter_a_name=filter_a_name,
-            filter_a_value=filter_a_value,
-            filter_b_name=filter_b_name,
-            filter_b_value=filter_b_value,
-            include_spanish_context="include" in (spanish_context or []),
-            generated_on=generated_on,
-            inherited_configuration=inherited_configuration,
-        )
-        config = _report_configuration_for_user(config.to_dict())
         try:
+            config = _configuration_from_controls(
+                title=title,
+                organization=organization,
+                author=author,
+                source=source,
+                objective=objective,
+                category=category,
+                indicator=indicator,
+                year=year,
+                primary_country=primary_country,
+                comparison_countries=comparison_countries,
+                language=language,
+                answer=answer,
+                filter_a_name=filter_a_name,
+                filter_a_value=filter_a_value,
+                filter_b_name=filter_b_name,
+                filter_b_value=filter_b_value,
+                generated_on=generated_on,
+                inherited_configuration=inherited_configuration,
+            )
+            config = _hr_report_configuration(config.to_dict())
             content = build_report(config)
         except ReportGenerationError as exc:
+            safe_language = "en" if language == "en" else "es"
             logger.warning("report_preview_failed", extra={"reason": str(exc)})
             return (
-                _preview_error(config.language),
+                _preview_error(safe_language),
                 "reports-preview-empty",
                 _t(
-                    config.language,
+                    safe_language,
                     "No se ha podido generar la vista previa.",
                     "The preview could not be generated.",
                 ),
@@ -692,6 +684,26 @@ def register_reports_callbacks(app: Dash) -> None:
             config.to_dict(),
             False,
         )
+
+    @app.callback(
+        Output("report-download-button", "disabled", allow_duplicate=True),
+        Input("report-source-select", "value"),
+        Input("report-objective-select", "value"),
+        Input("report-year-select", "value"),
+        Input("report-category-select", "value"),
+        Input("report-indicator-select", "value"),
+        Input("report-answer-select", "value"),
+        Input("report-primary-country", "value"),
+        Input("report-comparison-countries", "value"),
+        Input("report-filter-a-name", "value"),
+        Input("report-filter-a-value", "value"),
+        Input("report-filter-b-name", "value"),
+        Input("report-filter-b-value", "value"),
+        prevent_initial_call=True,
+    )
+    def invalidate_report_download(*_values: Any) -> bool:
+        """A PDF is only valid for the exact configuration last previewed."""
+        return True
 
     @app.callback(
         Output("report-download", "data"),
@@ -743,7 +755,7 @@ def register_reports_callbacks(app: Dash) -> None:
             )
         download_rate_limiter.record_failure(limiter_key)
         try:
-            generated = generate_report_pdf(_report_configuration_for_user(stored_configuration))
+            generated = generate_report_pdf(_hr_report_configuration(stored_configuration))
         except ReportGenerationError:
             return (
                 no_update,
@@ -765,50 +777,23 @@ def register_reports_callbacks(app: Dash) -> None:
         )
 
 
-def _report_configuration_for_user(values: dict[str, Any] | None) -> ReportConfiguration:
+def _hr_report_configuration(values: dict[str, Any] | None) -> ReportConfiguration:
     payload = dict(values or {})
-    authenticated_profile_key = report_profile_key(current_user)
-    template = find_report_template(current_user, str(payload.get("template_id") or ""))
-    target_profile = report_profile(authenticated_profile_key)
-    if authenticated_profile_key == "admin":
-        target_profile = report_profile_for_template(template.id) or target_profile
-    objective = report_objective(target_profile.key, str(payload.get("objective") or ""))
-    source = str(payload.get("source") or template.source)
-    if source == "combined":
-        combined_charts = {
-            "comun": ("scatter", "median_difference"),
-            "anonymous": ("scatter", "median_difference"),
-            "docente": ("scatter", "quadrants", "median_difference"),
-            "rrhh": ("scatter", "median_difference", "availability"),
-            "ong": ("quadrants", "median_difference", "availability"),
-            "politico": ("scatter", "quadrants", "median_difference"),
-            "sociologo": ("scatter", "quadrants", "median_difference", "availability"),
-            "admin": ("scatter", "quadrants", "median_difference", "availability"),
-        }
-        charts = combined_charts.get(target_profile.key, ("scatter", "median_difference"))
-    else:
-        charts = tuple(
-            key
-            for key in target_profile.recommended_charts
-            if key not in {"scatter", "quadrants", "median_difference", "availability"}
-        )
-    selected_countries = set(normalize_report_countries(payload.get("countries")))
-    spanish_context = (
-        bool(payload.get("include_spanish_context"))
-        and target_profile.supports_spanish_context
-        and "ES" in selected_countries
-    )
+    requested_source = str(payload.get("source") or "fra").strip().casefold()
+    source = requested_source if requested_source in {"fra", "ilga", "combined"} else "fra"
+    objective = hr_report_objective(str(payload.get("objective") or ""))
     payload.update(
         {
-            "template_id": template.id,
-            "profile_key": target_profile.key,
+            "source": source,
             "objective": objective.id,
-            "detail_level": "detailed"
-            if target_profile.key in {"sociologo", "admin"}
-            else template.detail_level,
-            "sections": list(target_profile.recommended_sections),
-            "charts": list(charts),
-            "include_spanish_context": spanish_context,
+            "detail_level": "standard",
+            "sections": list(HR_REPORT_SECTIONS),
+            "charts": list(hr_report_charts(source, objective.id)),
+            "criterion": "",
+            "filter_a_name": payload.get("filter_a_name", "All") if source == "fra" else "All",
+            "filter_a_value": payload.get("filter_a_value", "All") if source == "fra" else "All",
+            "filter_b_name": payload.get("filter_b_name", "All") if source == "fra" else "All",
+            "filter_b_value": payload.get("filter_b_value", "All") if source == "fra" else "All",
         }
     )
     return ReportConfiguration.from_mapping(payload)
@@ -822,8 +807,6 @@ def _configuration_panel(
     category: str,
     indicators: list[dict[str, Any]],
     country_options: list[dict[str, Any]],
-    templates: tuple[ReportTemplate, ...],
-    selected_template: ReportTemplate,
 ) -> Component:
     social_source = config.source in {"fra", "combined"}
     # Keep the layout query-free. The callback loads valid options after Dash
@@ -855,25 +838,51 @@ def _configuration_panel(
                 className="reports-section-title",
             ),
             _field(
-                "Plantilla para tu perfil",
-                "Template for your profile",
-                dcc.Dropdown(
-                    id="report-template-select",
+                "¿Qué información quieres analizar?",
+                "What information do you want to analyse?",
+                dcc.RadioItems(
+                    id="report-source-select",
                     options=[
                         {
-                            "label": text(template.name_es, template.name_en),
-                            "value": template.id,
-                        }
-                        for template in templates
+                            "label": text("Datos sociales", "Social data"),
+                            "value": "fra",
+                        },
+                        {
+                            "label": text("Datos legales", "Legal data"),
+                            "value": "ilga",
+                        },
+                        {
+                            "label": text("Análisis combinado", "Combined analysis"),
+                            "value": "combined",
+                        },
                     ],
-                    value=selected_template.id,
-                    clearable=False,
+                    value=config.source,
+                    className="reports-source-options",
                 ),
             ),
-            html.P(
-                text(selected_template.description_es, selected_template.description_en),
-                id="report-template-description",
-                className="reports-template-description",
+            html.Div(
+                [
+                    html.P(text("Datos sociales: experiencias, opiniones y condiciones de vida recogidas en encuestas europeas LGBTIQ+.", "Social data: experiences, opinions and living conditions gathered in European LGBTIQ+ surveys.")),
+                    html.P(text("Datos legales: protección, reconocimiento y derechos legales en Europa.", "Legal data: legal protection, recognition and rights across Europe.")),
+                    html.P(text("Análisis combinado: relaciona experiencias sociales y protección legal sin asumir causalidad.", "Combined analysis: links social experiences and legal protection without assuming causality.")),
+                ],
+                className="reports-source-help",
+            ),
+            _field(
+                "Objetivo del informe",
+                "Report objective",
+                dcc.Dropdown(
+                    id="report-objective-select",
+                    options=[
+                        {
+                            "label": text(objective.label_es, objective.label_en),
+                            "value": objective.id,
+                        }
+                        for objective in HR_REPORT_OBJECTIVES
+                    ],
+                    value=hr_report_objective(config.objective).id,
+                    clearable=False,
+                ),
             ),
             _field(
                 "Título",
@@ -909,28 +918,6 @@ def _configuration_panel(
                 ),
             ),
             _field(
-                "¿Qué información quieres analizar?",
-                "What information do you want to analyse?",
-                dcc.RadioItems(
-                    id="report-source-select",
-                    options=[
-                        {"label": text("Datos sociales", "Social data"), "value": "fra"},
-                        {"label": text("Datos legales", "Legal data"), "value": "ilga"},
-                        {"label": text("Análisis combinado", "Combined analysis"), "value": "combined"},
-                    ],
-                    value=config.source,
-                    className="reports-source-options",
-                ),
-            ),
-            html.Div(
-                [
-                    html.P(text("Datos sociales: experiencias, opiniones y condiciones de vida recogidas en encuestas europeas LGBTIQ+.", "Social data: experiences, opinions and living conditions gathered in European LGBTIQ+ surveys.")),
-                    html.P(text("Datos legales: protección, reconocimiento y derechos legales en Europa.", "Legal data: legal protection, recognition and rights across Europe.")),
-                    html.P(text("Análisis combinado: relaciona experiencias sociales y protección legal sin asumir causalidad.", "Combined analysis: links social experiences and legal protection without assuming causality.")),
-                ],
-                className="reports-source-help",
-            ),
-            _field(
                 "Año",
                 "Year",
                 dcc.Dropdown(
@@ -957,22 +944,13 @@ def _configuration_panel(
                     id="report-indicator-select",
                     options=indicators,
                     value=config.indicator_id or None,
+                    disabled=not social_source or not bool(category and indicators),
                     clearable=False,
                 ),
                 element_id="report-indicator-field",
                 class_name="reports-field" if social_source else "reports-field is-hidden",
-            ),
-            _field(
-                "Criterio legal",
-                "Legal criterion",
-                dcc.Dropdown(
-                    id="report-criterion-select",
-                    options=([] if social_source else _criterion_options(year, category)),
-                    value=config.criterion or None,
-                    clearable=True,
-                ),
-                element_id="report-criterion-field",
-                class_name="reports-field is-hidden" if social_source else "reports-field",
+                required=True,
+                error_id="report-indicator-error",
             ),
             _field(
                 "Respuesta",
@@ -984,56 +962,68 @@ def _configuration_panel(
                     disabled=not social_source or not config.indicator_id,
                     clearable=False,
                 ),
+                element_id="report-answer-field",
+                class_name="reports-field" if social_source else "reports-field is-hidden",
             ),
-            html.H3(text("Segmentación", "Segmentation"), className="reports-subheading"),
-            html.Div(
+            html.Section(
                 [
-                    _field(
-                        "Tipo de filtro",
-                        "Filter type",
-                        dcc.Dropdown(
-                            id="report-filter-a-name",
-                            options=segmentations,
-                            value=config.filter_a_name,
-                            disabled=not social_source or not config.indicator_id,
-                            clearable=False,
-                        ),
-                    ),
-                    _field(
-                        "Valor",
-                        "Value",
-                        dcc.Dropdown(
-                            id="report-filter-a-value",
-                            options=list(values_by_type.get(config.filter_a_name) or []),
-                            value=config.filter_a_value,
-                            disabled=not social_source or config.filter_a_name == "All",
-                            clearable=False,
-                        ),
-                    ),
-                    _field(
-                        "Segundo filtro",
-                        "Second filter",
-                        dcc.Dropdown(
-                            id="report-filter-b-name",
-                            options=segmentations,
-                            value=config.filter_b_name,
-                            disabled=not social_source or config.filter_a_name != "All",
-                            clearable=False,
-                        ),
-                    ),
-                    _field(
-                        "Valor del segundo filtro",
-                        "Second filter value",
-                        dcc.Dropdown(
-                            id="report-filter-b-value",
-                            options=list(values_by_type.get(config.filter_b_name) or []),
-                            value=config.filter_b_value,
-                            disabled=(not social_source or config.filter_a_name != "All" or config.filter_b_name == "All"),
-                            clearable=False,
-                        ),
+                    html.H3(text("Filtros", "Filters"), className="reports-subheading"),
+                    html.Div(
+                        [
+                            _field(
+                                "Tipo de filtro",
+                                "Filter type",
+                                dcc.Dropdown(
+                                    id="report-filter-a-name",
+                                    options=segmentations,
+                                    value=config.filter_a_name,
+                                    disabled=not social_source or not config.indicator_id,
+                                    clearable=False,
+                                ),
+                            ),
+                            _field(
+                                "Valor",
+                                "Value",
+                                dcc.Dropdown(
+                                    id="report-filter-a-value",
+                                    options=list(values_by_type.get(config.filter_a_name) or []),
+                                    value=config.filter_a_value,
+                                    disabled=not social_source or config.filter_a_name == "All",
+                                    clearable=False,
+                                ),
+                            ),
+                            _field(
+                                "Segundo filtro",
+                                "Second filter",
+                                dcc.Dropdown(
+                                    id="report-filter-b-name",
+                                    options=segmentations,
+                                    value=config.filter_b_name,
+                                    disabled=not social_source or config.filter_a_name != "All",
+                                    clearable=False,
+                                ),
+                            ),
+                            _field(
+                                "Valor del segundo filtro",
+                                "Second filter value",
+                                dcc.Dropdown(
+                                    id="report-filter-b-value",
+                                    options=list(values_by_type.get(config.filter_b_name) or []),
+                                    value=config.filter_b_value,
+                                    disabled=(not social_source or config.filter_a_name != "All" or config.filter_b_name == "All"),
+                                    clearable=False,
+                                ),
+                            ),
+                        ],
+                        className="reports-filters-grid",
                     ),
                 ],
-                className="reports-segmentation-grid",
+                id="report-filters-section",
+                className=(
+                    "reports-filters-section"
+                    if config.source == "fra"
+                    else "reports-filters-section is-hidden"
+                ),
             ),
             _field(
                 "País principal",
@@ -1077,50 +1067,24 @@ def _configuration_panel(
                     display_format="YYYY-MM-DD",
                 ),
             ),
-            _field(
-                "Contexto español complementario",
-                "Complementary Spanish context",
-                dcc.Checklist(
-                    id="report-spanish-context",
-                    options=[
-                        {
-                            "label": text("Incluir referencias FELGTBI+ cuando España esté seleccionada", "Include FELGTBI+ references when Spain is selected"),
-                            "value": "include",
-                            "disabled": not report_profile(config.profile_key).supports_spanish_context,
-                        }
-                    ],
-                    value=["include"] if config.include_spanish_context else [],
-                ),
-            ),
         ],
         className="reports-card reports-card-configuration",
     )
 
 
-def _profile_panel(profile) -> Component:
+def _hr_purpose_panel() -> Component:
     return html.Section(
         [
             html.H2(
-                ui_text_component("report_personalised_generation"),
+                text("Informe orientado a RRHH", "HR-oriented report"),
                 className="reports-section-title",
             ),
             html.P(
-                ui_text_component("report_personalised_generation_description"),
+                text(
+                    "El informe ayuda a interpretar el contexto externo LGBTIQ+ y a identificar posibles áreas de mejora en diversidad e inclusión.",
+                    "The report helps interpret the external LGBTIQ+ context and identify possible areas for improving diversity and inclusion.",
+                ),
                 className="reports-generation-description",
-            ),
-            html.Div(
-                [
-                    html.P(
-                        text("Recomendado para tu perfil", "Recommended for your profile"),
-                        className="stats-eyebrow",
-                    ),
-                    html.P(
-                        text(profile.description_es, profile.description_en),
-                        id="report-profile-description",
-                        className="reports-profile-description",
-                    ),
-                ],
-                className="reports-profile-recommendation",
             ),
             html.Div(
                 [
@@ -1133,24 +1097,12 @@ def _profile_panel(profile) -> Component:
                     ),
                     html.P(
                         text(
-                            "El contenido, el nivel de detalle y las posibles líneas de actuación se adaptan automáticamente a las necesidades del perfil que tienes configurado en la aplicación.",
-                            "The content, level of detail and possible courses of action are automatically adapted to the needs of the profile configured in your account.",
+                            "Los resultados de FRA describen el contexto social de la población encuestada y del país. No constituyen una auditoría ni una medición de la plantilla de una empresa concreta.",
+                            "FRA results describe the social context of the surveyed population and country. They are not an audit or measurement of a specific organisation's workforce.",
                         )
                     ),
                 ],
-                className="reports-profile-explanation",
-            ),
-            html.Div(
-                [
-                    html.H3(text("Qué incluirá", "What it will include")),
-                    html.Ul(
-                        [
-                            html.Li(text(*SECTION_LABELS.get(key, (key, key))))
-                            for key in profile.recommended_sections
-                        ]
-                    ),
-                ],
-                className="reports-profile-output",
+                className="reports-hr-explanation",
             ),
             html.P(
                 text(
@@ -1160,7 +1112,7 @@ def _profile_panel(profile) -> Component:
                 className="reports-method-note",
             ),
         ],
-        className="reports-card reports-card-profile",
+        className="reports-card reports-card-purpose",
     )
 
 
@@ -1244,8 +1196,8 @@ def _preview_content(content) -> list[Component]:
                 html.P(content.configuration.organization, className="reports-preview-org"),
                 html.H2(content.configuration.title),
                 html.P(
-                    content.profile_label,
-                    className="reports-preview-profile",
+                    content.focus_label,
+                    className="reports-preview-focus",
                 ),
                 html.P(
                     f"{content.indicator} - {content.configuration.year or ''}",
@@ -1267,7 +1219,7 @@ def _preview_content(content) -> list[Component]:
                 "Contexto" if language == "es" else "Context",
                 [
                     (
-                        f"El informe analiza «{content.indicator}» para {content.configuration.year or 'el periodo disponible'}."
+                        f'El informe analiza "{content.indicator}" para {content.configuration.year or "el periodo disponible"}.'
                         if language == "es"
                         else f"The report analyses “{content.indicator}” for {content.configuration.year or 'the available period'}."
                     )
@@ -1301,22 +1253,6 @@ def _preview_content(content) -> list[Component]:
                     table,
                 ],
                 className="reports-preview-section",
-            )
-        )
-    if "education" in enabled and content.educational_content:
-        components.append(
-            _preview_section(
-                "Propuesta didáctica" if language == "es" else "Learning activity",
-                content.educational_content,
-            )
-        )
-    if "data_quality" in enabled and content.data_quality:
-        components.append(
-            _preview_section(
-                "Disponibilidad y calidad de los datos"
-                if language == "es"
-                else "Data availability and quality",
-                content.data_quality,
             )
         )
     if "interpretation" in enabled and content.conclusions:
@@ -1421,14 +1357,20 @@ def _current_user_id() -> str:
 def _year_options(source: str) -> list[dict[str, Any]]:
     values = get_fra_years() if source in {"fra", "combined"} else get_ilga_years()
     if source in {"fra", "combined"}:
-        labels = {2023: "Encuesta III · 2023", 2019: "Encuesta II · 2019", 2012: "Encuesta I · 2012"}
-        return [{"label": labels.get(year, str(year)), "value": year} for year in values]
+        return [
+            {
+                "label": text(f"Encuesta {year}", f"Survey {year}"),
+                "value": year,
+            }
+            for year in values
+            if year in {2023, 2019}
+        ]
     return [{"label": str(year), "value": year} for year in values]
 
 
 def _category_options(source: str, year: int | None) -> list[dict[str, Any]]:
     if source in {"fra", "combined"}:
-        values = get_fra_categories()
+        values = get_fra_categories(year)
     else:
         values = ["Ranking total", *get_ilga_criteria_categories_by_year(year)]
     return [
@@ -1459,19 +1401,6 @@ def _indicator_options(
     ]
 
 
-def _criterion_options(
-    year: int | None,
-    category: str,
-) -> list[dict[str, str]]:
-    if not category or category == "Ranking total":
-        return []
-    return [
-        {"label": str(item["indicator"]), "value": str(item["indicator"])}
-        for item in get_ilga_criteria_by_year(year, category)
-        if item.get("indicator")
-    ]
-
-
 def _country_options(selected: tuple[str, ...]) -> list[dict[str, Any]]:
     known = set(REPORT_COUNTRY_CODES)
     values = [
@@ -1490,38 +1419,69 @@ def _field(
     *,
     element_id: str | None = None,
     class_name: str = "reports-field",
+    required: bool = False,
+    error_id: str | None = None,
 ) -> Component:
     props: dict[str, Any] = {"className": class_name}
     if element_id:
         props["id"] = element_id
     control_id = getattr(component, "id", None)
-    is_group = component.__class__.__name__ in {
-        "Checklist",
-        "DatePickerRange",
-        "DatePickerSingle",
-        "RadioItems",
-        "RangeSlider",
-        "Slider",
-    }
-    if is_group and control_id:
+    is_native_form_control = component.__class__.__name__ in {"Input", "Textarea"}
+    label_content: Component | list[Component] = html.Span(
+        label_es,
+        **text_attrs(label_es, label_en),
+    )
+    if required:
+        label_content = [
+            label_content,
+            html.Span(
+                " *",
+                className="reports-required-marker",
+                title="Obligatorio / Required",
+                **dash_attrs({"aria-hidden": "true"}),
+            ),
+        ]
+        props["aria-required"] = "true"
+    if control_id and not is_native_form_control:
         label_id = f"{control_id}-label"
         label_node = html.Span(
-            label_es,
+            label_content,
             id=label_id,
             className="reports-field-label",
-            **text_attrs(label_es, label_en),
         )
         props.update({"role": "group", "aria-labelledby": label_id})
     else:
         label_node = html.Label(
-            label_es,
+            label_content,
             htmlFor=control_id,
-            **text_attrs(label_es, label_en),
+        )
+    children: list[Component] = [label_node, component]
+    if error_id:
+        children.append(
+            html.P(
+                "",
+                id=error_id,
+                className="reports-field-error is-hidden",
+                role="alert",
+                **dash_attrs({"aria-live": "polite"}),
+            )
         )
     return html.Div(
-        [label_node, component],
+        children,
         **dash_attrs(props),
     )
+
+
+def _requires_social_indicator(source: str | None) -> bool:
+    return source in {"fra", "combined"}
+
+
+def _missing_social_indicator(
+    source: str | None,
+    category: str | None,
+    indicator: str | None,
+) -> bool:
+    return _requires_social_indicator(source) and bool(category) and not indicator
 
 
 def _t(language: str | None, es: str, en: str) -> str:

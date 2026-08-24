@@ -11,7 +11,7 @@ Este paquete contiene la capa de dominio y servicios de `/didactica`:
 - `teacher_service.py`: metadatos docentes y PDF generado en memoria.
 - `custom_game_service.py`: juegos propios de cada Docente, validados y persistidos en MongoDB.
 - `presentation_service.py`: catálogo público de PowerPoint y PDF obtenido desde Supabase Storage.
-- `progress_service.py`: progreso resumido por usuario en MongoDB.
+- Los juegos estándar mantienen el estado solo durante la ronda y no persisten progreso.
 - `translations.py`: vocabulario común español/inglés.
 Los archivos de Presentaciones no se descargan para construir el catálogo: solo se consulta su
 metadata y el navegador descarga cada objeto directamente desde Supabase.

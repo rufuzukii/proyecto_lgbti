@@ -38,14 +38,14 @@ PostgreSQL, MongoDB, la caché TTL local acotada, Plotly y Pandas.
 
 ## Estadísticas europeas FRA
 
-La página `/statistics` selecciona una edición FRA mediante `fra_surveys.py`. No deriva el año visible del nombre de MongoDB: 2023 usa `Indicator_fra`, 2019 usa `Indicador_fra_2019` y la encuesta de 2012 usa, por compatibilidad, `Indicador_fra_2013`.
+La página `/statistics` selecciona una edición FRA mediante `fra_surveys.py`. Las dos ediciones activas son 2023 (`Indicator_fra`) y 2019 (`Indicator_fra_2019`). El año visible se obtiene de la configuración, no del nombre de MongoDB.
 
 El dashboard usa una capa modular:
 
 - `statistics_models.py`: modelos de consulta y validación de un único filtro FRA del grupo A y un único filtro del grupo B.
 - `statistics_normalizers.py`: normalización de códigos ISO, tipos de filtro y erratas conocidas sin perder el valor bruto usado por los datos.
 - `statistics_service.py`: conversión de documentos Mongo a `DataFrame`, filtrado, agregación y estados sin datos.
-- `statistics_charts.py`: generación centralizada de gráficos Plotly para mapa, ranking, distribución, comparador, heatmap ILGA y scatter FRA/ILGA.
+- `statistics_charts.py`: generación centralizada de gráficos Plotly para mapa, ranking, distribución, comparador, heatmap legal y visualizaciones combinadas. Estadísticas muestra cuadrantes y diferencia de posiciones cuando la semántica es segura; el constructor de dispersión se reutiliza únicamente en informes combinados que lo solicitan.
 
 El dashboard ejecuta una consulta analítica principal por selección y reutiliza el
 resultado normalizado para mapa, ranking, detalle y tabla. En producción los

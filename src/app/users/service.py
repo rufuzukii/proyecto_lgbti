@@ -23,7 +23,6 @@ from app.users.account_security import (
     initialize_new_account,
     mark_email_unverified,
     record_security_event,
-    set_account_active,
 )
 from app.users.audit import record_user_admin_event
 from app.users.schemas import (
@@ -319,6 +318,10 @@ def update_user_as_admin(
     actor_user_id: str,
     expected_version: str | None = None,
 ) -> UserRecord:
+    if not actor_user_id:
+        raise ValueError("actor_required")
+    if user_id == actor_user_id:
+        raise ValueError("self_manage")
     clean_username = _normalize_user_text(username)
     normalized_email = _normalize_email(email)
     clean_organization = _normalize_optional_text(organization)
@@ -402,40 +405,6 @@ def delete_user_as_admin(*, user_id: str, actor_user_id: str) -> None:
         delete_user_account_as_admin(user_id=user_id, actor_user_id=actor_user_id)
     except AccountDeletionError as exc:
         raise ValueError(exc.code) from exc
-
-
-def set_user_active_as_admin(
-    *,
-    user_id: str,
-    active: bool,
-    actor_user_id: str,
-) -> UserRecord:
-    if not actor_user_id:
-        raise ValueError("actor_required")
-    if user_id == actor_user_id and not active:
-        raise ValueError("self_deactivate")
-    record = get_user_record(user_id)
-    if record is None:
-        raise ValueError("user_not_found")
-    try:
-        state = set_account_active(user_id, active=active)
-        if not active:
-            increment_session_version(user_id)
-        _record_security_event_safely(
-            user_id,
-            "account_activated" if active else "account_deactivated",
-        )
-    except AccountSecurityStorageError as exc:
-        raise UserStorageError("account_security_unavailable") from exc
-    updated = _record_with_security(record, state)
-    _record_admin_event_safely(
-        actor_user_id=actor_user_id,
-        target_user_id=user_id,
-        action="user_activated" if active else "user_deactivated",
-        before={"active": record.active},
-        after={"active": active},
-    )
-    return updated
 
 
 def set_user_password(*, user_id: str, new_password: str) -> None:
@@ -601,24 +570,6 @@ def _account_state(user_id: str) -> AccountSecurityState:
         return get_account_security(user_id)
     except AccountSecurityStorageError as exc:
         raise UserStorageError("account_security_unavailable") from exc
-
-
-def _record_with_security(
-    record: UserRecord,
-    state: AccountSecurityState,
-) -> UserRecord:
-    return UserRecord(
-        id=record.id,
-        username=record.username,
-        email=record.email,
-        role=record.role,
-        organization=record.organization,
-        password_hash=record.password_hash,
-        user_type=record.user_type,
-        active=state.active,
-        email_verified=state.email_verified,
-        session_version=state.session_version,
-    )
 
 
 def _role_from_user_type(value: str | None) -> UserRole:

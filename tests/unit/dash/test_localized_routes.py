@@ -74,6 +74,13 @@ def test_mixed_and_historical_paths_have_one_canonical_destination() -> None:
     assert LEGACY_REDIRECTS["/en/acerca-de"] == "/en/about"
     assert LEGACY_REDIRECTS["/es/login"] == "/es/iniciar-sesion"
     assert LEGACY_REDIRECTS["/en/user"] == "/en/profile"
+    public_es = match_route("/es/didactica/juegos/actividad/share_ABC-123")
+    assert public_es is not None
+    assert public_es.route_id == "educator_public_activity"
+    assert public_es.public_id == "share_ABC-123"
+    assert equivalent_path(public_es.path, "en") == (
+        "/en/learning/games/activity/share_ABC-123"
+    )
 
 
 def test_safe_next_only_accepts_registered_local_pages() -> None:
@@ -128,6 +135,6 @@ def test_language_switch_client_preserves_query_and_hash() -> None:
     source = dash_app_module._register_client_preferences_callbacks.__code__
     assert source is not None
     module_source = Path(dash_app_module.__file__).read_text(encoding="utf-8")
-    assert 'route[selected] + (search || "") + (hash || "")' in module_source
+    assert 'route[selected] + dynamicSuffix + (search || "") + (hash || "")' in module_source
     assert 'Output("url", "href")' in module_source
     assert "document.title" in (Path(dash_app_module.__file__).parent / "dash" / "assets" / "js" / "10_i18n.js").read_text(encoding="utf-8")

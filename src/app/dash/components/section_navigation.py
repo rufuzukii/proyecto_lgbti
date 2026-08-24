@@ -141,6 +141,7 @@ def _build_section_card(section: PrimarySection) -> Component:
                     [
                         ui_text_component(section.action_key),
                         html.Span(
+                            "→",
                             className="home-section-card__arrow",
                             **dash_attrs({"aria-hidden": "true"}),
                         ),

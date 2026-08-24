@@ -60,6 +60,35 @@ def test_country_status_keeps_fallback_year_visible() -> None:
     assert result[0]["year"] == 2025
 
 
+def test_country_status_preserves_stored_bilingual_content() -> None:
+    with patch(
+        "app.analytics.country_status_service.get_country_lgbti_status_records",
+        return_value=[
+            {
+                "country_code": "ES",
+                "country": "Spain",
+                "year": 2026,
+                "summary": "Resumen.",
+                "summary_i18n": {"es": "Resumen.", "en": "Summary."},
+                "positive_developments": ["Avance."],
+                "positive_developments_i18n": {
+                    "es": ["Avance."],
+                    "en": ["Progress."],
+                },
+                "source_name": "ILGA-Europe",
+                "active": True,
+            }
+        ],
+    ):
+        result = get_country_lgbti_status(["ES"], 2026)
+
+    assert result[0]["summary_i18n"] == {"es": "Resumen.", "en": "Summary."}
+    assert result[0]["positive_developments_i18n"] == {
+        "es": ["Avance."],
+        "en": ["Progress."],
+    }
+
+
 def test_country_status_returns_missing_card_payload() -> None:
     with patch(
         "app.analytics.country_status_service.get_country_lgbti_status_records",

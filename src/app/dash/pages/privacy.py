@@ -7,6 +7,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 from flask_login import current_user
 
+from app.dash.components.page_structure import build_page_header
 from app.dash.i18n import (
     attribute_attrs,
     dash_attrs,
@@ -40,29 +41,21 @@ def build_privacy_layout() -> Component:
             build_navbar(active="privacy"),
             html.Main(
                 [
-                    html.Header(
-                        [
-                            html.P(
-                                text("RGPD · Unión Europea", "GDPR · European Union"),
-                                className="privacy-eyebrow",
-                            ),
-                            html.H1(ui_text_component("privacy_title")),
-                            html.P(
-                                text(
-                                    "Esta página explica qué información usa realmente RainbowLens DataHub, por qué la necesita y cómo puedes ejercer tus derechos.",
-                                    "This page explains what information RainbowLens DataHub actually uses, why it is needed and how you can exercise your rights.",
-                                ),
-                                className="privacy-lead",
-                            ),
-                            html.P(
+                    build_page_header(
+                        eyebrow=text("RGPD · Unión Europea", "GDPR · European Union"),
+                        title=ui_text_component("privacy_title"),
+                        description=text(
+                            "Esta página explica qué información usa realmente RainbowLens DataHub, por qué la necesita y cómo puedes ejercer tus derechos.",
+                            "This page explains what information RainbowLens DataHub actually uses, why it is needed and how you can exercise your rights.",
+                        ),
+                        meta=html.P(
                                 text(
                                     f"Política vigente desde: {config.policy_effective_date}.",
                                     f"Policy effective from: {config.policy_effective_date}.",
                                 ),
                                 className="privacy-effective-date",
-                            ),
-                        ],
-                        className="privacy-header",
+                        ),
+                        class_name="privacy-header",
                     ),
                     _privacy_navigation(),
                     _controller_card(config),
@@ -78,7 +71,7 @@ def build_privacy_layout() -> Component:
                         className="privacy-content-grid",
                     ),
                 ],
-                className="privacy-page app-page-container",
+                className="privacy-page app-page app-page-container",
             ),
         ]
     )
@@ -109,10 +102,10 @@ def build_account_deleted_layout() -> Component:
                                 className="auth-button privacy-home-link",
                             ),
                         ],
-                        className="privacy-deleted-card",
+                        className="privacy-deleted-card app-surface",
                     )
                 ],
-                className="privacy-deleted-page app-page-container",
+                className="privacy-deleted-page app-page app-page-container",
                 **dash_attrs({"data-privacy-account-deleted": "true"}),
             ),
         ]
@@ -253,8 +246,6 @@ def _data_inventory_card() -> Component:
                 "Contenido creado y actividad",
                 "Created content and activity",
                 [
-                    "progreso didáctico, lecciones completadas y mejores puntuaciones",
-                    "learning progress, completed lessons and best scores",
                     "juegos docentes privados creados por el usuario",
                     "private educator games created by the user",
                     "cargas pendientes y sus archivos JSON cuando un administrador importa datos",
@@ -271,8 +262,8 @@ def _data_inventory_card() -> Component:
                     "hashed rate-limit keys and cached data",
                     "logs de acceso del alojamiento, que pueden incluir IP, fecha, ruta, estado, referente y agente de usuario",
                     "hosting access logs, which may include IP, date, route, status, referrer and user agent",
-                    "idioma, tema y versión del aviso aceptado guardados solo en este navegador",
-                    "language, theme and accepted notice version stored only in this browser",
+                    "idioma y tema guardados solo en este navegador",
+                    "language and theme stored only in this browser",
                 ],
             ),
             html.P(
@@ -297,8 +288,8 @@ def _purposes_card() -> Component:
                 "Performance of the requested service.",
             ),
             _policy_row(
-                "Guardar progreso didáctico, juegos propios y cargas pendientes.",
-                "Save learning progress, owned games and pending uploads.",
+                "Guardar juegos docentes propios y cargas pendientes.",
+                "Save owned educator games and pending uploads.",
                 "Ejecución del servicio solicitado.",
                 "Performance of the requested service.",
             ),
@@ -326,8 +317,8 @@ def _retention_card(config: PrivacyPolicyConfig) -> Component:
             _bullet_list(
                 [
                     (
-                        "Cuenta, perfil, progreso y juegos: mientras la cuenta exista; se eliminan al completar la solicitud.",
-                        "Account, profile, progress and games: while the account exists; deleted when the request completes.",
+                        "Cuenta, perfil y juegos docentes: mientras la cuenta exista; se eliminan al completar la solicitud.",
+                        "Account, profile and educator games: while the account exists; deleted when the request completes.",
                     ),
                     (
                         "Tokens: hasta 24 horas para verificación y 1 hora para recuperación; MongoDB los elimina por caducidad.",
@@ -350,8 +341,8 @@ def _retention_card(config: PrivacyPolicyConfig) -> Component:
                         f"Reports: only during generation. Received messages and attachments: {config.email_retention or 'according to mailbox retention, which the controller must configure'}.",
                     ),
                     (
-                        f"Logs de acceso de Render y proveedores: {config.access_log_retention or 'durante el plazo del servicio contratado, pendiente de documentar por el responsable'}.",
-                        f"Render and provider access logs: {config.access_log_retention or 'for the contracted service period, to be documented by the controller'}.",
+                        f"Logs de acceso de Render: {config.access_log_retention or 'durante el periodo en que puedan ser conservados por el servicio conforme a su funcionamiento y configuración'}.",
+                        f"Render access logs: {config.access_log_retention or 'for the period in which the service may retain them according to its operation and configuration'}.",
                     ),
                 ]
             )
@@ -367,8 +358,8 @@ def _recipients_card(config: PrivacyPolicyConfig) -> Component:
             f"PostgreSQL{_provider_suffix(config.postgres_provider)} for accounts and pending uploads.",
         ),
         (
-            f"MongoDB{_provider_suffix(config.mongo_provider)} para seguridad, progreso, juegos y auditoría.",
-            f"MongoDB{_provider_suffix(config.mongo_provider)} for security, progress, games and auditing.",
+            f"MongoDB{_provider_suffix(config.mongo_provider)} para seguridad, juegos docentes y auditoría.",
+            f"MongoDB{_provider_suffix(config.mongo_provider)} for security, educator games and auditing.",
         ),
         (
             "Supabase Storage para figuras de fuentes públicas; actualmente no recibe archivos personales de cuenta.",
@@ -379,18 +370,17 @@ def _recipients_card(config: PrivacyPolicyConfig) -> Component:
             f"The SMTP provider{_provider_suffix(config.email_provider)} for verification, recovery and contact messages.",
         ),
     ]
-    transfer = (
-        text(
-            f"Ubicación configurada: {config.hosting_location}. Garantías: {config.transfer_safeguards or 'deben verificarse en el contrato del proveedor'}.",
-            f"Configured location: {config.hosting_location}. Safeguards: {config.transfer_safeguards or 'must be verified in the provider agreement'}.",
+    children: list[Component] = [_bullet_list(providers)]
+    if config.hosting_location:
+        children.append(
+            html.P(
+                text(
+                    f"Ubicación configurada: {config.hosting_location}. Garantías: {config.transfer_safeguards or 'deben verificarse en el contrato del proveedor'}.",
+                    f"Configured location: {config.hosting_location}. Safeguards: {config.transfer_safeguards or 'must be verified in the provider agreement'}.",
+                )
+            )
         )
-        if config.hosting_location
-        else text(
-            "El código no permite determinar la región contratada ni afirmar una transferencia internacional. El responsable debe documentar la ubicación y las garantías de cada proveedor antes del despliegue.",
-            "The code cannot determine the contracted region or establish that an international transfer occurs. The controller must document each provider's location and safeguards before deployment.",
-        )
-    )
-    return _card("privacy_recipients", [_bullet_list(providers), html.P(transfer)])
+    return _card("privacy_recipients", children)
 
 
 def _security_card() -> Component:

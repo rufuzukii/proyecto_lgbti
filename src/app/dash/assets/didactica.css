@@ -1,35 +1,9 @@
 .didactica-shell {
-  margin: 0 auto;
-  max-width: 1380px;
-  min-height: calc(100vh - 130px);
-  padding: clamp(1.2rem, 4vw, 3.2rem);
+  color: var(--color-text);
   width: 100%;
 }
 
-.didactica-hero,
-.didactica-subpage-header {
-  margin-bottom: 2rem;
-  max-width: 850px;
-}
-
-.didactica-hero h1,
-.didactica-subpage-header h1 {
-  color: var(--color-text);
-  font-size: clamp(2rem, 5vw, 3.5rem);
-  line-height: 1.05;
-  margin: 0 0 0.75rem;
-}
-
-.didactica-hero p,
-.didactica-subpage-header p {
-  color: var(--color-text-muted);
-  font-size: clamp(1rem, 2vw, 1.2rem);
-  line-height: 1.6;
-  margin: 0;
-}
-
-.didactica-glossary-grid,
-.didactica-progress-grid {
+.didactica-glossary-grid {
   display: grid;
   gap: 1.1rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
@@ -79,10 +53,8 @@
 
 .didactica-resource-card,
 .didactica-glossary-card,
-.didactica-progress-card,
 .didactica-game-card,
 .didactica-teacher-detail,
-.didactica-progress-detail,
 .didactica-denied {
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
@@ -215,6 +187,11 @@
   font-weight: 800;
 }
 
+.didactica-field-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .didactica-field input {
   background: var(--color-surface);
   border: 1px solid var(--panel-border);
@@ -227,9 +204,7 @@
 }
 
 .didactica-glossary-card,
-.didactica-progress-card,
-.didactica-teacher-detail,
-.didactica-progress-detail {
+.didactica-teacher-detail {
   padding: 1.25rem;
 }
 
@@ -380,10 +355,6 @@
   gap: 0.85rem;
 }
 
-.teacher-space-create-button {
-  justify-self: start;
-}
-
 .teacher-activity-list {
   display: grid;
   gap: 1rem;
@@ -472,6 +443,88 @@
 
 .teacher-activity-editor {
   max-width: 860px;
+}
+
+.teacher-editor-share-link {
+  background: var(--surface-subtle, var(--panel-bg));
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md, 12px);
+  margin-top: 1rem;
+  padding: 0.9rem;
+}
+
+.teacher-share-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.teacher-share-row code {
+  color: var(--color-text);
+  flex: 1 1 20rem;
+  overflow-wrap: anywhere;
+}
+
+.guess-game-finish {
+  padding-block: 1rem;
+  text-align: center;
+}
+
+.word-search-confetti {
+  height: 0;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+  z-index: 3;
+}
+
+.word-search-confetti__piece {
+  background: var(--color-primary-dark);
+  height: 9px;
+  left: calc((var(--piece, 1) * 5.8%) + 2%);
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  transform: translateY(-1rem) rotate(0deg);
+  width: 6px;
+}
+
+.word-search-confetti.is-active .word-search-confetti__piece {
+  animation: word-search-confetti-fall 1.35s ease-out both;
+  animation-delay: calc(var(--piece, 1) * 24ms);
+}
+
+.word-search-confetti__piece:nth-child(3n) { background: var(--link-green); }
+.word-search-confetti__piece:nth-child(3n + 1) { background: #f2b84b; }
+.word-search-confetti__piece:nth-child(1) { --piece: 1; }
+.word-search-confetti__piece:nth-child(2) { --piece: 2; }
+.word-search-confetti__piece:nth-child(3) { --piece: 3; }
+.word-search-confetti__piece:nth-child(4) { --piece: 4; }
+.word-search-confetti__piece:nth-child(5) { --piece: 5; }
+.word-search-confetti__piece:nth-child(6) { --piece: 6; }
+.word-search-confetti__piece:nth-child(7) { --piece: 7; }
+.word-search-confetti__piece:nth-child(8) { --piece: 8; }
+.word-search-confetti__piece:nth-child(9) { --piece: 9; }
+.word-search-confetti__piece:nth-child(10) { --piece: 10; }
+.word-search-confetti__piece:nth-child(11) { --piece: 11; }
+.word-search-confetti__piece:nth-child(12) { --piece: 12; }
+.word-search-confetti__piece:nth-child(13) { --piece: 13; }
+.word-search-confetti__piece:nth-child(14) { --piece: 14; }
+.word-search-confetti__piece:nth-child(15) { --piece: 15; }
+.word-search-confetti__piece:nth-child(16) { --piece: 16; }
+
+@keyframes word-search-confetti-fall {
+  0% { opacity: 1; transform: translateY(-1rem) rotate(0deg); }
+  100% { opacity: 0; transform: translateY(16rem) rotate(540deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-search-confetti.is-active .word-search-confetti__piece {
+    animation: none;
+  }
 }
 
 .teacher-editor-step {
@@ -837,20 +890,6 @@
   margin: 0;
 }
 
-.didactica-progress-card {
-  display: grid;
-  gap: 0.4rem;
-}
-
-.didactica-progress-card strong {
-  color: var(--link-green);
-  font-size: 2.1rem;
-}
-
-.didactica-progress-detail {
-  margin-top: 1.1rem;
-}
-
 .didactica-denied {
   margin: 2rem auto;
   max-width: 720px;
@@ -881,6 +920,7 @@
 
 .word-search-board-panel,
 .word-search-sidebar {
+  position: relative;
   background: var(--panel-bg);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-md);
@@ -1066,8 +1106,7 @@
     grid-template-columns: 1fr;
   }
 
-  .didactica-glossary-grid,
-  .didactica-progress-grid {
+  .didactica-glossary-grid {
     grid-template-columns: 1fr;
   }
 

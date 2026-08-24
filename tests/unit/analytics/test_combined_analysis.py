@@ -6,34 +6,28 @@ from typing import Any, cast
 import pytest
 
 from app.analytics.combined_analysis import (
-    AVAILABLE,
-    FRA_MISSING,
-    ILGA_MISSING,
-    NOT_COMPARABLE,
-    NOT_PARTICIPATING,
-    build_availability_rows,
     build_combined_analysis,
     classify_quadrant,
     combined_metrics,
     correlation_strength,
+    get_supported_combined_analyses,
     infer_indicator_semantics,
-    median_difference_rows,
     nearest_ilga_year,
     quadrant_eligibility,
+    ranking_position_rows,
 )
 from app.analytics.statistics_charts import (
     build_combined_quadrant_chart,
     build_combined_scatter,
-    build_data_availability_matrix,
-    build_fra_median_difference_chart,
+    build_ranking_position_gap_chart,
 )
 from app.analytics.statistics_exports import export_summary_table
 from app.analytics.statistics_models import FraStatisticsQuery
 from app.analytics.statistics_service import get_combined_statistics_analysis
 from app.dash.pages.statistics import (
-    _combined_interpretation,
+    _combined_compatibility_messages,
     _combined_intro,
-    _fra_conclusion,
+    _map_ranking_content,
     build_statistics_layout,
 )
 
@@ -148,37 +142,7 @@ def test_indicator_semantics_does_not_invert_yes_and_no() -> None:
     )
 
 
-def test_interpretation_is_prudent_for_small_and_clear_samples() -> None:
-    small = _component_text(
-        _combined_interpretation(
-            {
-                "indicator": "Felt discriminated",
-                "answer": "Yes",
-                "metrics": combined_metrics(_rows(4)),
-                "semantics": {"direction": "adverse"},
-            },
-            "es",
-        )
-    )
-    strong = _component_text(
-        _combined_interpretation(
-            {
-                "metrics": combined_metrics(_rows(10, inverse=True)),
-                "semantics": {"direction": "adverse"},
-                "indicator": "Felt discriminated",
-                "answer": "Yes",
-            },
-            "es",
-        )
-    )
-
-    assert "No hay suficientes países" in small
-    assert "no significa que uno sea la causa" in small
-    assert "vista por cuadrantes" in strong
-    assert "no significa que uno sea la causa" in strong
-
-
-def test_combined_methodology_and_interpretation_are_localized_in_english() -> None:
+def test_combined_methodology_is_localized_in_english() -> None:
     analysis = {
         "indicator": "Felt discriminated",
         "answer": "Yes",
@@ -188,14 +152,11 @@ def test_combined_methodology_and_interpretation_are_localized_in_english() -> N
         "metrics": combined_metrics(_rows(7, inverse=True)),
     }
     intro = _component_text(_combined_intro(analysis, "en"))
-    interpretation = _component_text(_combined_interpretation(analysis, "en"))
 
     assert "does not show that one variable causes" in intro
     assert "FRA 2019 and ILGA-Europe 2020" in intro
     assert "different years" in intro
     assert "European Union Agency for Fundamental Rights" in intro
-    assert "exploratory" in interpretation
-    assert "does not mean that one causes the other" in interpretation
 
 
 def test_quadrants_only_accept_yes_no_or_quantitative_answers() -> None:
@@ -208,21 +169,26 @@ def test_quadrants_only_accept_yes_no_or_quantitative_answers() -> None:
     assert quadrant_eligibility("Unclassified question", "Yes")["eligible"] is False
 
 
-def test_fra_conclusion_uses_valid_values_and_keeps_zero() -> None:
-    conclusion = _fra_conclusion(
-        {
-            "ranking": [
-                {"country": "Spain", "value": 0},
-                {"country": "France", "value": 20},
-                {"country": "Germany", "value": None},
-            ]
-        },
+def test_map_ranking_uses_descending_values_localized_ties_and_keeps_zero() -> None:
+    content = _map_ranking_content(
+        [
+            {"country": "Spain", "iso": "ES", "value": 50},
+            {"country": "France", "iso": "FR", "value": 60},
+            {"country": "Germany", "iso": "DE", "value": 50},
+            {"country": "Italy", "iso": "IT", "value": 0},
+            {"country": "Portugal", "iso": "PT", "value": None},
+        ],
         "es",
     )
+    rows = cast(Any, content[1]).children
 
-    assert "2 países con datos válidos" in conclusion
-    assert "entre 0.0% y 20.0%" in conclusion
-    assert "media de 10.0%" in conclusion
+    assert [row.children[1].children for row in rows] == [
+        "Francia",
+        "Alemania",
+        "España",
+        "Italia",
+    ]
+    assert rows[-1].children[2].children == "0 %"
 
 
 def test_combined_figures_use_full_scales_medians_and_country_hover() -> None:
@@ -246,24 +212,23 @@ def test_combined_figures_use_full_scales_medians_and_country_hover() -> None:
         answer="Yes",
         metrics=metrics,
     )
-    differences = median_difference_rows(rows)
-    divergent = build_fra_median_difference_chart(
-        differences, "es", semantic_direction="adverse", answer="Yes"
-    )
+    rank_positions = ranking_position_rows(rows, "adverse")
+    ranking_gap = build_ranking_position_gap_chart(rank_positions, "es", answer="Yes")
 
     assert list(scatter.layout.xaxis.range) == [0, 100]
     assert list(scatter.layout.yaxis.range) == [0, 100]
     scatter_data = cast(Any, scatter.data)
     quadrant_data = cast(Any, quadrants.data)
-    divergent_data = cast(Any, divergent.data)
+    ranking_gap_data = cast(Any, ranking_gap.data)
     assert len(scatter_data) == 2
     assert "País" in scatter_data[0].hovertemplate
     assert "Encuesta FRA" in scatter_data[0].hovertemplate
     assert len(quadrant_data) == 1
     assert len(cast(Any, quadrants.layout.shapes)) == 2
     assert "Situación" in quadrant_data[0].hovertemplate
-    assert divergent_data[0].orientation == "h"
-    assert "puntos porcentuales" in divergent_data[0].hovertemplate
+    assert len(ranking_gap_data) == 3
+    assert "Posición legal" in ranking_gap_data[1].hovertemplate
+    assert "Posición social" in ranking_gap_data[1].hovertemplate
 
 
 def test_quadrant_classification_respects_semantics_and_median_equality() -> None:
@@ -291,51 +256,133 @@ def test_quadrant_classification_respects_semantics_and_median_equality() -> Non
     assert equal["legal_level"] == equal["fra_level"] == "high"
 
 
-def test_median_difference_keeps_zero_and_drops_null() -> None:
-    comparison = median_difference_rows(
-        [
-            {"country": "A", "fra_value": 0},
-            {"country": "B", "fra_value": 20},
-            {"country": "C", "fra_value": None},
-        ]
+def test_ranking_positions_respect_direction_ties_zero_and_null() -> None:
+    rows = [
+        {"country": "A", "iso": "AA", "fra_value": 0, "ilga_value": 90},
+        {"country": "B", "iso": "BB", "fra_value": 30, "ilga_value": 80},
+        {"country": "C", "iso": "CC", "fra_value": 60, "ilga_value": 80},
+        {"country": "D", "iso": "DD", "fra_value": None, "ilga_value": 70},
+    ]
+    adverse = ranking_position_rows(rows, "adverse")
+    by_iso = {row["iso"]: row for row in adverse["rows"]}
+
+    assert adverse["available"] is True
+    assert by_iso["AA"]["fra_rank"] == 1
+    assert by_iso["CC"]["fra_rank"] == 3
+    assert by_iso["BB"]["ilga_rank"] == by_iso["CC"]["ilga_rank"] == 2
+    assert "DD" not in by_iso
+
+
+def test_ranking_positions_reverse_for_favourable_values_and_reject_unknown() -> None:
+    rows = [
+        {"country": "A", "iso": "AA", "fra_value": 10, "ilga_value": 90},
+        {"country": "B", "iso": "BB", "fra_value": 60, "ilga_value": 80},
+    ]
+    favourable = ranking_position_rows(rows, "favourable")
+    by_iso = {row["iso"]: row for row in favourable["rows"]}
+
+    assert by_iso["BB"]["fra_rank"] == 1
+    assert ranking_position_rows(rows, "unknown")["available"] is False
+
+
+def test_ranking_positions_keep_the_complete_european_sample() -> None:
+    rows = [
+        {
+            "country": f"Country {index:02d}",
+            "iso": f"X{index:02d}",
+            "fra_value": float(index),
+            "ilga_value": float(100 - index),
+        }
+        for index in range(1, 36)
+    ]
+
+    comparison = ranking_position_rows(rows, "favourable")
+    figure = build_ranking_position_gap_chart(comparison, "en", answer="Yes")
+
+    assert comparison["available"] is True
+    assert len(comparison["rows"]) == 35
+    assert len(cast(Any, figure.data[1]).x) == 35
+    assert figure.layout.height >= 34 * 35 + 150
+
+
+def test_combination_starts_from_fra_and_only_drops_countries_without_ilga() -> None:
+    analysis = build_combined_analysis(
+        {
+            "year": 2023,
+            "indicator": "Feels safe",
+            "answer": "Yes",
+            "ranking": [
+                {"country": "A", "iso": "AA", "value": 10},
+                {"country": "B", "iso": "BB", "value": 20},
+                {"country": "C", "iso": "CC", "value": 30},
+            ],
+        },
+        {
+            "year": 2023,
+            "ranking": [
+                {"country": "A", "iso": "AA", "value": 80},
+                {"country": "C", "iso": "CC", "value": 60},
+            ],
+        },
     )
 
-    assert comparison["median"] == 10.0
-    assert [row["difference_pp"] for row in comparison["rows"]] == [10.0, -10.0]
+    assert [row["iso"] for row in analysis["rows"]] == ["AA", "CC"]
 
 
-def test_availability_states_are_explicit_and_never_use_zero_for_missing() -> None:
-    rows = build_availability_rows(
-        [
-            {"country": "Spain", "iso": "ES"},
-            {"country": "France", "iso": "FR"},
-            {"country": "Norway", "iso": "NO"},
-            {"country": "Iceland", "iso": "IS"},
-        ],
-        fra_values_by_year={2023: {"ES"}, 2019: set()},
-        indicator_available_by_year={2023: True, 2019: False},
-        participant_codes_by_year={2023: {"ES", "FR", "IS"}, 2019: {"ES", "FR", "IS"}},
-        ilga_rows=[
-            {"country": "Spain", "iso": "ES", "value": 0},
-            {"country": "France", "iso": "FR", "value": 70},
-            {"country": "Norway", "iso": "NO", "value": None},
-        ],
+def test_compatibility_hides_often_and_builds_dynamic_messages() -> None:
+    rows = _rows(8)
+    support = get_supported_combined_analyses(
+        question="conduct at school due to being LGBTIQ",
+        answer="Often",
+        rows=rows,
     )
-    by_iso = {row["iso"]: row for row in rows}
+    analysis = {
+        "indicator": "conduct at school due to being LGBTIQ",
+        "answer": "Often",
+        "rows": rows,
+        "semantics": infer_indicator_semantics(
+            "conduct at school due to being LGBTIQ", "Often"
+        ),
+        "quadrant_eligibility": quadrant_eligibility(
+            "conduct at school due to being LGBTIQ", "Often"
+        ),
+        "supported_analyses": support,
+    }
+    message = _component_text(_combined_compatibility_messages(analysis, "es"))
 
-    assert by_iso["ES"]["fra"]["2023"] == AVAILABLE
-    assert by_iso["FR"]["fra"]["2023"] == FRA_MISSING
-    assert by_iso["NO"]["fra"]["2023"] == NOT_PARTICIPATING
-    assert by_iso["IS"]["fra"]["2019"] == NOT_COMPARABLE
-    assert by_iso["ES"]["ilga"] == AVAILABLE
-    assert by_iso["NO"]["ilga"] == ILGA_MISSING
+    assert support["quadrants"] is False
+    assert support["ranking_gap"] is False
+    assert support["any_visualization"] is False
+    assert support["download"] is False
+    assert '"Often"' in message
+    assert '"conduct at school due to being LGBTIQ"' in message
 
-    matrix = build_data_availability_matrix(
-        {"rows": rows, "fra_years": [2019, 2023], "ilga_year": 2023}, "es"
+
+def test_age_bucket_has_only_two_methodological_messages_and_no_analysis() -> None:
+    indicator = "Age when first realised having variation in sex characteristics"
+    answer = "10-14y.o."
+    rows = _rows(8)
+    support = get_supported_combined_analyses(
+        question=indicator,
+        answer=answer,
+        rows=rows,
     )
-    matrix_text = cast(Any, matrix.data)[0].text
-    assert "NP" in {value for row in matrix_text for value in row}
-    assert "NC" in {value for row in matrix_text for value in row}
+    messages = _combined_compatibility_messages(
+        {
+            "indicator": indicator,
+            "answer": answer,
+            "rows": rows,
+            "supported_analyses": support,
+        },
+        "es",
+    )
+
+    assert support["any_visualization"] is False
+    assert support["download"] is False
+    assert len(messages) == 2
+    rendered = _component_text(messages)
+    assert '"10-14y.o."' in rendered
+    assert f'"{indicator}"' in rendered
 
 
 def test_combined_service_uses_nearest_legal_year_in_one_shared_payload(monkeypatch) -> None:
@@ -355,10 +402,6 @@ def test_combined_service_uses_nearest_legal_year_in_one_shared_payload(monkeypa
         }
 
     monkeypatch.setattr("app.analytics.statistics_service.get_ilga_statistics", fake_ilga)
-    monkeypatch.setattr(
-        "app.analytics.statistics_service._combined_availability",
-        lambda *_args: {"rows": [], "fra_years": [2012, 2019, 2023], "ilga_year": 2023},
-    )
     result = get_combined_statistics_analysis(
         FraStatisticsQuery(
             year=2023,
@@ -390,14 +433,18 @@ def test_statistics_layout_separates_fra_and_combined_without_redundant_charts(
     layout = build_statistics_layout()
     combined = _component_by_id(layout, "stats-combined-block")
 
-    assert _component_by_id(layout, "stats-fra-conclusion") is not None
+    assert _component_by_id(layout, "stats-fra-conclusion") is None
     assert _component_by_id(layout, "stats-combined-intro") is not None
+    assert _component_by_id(layout, "stats-combined-download-action") is not None
+    assert _component_by_id(layout, "stats-combined-download-button") is None
     assert _component_by_id(combined, "stats-scatter-graph-slot") is None
     assert _component_by_id(combined, "stats-quadrant-graph-slot") is not None
     assert _component_by_id(combined, "stats-quadrant-panel") is not None
-    assert _component_by_id(combined, "stats-median-difference-graph-slot") is not None
+    assert _component_by_id(combined, "stats-ranking-gap-graph-slot") is not None
+    assert _component_by_id(combined, "stats-median-difference-graph-slot") is None
     assert _component_by_id(combined, "stats-availability-graph-slot") is None
-    assert _component_by_id(combined, "stats-experience-legal-radar-panel") is not None
+    assert _component_by_id(combined, "stats-experience-legal-radar-panel") is None
+    assert _component_by_id(combined, "stats-combined-interpretation") is None
     assert _component_by_id(layout, "stats-gap-graph-slot") is None
     assert _component_by_id(layout, "stats-combined-heatmap-slot") is None
 
@@ -410,7 +457,9 @@ def test_combined_csv_contains_only_analytical_values_not_interpretation() -> No
                 "country_code": "ES",
                 "fra_value": 30.0,
                 "ilga_score": 70.0,
-                "difference_from_fra_median": -2.0,
+                "legal_rank": 3,
+                "social_rank": 17,
+                "ranking_position_difference": 14,
             }
         ],
         [
@@ -419,8 +468,8 @@ def test_combined_csv_contains_only_analytical_values_not_interpretation() -> No
             {"field": "fra_value", "headerName": "FRA value (%)"},
             {"field": "ilga_score", "headerName": "ILGA-Europe score"},
             {
-                "field": "difference_from_fra_median",
-                "headerName": "Difference from FRA median (pp)",
+                "field": "ranking_position_difference",
+                "headerName": "Difference in positions",
             },
         ],
         language="en",
@@ -429,5 +478,5 @@ def test_combined_csv_contains_only_analytical_values_not_interpretation() -> No
 
     assert "FRA value (%)" in exported.content
     assert "ILGA-Europe score" in exported.content
-    assert "30.0;70.0;-2.0" in exported.content
+    assert "30.0;70.0;14" in exported.content
     assert "caus" not in exported.content.lower()

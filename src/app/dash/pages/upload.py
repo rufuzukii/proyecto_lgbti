@@ -190,15 +190,15 @@ def build_upload_layout() -> Component:
                                 )
                             ),
                         ],
-                        className="page-header upload-header",
+                        className="page-header upload-header app-page-header",
                     ),
                     html.Section(
                         [
                             html.Div(
                                 [
-                                    html.Label(
+                                    html.Span(
                                         "Fuente de datos",
-                                        htmlFor="data-source",
+                                        id="data-source-label",
                                         className="upload-label",
                                         **text_attrs("Fuente de datos", "Data source"),
                                     ),
@@ -218,6 +218,8 @@ def build_upload_layout() -> Component:
                                     ),
                                 ],
                                 className="upload-field",
+                                role="group",
+                                **dash_attrs({"aria-labelledby": "data-source-label"}),
                             ),
                             html.Div(_build_upload_component(), id="upload-control-container"),
                             html.Div(
@@ -268,7 +270,7 @@ def build_upload_layout() -> Component:
                         className="page-container upload-container",
                     ),
                 ],
-                className="app-page-container upload-page",
+                className="app-page app-page-container upload-page",
             ),
         ]
     )
@@ -306,6 +308,16 @@ def register_upload_callbacks(app: Dash) -> None:
                     (
                         "Debes iniciar sesión para importar datos.",
                         "You must sign in to import data.",
+                    )
+                ),
+                _build_upload_component(),
+            )
+        if not bool(getattr(current_user, "email_verified", True)):
+            return (
+                build_error_message(
+                    (
+                        "Debes verificar tu correo antes de importar datos.",
+                        "You must verify your email before importing data.",
                     )
                 ),
                 _build_upload_component(),

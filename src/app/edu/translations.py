@@ -55,15 +55,6 @@ TEXT = {
         "Crea y gestiona actividades personalizadas para el aula.",
         "Create and manage personalised classroom activities.",
     ),
-    "progress": ("Mi progreso", "My progress"),
-    "progress_desc": (
-        "Consulta las actividades y lecciones completadas.",
-        "Review completed activities and lessons.",
-    ),
-    "progress_card_desc": (
-        "Revisa tu actividad guardada.",
-        "Review your saved activity.",
-    ),
     "restricted": ("Acceso restringido", "Restricted access"),
     "restricted_desc": (
         "Este contenido está disponible únicamente para usuarios con el perfil Docente.",
@@ -85,6 +76,13 @@ TEXT = {
     "finish": ("Finalizar", "Finish"),
     "correct": ("Respuesta correcta", "Correct answer"),
     "incorrect": ("Respuesta incorrecta", "Incorrect answer"),
+    "correct_answer_was": ("La respuesta correcta era", "The correct answer was"),
+    "final_score": ("Has acertado", "You got"),
+    "final_encouragement": (
+        "Sigue aprendiendo sobre la diversidad y descubre nuevos conceptos del Diccionario LGBTIQ+.",
+        "Keep learning about diversity and discover new concepts in the LGBTIQ+ Dictionary.",
+    ),
+    "play_again": ("Jugar de nuevo", "Play again"),
     "download": ("Descargar", "Download"),
     "level": ("Nivel", "Level"),
     "duration": ("Duración", "Duration"),
@@ -211,7 +209,11 @@ TEXT = {
     "my_games": ("Mis actividades", "My activities"),
     "new_game": ("Nueva actividad", "New activity"),
     "game_type": ("Tipo de juego", "Game type"),
-    "available_game_types": ("Tipos de actividad disponibles", "Available activity types"),
+    "create_new_activity": ("Crear nueva actividad", "Create a new activity"),
+    "create_new_activity_desc": (
+        "Crea una actividad personalizada a partir de los juegos disponibles en RainbowLens DataHub.",
+        "Create a personalised activity from the games available in RainbowLens DataHub.",
+    ),
     "create_activity_lead": (
         "Elige un juego, selecciona contenido real de RainbowLens y pruébalo antes de guardar.",
         "Choose a game, select real RainbowLens content and try it before saving.",
@@ -233,8 +235,6 @@ TEXT = {
     "step_configuration": ("3. Configuración", "3. Configuration"),
     "step_preview": ("4. Vista previa", "4. Preview"),
     "step_save": ("5. Guardar", "5. Save"),
-    "manual_selection": ("Seleccionar manualmente", "Select manually"),
-    "random_selection": ("Selección aleatoria", "Random selection"),
     "select_terms": ("Seleccionar términos", "Select terms"),
     "select_countries": ("Seleccionar países", "Select countries"),
     "question_count": ("Número de preguntas", "Number of questions"),
@@ -243,10 +243,6 @@ TEXT = {
     "legal_year": ("Año legal", "Legal year"),
     "board_size": ("Tamaño del tablero", "Board size"),
     "shuffle_order": ("Orden aleatorio", "Random order"),
-    "show_explanation": (
-        "Mostrar explicación después de responder",
-        "Show an explanation after answering",
-    ),
     "preview": ("Vista previa", "Preview"),
     "generate_preview": ("Generar vista previa", "Generate preview"),
     "save_game": ("Guardar actividad", "Save activity"),
@@ -254,7 +250,14 @@ TEXT = {
         "Actividad guardada correctamente.",
         "Activity saved successfully.",
     ),
-    "game_deleted": ("La actividad se ha eliminado.", "The activity was deleted."),
+    "game_deleted": (
+        "Actividad eliminada correctamente.",
+        "Activity deleted successfully.",
+    ),
+    "activity_delete_failed": (
+        "No se ha podido eliminar la actividad. Inténtalo de nuevo.",
+        "The activity could not be deleted. Try again.",
+    ),
     "game_duplicated": ("La actividad se ha duplicado.", "The activity was duplicated."),
     "play": ("Jugar", "Play"),
     "edit": ("Editar", "Edit"),
@@ -265,6 +268,13 @@ TEXT = {
         "Do you want to delete this activity? This action cannot be undone.",
     ),
     "back_teacher_space": ("Volver a Espacio Docente", "Back to Educator space"),
+    "share_link": ("Enlace para compartir", "Share link"),
+    "copy_link": ("Copiar enlace", "Copy link"),
+    "activity_unavailable": ("Actividad no disponible", "Activity unavailable"),
+    "activity_unavailable_desc": (
+        "El enlace no corresponde a una actividad disponible.",
+        "This link does not match an available activity.",
+    ),
     "no_custom_activities": (
         "Todavía no has creado actividades.",
         "You have not created any activities yet.",
@@ -291,12 +301,6 @@ TEXT = {
         "No se ha podido guardar el juego. Inténtalo de nuevo.",
         "The game could not be saved. Try again.",
     ),
-    "completed_lessons": ("Actividades completadas", "Completed activities"),
-    "games_played": ("Juegos realizados", "Games played"),
-    "best_scores": ("Mejores puntuaciones", "Best scores"),
-    "last_activity": ("Última actividad", "Last activity"),
-    "total_progress": ("Progreso total", "Total progress"),
-    "no_activity": ("Aún no hay actividad guardada.", "No activity has been saved yet."),
     "not_found": ("Recurso no encontrado", "Resource not found"),
 }
 

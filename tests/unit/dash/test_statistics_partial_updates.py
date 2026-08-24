@@ -23,7 +23,7 @@ def _result() -> dict:
 
 
 def test_complete_map_figure_updates_the_stable_graph_and_reveals_it() -> None:
-    outputs: list[Any] = [no_update] * 31
+    outputs: list[Any] = [no_update] * 33
     figure = go.Figure(go.Scattergeo(locations=["ES"]))
     outputs[2] = figure
 
@@ -35,7 +35,7 @@ def test_complete_map_figure_updates_the_stable_graph_and_reveals_it() -> None:
 
 
 def test_partial_dashboard_update_does_not_touch_the_stable_map() -> None:
-    converted = statistics._dashboard_component_outputs([no_update] * 31)
+    converted = statistics._dashboard_component_outputs([no_update] * 33)
 
     assert converted[2] is no_update
     assert converted[3] is no_update
@@ -94,13 +94,13 @@ def test_ranking_pagination_updates_only_ranking_outputs(monkeypatch) -> None:
     outputs = statistics._render_ranking_dashboard_update(_result(), ["ES"], "es", 0)
 
     # Assert
-    assert len(outputs) == 31
-    assert outputs[7] is ranking_figure
-    assert outputs[8] is average_figure
-    assert "is-hidden" not in outputs[9]
-    assert outputs[26] == {"display": "block"}
+    assert len(outputs) == 33
+    assert outputs[8] is ranking_figure
+    assert outputs[9] is average_figure
+    assert "is-hidden" not in outputs[10]
+    assert outputs[28] == {"display": "block"}
     assert all(
-        output is no_update for index, output in enumerate(outputs) if index not in {7, 8, 9, 26}
+        output is no_update for index, output in enumerate(outputs) if index not in {8, 9, 10, 28}
     )
 
 
@@ -116,10 +116,10 @@ def test_temporal_selector_updates_only_temporal_outputs(monkeypatch) -> None:
     outputs = statistics._render_temporal_dashboard_update(_result(), ["ES"], "es", ["ES"])
 
     # Assert
-    assert len(outputs) == 31
-    assert outputs[5] is temporal_figure
-    assert "stats-temporal-wrapper" in outputs[6]
-    assert all(output is no_update for index, output in enumerate(outputs) if index not in {5, 6})
+    assert len(outputs) == 33
+    assert outputs[6] is temporal_figure
+    assert "stats-temporal-wrapper" in outputs[7]
+    assert all(output is no_update for index, output in enumerate(outputs) if index not in {6, 7})
 
 
 def test_browser_payload_drops_server_only_fra_intermediates() -> None:

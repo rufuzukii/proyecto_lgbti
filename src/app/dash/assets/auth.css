@@ -3,20 +3,15 @@
   display: grid;
   place-items: center;
   padding: 3rem 1.2rem;
-  background:
-    radial-gradient(circle at top left, rgba(139, 124, 246, 0.18), transparent 32rem),
-    radial-gradient(circle at bottom right, rgba(255, 227, 216, 0.55), transparent 28rem),
-    linear-gradient(135deg, #fbf8ff 0%, #eff8fa 100%);
+  background: var(--color-bg);
 }
 
 .auth-card {
   width: min(100%, 460px);
-  background:
-    linear-gradient(180deg, rgba(255, 254, 254, 0.96), rgba(247, 241, 255, 0.96)),
-    var(--color-surface);
+  background: var(--panel-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xl);
+  box-shadow: var(--surface-shadow);
   padding: 2rem;
 }
 
@@ -97,6 +92,33 @@
   margin: 0.1rem 0 0.4rem;
   color: var(--color-text-muted);
   font-size: 0.88rem;
+}
+
+.auth-privacy-information {
+  background: color-mix(in srgb, var(--panel-muted) 82%, var(--panel-bg));
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--link-green);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.auth-privacy-information p {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.auth-privacy-link {
+  color: var(--link-green);
+  font-weight: 750;
+  width: fit-content;
+}
+
+.auth-privacy-link:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
 }
 
 .auth-button {
@@ -247,7 +269,7 @@ body[data-theme="dark"] .auth-secondary-notice-icon {
 }
 
 .profile-detail {
-  background: linear-gradient(135deg, #fffefe 0%, #eff8fa 100%);
+  background: var(--panel-muted);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   display: grid;
@@ -320,9 +342,7 @@ body[data-theme="dark"] .auth-switch a {
 }
 
 .user-page-grid {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(243, 248, 250, 0.92)),
-    linear-gradient(135deg, #f6fafb 0%, #fff7f2 48%, #f5f0ff 100%);
+  background: var(--color-bg);
   display: grid;
   min-height: calc(100vh - 142px);
   padding: 1.5rem;
@@ -353,7 +373,7 @@ body[data-theme="dark"] .auth-switch a {
 }
 
 .user-eyebrow {
-  color: #0c4a5f;
+  color: var(--link-green);
   font-size: 0.78rem;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -362,7 +382,7 @@ body[data-theme="dark"] .auth-switch a {
 }
 
 .user-lead {
-  color: #5d6870;
+  color: var(--color-text-muted);
   line-height: 1.55;
   margin: 0.75rem 0 0;
   max-width: 720px;
@@ -370,10 +390,10 @@ body[data-theme="dark"] .auth-switch a {
 
 .user-role-badge {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #d9e5e9;
-  border-radius: 8px;
-  box-shadow: 0 10px 20px rgba(38, 64, 72, 0.08);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--surface-shadow);
   display: grid;
   gap: 0.15rem;
   min-width: 132px;
@@ -381,7 +401,7 @@ body[data-theme="dark"] .auth-switch a {
 }
 
 .user-role-label {
-  color: #6b747c;
+  color: var(--color-text-muted);
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
@@ -492,7 +512,8 @@ body[data-theme="dark"] .auth-switch a {
   min-width: 0;
 }
 
-.about-contact-field label {
+.about-contact-field label,
+.about-contact-field-label {
   color: #3f4c52;
   font-size: 0.9rem;
   font-weight: 800;

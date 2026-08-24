@@ -191,17 +191,17 @@ def _fra_metadata(year: int | None) -> SourceAttributionMetadata:
         source_url = survey_url
     else:
         attribution_es = (
-            f"Fuente: {FRA_ORGANIZATION}, EU LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 y "
-            f"2023. Datos procesados y visualizados por {PROCESSED_BY}. La FRA no "
+            f"Fuente: {FRA_ORGANIZATION}, EU LGBTI/LGBTIQ Surveys 2019 y 2023. "
+            f"Datos procesados y visualizados por {PROCESSED_BY}. La FRA no "
             "participa en esta adaptación."
         )
         attribution_en = (
-            f"Source: {FRA_ORGANIZATION}, EU LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 and "
-            f"2023. Data processed and visualised by {PROCESSED_BY}. FRA is not involved "
+            f"Source: {FRA_ORGANIZATION}, EU LGBTI/LGBTIQ Surveys 2019 and 2023. "
+            f"Data processed and visualised by {PROCESSED_BY}. FRA is not involved "
             "in this adaptation."
         )
         source_name = "EU LGBT/LGBTI/LGBTIQ Surveys"
-        source_document = "EU LGBT/LGBTI/LGBTIQ Surveys 2012, 2019 and 2023"
+        source_document = "EU LGBTI/LGBTIQ Surveys 2019 and 2023"
         source_url = FRA_URL
     return SourceAttributionMetadata(
         key="fra",

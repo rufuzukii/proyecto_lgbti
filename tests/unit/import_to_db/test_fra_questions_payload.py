@@ -251,7 +251,7 @@ def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> Non
         2019,
         2023,
     ]
-    assert requested_collections == ["Indicador_fra_2019", "Indicator_fra"]
+    assert requested_collections == ["Indicator_fra_2019", "Indicator_fra"]
     datasets = [
         call.args[1][0]["$set"]["dataset"]["$literal"]
         for call in collection.update_one.call_args_list

@@ -2,15 +2,19 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
-from dash import dcc, html
+from dash import Dash, Input, Output, State, dcc, html
 from dash.development.base_component import Component
+from flask_login import current_user
 
 from app.auth.csrf import get_csrf_token
+from app.auth.permissions import is_admin_user
+from app.dash.components.page_structure import build_page_header
 from app.dash.i18n import dash_attrs, text, text_attrs
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 from app.taxonomy import taxonomy_pair
 from app.users.schemas import UserRead, UserRole, UserType
+from app.users.service import UserStorageError, list_users_page
 
 STATUS_MESSAGES = {
     "user_updated": (
@@ -21,8 +25,6 @@ STATUS_MESSAGES = {
         "La cuenta se ha eliminado correctamente.",
         "The account was deleted successfully.",
     ),
-    "user_activated": ("La cuenta se ha activado.", "The account was activated."),
-    "user_deactivated": ("La cuenta se ha desactivado.", "The account was deactivated."),
 }
 
 ERROR_MESSAGES = {
@@ -56,9 +58,9 @@ ERROR_MESSAGES = {
         "Debe conservarse al menos una cuenta administradora.",
         "At least one administrator account must be retained.",
     ),
-    "self_deactivate": (
-        "No puedes desactivar tu propia cuenta administradora.",
-        "You cannot deactivate your own administrator account.",
+    "self_manage": (
+        "No puedes modificar tu propia cuenta desde Gestión de usuarios.",
+        "You cannot modify your own account from User management.",
     ),
     "concurrent_update": (
         "La cuenta cambi\u00f3 mientras la editabas. Revisa los datos actuales y vuelve a intentarlo.",
@@ -98,18 +100,14 @@ def build_admin_users_layout(
                         [
                             html.Div(
                                 [
-                                    html.P(
-                                        "Administración",
-                                        className="auth-eyebrow",
-                                        **text_attrs("Administración", "Administration"),
-                                    ),
-                                    html.H1(text("Gestión de usuarios", "User management")),
-                                    html.P(
-                                        text(
+                                    build_page_header(
+                                        eyebrow=text("Administración", "Administration"),
+                                        title=text("Gestión de usuarios", "User management"),
+                                        description=text(
                                             "Revisa, edita y elimina cuentas de usuario.",
                                             "Review, edit, and delete user accounts.",
                                         ),
-                                        className="auth-copy",
+                                        class_name="admin-page-header",
                                     ),
                                     html.Div(
                                         [
@@ -143,30 +141,29 @@ def build_admin_users_layout(
                                     ),
                                     _message(status, is_error=False),
                                     _message(error, is_error=True),
-                                    _search_users_form(search),
-                                    html.P(
-                                        (
-                                            f"{len(users) if total is None else total} usuarios"
+                                    _search_users_control(search),
+                                    dcc.Loading(
+                                        html.Div(
+                                            _users_results(
+                                                users,
+                                                current_user_id=current_user_id,
+                                                search=search,
+                                                page=page,
+                                                page_count=page_count,
+                                                total=total,
+                                            ),
+                                            id="admin-users-results",
+                                            **dash_attrs({"aria-live": "polite"}),
                                         ),
-                                        className="admin-users-result-count",
-                                        **text_attrs(
-                                            f"{len(users) if total is None else total} usuarios",
-                                            f"{len(users) if total is None else total} users",
-                                        ),
+                                        className="admin-users-local-loading",
+                                        type="circle",
                                     ),
-                                    _build_users_table(
-                                        users,
-                                        current_user_id=current_user_id,
-                                        search=search,
-                                        page=page,
-                                    ),
-                                    _pagination(search, page, page_count),
                                     _delete_confirmation_dialog(),
                                 ],
-                                className="admin-card",
+                                className="admin-card app-surface",
                             )
                         ],
-                        className="admin-shell",
+                        className="admin-shell app-page",
                     )
                 ],
                 className="page-shell app-page-container",
@@ -202,10 +199,10 @@ def build_access_denied_layout() -> Component:
                                         className="auth-button profile-edit-link",
                                     ),
                                 ],
-                                className="auth-card",
+                                className="auth-card app-surface",
                             )
                         ],
-                        className="auth-shell",
+                        className="auth-shell app-page",
                     )
                 ],
                 className="page-shell",
@@ -214,8 +211,8 @@ def build_access_denied_layout() -> Component:
     )
 
 
-def _search_users_form(search: str) -> Component:
-    return html.Form(
+def _search_users_control(search: str) -> Component:
+    return html.Div(
         [
             html.Label(
                 text("Buscar usuarios", "Search users"),
@@ -229,29 +226,80 @@ def _search_users_form(search: str) -> Component:
                         name="q",
                         type="search",
                         value=search,
+                        debounce=True,
                         maxLength=120,
                         placeholder="Nombre, correo u organizaci\u00f3n / Name, email or organization",
                         className="admin-user-search-input",
                     ),
                     html.Button(
                         text("Buscar", "Search"),
-                        type="submit",
+                        id="admin-user-search-button",
+                        type="button",
                         className="admin-user-search-button",
-                    ),
-                    html.A(
-                        text("Limpiar", "Clear"),
-                        href=route_path("admin"),
-                        className="admin-user-search-clear",
                     ),
                 ],
                 className="admin-user-search-controls",
             ),
         ],
-        action=route_path("admin"),
-        method="get",
         className="admin-user-search-form",
         role="search",
     )
+
+
+def _users_results(
+    users: list[UserRead],
+    *,
+    current_user_id: str | None,
+    search: str,
+    page: int,
+    page_count: int,
+    total: int | None,
+) -> list[Component | str]:
+    result_total = len(users) if total is None else total
+    return [
+        html.P(
+            f"{result_total} usuarios",
+            className="admin-users-result-count",
+            **text_attrs(f"{result_total} usuarios", f"{result_total} users"),
+        ),
+        _build_users_table(
+            users,
+            current_user_id=current_user_id,
+            search=search,
+            page=page,
+        ),
+        _pagination(search, page, page_count),
+    ]
+
+
+def register_admin_users_callbacks(app: Dash) -> None:
+    @app.callback(
+        Output("admin-users-results", "children"),
+        Input("admin-user-search", "n_submit"),
+        Input("admin-user-search-button", "n_clicks"),
+        State("admin-user-search", "value"),
+        prevent_initial_call=True,
+    )
+    def refresh_user_results(
+        _submitted: int | None,
+        _clicked: int | None,
+        search: str | None,
+    ) -> list[Component | str]:
+        if not current_user.is_authenticated or not is_admin_user(current_user):
+            return [_message(ERROR_MESSAGES["access_denied"], is_error=True)]
+        clean_search = str(search or "").strip()[:120]
+        try:
+            user_page = list_users_page(search=clean_search, page=1)
+        except UserStorageError:
+            return [_message(ERROR_MESSAGES["storage"], is_error=True)]
+        return _users_results(
+            user_page.users,
+            current_user_id=current_user.get_id(),
+            search=clean_search,
+            page=user_page.page,
+            page_count=user_page.page_count,
+            total=user_page.total,
+        )
 
 
 def _build_users_table(
@@ -285,9 +333,6 @@ def _build_users_table(
                     ),
                     html.Div(
                         "Acceso", className="admin-table-heading", **text_attrs("Acceso", "Access")
-                    ),
-                    html.Div(
-                        "Estado", className="admin-table-heading", **text_attrs("Estado", "Status")
                     ),
                     html.Div(
                         "Eliminar",
@@ -345,6 +390,7 @@ def _build_user_row(
                     html.Button(
                         "Editar",
                         type="button",
+                        disabled=is_current,
                         className="admin-action-button admin-edit-button",
                         **dash_attrs(
                             {
@@ -361,6 +407,7 @@ def _build_user_row(
                         name="action",
                         value="update",
                         hidden=True,
+                        disabled=is_current,
                         className="admin-action-button admin-save-button",
                         **dash_attrs(
                             {
@@ -380,6 +427,7 @@ def _build_user_row(
                         type="text",
                         value=user.username or "",
                         required=True,
+                        disabled=is_current,
                         className="admin-input admin-editable-input",
                     ),
                     (
@@ -400,6 +448,7 @@ def _build_user_row(
                     type="email",
                     value=user.email or "",
                     required=True,
+                    disabled=is_current,
                     className="admin-input admin-editable-input",
                 ),
                 className="admin-table-cell",
@@ -413,6 +462,7 @@ def _build_user_row(
                     if user.organization in {"No organization", "Sin organización"}
                     else (user.organization or ""),
                     className="admin-input admin-editable-input",
+                    disabled=is_current,
                 ),
                 className="admin-table-cell",
             ),
@@ -422,38 +472,9 @@ def _build_user_row(
                     children=_admin_role_options(user.user_type or user.role),
                     name="role",
                     className="admin-input admin-role-select",
+                    disabled=is_current,
                 ),
                 className="admin-table-cell",
-            ),
-            html.Div(
-                [
-                    html.Span(
-                        text("Activa", "Active") if user.active else text("Inactiva", "Inactive"),
-                        className="admin-account-status "
-                        + ("is-active" if user.active else "is-inactive"),
-                    ),
-                    dcc.Input(type="hidden", name="active", value=str(not user.active).lower()),
-                    html.Button(
-                        (
-                            text("Desactivar", "Deactivate")
-                            if user.active
-                            else text("Activar", "Activate")
-                        ),
-                        type="submit",
-                        name="action",
-                        value="toggle_active",
-                        disabled=is_current and user.active,
-                        className="admin-action-button admin-active-button",
-                        **dash_attrs(
-                            {
-                                "data-admin-user-deactivate": str(user.active).lower(),
-                                "data-confirm-es": "\u00bfQuieres desactivar esta cuenta?",
-                                "data-confirm-en": "Do you want to deactivate this account?",
-                            }
-                        ),
-                    ),
-                ],
-                className="admin-table-cell admin-status-cell",
             ),
             html.Div(
                 html.Button(
@@ -476,8 +497,14 @@ def _build_user_row(
         id=form_id,
         action="/admin/users",
         method="post",
-        className="admin-table-row",
-        **dash_attrs({"data-admin-user-row": "true"}),
+        className="admin-table-row" + (" is-current-user" if is_current else ""),
+        **dash_attrs(
+            {
+                "data-admin-user-row": "true",
+                "data-current-user-row": str(is_current).lower(),
+                "aria-disabled": str(is_current).lower(),
+            }
+        ),
     )
 
 

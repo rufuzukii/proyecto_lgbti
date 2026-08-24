@@ -17,7 +17,6 @@ from werkzeug.security import check_password_hash
 from app.cache import cache
 from app.config import get_app_config, get_postgres_connect_timeout, get_postgres_dsn
 from app.edu.custom_game_service import COLLECTION_NAME as GAMES_COLLECTION
-from app.edu.progress_service import COLLECTION_NAME as PROGRESS_COLLECTION
 from app.mongo import get_mongo_collection
 from app.privacy.models import DeletionOutcome, PersonalDataInventory
 from app.privacy.policy import get_privacy_policy_config
@@ -75,9 +74,6 @@ def get_personal_data_inventory(user_id: str) -> PersonalDataInventory:
         security_tokens = get_mongo_collection(TOKEN_COLLECTION).count_documents(
             {"user_id": user_id}
         )
-        learning_progress = get_mongo_collection(PROGRESS_COLLECTION).count_documents(
-            {"user_id": user_id}
-        )
         teacher_games = get_mongo_collection(GAMES_COLLECTION).count_documents(
             _teacher_activity_owner_query(user_id)
         )
@@ -93,7 +89,6 @@ def get_personal_data_inventory(user_id: str) -> PersonalDataInventory:
         profile=bool(values.get("profile")),
         account_security=account_security,
         security_tokens=security_tokens,
-        learning_progress=learning_progress,
         teacher_games=teacher_games,
         import_logs=int(values.get("import_logs") or 0),
         security_audit_events=security_audit,
@@ -186,9 +181,6 @@ def build_personal_data_export(user_id: str) -> dict[str, Any]:
         {"user_id": user_id},
         {"_id": 0, "user_id": 0, "session_version": 0},
     )
-    progress = get_mongo_collection(PROGRESS_COLLECTION).find_one(
-        {"user_id": user_id}, {"_id": 0, "user_id": 0}
-    )
     games = list(
         get_mongo_collection(GAMES_COLLECTION).find(
             _teacher_activity_owner_query(user_id),
@@ -200,7 +192,6 @@ def build_personal_data_export(user_id: str) -> dict[str, Any]:
             "exported_at": datetime.now(UTC),
             "account": dict(profile or {}),
             "account_security": security or {},
-            "learning_progress": progress or {},
             "teacher_games": games,
             "data_imports": [dict(item) for item in imports],
             "not_persisted_by_server": {
@@ -375,12 +366,10 @@ def _complete_job(user_id: str, subject_ref: str) -> None:
 
 
 def _delete_private_mongo_data(user_id: str) -> dict[str, int]:
-    progress = get_mongo_collection(PROGRESS_COLLECTION).delete_many({"user_id": user_id})
     games = get_mongo_collection(GAMES_COLLECTION).delete_many(
         _teacher_activity_owner_query(user_id)
     )
     return {
-        "learning_progress": int(progress.deleted_count),
         "teacher_games": int(games.deleted_count),
     }
 

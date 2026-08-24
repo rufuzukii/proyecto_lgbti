@@ -74,7 +74,7 @@ class PDFExporter:
             Paragraph(
                 _escape(
                     report.configuration.organization
-                    or report.profile_label
+                    or report.focus_label
                     or _t(language, "Informe RainbowLens", "RainbowLens report")
                 ),
                 styles["cover_subtitle"],
@@ -86,8 +86,8 @@ class PDFExporter:
                 _escape(
                     _t(
                         language,
-                        f"Informe adaptado al perfil {report.profile_label}. Preparado con RainbowLens DataHub.",
-                        f"Report adapted to the {report.profile_label} profile. Prepared with RainbowLens DataHub.",
+                        "Informe orientado a RRHH y diversidad e inclusión. Preparado con RainbowLens DataHub.",
+                        "Report focused on HR, diversity and inclusion. Prepared with RainbowLens DataHub.",
                     )
                 ),
                 styles["cover_note"],
@@ -113,8 +113,8 @@ class PDFExporter:
                     [
                         _t(
                             language,
-                            f"Se analiza «{report.indicator}» para {report.configuration.year or 'el periodo disponible'}. La selección de contenidos se adapta al perfil {report.profile_label}.",
-                            f"The report analyses “{report.indicator}” for {report.configuration.year or 'the available period'}. Content selection is adapted to the {report.profile_label} profile.",
+                            f'Se analiza "{report.indicator}" para {report.configuration.year or "el periodo disponible"} como contexto externo para apoyar políticas de diversidad e inclusión.',
+                            f"The report analyses “{report.indicator}” for {report.configuration.year or 'the available period'} as external context supporting diversity and inclusion policies.",
                         )
                     ],
                     styles,
@@ -220,25 +220,6 @@ class PDFExporter:
                     _comparison_table(report, styles),
                     Spacer(1, 6 * mm),
                 ]
-            )
-        if _enabled(report, "education") and report.educational_content:
-            section_number += 1
-            story.extend(
-                _text_section(
-                    f"{section_number}. {_t(language, 'Propuesta didáctica', 'Learning activity')}",
-                    report.educational_content,
-                    styles,
-                    bullets=True,
-                )
-            )
-        if _enabled(report, "data_quality") and report.data_quality:
-            section_number += 1
-            story.extend(
-                _text_section(
-                    f"{section_number}. {_t(language, 'Disponibilidad y calidad de los datos', 'Data availability and quality')}",
-                    report.data_quality,
-                    styles,
-                )
             )
         if _enabled(report, "interpretation") and report.conclusions:
             section_number += 1
@@ -437,8 +418,8 @@ def _cover_metadata(
             ),
         ],
         [
-            _paragraph(_t(language, "Perfil", "Profile"), styles["table"], bold=True),
-            _paragraph(report.profile_label or "N/A", styles["table"]),
+            _paragraph(_t(language, "Enfoque", "Focus"), styles["table"], bold=True),
+            _paragraph(report.focus_label or "N/A", styles["table"]),
         ],
         [
             _paragraph(_t(language, "Año de datos", "Data year"), styles["table"], bold=True),

@@ -118,9 +118,49 @@ def test_statistics_survey_options_keep_stable_internal_ids() -> None:
     assert [option["value"] for option in FRA_SURVEY_OPTIONS] == [
         "fra_survey_iii",
         "fra_survey_ii",
-        "fra_survey_i",
     ]
     assert all("Indicator_fra" not in str(option["label"]) for option in FRA_SURVEY_OPTIONS)
+    assert [option["label"].children[0].children for option in FRA_SURVEY_OPTIONS] == [
+        "Encuesta 2023",
+        "Encuesta 2019",
+    ]
+    assert [
+        option["label"].children[0].to_plotly_json()["props"]["data-i18n-en"]
+        for option in FRA_SURVEY_OPTIONS
+    ] == ["2023 Survey", "2019 Survey"]
+
+
+def test_statistics_social_data_heading_replaces_the_old_survey_heading() -> None:
+    controls = _controls([{"label": "Discrimination", "value": "Discrimination"}])
+    control_children = cast(list[Any], controls.children)
+    social_data_card = cast(Any, control_children[0])
+    heading = social_data_card.children[0]
+
+    assert heading.children == "Datos Sociales"
+    assert heading.to_plotly_json()["props"]["data-i18n-en"] == "Social Data"
+    survey = _component_by_id(controls, "stats-survey-select")
+    assert survey is not None
+    assert survey.value == "fra_survey_iii"
+    assert len(survey.options) == 2
+
+
+def test_spanish_ui_localizes_only_fra_category_labels(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.dash.pages.statistics.get_fra_categories",
+        lambda _year: ["Education", "Health and mental health"],
+    )
+
+    spanish = _category_options(2023, "es")
+    english = _category_options(2023, "en")
+
+    assert spanish == [
+        {"label": "Educación", "value": "Education"},
+        {"label": "Salud y salud mental", "value": "Health and mental health"},
+    ]
+    assert english == [
+        {"label": "Education", "value": "Education"},
+        {"label": "Health and mental health", "value": "Health and mental health"},
+    ]
 
 
 def test_fra_segmentation_is_always_available_in_statistics() -> None:
@@ -1794,8 +1834,8 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
     assert table_download.disabled is True
     assert _component_by_id(layout, "stats-summary-table-download") is not None
     assert _component_by_id(layout, "stats-experience-legal-radar-graph") is None
-    assert _component_by_id(layout, "stats-experience-legal-radar-graph-slot") is not None
-    assert _component_by_id(layout, "stats-experience-legal-country-select") is not None
+    assert _component_by_id(layout, "stats-experience-legal-radar-graph-slot") is None
+    assert _component_by_id(layout, "stats-experience-legal-country-select") is None
     assert _component_by_id(layout, "stats-filter-analysis-graph") is None
 
 
@@ -1812,10 +1852,9 @@ def test_all_statistics_graphs_are_responsive_without_fixed_widths(monkeypatch) 
         "stats-ranking-graph",
         "stats-average-graph",
         "stats-response-comparison-graph",
-        "stats-experience-legal-radar-graph",
         "stats-response-detail-graph",
         "stats-quadrant-graph",
-        "stats-median-difference-graph",
+        "stats-ranking-gap-graph",
     )
 
     layout = build_statistics_layout()
@@ -2025,9 +2064,12 @@ def test_percentage_choropleth_distinguishes_zero_low_values_and_null() -> None:
     assert trace.marker.line.color == "#334155"
     assert trace.marker.line.width >= 0.85
     assert list(trace.colorbar.tickvals) == [0, 20, 40, 60, 80, 100]
+    assert trace.colorbar.x == pytest.approx(-0.035)
+    assert trace.colorbar.xanchor == "right"
+    assert figure.layout.margin.l == 88
 
 
-def test_choropleth_uses_geometry_bounds_and_resets_after_country_selection() -> None:
+def test_choropleth_uses_home_map_framing_and_keeps_country_selection() -> None:
     rows = [
         {"country": "Spain", "iso": "ES", "value": 42.0},
         {"country": "France", "iso": "FR", "value": 38.0},
@@ -2036,12 +2078,15 @@ def test_choropleth_uses_geometry_bounds_and_resets_after_country_selection() ->
     focused = build_europe_choropleth(rows, source="FRA", selected_isos=["ES"])
     reset = build_europe_choropleth(rows, source="FRA", selected_isos=[])
 
-    europe_lon = list(europe.layout.geo.lonaxis.range)
-    focus_lon = list(focused.layout.geo.lonaxis.range)
-    assert europe.layout.geo.center.lon is not None
-    assert europe.layout.geo.center.lat is not None
-    assert focus_lon[1] - focus_lon[0] < europe_lon[1] - europe_lon[0]
-    assert list(reset.layout.geo.lonaxis.range) == europe_lon
+    assert europe.layout.geo.center.lon == 20
+    assert europe.layout.geo.center.lat == 54
+    assert europe.layout.geo.projection.scale == 1.18
+    assert europe.layout.margin.b == 0
+    assert europe.layout.margin.t == 0
+    assert focused.layout.geo.projection.scale == europe.layout.geo.projection.scale
+    assert focused.layout.geo.lonaxis.range is None
+    assert _trace(focused, 1).customdata[0][0] == "ES"
+    assert reset.layout.geo.projection.scale == 1.18
     assert reset.layout.uirevision.endswith("-europe")
 
 

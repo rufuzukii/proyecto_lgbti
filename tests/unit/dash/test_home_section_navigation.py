@@ -145,16 +145,6 @@ def test_home_account_card_links_to_profile_for_authenticated_users() -> None:
     assert "Tu perfil" in str(cards[-1].to_plotly_json())
 
 
-def test_old_ilga_presentation_block_is_removed_from_home() -> None:
-    source = (
-        Path(__file__).resolve().parents[3] / "src" / "app" / "dash" / "layouts" / "home.py"
-    ).read_text(encoding="utf-8")
-
-    assert "_source_summary" not in source
-    assert "home-source-grid" not in source
-    assert "ILGA Europe analiza" not in source
-
-
 def test_home_card_copy_is_complete_in_both_languages() -> None:
     card_keys = [
         "home_sections_eyebrow",
@@ -224,10 +214,11 @@ def test_home_places_ilga_detail_between_map_and_navigation(monkeypatch) -> None
     )
 
     layout = home_layout.build_home_layout()
-    ordered_ids_or_classes = [
-        getattr(component, "id", None) or getattr(component, "className", None)
-        for component in cast(Any, cast(Any, layout.children)[1]).children
-    ]
+    ordered_ids_or_classes = []
+    for component in cast(Any, cast(Any, layout.children)[1]).children:
+        component_id = getattr(component, "id", None)
+        class_names = str(getattr(component, "className", "")).split()
+        ordered_ids_or_classes.append(component_id or (class_names[0] if class_names else None))
 
     assert ordered_ids_or_classes.index("home-map-stage") < ordered_ids_or_classes.index(
         "home-legal-section"

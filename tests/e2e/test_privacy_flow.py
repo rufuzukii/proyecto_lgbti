@@ -72,10 +72,10 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
     # Assert
     assert privacy_response.status_code == 200
     assert privacy_response_en.status_code == 200
-    assert "privacy-notice" in str(anonymous_layout)
+    assert "privacy-notice" not in str(anonymous_layout)
     assert "/es/privacidad" in str(anonymous_layout)
     assert "Personal data management" not in str(anonymous_layout)
-    assert "Personal data management" in str(authenticated_layout)
+    assert "Personal data management" not in str(authenticated_layout)
 
 
 def test_reinforced_deletion_rejects_bad_credentials_then_closes_session(monkeypatch) -> None:

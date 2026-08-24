@@ -12,11 +12,6 @@ from app.analytics.statistics_normalizers import normalize_country_code
 
 MINIMUM_ANALYSIS_N = 5
 NORMAL_ANALYSIS_N = 10
-AVAILABLE = "AVAILABLE"
-FRA_MISSING = "FRA_MISSING"
-ILGA_MISSING = "ILGA_MISSING"
-NOT_PARTICIPATING = "NOT_PARTICIPATING"
-NOT_COMPARABLE = "NOT_COMPARABLE"
 
 _ADVERSE_QUESTION_TERMS = {
     "abuse",
@@ -192,11 +187,20 @@ def build_combined_analysis(
     eligibility = quadrant_eligibility(
         fra_result.get("indicator"), fra_result.get("answer")
     )
+    supported = get_combined_analysis_capabilities(
+        question=fra_result.get("indicator"),
+        answer=fra_result.get("answer"),
+        rows=rows,
+        semantics=semantics,
+        quadrant=eligibility,
+    )
     return {
         "rows": rows,
         "metrics": metrics,
         "semantics": semantics,
         "quadrant_eligibility": eligibility,
+        "supported_analyses": supported,
+        "ranking_gap": ranking_position_rows(rows, semantics["direction"]),
         "fra_year": _safe_int(fra_result.get("year")),
         "ilga_year": _safe_int(ilga_result.get("year")),
         "indicator": str(fra_result.get("indicator") or "").strip(),
@@ -205,6 +209,85 @@ def build_combined_analysis(
         "filters": dict(fra_result.get("filters") or {}),
         "normalization": dict(ilga_result.get("normalization") or {}),
     }
+
+
+def get_combined_analysis_capabilities(
+    *,
+    question: Any,
+    answer: Any,
+    rows: list[dict[str, Any]],
+    semantics: dict[str, str] | None = None,
+    quadrant: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the combined views that are defensible for one FRA selection.
+
+    Compatibility is kept here so UI callbacks never grow answer-specific
+    conditions.  A favourable/adverse comparison additionally requires a
+    direction that can be inferred safely from the question and answer.
+    """
+    semantic_result = semantics or infer_indicator_semantics(question, answer)
+    quadrant_result = quadrant or quadrant_eligibility(question, answer)
+    direction = semantic_result.get("direction", "unknown")
+    paired_n = sum(
+        1
+        for row in rows
+        if _finite_float(row.get("fra_value")) is not None
+        and _finite_float(row.get("ilga_value")) is not None
+    )
+    has_direction = direction in {"favourable", "adverse"}
+    quadrants = bool(
+        quadrant_result.get("eligible")
+        and has_direction
+        and paired_n >= MINIMUM_ANALYSIS_N
+    )
+    ranking_gap = bool(
+        quadrant_result.get("eligible") and has_direction and paired_n >= 2
+    )
+    return {
+        "scatter": False,
+        "quadrants": quadrants,
+        "ranking_gap": ranking_gap,
+        "download": quadrants or ranking_gap,
+        "any_visualization": quadrants or ranking_gap,
+        "paired_countries": paired_n,
+        "semantic_direction": direction,
+        "quadrant_reason": (
+            "insufficient_sample"
+            if (
+                quadrant_result.get("eligible")
+                and has_direction
+                and paired_n < MINIMUM_ANALYSIS_N
+            )
+            else str(quadrant_result.get("reason") or "ambiguous_semantic_direction")
+            if not (quadrant_result.get("eligible") and has_direction)
+            else ""
+        ),
+        "ranking_gap_reason": (
+            str(quadrant_result.get("reason") or "ambiguous_semantic_direction")
+            if not (quadrant_result.get("eligible") and has_direction)
+            else "insufficient_sample"
+            if paired_n < 2
+            else ""
+        ),
+    }
+
+
+def get_supported_combined_analyses(
+    *,
+    question: Any,
+    answer: Any,
+    rows: list[dict[str, Any]],
+    semantics: dict[str, str] | None = None,
+    quadrant: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Backward-compatible name for integrations using the previous helper."""
+    return get_combined_analysis_capabilities(
+        question=question,
+        answer=answer,
+        rows=rows,
+        semantics=semantics,
+        quadrant=quadrant,
+    )
 
 
 def classify_quadrant(
@@ -263,70 +346,73 @@ def quadrant_rows(
     return classified
 
 
-def median_difference_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    """Return valid FRA values and their difference from the country median."""
-    valid = [
-        {**row, "fra_value": value}
-        for row in rows
-        if (value := _finite_float(row.get("fra_value"))) is not None
-    ]
-    if not valid:
-        return {"median": None, "rows": []}
-    median = float(np.median([row["fra_value"] for row in valid]))
-    differences = [
-        {**row, "difference_pp": float(row["fra_value"] - median)} for row in valid
-    ]
-    return {
-        "median": median,
-        "rows": sorted(differences, key=lambda row: (-row["difference_pp"], row.get("country", ""))),
-    }
+def ranking_position_rows(
+    rows: list[dict[str, Any]], semantic_direction: str
+) -> dict[str, Any]:
+    """Compare dense legal and social ranks without breaking numeric ties.
 
-
-def build_availability_rows(
-    countries: list[dict[str, Any]],
-    *,
-    fra_values_by_year: dict[int, set[str]],
-    indicator_available_by_year: dict[int, bool],
-    participant_codes_by_year: dict[int, set[str] | frozenset[str] | None],
-    ilga_rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Build explicit availability states; missing values are never coerced to zero."""
-    ilga_available = {
-        normalize_country_code(row.get("iso"), row.get("country"))
-        for row in ilga_rows
-        if _finite_float(row.get("value")) is not None
-    }
-    result: list[dict[str, Any]] = []
-    for country in countries:
-        iso = normalize_country_code(
-            country.get("iso") or country.get("country_code"),
-            country.get("country") or country.get("name_en"),
-        )
-        if not iso:
+    Legal scores always rank from high to low. FRA ranks from high to low for
+    favourable indicators and from low to high for adverse indicators.
+    """
+    if semantic_direction not in {"favourable", "adverse"}:
+        return {
+            "available": False,
+            "reason": "ambiguous_semantic_direction",
+            "semantic_direction": semantic_direction,
+            "rows": [],
+        }
+    valid: list[dict[str, Any]] = []
+    for row in rows:
+        fra_value = _finite_float(row.get("fra_value"))
+        ilga_value = _finite_float(row.get("ilga_value"))
+        if fra_value is None or ilga_value is None:
             continue
-        fra_states: dict[str, str] = {}
-        for year in sorted(indicator_available_by_year):
-            participants = participant_codes_by_year.get(year)
-            if participants is not None and iso not in participants:
-                state = NOT_PARTICIPATING
-            elif not indicator_available_by_year.get(year, False):
-                state = NOT_COMPARABLE
-            elif iso in fra_values_by_year.get(year, set()):
-                state = AVAILABLE
-            else:
-                state = FRA_MISSING
-            fra_states[str(year)] = state
-        result.append(
+        valid.append({**row, "fra_value": fra_value, "ilga_value": ilga_value})
+    if len(valid) < 2:
+        return {
+            "available": False,
+            "reason": "insufficient_sample",
+            "semantic_direction": semantic_direction,
+            "rows": [],
+        }
+
+    ilga_ranks = _dense_rank([row["ilga_value"] for row in valid], descending=True)
+    fra_ranks = _dense_rank(
+        [row["fra_value"] for row in valid],
+        descending=semantic_direction == "favourable",
+    )
+    ranked = []
+    for row in valid:
+        legal_rank = ilga_ranks[row["ilga_value"]]
+        social_rank = fra_ranks[row["fra_value"]]
+        difference = social_rank - legal_rank
+        ranked.append(
             {
-                "country": str(
-                    country.get("country") or country.get("name_en") or country.get("name") or iso
-                ),
-                "iso": iso,
-                "fra": fra_states,
-                "ilga": AVAILABLE if iso in ilga_available else ILGA_MISSING,
+                **row,
+                "ilga_rank": legal_rank,
+                "fra_rank": social_rank,
+                "rank_difference": difference,
+                "absolute_rank_difference": abs(difference),
             }
         )
-    return sorted(result, key=lambda row: (str(row["country"]), str(row["iso"])))
+    return {
+        "available": True,
+        "reason": "",
+        "semantic_direction": semantic_direction,
+        "rows": sorted(
+            ranked,
+            key=lambda row: (
+                -int(row["absolute_rank_difference"]),
+                str(row.get("country") or "").casefold(),
+                str(row.get("iso") or ""),
+            ),
+        ),
+    }
+
+
+def _dense_rank(values: list[float], *, descending: bool) -> dict[float, int]:
+    ordered = sorted(set(values), reverse=descending)
+    return {value: position for position, value in enumerate(ordered, start=1)}
 
 
 def combine_country_rows(

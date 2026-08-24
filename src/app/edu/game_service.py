@@ -13,7 +13,7 @@ def new_game_state(
     rounds: int = 5,
     term_ids: Sequence[str] | None = None,
     shuffle: bool = True,
-    show_explanation: bool = True,
+    previous_term_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     if game_id != "guess_term":
         raise ValueError("unknown_game")
@@ -25,14 +25,20 @@ def new_game_state(
     )
     if shuffle:
         random.SystemRandom().shuffle(identifiers)
+    requested = min(rounds, len(identifiers))
+    previous = {str(identifier) for identifier in previous_term_ids or ()}
+    if previous and len(identifiers) > requested:
+        fresh = [identifier for identifier in identifiers if identifier not in previous]
+        repeated = [identifier for identifier in identifiers if identifier in previous]
+        identifiers = [*fresh, *repeated]
     return {
         "game_id": game_id,
-        "order": identifiers[: min(rounds, len(identifiers))],
+        "order": identifiers[:requested],
         "index": 0,
         "score": 0,
         "answered": False,
         "selected": None,
-        "show_explanation": show_explanation,
+        "completed": False,
     }
 
 

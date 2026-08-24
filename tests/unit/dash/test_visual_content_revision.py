@@ -25,6 +25,22 @@ def _walk(component: Any):
             yield from _walk(children)
 
 
+def test_application_owned_ui_copy_does_not_use_guillemets() -> None:
+    roots = (
+        ROOT / "src" / "app" / "dash",
+        ROOT / "src" / "app" / "reports",
+        ROOT / "src" / "app" / "edu" / "translations.py",
+    )
+    files = [
+        path
+        for root in roots
+        for path in ([root] if root.is_file() else root.rglob("*.py"))
+    ]
+
+    assert all("«" not in path.read_text(encoding="utf-8") for path in files)
+    assert all("»" not in path.read_text(encoding="utf-8") for path in files)
+
+
 def test_footer_attributions_are_uniform_and_use_the_requested_copy() -> None:
     footer = build_footer_attributions(language="es")
     body = str(footer.to_plotly_json())
@@ -39,8 +55,8 @@ def test_footer_attributions_are_uniform_and_use_the_requested_copy() -> None:
     assert {FRA_ORGANIZATION_URL, ILGA_URL, FELGTBI_URL} <= hrefs
     assert "Fuente:" not in body
     assert UI_TEXT["footer_attribution_fra_text"]["es"] == (
-        "European Union Agency for Fundamental Rights (FRA), EU LGBT/LGBTI/LGBTIQ "
-        "Surveys 2012, 2019 y 2023. Datos procesados y visualizados por RainbowLens "
+        "European Union Agency for Fundamental Rights (FRA), EU LGBTI/LGBTIQ "
+        "Surveys 2019 y 2023. Datos procesados y visualizados por RainbowLens "
         "DataHub. La FRA no participa en esta adaptación."
     )
     assert UI_TEXT["footer_attribution_ilga_text"]["es"] == (
@@ -78,13 +94,18 @@ def test_home_context_uses_natural_height_and_a_theme_divider() -> None:
 
 
 def test_statistics_map_is_large_shared_and_responsive() -> None:
-    css = (ASSETS / "statistics.css").read_text(encoding="utf-8")
+    shared_css = (ASSETS / "styles.css").read_text(encoding="utf-8")
+    statistics_css = (ASSETS / "statistics.css").read_text(encoding="utf-8")
     page = (PAGES / "statistics.py").read_text(encoding="utf-8")
+    home_page = (ROOT / "src/app/dash/layouts/home.py").read_text(encoding="utf-8")
 
     assert 'className="stats-mapbox-graph europe-map-container"' in page
-    assert "height: clamp(520px, 66vh, 680px);" in css
-    assert "height: min(58vh, 460px);" in css
-    assert "min-height: 320px;" in css
+    assert 'className="home-europe-map europe-map-container"' in home_page
+    assert ".europe-map-container {" in shared_css
+    assert "height: min(68vh, 680px);" in shared_css
+    assert "height: 58vh;" in shared_css
+    assert "height: 52vh;" in shared_css
+    assert ".stats-mapbox-graph {\n  height:" not in statistics_css
 
 
 def test_report_workflow_is_centered_vertical_and_download_is_last() -> None:
@@ -93,22 +114,24 @@ def test_report_workflow_is_centered_vertical_and_download_is_last() -> None:
 
     assert "reports-config-grid" not in page
     assert "grid-template-columns: repeat(2" not in css.split(
-        ".reports-segmentation-grid", 1
+        ".reports-filters-grid", 1
     )[1].split("}", 1)[0]
     assert "width: min(100%, 840px);" not in css
-    header_rule = css.split(".reports-header {", 1)[1].split("}", 1)[0]
-    assert "border:" not in header_rule
-    assert "background:" not in header_rule
-    assert "box-shadow:" not in header_rule
+    design_system = (ASSETS / "z_design_system.css").read_text(encoding="utf-8")
+    header_rule = design_system.split(".app-page-header {", 1)[1].split("}", 1)[0]
+    assert "border: 0;" in header_rule
+    assert "background: transparent;" in header_rule
+    assert "box-shadow: none;" in header_rule
     assert "width: 100%;" in header_rule
+    assert 'class_name="reports-header"' in page
     workflow_children = css.split(".reports-workflow > * {", 1)[1].split("}", 1)[0]
     assert "width: 100%;" in workflow_children
     assert "min-width: 0;" in workflow_children
     assert "reports-preview-actions" not in css
     assert "reports-download-actions" not in css
     assert 'className="reports-actions reports-final-actions"' in page
-    assert page.index("_profile_panel(profile)") < page.index("_configuration_panel(")
-    assert "report_personalised_generation" in page
+    assert page.index("_hr_purpose_panel()") < page.index("_configuration_panel(")
+    assert "Informe orientado a RRHH" in page
     assert page.index('className="reports-card reports-plan-summary"') < page.index(
         'id="report-preview-button"'
     )

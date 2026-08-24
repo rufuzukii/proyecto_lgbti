@@ -9,7 +9,7 @@ ASSETS = ROOT / "src" / "app" / "dash" / "assets"
 def test_common_page_container_has_fluid_shared_dimensions() -> None:
     styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
     responsive = (ASSETS / "zz_responsive.css").read_text(encoding="utf-8")
-    assert "--page-max-width: 1600px" in styles
+    assert "--page-max-width: 1500px" in styles
     assert "--page-horizontal-padding: clamp(" in styles
     assert ".app-page-container.app-page-container" in responsive
     assert "max-width: var(--page-max-width)" in responsive
@@ -36,10 +36,13 @@ def test_primary_pages_share_the_container_and_about_is_not_capped_at_1100() -> 
         source = (ROOT / "src" / "app" / relative).read_text(encoding="utf-8")
         assert "app-page-container" in source, relative
 
-    about_css = (ASSETS / "home.css").read_text(encoding="utf-8")
-    about_block = about_css[about_css.index(".about-shell"):about_css.index(".about-eyebrow")]
-    assert "6vw" not in about_block
-    assert "max-width: 1100px" not in about_block
+    styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
+    design_system = (ASSETS / "z_design_system.css").read_text(encoding="utf-8")
+    assert "--page-max-width: 1500px;" in styles
+    assert "app-page-standard" not in design_system
+    assert "app-page-readable" not in design_system
+    assert "app-page-wide" not in design_system
+    assert "max-width: 1100px" not in design_system
 
 
 def test_responsive_breakpoints_cover_desktop_tablet_and_mobile() -> None:

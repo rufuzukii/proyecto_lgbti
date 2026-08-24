@@ -3,16 +3,20 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
+from app.reports.hr_reporting import (
+    HR_REPORT_SECTIONS,
+    hr_report_charts,
+    hr_report_objective,
+)
 from app.reports.models import ReportConfiguration
 from app.reports.service import ReportGenerationError, generate_report_pdf
-from app.reports.templates import report_objective, report_profile
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
 class ReportRequest(BaseModel):
     source: Literal["fra", "ilga", "combined"] = "fra"
-    objective: str = Field(default="overview", max_length=80)
+    objective: str = Field(default="inclusion_context", max_length=80)
     category: str = Field(default="", max_length=180)
     indicator_id: str = Field(default="", max_length=120)
     indicator_label: str = Field(default="", max_length=240)
@@ -29,25 +33,15 @@ class ReportRequest(BaseModel):
     organization: str = Field(default="", max_length=120)
     author: str = Field(default="", max_length=120)
     language: Literal["es", "en"] = "es"
+
     def to_configuration(self) -> ReportConfiguration:
-        profile = report_profile("comun")
-        objective = report_objective(profile.key, self.objective)
-        charts = (
-            ["scatter", "median_difference"]
-            if self.source == "combined"
-            else [
-                key
-                for key in profile.recommended_charts
-                if key not in {"scatter", "quadrants", "median_difference", "availability"}
-            ]
-        )
+        objective = hr_report_objective(self.objective)
         return ReportConfiguration.from_mapping(
             {
                 **self.model_dump(),
-                "profile_key": profile.key,
                 "objective": objective.id,
-                "sections": profile.recommended_sections,
-                "charts": charts,
+                "sections": HR_REPORT_SECTIONS,
+                "charts": hr_report_charts(self.source, objective.id),
             }
         )
 

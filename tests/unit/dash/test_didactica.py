@@ -11,7 +11,6 @@ import app.dash.pages.didactica as didactica_page
 import app.dash_app as dash_app_module
 from app.auth.permissions import can_access_docente_material
 from app.dash.components.didactica import glossary_card
-from app.edu import progress_service
 from app.edu.game_service import new_game_state
 from app.edu.glossary_service import (
     FUNDEU_SOURCE_URL,
@@ -112,8 +111,10 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
     monkeypatch.setattr(didactica_page, "current_user", _user(authenticated=False))
 
     terms = list_glossary_terms()
-    assert len(terms) == 52
+    assert len(terms) == 51
     assert len({term.id for term in terms}) == len(terms)
+    assert get_glossary_term("transsexual") is None
+    assert {"trans", "trans_man", "trans_woman"} <= {term.id for term in terms}
     assert "gender_identity" in {term.id for term in search_glossary("identidad", language="es")}
     assert all(term.category == "rights" for term in search_glossary(category="rights"))
 
@@ -227,20 +228,67 @@ def test_dictionary_and_guess_game_callbacks_work_in_english(dash_app, monkeypat
     assert game_result[9] == "1"
 
 
-def test_game_progress_is_stored_as_summary_not_individual_answers(monkeypatch) -> None:
-    class Collection:
-        def __init__(self):
-            self.updates = []
+def test_guess_game_finishes_after_five_questions_and_restarts(dash_app, monkeypatch) -> None:
+    callback = _callback(dash_app, "play_game")
+    monkeypatch.setattr(didactica_page, "current_user", _user())
+    state = new_game_state("guess_term")
+    original_order = list(state["order"])
 
-        def update_one(self, query, update, *, upsert):
-            self.updates.append((query, update, upsert))
+    for index in range(5):
+        monkeypatch.setattr(
+            didactica_page,
+            "ctx",
+            SimpleNamespace(triggered_id="didactica-game-submit"),
+        )
+        result = callback(1, None, None, "es", state["order"][index], state)
+        state = result[6]
+        assert result[3] == "Respuesta correcta."
+        if index < 4:
+            monkeypatch.setattr(
+                didactica_page,
+                "ctx",
+                SimpleNamespace(triggered_id="didactica-game-next"),
+            )
+            result = callback(None, 1, None, "es", None, state)
+            state = result[6]
 
-    collection = Collection()
-    monkeypatch.setattr(progress_service, "get_mongo_collection", lambda _name: collection)
-    progress_service.save_game_score("user-1", "guess_term", 4)
+    assert state["completed"] is True
+    assert state["score"] == 5
+    assert result[12] == "Jugar de nuevo"
+    assert result[13].endswith("is-hidden")
 
-    assert collection.updates[0][1]["$max"] == {"game_scores.guess_term": 4}
-    assert all("answers" not in str(update) for _, update, _ in collection.updates)
+    monkeypatch.setattr(
+        didactica_page,
+        "ctx",
+        SimpleNamespace(triggered_id="didactica-game-next"),
+    )
+    restarted = callback(None, 1, None, "es", None, state)
+    assert restarted[6]["score"] == 0
+    assert restarted[6]["index"] == 0
+    assert set(restarted[6]["order"]).isdisjoint(original_order)
+
+
+def test_guess_game_incorrect_feedback_names_only_the_correct_term(
+    dash_app, monkeypatch
+) -> None:
+    callback = _callback(dash_app, "play_game")
+    monkeypatch.setattr(didactica_page, "current_user", _user())
+    state = new_game_state("guess_term")
+    correct_id = state["order"][0]
+    wrong_id = next(term.id for term in list_glossary_terms() if term.id != correct_id)
+    correct_term = get_glossary_term(correct_id)
+    assert correct_term is not None
+    monkeypatch.setattr(
+        didactica_page,
+        "ctx",
+        SimpleNamespace(triggered_id="didactica-game-submit"),
+    )
+
+    result = callback(1, None, None, "es", wrong_id, state)
+
+    assert result[3] == (
+        f'Respuesta incorrecta. La respuesta correcta era: "{correct_term.term}".'
+    )
 
 
 def test_teacher_routes_redirect_unauthorized_profiles_and_keep_login_destination(
@@ -314,6 +362,8 @@ def test_teacher_activity_editor_is_vertical_and_offers_exactly_three_engines(
         "legal_ranking",
     }
     ordered_ids = [getattr(item, "id", None) for item in _walk(layout)]
+    assert "teacher-editor-selection-mode" not in ordered_ids
+    assert "teacher-editor-board-size" not in ordered_ids
     assert ordered_ids.index("teacher-editor-game-type") < ordered_ids.index(
         "teacher-editor-term-ids"
     )
@@ -322,6 +372,44 @@ def test_teacher_activity_editor_is_vertical_and_offers_exactly_three_engines(
     )
     assert ordered_ids.index("teacher-editor-preview") < ordered_ids.index(
         "teacher-editor-save"
+    )
+
+
+def test_teacher_activity_delete_confirmation_drives_the_persistent_callback(
+    dash_app, monkeypatch
+) -> None:
+    monkeypatch.setattr(didactica_page, "current_route_language", lambda: "es")
+    card = didactica_page._activity_card(
+        {
+            "id": "activity-1",
+            "public_id": "public-1",
+            "game_type": "guess_term",
+            "title": "Actividad",
+            "status": "draft",
+        }
+    )
+    provider = next(
+        item
+        for item in _walk(card)
+        if getattr(item, "id", None)
+        == {"type": "teacher-activity-delete", "index": "activity-1"}
+    )
+    child_button = provider.children
+    callback = next(
+        value
+        for value in dash_app.callback_map.values()
+        if any(
+            input_item["id"] == '{"index":["ALL"],"type":"teacher-activity-delete"}'
+            for input_item in value["inputs"]
+        )
+    )
+
+    assert provider.__class__.__name__ == "ConfirmDialogProvider"
+    assert getattr(child_button, "id", None) is None
+    assert any(
+        input_item["property"] == "submit_n_clicks"
+        for input_item in callback["inputs"]
+        if "teacher-activity-delete" in input_item["id"]
     )
 
 
@@ -364,6 +452,40 @@ def test_custom_activity_preview_mounts_the_existing_game_component_ids(
     assert expected_store in _ids(layout)
 
 
+def test_public_activity_route_is_playable_without_authentication(
+    dash_app, monkeypatch
+) -> None:
+    display_page = dash_app.callback_map["page-content.children"]["callback"].__wrapped__
+    activity = {
+        "id": "internal-id",
+        "public_id": "public-share-id",
+        "game_type": "guess_term",
+        "title": "Actividad compartida",
+        "description": "",
+        "instructions": "",
+        "teacher_note": "",
+        "language": "es",
+        "configuration": {},
+    }
+    monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr(didactica_page, "get_public_game", lambda _public_id: activity)
+    monkeypatch.setattr(
+        didactica_page,
+        "build_activity_game_state",
+        lambda _activity: new_game_state("guess_term"),
+    )
+    anonymous = _user(authenticated=False)
+    monkeypatch.setattr(dash_app_module, "current_user", anonymous)
+    monkeypatch.setattr(didactica_page, "current_user", anonymous)
+
+    layout = display_page(
+        "/es/didactica/juegos/actividad/public-share-id", ""
+    )
+
+    assert "didactica-game-state" in _ids(layout)
+    assert "teacher-editor-save" not in _ids(layout)
+
+
 def test_teacher_space_css_uses_theme_tokens_and_one_mobile_column() -> None:
     stylesheet = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
     assert ".teacher-activity-editor" in stylesheet
@@ -380,12 +502,6 @@ def test_ranking_game_callback_checks_and_starts_a_new_round_without_reload(
     # Arrange
     callback = _callback(dash_app, "play_ranking_game")
     monkeypatch.setattr(didactica_page, "current_user", _user())
-    saved: list[tuple[str, str, int]] = []
-    monkeypatch.setattr(
-        didactica_page,
-        "save_game_score",
-        lambda user_id, game_id, score: saved.append((user_id, game_id, score)),
-    )
     state = {
         "game_id": "rank_countries",
         "year": 2026,
@@ -408,7 +524,6 @@ def test_ranking_game_callback_checks_and_starts_a_new_round_without_reload(
     assert checked[2]["checked"] is True
     assert checked[2]["positions_correct"] == 4
     assert checked[3] is True
-    assert saved == [("user-1", "rank_countries", 4)]
 
     # Arrange / Act: a new round is supplied by the service without a page reload.
     replacement = {**state, "items": list(reversed(state["items"]))}
@@ -438,7 +553,7 @@ def test_glossary_catalog_has_only_requested_sources_and_expected_provenance() -
     shared = [term for term in terms if len(term.sources) == 2]
 
     assert len(unam) == 35
-    assert len(fundeu) == 35
+    assert len(fundeu) == 34
     assert len(shared) == 18
     assert {source.url for term in terms for source in term.sources} == {
         UNAM_SOURCE_URL,

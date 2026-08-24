@@ -11,7 +11,6 @@ class PersonalDataInventory:
     profile: bool
     account_security: int = 0
     security_tokens: int = 0
-    learning_progress: int = 0
     teacher_games: int = 0
     import_logs: int = 0
     security_audit_events: int = 0
@@ -22,14 +21,13 @@ class PersonalDataInventory:
 
     @property
     def removable_content_count(self) -> int:
-        return self.learning_progress + self.teacher_games + self.import_logs
+        return self.teacher_games + self.import_logs
 
     def to_safe_dict(self) -> dict[str, int | bool]:
         return {
             "profile": self.profile,
             "account_security": self.account_security,
             "security_tokens": self.security_tokens,
-            "learning_progress": self.learning_progress,
             "teacher_games": self.teacher_games,
             "import_logs": self.import_logs,
             "security_audit_events": self.security_audit_events,

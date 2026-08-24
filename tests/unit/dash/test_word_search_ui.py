@@ -57,7 +57,7 @@ def test_word_search_layout_contains_an_interactive_board_and_memory_only_state(
     # Assert
     assert store.storage_type == "memory"
     assert len(store.data["words"]) == 8
-    assert store.data["rows"] in {10, 12}
+    assert 10 <= store.data["rows"] <= 15
     assert len(cells) == store.data["rows"] * store.data["columns"]
     assert all(cell.type == "button" and cell.role == "gridcell" for cell in cells)
     assert any(getattr(item, "id", None) == "didactica-word-search-new" for item in components)

@@ -78,13 +78,19 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
     assert all(isinstance(option["label"], str) for option in category_options)
     assert all(isinstance(option["value"], str) for option in category_options)
 
-    social_options, social_value, social_disabled, cleared_result = indicators_callback(
+    social_options, social_value, social_disabled, cleared_result, indicator_catalog = indicators_callback(
         "fra_survey_iii", social
     )
     assert social_options == [{"label": "Effectiveness of government", "value": "D5"}]
     assert social_value is None
     assert social_disabled is False
     assert cleared_result is None
+    assert indicator_catalog == {
+        "survey_id": "fra_survey_iii",
+        "category": social,
+        "loaded": True,
+        "has_data": True,
+    }
 
     controls_result = controls_callback(
         "D5", "en", social, "fra_survey_iii"
@@ -171,11 +177,13 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
         ("Age", "25-39", "All", "All"),
     ]
 
-    other_options, other_value, _, _ = indicators_callback("fra_survey_iii", "Discrimination")
+    other_options, other_value, _, _, _ = indicators_callback(
+        "fra_survey_iii", "Discrimination"
+    )
     assert other_options == [{"label": "Discrimination", "value": "D1"}]
     assert other_value is None
 
-    returned_options, returned_value, returned_disabled, _ = indicators_callback(
+    returned_options, returned_value, returned_disabled, _, _ = indicators_callback(
         "fra_survey_iii", social
     )
     assert returned_options == social_options
@@ -213,10 +221,10 @@ def test_ranked_reason_indicator_shows_ordered_answers_and_methodology(monkeypat
         "Not Selected",
     ]
     assert [option["label"] for option in spanish[0]] == [
-        "1st — Primera razón",
-        "2nd — Segunda razón",
-        "3rd — Tercera razón",
-        "Not selected — No seleccionada",
+        "1st",
+        "2nd",
+        "3rd",
+        "Not Selected",
     ]
     assert "¿Cómo interpretar estas respuestas?" in str(spanish[5])
     assert spanish[6] == "stats-response-help"

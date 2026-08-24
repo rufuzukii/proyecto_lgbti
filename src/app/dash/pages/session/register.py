@@ -4,7 +4,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.auth.csrf import get_csrf_token
-from app.dash.i18n import text, text_attrs
+from app.dash.i18n import text, text_attrs, ui_text
 from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 
@@ -165,6 +165,33 @@ def build_register_layout(
                                                 ),
                                                 className="auth-help",
                                             ),
+                                            html.Div(
+                                                [
+                                                    html.P(
+                                                        text(
+                                                            ui_text(
+                                                                "registration_privacy_notice",
+                                                                "es",
+                                                            ),
+                                                            ui_text(
+                                                                "registration_privacy_notice",
+                                                                "en",
+                                                            ),
+                                                        )
+                                                    ),
+                                                    dcc.Link(
+                                                        text(
+                                                            "Consultar Privacidad y protección de datos",
+                                                            "View Privacy and data protection",
+                                                        ),
+                                                        href=route_path("privacy"),
+                                                        className="auth-privacy-link",
+                                                    ),
+                                                ],
+                                                id="registration-privacy-information",
+                                                className="auth-privacy-information",
+                                                role="note",
+                                            ),
                                             html.Button(
                                                 "Crear cuenta",
                                                 type="submit",
@@ -194,10 +221,10 @@ def build_register_layout(
                                         className="auth-switch",
                                     ),
                                 ],
-                                className="auth-card",
+                                className="auth-card app-surface",
                             )
                         ],
-                        className="auth-shell",
+                        className="auth-shell app-page",
                     )
                 ],
                 className="page-shell",

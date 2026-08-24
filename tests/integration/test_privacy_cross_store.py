@@ -85,9 +85,8 @@ def test_mongo_deletion_removes_private_content_tokens_and_account_state(
     security = service._delete_security_state(USER_ID)
 
     # Assert
-    assert content == {"learning_progress": 1, "teacher_games": 1}
+    assert content == {"teacher_games": 1}
     assert security == {"security_tokens": 1, "account_security": 1}
-    assert deleted_queries[service.PROGRESS_COLLECTION] == [{"user_id": USER_ID}]
     assert deleted_queries[service.GAMES_COLLECTION] == [
         {"$or": [{"owner_user_id": USER_ID}, {"owner_id": USER_ID}]}
     ]

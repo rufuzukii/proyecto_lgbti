@@ -20,10 +20,18 @@
   --color-border: #efd4df;
   --color-glass: rgba(255, 255, 255, 0.34);
   --color-glass-border: rgba(255, 255, 255, 0.5);
+  --color-info: #2563a8;
+  --color-success: #167d68;
+  --color-warning: #a86212;
+  --color-danger: #b4233d;
+  --color-focus: color-mix(in srgb, var(--link-green) 28%, transparent);
+  --control-bg: #ffffff;
+  --control-height: 46px;
   --shadow-md: 0 10px 22px rgba(87, 55, 69, 0.1);
   --shadow-xl: 0 20px 40px rgba(87, 55, 69, 0.14);
-  --app-background: linear-gradient(135deg, #fff7fa 0%, #f1f9fb 46%, #fff7f1 100%);
-  --nav-bg: linear-gradient(135deg, rgba(255, 254, 254, 0.96), rgba(252, 228, 236, 0.82));
+  --surface-shadow: 0 8px 24px rgba(87, 55, 69, 0.08);
+  --app-background: var(--color-bg);
+  --nav-bg: var(--color-surface);
   --nav-border: rgba(239, 212, 223, 0.95);
   --panel-bg: rgba(255, 255, 255, 0.96);
   --panel-muted: #f6fafb;
@@ -32,8 +40,16 @@
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 20px;
+  --radius-pill: 999px;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
   --transition: 0.2s ease;
-  --page-max-width: 1600px;
+  --page-max-width: 1500px;
   --page-horizontal-padding: clamp(1rem, 2.5vw, 2.5rem);
   --readable-line-width: 80ch;
 }
@@ -56,10 +72,15 @@ body[data-theme="dark"] {
   --color-border: #2d3748;
   --color-glass: rgba(10, 14, 23, 0.72);
   --color-glass-border: rgba(238, 244, 255, 0.14);
+  --color-info: #93c5fd;
+  --color-success: #6ee7b7;
+  --color-warning: #f8c56b;
+  --color-danger: #fda4af;
+  --control-bg: #0f1522;
   --shadow-md: 0 12px 24px rgba(0, 0, 0, 0.22);
   --shadow-xl: 0 22px 46px rgba(0, 0, 0, 0.28);
   --app-background: var(--color-bg);
-  --nav-bg: linear-gradient(135deg, rgba(10, 14, 23, 0.98), rgba(17, 24, 39, 0.96));
+  --nav-bg: var(--color-surface);
   --nav-border: rgba(238, 244, 255, 0.1);
   --panel-bg: rgba(17, 24, 39, 0.96);
   --panel-muted: #1a2232;
@@ -170,7 +191,6 @@ html[data-theme="dark"] #page-content {
   align-items: center;
   background: var(--nav-bg), var(--color-surface);
   border-bottom: 1px solid var(--nav-border);
-  box-shadow: 0 10px 24px rgba(105, 90, 148, 0.12);
   color: var(--color-text);
   display: flex;
   flex-wrap: nowrap;
@@ -616,9 +636,25 @@ html[data-theme="dark"] #page-content {
 
 .europe-map-container {
   box-sizing: border-box;
+  height: min(68vh, 680px);
   max-width: 100%;
+  min-height: 480px;
   min-width: 0;
   width: 100%;
+}
+
+@media (max-width: 767px) {
+  .europe-map-container {
+    height: 58vh;
+    min-height: 340px;
+  }
+}
+
+@media (max-width: 430px) {
+  .europe-map-container {
+    height: 52vh;
+    min-height: 300px;
+  }
 }
 
 .footer-attribution-link {
@@ -722,9 +758,14 @@ html[data-theme="dark"] #page-content {
 
 .Select-control,
 .Select-menu-outer {
-  background: #ffffff !important;
+  background: var(--control-bg) !important;
   border-color: var(--color-border) !important;
   color: var(--color-text) !important;
+}
+
+.Select-control {
+  border-radius: var(--radius-sm) !important;
+  min-height: var(--control-height);
 }
 
 .Select-control,
@@ -743,7 +784,7 @@ html[data-theme="dark"] #page-content {
 
 .Select-option,
 .VirtualizedSelectOption {
-  background: #ffffff !important;
+  background: var(--control-bg) !important;
 }
 
 .Select-option.is-focused,
@@ -825,7 +866,6 @@ body[data-theme="dark"] .user-role-value {
   color: var(--color-text);
 }
 
-body[data-theme="dark"] .home-map-eyebrow,
 body[data-theme="dark"] .home-map-link,
 body[data-theme="dark"] .home-analysis-link,
 body[data-theme="dark"] .auth-eyebrow,
@@ -942,6 +982,15 @@ body[data-theme="dark"] .Select-placeholder {
 :root[data-theme="dark"] span.dash-options-list-option-text,
 body[data-theme="dark"] span.dash-options-list-option-text {
   color: #fff !important;
+}
+
+/* Dash gives the generated option label a light inverse fill.  Custom option
+   surfaces provide their own background, so this vendor default must remain
+   transparent in dark mode. */
+:where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option,
+:where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option-wrapper,
+:where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option-text {
+  background-color: transparent;
 }
 
 :root[data-theme="dark"] .Select-value,

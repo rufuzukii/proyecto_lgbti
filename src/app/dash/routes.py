@@ -27,6 +27,7 @@ class RouteMatch:
     route_id: str
     language: Language
     path: str
+    public_id: str = ""
 
 
 _ROUTE_DEFINITIONS = (
@@ -58,7 +59,11 @@ _ROUTE_DEFINITIONS = (
         "/es/didactica/docentes/actividad",
         "/en/learning/educators/activity",
     ),
-    AppRoute("progress", "/es/didactica/progreso", "/en/learning/progress"),
+    AppRoute(
+        "educator_public_activity",
+        "/es/didactica/juegos/actividad",
+        "/en/learning/games/activity",
+    ),
     AppRoute("about", "/es/acerca-de", "/en/about"),
     AppRoute("reports", "/es/informe", "/en/report"),
     AppRoute("privacy", "/es/privacidad", "/en/privacy"),
@@ -104,7 +109,7 @@ ROUTE_TITLES: dict[str, dict[Language, str]] = {
     "educators": {"es": "Docentes", "en": "Educators"},
     "educator_create": {"es": "Crear actividad", "en": "Create activity"},
     "educator_activity": {"es": "Actividad docente", "en": "Educator activity"},
-    "progress": {"es": "Progreso", "en": "Progress"},
+    "educator_public_activity": {"es": "Actividad", "en": "Activity"},
     "about": {"es": "Acerca de", "en": "About"},
     "reports": {"es": "Informe", "en": "Report"},
     "privacy": {"es": "Privacidad", "en": "Privacy"},
@@ -149,7 +154,9 @@ LEGACY_REDIRECTS: dict[str, str] = {
     "/didactica/profesores": "/es/didactica/docentes",
     "/didactica/docentes/crear": "/es/didactica/docentes/crear",
     "/didactica/docentes/actividad": "/es/didactica/docentes/actividad",
-    "/didactica/progreso": "/es/didactica/progreso",
+    "/didactica/progreso": "/es/didactica",
+    "/es/didactica/progreso": "/es/didactica",
+    "/en/learning/progress": "/en/learning",
     "/about": "/en/about",
     "/acerca-de": "/es/acerca-de",
     "/informes": "/es/informe",
@@ -228,7 +235,19 @@ def route_path(route_id: str, language: str | None = None) -> str:
 
 def match_route(pathname: str | None) -> RouteMatch | None:
     path = _normalized_path(pathname)
-    return _CANONICAL_PATHS.get(path)
+    exact = _CANONICAL_PATHS.get(path)
+    if exact is not None:
+        return exact
+    for language in SUPPORTED_LANGUAGES:
+        base = route_path("educator_public_activity", language)
+        prefix = f"{base}/"
+        if path.startswith(prefix):
+            public_id = path.removeprefix(prefix)
+            if public_id and "/" not in public_id:
+                return RouteMatch(
+                    "educator_public_activity", language, path, public_id
+                )
+    return None
 
 
 def legacy_redirect_target(pathname: str | None) -> str | None:
@@ -255,7 +274,8 @@ def equivalent_path(pathname: str | None, language: str) -> str | None:
         match = match_route(target)
     if match is None:
         return None
-    return route_path(match.route_id, language)
+    target = route_path(match.route_id, language)
+    return f"{target}/{match.public_id}" if match.public_id else target
 
 
 def client_route_config() -> dict[str, object]:
@@ -269,6 +289,7 @@ def client_route_config() -> dict[str, object]:
             path: match.route_id for path, match in _CANONICAL_PATHS.items()
         },
         "titles": ROUTE_TITLES,
+        "dynamicRouteIds": ["educator_public_activity"],
     }
 
 

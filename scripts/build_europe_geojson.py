@@ -45,10 +45,13 @@ def build_europe_geojson(source: str, output: Path, *, tolerance: float = 0.02) 
     europe = gpd.GeoDataFrame(records, crs="EPSG:4326")
     europe.geometry = europe.geometry.intersection(box(*EUROPE_WEB_BOUNDS))
     europe.geometry = europe.geometry.simplify(tolerance, preserve_topology=True)
-    europe.geometry = shapely.set_precision(europe.geometry.array, grid_size=0.00001)
+    geometry_values = europe.geometry.to_numpy()
+    europe.geometry = shapely.set_precision(geometry_values, grid_size=0.00001)
     # Plotly's spherical renderer expects clockwise exterior rings. Enforce the
     # orientation so a country is not interpreted as a hole in the world.
-    europe.geometry = shapely.orient_polygons(europe.geometry.array, exterior_cw=True)
+    europe.geometry = shapely.orient_polygons(
+        europe.geometry.to_numpy(), exterior_cw=True
+    )
     if europe.geometry.is_empty.any() or not europe.geometry.is_valid.all():
         raise ValueError("Geometry simplification produced empty or invalid countries")
 

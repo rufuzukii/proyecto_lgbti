@@ -120,7 +120,7 @@ def build_error_layout(
                 ),
             ),
         ],
-        className="error-page-panel",
+        className="error-page-panel app-page app-page-container app-surface",
     )
     children: list[Component] = [panel]
     if include_navigation:

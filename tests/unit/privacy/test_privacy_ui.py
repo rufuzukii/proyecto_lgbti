@@ -6,10 +6,29 @@ from typing import Any
 from app.dash.i18n import UI_TEXT
 from app.dash.layouts import user_page
 from app.dash.pages import privacy
+from app.dash.pages.session import register
 from app.privacy.models import PersonalDataInventory
 from app.users.schemas import UserRole, UserType
 
 ASSETS = Path(__file__).parents[3] / "src" / "app" / "dash" / "assets"
+
+
+def test_registration_contains_bilingual_privacy_information(monkeypatch) -> None:
+    monkeypatch.setattr(register, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr(register, "get_csrf_token", lambda: "csrf")
+
+    layout = register.build_register_layout()
+    rendered = str(layout)
+
+    assert "registration-privacy-information" in rendered
+    assert (
+        "RainbowLens DataHub utiliza los datos necesarios para gestionar tu cuenta y "
+        "ofrecer las funcionalidades solicitadas."
+    ) in rendered
+    assert "RainbowLens DataHub uses the data required to manage your account" in UI_TEXT[
+        "registration_privacy_notice"
+    ]["en"]
+    assert "/es/privacidad" in rendered
 
 
 class _User:
@@ -83,10 +102,38 @@ def test_privacy_page_describes_only_real_stores_and_links_rights(monkeypatch) -
     assert privacy.AEPD_RIGHTS_URL in hrefs
     assert "Submit a complaint" not in body
     assert "Presentar una reclamación" not in body
-    assert "Redis" not in body
     assert "Copias de seguridad" not in body
     assert "Backups" not in body
     assert "No se utiliza consentimiento" not in body
+    assert "Logs de acceso de Render y proveedores" not in body
+    assert "pendiente de documentar por el responsable" not in body
+    assert "Logs de acceso de Render:" in body
+
+
+def test_recipients_card_omits_transfer_paragraph_without_configured_location() -> None:
+    # Arrange
+    config = privacy.PrivacyPolicyConfig(
+        controller_name="RainbowLens DataHub",
+        contact_email="privacy@example.test",
+        policy_effective_date="2026-08-06",
+        audit_retention_days=90,
+        deletion_job_retention_days=30,
+        backup_retention=None,
+        email_retention=None,
+        access_log_retention=None,
+        hosting_location=None,
+        postgres_provider=None,
+        mongo_provider=None,
+        email_provider=None,
+        transfer_safeguards=None,
+    )
+
+    # Act
+    card = privacy._recipients_card(config)
+    paragraphs = [item for item in _walk(card) if item.__class__.__name__ == "P"]
+
+    # Assert
+    assert paragraphs == []
 
 
 def test_privacy_controller_is_production_ready_and_bilingual(monkeypatch) -> None:
@@ -138,13 +185,13 @@ def test_personal_panel_has_export_and_reinforced_deletion_controls(monkeypatch)
         "get_personal_data_inventory",
         lambda _user_id: PersonalDataInventory(
             profile=True,
-            learning_progress=1,
             teacher_games=2,
         ),
     )
 
     # Act
     layout = user_page.build_user_page_layout()
+    rendered = str(layout)
     ids = {getattr(item, "id", None) for item in _walk(layout)}
     actions = {getattr(item, "action", None) for item in _walk(layout)}
 
@@ -157,19 +204,24 @@ def test_personal_panel_has_export_and_reinforced_deletion_controls(monkeypatch)
         "privacy-confirm-checklist",
     } <= ids
     assert {"/privacy/delete-account", "/privacy/export"} <= actions
+    assert "Gestiona tu perfil." in rendered
+    assert "Gestiona tu perfil, utiliza tus herramientas" not in rendered
+    assert "Esta acción eliminará tu cuenta y los datos personales asociados." in rendered
 
 
 def test_privacy_assets_cover_persistence_accessibility_themes_and_mobile() -> None:
     javascript = (ASSETS / "js" / "50_privacy.js").read_text(encoding="utf-8")
     css = (ASSETS / "privacy.css").read_text(encoding="utf-8")
+    global_css = (ASSETS / "styles.css").read_text(encoding="utf-8")
 
-    assert 'NOTICE_KEY = "rainbowlens-privacy-notice"' in javascript
-    assert "notice.dataset.noticeVersion" in javascript
+    assert "rainbowlens-privacy-notice" not in javascript
+    assert ".privacy-notice" not in css
     assert "dialog.showModal()" in javascript
     assert "dialog.close()" in javascript
     assert "lastDialogTrigger.focus()" in javascript
     assert "rainbowlens-" in javascript
-    assert 'body[data-theme="dark"]' in css
+    assert 'body[data-theme="dark"]' in global_css
+    assert "var(--panel-bg)" in css
     assert ":focus-visible" in css
     assert ".privacy-content-grid" in css
     assert ".privacy-controller-details" in css
@@ -177,3 +229,5 @@ def test_privacy_assets_cover_persistence_accessibility_themes_and_mobile() -> N
     assert "@media (max-width: 680px)" in css
     assert ".privacy-dialog::backdrop" in css
     assert ".privacy-config-warning" not in css
+    full_width_rule = css.split("#privacy-data,", 1)[1].split("{", 1)[0]
+    assert "#privacy-security" in full_width_rule

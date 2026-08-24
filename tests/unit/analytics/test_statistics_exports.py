@@ -64,6 +64,7 @@ def test_statistics_css_allows_dynamic_graphs_to_grow_before_footer() -> None:
 
 def test_statistics_css_has_full_width_ranking_and_mobile_boundaries() -> None:
     css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    shared_css = (ROOT / "src/app/dash/assets/styles.css").read_text(encoding="utf-8")
 
     assert ".stats-ranking-panel,\n.stats-response-comparison-section," in css
     assert ".stats-response-comparison-scroll {" in css
@@ -75,20 +76,23 @@ def test_statistics_css_has_full_width_ranking_and_mobile_boundaries() -> None:
     assert ".stats-results-table-scroll {\n  max-width: 100%;" in css
     assert "overflow-x: auto;" in css
     assert ".stats-results-grid {\n    min-width: 680px;" in css
-    assert ".stats-mapbox-graph {\n    height: min(58vh, 460px);\n    min-height: 340px;" in css
-    assert "height: clamp(520px, 66vh, 680px);" in css
+    assert ".europe-map-container {" in shared_css
+    assert "height: min(68vh, 680px);" in shared_css
+    assert "min-height: 480px;" in shared_css
+    assert "height: 58vh;" in shared_css
+    assert "min-height: 340px;" in shared_css
     assert "overflow-x: hidden" not in css
 
 
-def test_create_report_button_uses_theme_specific_text_colours() -> None:
+def test_create_report_button_uses_primary_dark_background_and_black_text() -> None:
     css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
     reports_css = (ROOT / "src/app/dash/assets/reports.css").read_text(encoding="utf-8")
 
-    assert ".stats-create-report-link {" in css
+    assert ".stats-create-report-link.app-button-primary {" in css
+    assert "  background: var(--color-primary-dark);" in css
     assert "  color: #000;" in css
-    assert 'body[data-theme="dark"] .stats-create-report-link,' in css
-    assert "  color: #fff;" in css
-    assert ".stats-create-report-link:active" in css
+    assert "--stats-report-button-bg" not in css
+    assert ".stats-create-report-link.app-button-primary:active" in css
     assert '.stats-create-report-link[aria-disabled="true"]' in css
     assert ".stats-create-report-link" not in reports_css
 
@@ -263,10 +267,9 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
         "stats-ranking-graph",
         "stats-average-graph",
         "stats-response-comparison-graph",
-        "stats-experience-legal-radar-graph",
         "stats-response-detail-graph",
         "stats-quadrant-graph",
-        "stats-median-difference-graph",
+        "stats-ranking-gap-graph",
     }
     assert all(
         component.to_plotly_json()["props"]["aria-controls"]
@@ -404,6 +407,8 @@ def test_rendered_export_metadata_tracks_visible_filters_and_country_selection()
     assert "Respuesta: Yes" in selected_title
     assert "Age: 25-39" in selected_title
     assert "Fuente: FRA, EU LGBTIQ Survey III, 2023" in selected_title
+    assert selected[24] == "stats-analytics-block is-hidden"
+    assert selected[25] is None
     assert selected[-3] is False
     assert selected[-2] == ""
     assert selected[-1] == "stats-table-export-status is-hidden"

@@ -80,7 +80,7 @@ def test_deletion_orchestrates_all_stores_before_postgres(
 ) -> None:
     # Arrange
     events: list[str] = []
-    inventory = PersonalDataInventory(profile=True, learning_progress=1, teacher_games=2)
+    inventory = PersonalDataInventory(profile=True, teacher_games=2)
     monkeypatch.setattr(service, "get_personal_data_inventory", lambda _user_id: inventory)
     monkeypatch.setattr(service, "_assert_not_last_admin", lambda _record: events.append("guard"))
     monkeypatch.setattr(
@@ -231,7 +231,6 @@ def test_inventory_counts_only_real_user_linked_stores(monkeypatch: pytest.Monke
     counts = {
         service.ACCOUNT_COLLECTION: 1,
         service.TOKEN_COLLECTION: 2,
-        service.PROGRESS_COLLECTION: 1,
         service.GAMES_COLLECTION: 3,
         service.SECURITY_AUDIT_COLLECTION: 4,
         service.ADMIN_AUDIT_COLLECTION: 5,

@@ -72,10 +72,12 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
         "stats-dashboard-ready-store": "data",
         "stats-active-query-store": "data",
         "stats-survey-catalog-store": "data",
+        "stats-indicator-catalog-store": "data",
     }
     graphs = [item for item in _walk(layout) if type(item).__name__ == "Graph"]
     assert [graph.id for graph in graphs] == ["stats-map-graph"]
     assert _component_by_id(layout, "stats-map-graph-slot") is not None
+    assert _component_by_id(layout, "stats-map-ranking") is not None
     map_graph = cast(Any, _component_by_id(layout, "stats-map-graph"))
     map_props = map_graph.to_plotly_json()["props"]
     assert "figure" not in map_props
@@ -85,25 +87,21 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     assert [option["value"] for option in survey.options] == [
         "fra_survey_iii",
         "fra_survey_ii",
-        "fra_survey_i",
     ]
     assert _component_by_id(layout, "stats-source-select") is None
     assert _component_by_id(layout, "stats-year-select") is None
     assert _component_by_id(layout, "ilga-criterion-select") is None
 
 
-def test_combined_visual_slots_are_stable_and_old_boxplot_is_absent(
+def test_combined_visual_slots_are_available_in_the_initial_layout(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     layout = statistics_page.build_statistics_layout()
-    assert _component_by_id(layout, "stats-boxplot-graph-slot") is None
     assert _component_by_id(layout, "stats-quadrant-graph-slot") is not None
-    assert _component_by_id(layout, "stats-median-difference-graph-slot") is not None
-    assert _component_by_id(layout, "stats-scatter-graph-slot") is None
-    assert _component_by_id(layout, "stats-availability-graph-slot") is None
-    assert _component_by_id(layout, "stats-combined-heatmap-slot") is None
-    assert _component_by_id(layout, "stats-combined-interpretation") is not None
+    assert _component_by_id(layout, "stats-ranking-gap-graph-slot") is not None
+    assert _component_by_id(layout, "stats-median-difference-graph-slot") is None
+    assert _component_by_id(layout, "stats-combined-interpretation") is None
 
 
 def test_ranked_reason_help_is_bilingual_and_absent_for_standard_questions() -> None:
@@ -186,14 +184,32 @@ def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
     statistics_page.register_statistics_callbacks(app)
     callback = _callback(app, "update_statistics_query_state")
 
-    initial = callback(None, None, None, "es")
-    no_data = callback({"status": "empty", "ranking": [], "data": []}, None, None, "en")
-    error = callback({"status": "error", "ranking": []}, None, None, "es")
-    ready = callback({"status": "ok", "ranking": [{"value": 1}]}, None, None, "es")
+    initial = callback(None, None, None, None, None, "es")
+    no_data = callback(
+        {"status": "empty", "ranking": [], "data": []},
+        None,
+        None,
+        "Education",
+        "C9_E",
+        "en",
+    )
+    error = callback(
+        {"status": "error", "ranking": []}, None, None, "Education", "C9_E", "es"
+    )
+    ready = callback(
+        {"status": "ok", "ranking": [{"value": 1}]},
+        None,
+        None,
+        "Education",
+        "C9_E",
+        "es",
+    )
     loading = callback(
         {"status": "ok", "query_token": "new", "ranking": [{"value": 1}]},
         {"query_token": "old"},
         {"query_token": "new"},
+        "Education",
+        "C9_E",
         "es",
     )
 
@@ -209,6 +225,29 @@ def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
     assert ready[2] == "stats-results-content"
     assert loading[1].endswith("is-hidden")
     assert loading[2].endswith("is-hidden")
+
+
+def test_valid_indicator_never_returns_to_initial_while_new_result_is_pending() -> None:
+    assert (
+        resolve_statistics_view_state(
+            None,
+            None,
+            {"phase": "initial"},
+            category="Education",
+            indicator="C9_E",
+        )
+        is StatisticsViewState.LOADING_STATISTICS
+    )
+    assert (
+        resolve_statistics_view_state(
+            {"status": "ok", "indicator_code": "OLD"},
+            None,
+            {"phase": "initial"},
+            category="Education",
+            indicator="C9_E",
+        )
+        is StatisticsViewState.LOADING_STATISTICS
+    )
 
 
 def test_statistics_view_states_are_explicit() -> None:
@@ -239,6 +278,24 @@ def test_statistics_view_states_are_explicit() -> None:
     assert resolve_statistics_view_state({"status": "empty"}) is StatisticsViewState.NO_DATA
     assert resolve_statistics_view_state({"status": "invalid"}) is StatisticsViewState.NO_DATA
     assert resolve_statistics_view_state({"status": "error"}) is StatisticsViewState.ERROR
+    assert (
+        resolve_statistics_view_state(
+            None,
+            None,
+            {"phase": "loading_indicators", "query_token": "category-change"},
+        )
+        is StatisticsViewState.LOADING_INDICATORS
+    )
+
+
+def test_indicator_catalog_prevents_initial_prompt_during_category_loading() -> None:
+    source = Path("src/app/dash/pages/statistics.py").read_text(encoding="utf-8")
+
+    assert 'id="stats-indicator-catalog-store"' in source
+    assert "indicatorCatalogReady" in source
+    assert source.index('phase = "loading_indicators"') < source.index(
+        'phase = "initial"'
+    )
 
 
 def test_initial_statistics_selection_does_not_run_data_services(monkeypatch) -> None:
@@ -255,6 +312,23 @@ def test_initial_statistics_selection_does_not_run_data_services(monkeypatch) ->
     result = callback("fra_survey_iii", None, None, None, None, None, None, None, {})
 
     assert result is None
+
+
+def test_ready_indicator_controls_trigger_the_initial_statistics_query() -> None:
+    app = Dash("statistics-control-trigger-test", suppress_callback_exceptions=True)
+    statistics_page.register_statistics_callbacks(app)
+    callback_registration = next(
+        value
+        for value in app.callback_map.values()
+        if getattr(value.get("callback"), "__wrapped__", None)
+        and value["callback"].__wrapped__.__name__ == "load_statistics_data"
+    )
+
+    input_ids = {item["id"] for item in callback_registration["inputs"]}
+    state_ids = {item["id"] for item in callback_registration["state"]}
+
+    assert "stats-fra-control-store" in input_ids
+    assert "stats-fra-control-store" not in state_ids
 
 
 def test_statistics_category_catalog_rejects_an_unknown_survey(monkeypatch) -> None:
@@ -397,6 +471,90 @@ def test_statistics_service_failure_becomes_controlled_error_state(monkeypatch) 
 
     assert result["status"] == "error"
     assert result["ranking"] == []
+
+
+def test_bathroom_school_indicator_reaches_a_terminal_state_without_unrelated_radar(
+    monkeypatch,
+) -> None:
+    app = Dash("statistics-bathroom-indicator-regression", suppress_callback_exceptions=True)
+    statistics_page.register_statistics_callbacks(app)
+    callback = _callback(app, "load_statistics_data")
+    monkeypatch.setattr(
+        statistics_page,
+        "ctx",
+        type("Context", (), {"triggered_id": "stats-fra-control-store"})(),
+    )
+    monkeypatch.setattr(
+        statistics_page,
+        "get_fra_statistics",
+        lambda query: {
+            "status": "ok",
+            "source": "FRA",
+            "year": query.year,
+            "indicator_code": query.question_code,
+            "indicator": "Problems when going to bathroom and changing rooms at school",
+            "answer": query.answer,
+            "ranking": [{"country": "Spain", "iso": "ES", "value": 0}],
+            "detail_data": [],
+        },
+    )
+    monkeypatch.setattr(
+        statistics_page,
+        "get_combined_statistics_analysis",
+        lambda *_args, **_kwargs: {"status": "ok", "rows": []},
+    )
+
+    result = callback(
+        "fra_survey_iii",
+        "Education",
+        "C9_E",
+        "Often",
+        "All",
+        "All",
+        "All",
+        "All",
+        {"code": "C9_E", "category": "Education"},
+    )
+
+    assert result["status"] == "ok"
+    assert result["indicator_code"] == "C9_E"
+    assert result["ranking"][0]["value"] == 0
+    assert "experience_legal_radar" not in result
+
+
+def test_figure_failure_closes_loading_with_an_explicit_error_state(monkeypatch) -> None:
+    app = Dash("statistics-render-error", suppress_callback_exceptions=True)
+    statistics_page.register_statistics_callbacks(app)
+    callback = _callback(app, "render_statistics")
+    monkeypatch.setattr(
+        statistics_page,
+        "ctx",
+        type("Context", (), {"triggered_id": "stats-data-store"})(),
+    )
+    monkeypatch.setattr(
+        statistics_page,
+        "_render_dashboard",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("invalid row")),
+    )
+
+    outputs = callback(
+        {"status": "ok", "query_token": "C9_E", "indicator_code": "C9_E"},
+        [],
+        [],
+        "es",
+        0,
+        {"query_token": "C9_E"},
+    )
+
+    assert outputs[-1] == {"query_token": "C9_E", "status": "error"}
+    assert (
+        resolve_statistics_view_state(
+            {"status": "ok", "query_token": "C9_E"},
+            outputs[-1],
+            {"query_token": "C9_E"},
+        )
+        is StatisticsViewState.ERROR
+    )
 
 
 def test_statistics_loading_uses_spinner_only_without_message_callback(monkeypatch) -> None:

@@ -1,0 +1,468 @@
+/*
+ * RainbowLens shared visual language.
+ * Page files keep layout-specific behaviour; equivalent visual primitives live here.
+ */
+
+.app-page.app-page {
+  background-color: var(--color-bg);
+  background-image: none;
+  color: var(--color-text);
+  min-height: calc(100vh - 110px);
+  min-width: 0;
+  overflow-x: clip;
+  padding-block: var(--space-6) var(--space-7);
+  width: 100%;
+}
+
+.home-data-shell.app-page,
+.stats-shell.app-page,
+.trend-shell.app-page,
+.didactica-shell.app-page,
+.reports-shell.app-page,
+.about-shell.app-page,
+.privacy-page.app-page,
+.user-page-grid.app-page {
+  margin-inline: auto;
+  padding-block: var(--space-6) var(--space-7);
+}
+
+.reports-shell.app-page,
+.trend-shell.app-page,
+.didactica-shell.app-page {
+  max-width: var(--page-max-width);
+  width: 100%;
+}
+
+.auth-shell.app-page,
+.admin-shell.app-page,
+.user-page-grid.app-page {
+  background: var(--color-bg);
+}
+
+/* Page headers */
+.app-page-header {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--color-text);
+  margin: 0 0 var(--space-5);
+  max-width: none;
+  overflow: visible;
+  padding: 0;
+  position: static;
+  width: 100%;
+}
+
+.app-page-title,
+.app-page-header h1 {
+  color: var(--color-text);
+  font-size: clamp(1.9rem, 3vw, 2.65rem);
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin: 0;
+}
+
+.app-page-eyebrow,
+.app-page-header > .stats-eyebrow,
+.app-page-header > .trend-eyebrow,
+.app-page-header > .about-eyebrow,
+.app-page-header > .privacy-eyebrow {
+  color: var(--color-primary-dark);
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+}
+
+.app-page-lead,
+.app-page-header > .stats-lead,
+.app-page-header > .trend-lead,
+.app-page-header > .reports-lead,
+.app-page-header > .about-lead,
+.app-page-header > .privacy-lead,
+.app-page-header > p:not(.app-page-eyebrow):not(.privacy-effective-date) {
+  color: var(--color-text-muted);
+  font-size: clamp(1rem, 1.3vw, 1.08rem);
+  line-height: 1.6;
+  margin: 0.6rem 0 0;
+  max-width: var(--readable-line-width);
+}
+
+.app-page-header-meta {
+  color: var(--color-text-muted);
+  margin-top: var(--space-2);
+}
+
+.app-page-header-meta > :first-child,
+.app-page-header-actions > :first-child {
+  margin-top: 0;
+}
+
+.app-page-header-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.privacy-header::after {
+  content: none;
+}
+
+.user-dashboard-header.app-page-header {
+  align-items: end;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+/* Surfaces and chart containers */
+.app-surface,
+.stats-panel,
+.trend-controls,
+.trend-metric-card,
+.trend-chart-card,
+.trend-explanation-card,
+.trend-evolution-card,
+.trend-method-card,
+.trend-glossary-card,
+.trend-limitations,
+.didactica-resource-card,
+.didactica-glossary-card,
+.didactica-game-card,
+.didactica-teacher-detail,
+.didactica-denied,
+.reports-card,
+.reports-preview-shell,
+.privacy-toc,
+.privacy-card,
+.about-card,
+.about-resource-card,
+.about-contact-card,
+.user-card,
+.user-role-badge,
+.admin-card,
+.admin-review-panel,
+.auth-card {
+  background: var(--panel-bg);
+  background-image: none;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--surface-shadow);
+  color: var(--color-text);
+}
+
+.app-chart-card,
+.stats-panel,
+.trend-chart-card,
+.reports-preview-shell {
+  border-radius: var(--radius-lg);
+}
+
+.home-map-stage.app-surface {
+  border-radius: var(--radius-lg);
+  min-height: 0;
+  overflow: visible;
+}
+
+.home-map-stage.app-surface > :first-child {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.app-page-section {
+  margin-block: var(--space-6);
+  min-width: 0;
+}
+
+.stats-panel,
+.trend-chart-card,
+.reports-card,
+.privacy-card,
+.didactica-game-card {
+  padding: clamp(1rem, 2vw, 1.5rem);
+}
+
+/* Controls */
+.dash-dropdown-wrapper {
+  background: transparent;
+  min-height: 0;
+  padding: 0;
+}
+
+.Select-control,
+.auth-input,
+.about-contact-textarea,
+.admin-user-search-input,
+.reports-input,
+.reports-textarea {
+  background: var(--control-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font: inherit;
+  min-height: var(--control-height);
+}
+
+.Select.is-focused:not(.is-open) > .Select-control,
+.auth-input:focus-visible,
+.about-contact-textarea:focus-visible,
+.admin-user-search-input:focus-visible,
+.reports-input:focus-visible,
+.reports-textarea:focus-visible {
+  border-color: var(--link-green);
+  box-shadow: 0 0 0 3px var(--color-focus);
+  outline: 0;
+}
+
+.Select.is-disabled > .Select-control,
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+/* Buttons: utility variants and existing component aliases */
+.app-button,
+.auth-button,
+.reports-primary-button,
+.reports-secondary-button,
+.didactica-button,
+.stats-chart-export-button,
+.stats-ranking-page-button,
+.home-map-export-button,
+.admin-action-button,
+.admin-user-search-button,
+.admin-user-search-clear,
+.admin-pagination-link {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  font: inherit;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.62rem 1rem;
+  text-decoration: none;
+  transition: background-color var(--transition), border-color var(--transition), color var(--transition), transform var(--transition);
+}
+
+.app-button-primary,
+.auth-button:not(.auth-button-secondary):not(.privacy-danger-button),
+.reports-primary-button,
+.didactica-button:not(.didactica-button-secondary):not(.teacher-activity-delete),
+.home-map-export-button,
+.admin-user-search-button {
+  background: var(--color-primary-dark);
+  border: 1px solid var(--color-primary-dark);
+  color: var(--color-text-on-dark);
+}
+
+.app-button-secondary,
+.auth-button-secondary,
+.reports-secondary-button,
+.didactica-button-secondary,
+.stats-chart-export-button,
+.stats-ranking-page-button,
+.admin-user-search-clear,
+.admin-pagination-link {
+  background: var(--panel-muted);
+  border: 1px solid var(--panel-border);
+  color: var(--color-text);
+}
+
+.app-button-danger,
+.privacy-danger-button,
+.admin-delete-button,
+.teacher-activity-delete,
+.country-status-editor-delete {
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--panel-bg));
+  border: 1px solid color-mix(in srgb, var(--color-danger) 58%, var(--panel-border));
+  color: var(--color-danger);
+}
+
+.app-button-primary:hover:not(:disabled),
+.auth-button:not(.auth-button-secondary):not(.privacy-danger-button):hover:not(:disabled),
+.reports-primary-button:hover:not(:disabled),
+.didactica-button:not(.didactica-button-secondary):not(.teacher-activity-delete):hover:not(:disabled),
+.home-map-export-button:hover:not(:disabled),
+.admin-user-search-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary-dark) 86%, var(--color-text));
+  border-color: color-mix(in srgb, var(--color-primary-dark) 86%, var(--color-text));
+  color: var(--color-text-on-dark);
+}
+
+.app-button-secondary:hover:not(:disabled),
+.auth-button-secondary:hover:not(:disabled),
+.reports-secondary-button:hover:not(:disabled),
+.didactica-button-secondary:hover:not(:disabled),
+.stats-chart-export-button:hover:not(:disabled),
+.stats-ranking-page-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--link-green) 10%, var(--panel-muted));
+  border-color: color-mix(in srgb, var(--link-green) 40%, var(--panel-border));
+  color: var(--color-text);
+}
+
+.app-button:focus-visible,
+.auth-button:focus-visible,
+.reports-primary-button:focus-visible,
+.reports-secondary-button:focus-visible,
+.didactica-button:focus-visible,
+.stats-chart-export-button:focus-visible,
+.stats-ranking-page-button:focus-visible,
+.home-map-export-button:focus-visible,
+.admin-action-button:focus-visible,
+.admin-user-search-button:focus-visible,
+.admin-user-search-clear:focus-visible,
+.admin-pagination-link:focus-visible {
+  box-shadow: 0 0 0 3px var(--color-focus);
+  outline: 0;
+  outline-offset: 2px;
+}
+
+.app-button:active:not(:disabled),
+.auth-button:active:not(:disabled),
+.reports-primary-button:active:not(:disabled),
+.reports-secondary-button:active:not(:disabled),
+.didactica-button:active:not(:disabled),
+.home-map-export-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Feedback, loading and empty states */
+.app-alert,
+.auth-message,
+.didactica-feedback,
+.upload-message,
+.stats-status,
+.app-empty-state,
+.stats-empty-state,
+.reports-preview-empty,
+.admin-empty-state,
+.admin-users-empty {
+  background: var(--panel-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  padding: var(--space-4);
+}
+
+.app-alert-info,
+.auth-message-info {
+  border-left: 4px solid var(--color-info);
+}
+
+.app-alert-success,
+.auth-message-success,
+.didactica-feedback.is-success {
+  border-left: 4px solid var(--color-success);
+}
+
+.app-alert-warning,
+.stats-status-warning {
+  border-left: 4px solid var(--color-warning);
+}
+
+.app-alert-error,
+.auth-message-error,
+.didactica-feedback.is-error,
+.upload-message-error {
+  border-left: 4px solid var(--color-danger);
+}
+
+.context-loading-message {
+  color: var(--color-text-muted);
+  gap: var(--space-3);
+}
+
+.context-loading-spinner {
+  border-color: color-mix(in srgb, var(--color-text-muted) 25%, transparent);
+  border-top-color: var(--link-green);
+}
+
+/* Small structural clean-ups that previously introduced a second design system. */
+.privacy-header.app-page-header,
+.about-header.app-page-header,
+.reports-header.app-page-header,
+.stats-header.app-page-header,
+.trend-header.app-page-header,
+.didactica-hero.app-page-header,
+.didactica-subpage-header.app-page-header {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  max-width: none;
+  padding: 0;
+}
+
+.admin-review-panel {
+  background: var(--panel-muted);
+}
+
+.admin-card,
+.upload-container {
+  margin-inline: 0;
+  max-width: none;
+  width: 100%;
+}
+
+@media (max-width: 1199px) {
+  .app-page.app-page {
+    padding-block: var(--space-5) var(--space-7);
+  }
+}
+
+@media (max-width: 767px) {
+  .app-page.app-page {
+    padding-block: var(--space-5) var(--space-6);
+  }
+
+  .app-page-header {
+    margin-bottom: var(--space-5);
+  }
+
+  .app-page-title,
+  .app-page-header h1 {
+    font-size: clamp(1.75rem, 8vw, 2.25rem);
+  }
+
+  .user-dashboard-header.app-page-header {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-surface,
+  .stats-panel,
+  .trend-chart-card,
+  .reports-card,
+  .privacy-card,
+  .didactica-game-card {
+    border-radius: var(--radius-md);
+  }
+}
+
+@media (max-width: 599px) {
+  .app-page-header-actions,
+  .reports-final-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-page-header-actions > *,
+  .reports-final-actions > * {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-button,
+  .auth-button,
+  .reports-primary-button,
+  .reports-secondary-button,
+  .didactica-button {
+    transition: none;
+  }
+}

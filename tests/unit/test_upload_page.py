@@ -108,12 +108,18 @@ def test_upload_callback_rejects_anonymous_users(monkeypatch) -> None:
     assert result.to_plotly_json()["props"]["className"] == "upload-message upload-message-error"
 
 
-def test_upload_callback_rejects_authenticated_non_admin_users(monkeypatch) -> None:
+def test_upload_callback_accepts_authorized_professional_profile(monkeypatch) -> None:
     monkeypatch.setattr(
         upload_page,
         "current_user",
-        SimpleNamespace(is_authenticated=True, role="common", user_type="rrhh"),
+        SimpleNamespace(
+            is_authenticated=True,
+            role="common",
+            user_type="rrhh",
+            get_id=lambda: "rrhh-1",
+        ),
     )
+    monkeypatch.setattr(upload_page, "rate_limit_key", lambda **_kwargs: "upload-key")
     app = Dash("upload-profile-auth-test", suppress_callback_exceptions=True)
     app.layout = html.Div(
         [
@@ -131,8 +137,91 @@ def test_upload_callback_rejects_authenticated_non_admin_users(monkeypatch) -> N
         if metadata["inputs"] == [{"id": "upload-csv", "property": "contents"}]
     )
 
+    monkeypatch.setattr(upload_page, "_process_upload", lambda *_args, **_kwargs: html.Div("ok"))
+
     result, _reset = callback(_data_uri(b"%PDF-1.4\n%%EOF"), "report.pdf", "FELGTB")
 
+    assert result.to_plotly_json()["props"]["children"] == "ok"
+
+
+def test_upload_callback_rejects_unverified_professional_profile(monkeypatch) -> None:
+    monkeypatch.setattr(
+        upload_page,
+        "current_user",
+        SimpleNamespace(
+            is_authenticated=True,
+            email_verified=False,
+            role="common",
+            user_type="rrhh",
+            get_id=lambda: "rrhh-unverified",
+        ),
+    )
+    app = Dash("upload-unverified-test", suppress_callback_exceptions=True)
+    app.layout = html.Div(
+        [
+            dcc.Upload(id="upload-csv"),
+            html.Div(id="upload-control-container"),
+            dcc.Dropdown(id="data-source"),
+            html.Div(id="upload-output"),
+            html.Div(id="upload-loading-modal"),
+        ]
+    )
+    upload_page.register_upload_callbacks(app)
+    callback = next(
+        metadata["callback"].__wrapped__
+        for metadata in app.callback_map.values()
+        if metadata["inputs"] == [{"id": "upload-csv", "property": "contents"}]
+    )
+    process_calls: list[object] = []
+    monkeypatch.setattr(
+        upload_page,
+        "_process_upload",
+        lambda *_args, **_kwargs: process_calls.append(object()),
+    )
+
+    result, _reset = callback(
+        _data_uri(b"%PDF-1.4\n%%EOF"), "report.pdf", "FELGTB"
+    )
+
+    assert process_calls == []
+    assert result.to_plotly_json()["props"]["className"] == "upload-message upload-message-error"
+
+
+@pytest.mark.parametrize("user_type", ["comun", "docente"])
+def test_upload_callback_rejects_profiles_without_import_permission(
+    monkeypatch, user_type: str
+) -> None:
+    monkeypatch.setattr(
+        upload_page,
+        "current_user",
+        SimpleNamespace(is_authenticated=True, role="common", user_type=user_type),
+    )
+    app = Dash(f"upload-{user_type}-auth-test", suppress_callback_exceptions=True)
+    app.layout = html.Div(
+        [
+            dcc.Upload(id="upload-csv"),
+            html.Div(id="upload-control-container"),
+            dcc.Dropdown(id="data-source"),
+            html.Div(id="upload-output"),
+            html.Div(id="upload-loading-modal"),
+        ]
+    )
+    upload_page.register_upload_callbacks(app)
+    callback = next(
+        metadata["callback"].__wrapped__
+        for metadata in app.callback_map.values()
+        if metadata["inputs"] == [{"id": "upload-csv", "property": "contents"}]
+    )
+    process_calls: list[object] = []
+    monkeypatch.setattr(
+        upload_page,
+        "_process_upload",
+        lambda *_args, **_kwargs: process_calls.append(object()),
+    )
+
+    result, _reset = callback(_data_uri(b"%PDF-1.4\n%%EOF"), "report.pdf", "FELGTB")
+
+    assert process_calls == []
     assert result.to_plotly_json()["props"]["className"] == "upload-message upload-message-error"
 
 

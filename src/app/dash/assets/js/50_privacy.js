@@ -1,52 +1,13 @@
 (function (window, document) {
   "use strict";
 
-  const NOTICE_KEY = "rainbowlens-privacy-notice";
   let lastDialogTrigger = null;
-
-  function safeGet(key) {
-    try {
-      return window.localStorage.getItem(key);
-    } catch (_error) {
-      return null;
-    }
-  }
-
-  function safeSet(key, value) {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch (_error) {
-      // The technical notice remains usable when storage is blocked.
-    }
-  }
 
   function currentLanguage() {
     const app = window.RainbowLens || {};
     return app.state && typeof app.state.currentLanguage === "function"
       ? app.state.currentLanguage()
       : "es";
-  }
-
-  function initializeNotice() {
-    const notice = document.querySelector("[data-privacy-notice]");
-    if (!notice) {
-      return;
-    }
-    if (document.querySelector("[data-privacy-account-deleted='true']")) {
-      notice.hidden = true;
-      return;
-    }
-    const version = notice.dataset.noticeVersion || "";
-    notice.hidden = Boolean(version && safeGet(NOTICE_KEY) === version);
-  }
-
-  function acceptNotice(button) {
-    const notice = button.closest("[data-privacy-notice]");
-    if (!notice) {
-      return;
-    }
-    safeSet(NOTICE_KEY, notice.dataset.noticeVersion || "accepted");
-    notice.hidden = true;
   }
 
   function prepareDeletionForm(dialog) {
@@ -122,11 +83,6 @@
   }
 
   document.addEventListener("click", function (event) {
-    const accept = event.target.closest("[data-privacy-notice-accept]");
-    if (accept) {
-      acceptNotice(accept);
-      return;
-    }
     const opener = event.target.closest("[data-privacy-dialog-open]");
     if (opener) {
       openDialog(document.getElementById(opener.dataset.privacyDialogOpen), opener);
@@ -153,7 +109,6 @@
 
   function initialize() {
     clearDeletedAccountState();
-    initializeNotice();
     initializeDialogs();
   }
 

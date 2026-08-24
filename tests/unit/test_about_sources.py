@@ -57,6 +57,8 @@ def test_about_source_cards_include_integrated_context_without_about_cards() -> 
     assert _find_by_id_or_none(layout, "sources-attributions") is None
     assert "Fuentes y atribuciones" not in _text_content(layout)
     assert "Sources and attributions" not in _text_content(layout)
+    assert "Fuentes oficiales" not in _text_content(layout)
+    assert "Para profundizar" not in _text_content(layout)
     for year in FRA_SURVEYS:
         assert f"Encuesta FRA {year}" in _text_content(layout)
         assert any(

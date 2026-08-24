@@ -3,12 +3,8 @@
   --trend-border: color-mix(in srgb, var(--panel-border) 82%, transparent);
   --trend-accent: var(--link-green);
   color: var(--color-text);
-  margin: 0 auto;
-  max-width: 1500px;
-  min-height: calc(100vh - 110px);
   min-width: 0;
   overflow-x: clip;
-  padding: 2rem max(1rem, 5vw) 3.5rem;
   width: 100%;
 }
 
@@ -16,32 +12,6 @@
 .trend-shell *::before,
 .trend-shell *::after {
   box-sizing: border-box;
-}
-
-.trend-header {
-  margin-bottom: 1.4rem;
-}
-
-.trend-header h1 {
-  font-size: clamp(1.9rem, 3vw, 2.65rem);
-  line-height: 1.1;
-  margin: 0;
-}
-
-.trend-eyebrow {
-  color: var(--trend-accent);
-  font-size: 0.78rem;
-  font-weight: 850;
-  letter-spacing: 0.06em;
-  margin: 0 0 0.35rem;
-  text-transform: uppercase;
-}
-
-.trend-lead {
-  color: var(--color-text-muted);
-  line-height: 1.6;
-  margin: 0.65rem 0 0;
-  max-width: 780px;
 }
 
 .trend-source-note {

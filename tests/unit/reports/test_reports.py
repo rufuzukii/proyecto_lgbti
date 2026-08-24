@@ -24,7 +24,7 @@ from app.reports.models import (
     sanitize_report_text,
 )
 from app.reports.pdf_exporter import PDFExporter
-from app.users.schemas import UserRole, UserType
+from app.users.schemas import UserRole
 
 
 def _fra_result() -> dict[str, Any]:
@@ -79,6 +79,13 @@ def test_report_fields_associate_labels_without_targeting_composite_containers()
         "Format",
         dcc.RadioItems(id="report-format-test", options=[]),
     )
+    dropdown_field = reports_page._field(
+        "Indicador social",
+        "Social indicator",
+        dcc.Dropdown(id="report-indicator-test", options=[]),
+        required=True,
+        error_id="report-indicator-test-error",
+    )
     text_props = text_field.to_plotly_json()["props"]
     text_label_props = text_props["children"][0].to_plotly_json()["props"]
     group_props = group_field.to_plotly_json()["props"]
@@ -89,6 +96,12 @@ def test_report_fields_associate_labels_without_targeting_composite_containers()
     assert group_props["aria-labelledby"] == "report-format-test-label"
     assert group_label.to_plotly_json()["type"] == "Span"
     assert "htmlFor" not in group_label.to_plotly_json()["props"]
+    dropdown_props = dropdown_field.to_plotly_json()["props"]
+    dropdown_label = dropdown_props["children"][0].to_plotly_json()["props"]
+    assert dropdown_props["role"] == "group"
+    assert dropdown_props["aria-labelledby"] == "report-indicator-test-label"
+    assert dropdown_props["aria-required"] == "true"
+    assert "htmlFor" not in dropdown_label
 
 
 def _ilga_result() -> dict[str, Any]:
@@ -383,7 +396,7 @@ def test_report_permissions_are_server_side() -> None:
     )
 
 
-def test_report_profile_and_content_rules_are_resolved_server_side(monkeypatch) -> None:
+def test_report_configuration_is_always_hr_focused() -> None:
     custom = {
         **_configuration().to_dict(),
         "profile_key": "admin",
@@ -391,52 +404,40 @@ def test_report_profile_and_content_rules_are_resolved_server_side(monkeypatch) 
         "sections": ["executive"],
         "charts": ["ranking"],
     }
-    monkeypatch.setattr(
-        reports_page,
-        "current_user",
-        SimpleNamespace(
-            is_authenticated=True,
-            role=UserRole.COMMON,
-            user_type=UserType.COMUN,
-        ),
-    )
-    basic = reports_page._report_configuration_for_user(custom)
-    assert basic.profile_key == "comun"
-    assert "interpretation" in basic.sections
-    assert basic.sections != ("executive",)
+    configured = reports_page._hr_report_configuration(custom)
 
-    for profile in (UserType.RRHH, UserType.POLITICO, UserType.ONG, UserType.SOCIOLOGO):
-        monkeypatch.setattr(
-            reports_page,
-            "current_user",
-            SimpleNamespace(
-                is_authenticated=True,
-                role=UserRole.COMMON,
-                user_type=profile,
-            ),
-        )
-        configured = reports_page._report_configuration_for_user(custom)
-        assert configured.profile_key == profile.value
-        assert configured.sections != ("executive",)
+    assert "workplace" in configured.sections
+    assert "recommendations" in configured.sections
+    assert configured.sections != ("executive",)
+    assert configured.detail_level == "standard"
+    assert "profile_key" not in configured.to_dict()
 
 
-def test_profile_panel_replaces_technical_advanced_controls() -> None:
-    profile = reports_page.report_profile("rrhh")
-    panel = reports_page._profile_panel(profile)
+def test_server_ignores_legacy_frontend_profile_values() -> None:
+    manipulated = {
+        **_configuration().to_dict(),
+        "profile_key": "admin",
+        "source": "fra",
+    }
 
-    identifiers = {getattr(component, "id", None) for component in _walk(panel)}
+    configured = reports_page._hr_report_configuration(manipulated)
+
+    assert configured.source == "fra"
+    assert "profile_key" not in configured.to_dict()
+
+
+def test_hr_panel_explains_external_context_and_report_generation() -> None:
+    panel = reports_page._hr_purpose_panel()
+
     explanation = next(
         component
         for component in _walk(panel)
-        if getattr(component, "className", None) == "reports-profile-explanation"
+        if getattr(component, "className", None) == "reports-hr-explanation"
     )
     assert "informe profesional" in str(explanation)
-    assert "perfil que tienes configurado" in str(explanation)
-    assert "Generación de informe personalizado" in str(panel)
-    assert "Recomendado para tu perfil" in str(panel)
-    assert "report-objective-select" not in identifiers
-    assert "report-advanced-toggle" not in identifiers
-    assert "report-mode-select" not in identifiers
+    assert "contexto externo" in str(panel)
+    assert "No constituyen una auditoría" in str(panel)
+    assert "Informe orientado a RRHH" in str(panel)
 
 
 def _component_by_id(component: Any, identifier: str):
@@ -478,8 +479,6 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
         "_indicator_options",
         lambda *_args: [{"label": "Workplace discrimination", "value": "EMP_1"}],
     )
-    monkeypatch.setattr(reports_page, "_criterion_options", lambda *_args: [])
-
     layout = reports_page.build_reports_layout(_configuration().to_dict())
     components = list(_walk(layout))
     ids = {getattr(component, "id", None) for component in components}
@@ -497,10 +496,14 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
         "report-source-select",
         "report-answer-select",
         "report-filter-a-name",
+        "report-filters-section",
+        "report-indicator-error",
         "report-plan-summary",
     }.issubset(ids)
+    assert "report-criterion-select" not in ids
+    assert "report-criterion-field" not in ids
+    assert "report-objective-select" in ids
     assert not {
-        "report-objective-select",
         "report-mode-select",
         "report-sections-select",
         "report-advanced-toggle",
@@ -510,12 +513,18 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     assert "result" not in store_data
     assert "figure" not in store_data
     source_control = _component_by_id(layout, "report-source-select")
+    indicator_control = _component_by_id(layout, "report-indicator-select")
+    assert "report-spanish-context" not in ids
+    assert "report-template-select" not in ids
+    assert "template_id" not in store_data
     assert [option["value"] for option in source_control.options] == [
         "fra", "ilga", "combined"
     ]
     source_labels = " ".join(str(option["label"].to_plotly_json()) for option in source_control.options)
     assert "Datos sociales" in source_labels
     assert "Datos legales" in source_labels
+    assert indicator_control is not None
+    assert indicator_control.to_plotly_json()["props"].get("persistence") in {None, False}
     final_actions = next(
         component
         for component in components
@@ -545,33 +554,122 @@ def test_reports_callbacks_register_preview_and_download() -> None:
     assert "report-preview-content.children" in keys
     assert "report-download.data" in keys
     assert "report-config-store.data" in keys
+    assert "report-criterion-select" not in str(app.callback_map)
+    assert "report-template-select" not in str(app.callback_map)
 
 
-def test_profile_template_callback_applies_the_selected_preset(monkeypatch) -> None:
-    app = Dash("profile-report-templates", suppress_callback_exceptions=True)
+def test_social_indicator_validation_and_filter_scope_are_explicit() -> None:
+    assert reports_page._missing_social_indicator("fra", "Employment", None)
+    assert reports_page._missing_social_indicator("combined", "Employment", None)
+    assert not reports_page._missing_social_indicator("fra", "Employment", "EMP_1")
+    assert not reports_page._missing_social_indicator("ilga", "Ranking total", None)
+
+
+def test_dependent_indicator_clears_invalid_values_and_stays_disabled_without_context(
+    monkeypatch,
+) -> None:
+    app = Dash("report-stable-indicator", suppress_callback_exceptions=True)
     reports_page.register_reports_callbacks(app)
     callback = next(
         item["callback"].__wrapped__
         for item in app.callback_map.values()
         if getattr(item.get("callback"), "__wrapped__", None)
-        and item["callback"].__wrapped__.__name__ == "apply_selected_report_template"
+        and item["callback"].__wrapped__.__name__ == "update_report_indicators"
     )
     monkeypatch.setattr(
         reports_page,
-        "current_user",
-        SimpleNamespace(
-            is_authenticated=True,
-            role=UserRole.COMMON,
-            user_type=UserType.POLITICO,
+        "_indicator_options",
+        lambda source, category, _year: (
+            [{"label": "B1", "value": "B1"}]
+            if source == "fra" and category == "Category B"
+            else []
         ),
     )
 
-    result = callback("policy_legal_brief", "es")
+    assert callback("fra", "", 2023, "A1") == ([], None, True)
+    assert callback("fra", "Category B", 2023, "A1") == (
+        [{"label": "B1", "value": "B1"}],
+        None,
+        False,
+    )
+    assert callback("ilga", "Ranking total", 2026, "B1") == ([], None, True)
 
-    assert result[0] == "Informe de situación y política pública LGBTIQ+"
-    assert result[1] == "ilga"
-    assert "evidencia territorial" in result[2]
-    assert "ranking legal" in result[3]
+
+def test_legal_source_hides_and_clears_social_filters(monkeypatch) -> None:
+    app = Dash("report-legal-control-scope", suppress_callback_exceptions=True)
+    reports_page.register_reports_callbacks(app)
+    callback = next(
+        item["callback"].__wrapped__
+        for item in app.callback_map.values()
+        if getattr(item.get("callback"), "__wrapped__", None)
+        and item["callback"].__wrapped__.__name__ == "update_report_social_controls"
+    )
+    monkeypatch.setattr(
+        reports_page,
+        "get_fra_control_payload",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("unexpected FRA query")),
+    )
+
+    result = callback(
+        "ilga",
+        None,
+        "Ranking total",
+        2026,
+        "Yes",
+        "Age",
+        "25-39",
+        "Gender identity",
+        "Trans woman",
+    )
+
+    assert result[0:5] == (
+        [],
+        None,
+        True,
+        "reports-field is-hidden",
+        "reports-filters-section is-hidden",
+    )
+    assert result[6] == "All"
+    assert result[9] == "All"
+    assert result[12] == "All"
+    assert result[15] == "All"
+
+
+def test_preview_is_blocked_when_social_indicator_is_missing() -> None:
+    app = Dash("report-required-indicator", suppress_callback_exceptions=True)
+    reports_page.register_reports_callbacks(app)
+    callback = next(
+        item["callback"].__wrapped__
+        for item in app.callback_map.values()
+        if getattr(item.get("callback"), "__wrapped__", None)
+        and item["callback"].__wrapped__.__name__ == "preview_report"
+    )
+
+    result = callback(
+        1,
+        "Informe",
+        None,
+        None,
+        "fra",
+        "inclusion_context",
+        "Employment",
+        None,
+        2023,
+        "ES",
+        [],
+        "es",
+        None,
+        "All",
+        "All",
+            "All",
+            "All",
+            "2026-08-21",
+        {},
+    )
+
+    assert result[2] == "Selecciona un indicador social para continuar."
+    assert result[3] == "reports-status reports-status-error"
+    assert result[5] is True
 
 
 def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None:

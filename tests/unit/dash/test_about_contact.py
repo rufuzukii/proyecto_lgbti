@@ -21,7 +21,7 @@ def test_contact_is_last_about_section_and_editable_for_anonymous(monkeypatch) -
     shell = next(
         item
         for item in _walk(layout)
-        if getattr(item, "className", "") == "about-shell app-page-container"
+        if "about-shell" in str(getattr(item, "className", "")).split()
     )
 
     assert shell.children[-1].id == "about-contact"
@@ -59,6 +59,88 @@ def test_contact_uses_fresh_readonly_account_data_after_session_change(monkeypat
 
     assert _by_id(second_layout, "about-contact-name").value == "Sam"
     assert _by_id(second_layout, "about-contact-email").value == "sam@example.test"
+
+
+def test_contact_labels_target_only_native_form_controls(monkeypatch) -> None:
+    # Arrange
+    monkeypatch.setattr(
+        contact_form,
+        "current_user",
+        SimpleNamespace(is_authenticated=False),
+    )
+
+    # Act
+    layout = contact_form.build_contact_panel()
+    labels = [item for item in _walk(layout) if item.__class__.__name__ == "Label"]
+    labelled_targets = {
+        target
+        for item in labels
+        if isinstance((target := getattr(item, "htmlFor", None)), str)
+    }
+
+    # Assert
+    assert labelled_targets == {
+        "about-contact-name",
+        "about-contact-email",
+        "about-contact-subject",
+        "about-contact-message",
+    }
+    assert all(
+        _by_id(layout, target).__class__.__name__ in {"Input", "Textarea"}
+        for target in labelled_targets
+    )
+
+
+def test_contact_composite_controls_use_accessible_group_labels(monkeypatch) -> None:
+    # Arrange
+    monkeypatch.setattr(
+        contact_form,
+        "current_user",
+        SimpleNamespace(is_authenticated=False),
+    )
+
+    # Act
+    layout = contact_form.build_contact_panel()
+    role_group = _parent_of(layout, "about-contact-role")
+    upload_group = _parent_of(layout, "about-contact-files")
+
+    # Assert
+    assert role_group.role == "group"
+    assert role_group.to_plotly_json()["props"]["aria-labelledby"] == (
+        "about-contact-role-label"
+    )
+    assert _by_id(layout, "about-contact-role-label").children == (
+        "Perfil solicitado (opcional)"
+    )
+    assert upload_group.role == "group"
+    assert upload_group.to_plotly_json()["props"]["aria-labelledby"] == (
+        "about-contact-files-label"
+    )
+    assert _by_id(layout, "about-contact-files-label").children == (
+        "Documentaci\u00f3n acreditativa"
+    )
+
+
+def test_contact_component_ids_are_unique_for_anonymous_and_authenticated_users(
+    monkeypatch,
+) -> None:
+    for user in (
+        SimpleNamespace(is_authenticated=False),
+        SimpleNamespace(
+            is_authenticated=True,
+            username="Alex",
+            email="alex@example.test",
+        ),
+    ):
+        # Arrange
+        monkeypatch.setattr(contact_form, "current_user", user)
+
+        # Act
+        layout = contact_form.build_contact_panel()
+        identifiers = [item.id for item in _walk(layout) if getattr(item, "id", None)]
+
+        # Assert
+        assert len(identifiers) == len(set(identifiers))
 
 
 def test_authenticated_submit_uses_account_data_as_source_of_truth(monkeypatch) -> None:
@@ -214,6 +296,21 @@ def _find_by_id(component: Any, identifier: str):
     return next(
         (item for item in _walk(component) if getattr(item, "id", None) == identifier),
         None,
+    )
+
+
+def _parent_of(component: Any, identifier: str):
+    return next(
+        item
+        for item in _walk(component)
+        if any(
+            getattr(child, "id", None) == identifier
+            for child in (
+                item.children
+                if isinstance(getattr(item, "children", None), (list, tuple))
+                else [getattr(item, "children", None)]
+            )
+        )
     )
 
 

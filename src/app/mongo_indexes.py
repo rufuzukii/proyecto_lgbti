@@ -148,13 +148,15 @@ def _initialize_non_report_indexes() -> None:
         ],
     )
     _ensure_collection_indexes(
-        "didactica_progress",
-        [IndexModel([("user_id", ASCENDING)], unique=True, name="didactica_user_unique")],
-    )
-    _ensure_collection_indexes(
         "didactica_docente_games",
         [
             IndexModel([("id", ASCENDING)], unique=True, name="docente_game_id_unique"),
+            IndexModel(
+                [("public_id", ASCENDING)],
+                unique=True,
+                sparse=True,
+                name="docente_game_public_id_unique",
+            ),
             IndexModel(
                 [("owner_user_id", ASCENDING), ("updated_at", DESCENDING)],
                 name="docente_games_by_owner",

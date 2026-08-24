@@ -26,7 +26,7 @@ from app.auth.rate_limit import create_rate_limiter
 from app.cache import init_cache
 from app.config import get_app_config
 from app.dash.components.source_attribution import build_footer_attributions
-from app.dash.i18n import dash_attrs, text, text_attrs, ui_text, ui_text_component
+from app.dash.i18n import dash_attrs, text_attrs, ui_text, ui_text_component
 from app.dash.layouts.about import build_about_layout, register_about_callbacks
 from app.dash.layouts.error_page import (
     build_database_unavailable_layout,
@@ -40,6 +40,7 @@ from app.dash.pages.admin.imports import build_admin_imports_layout
 from app.dash.pages.admin.users import (
     build_access_denied_layout,
     build_admin_users_layout,
+    register_admin_users_callbacks,
 )
 from app.dash.pages.didactica import (
     build_access_denied_layout as build_didactica_access_denied_layout,
@@ -52,7 +53,7 @@ from app.dash.pages.didactica import (
     build_docente_layout,
     build_games_layout,
     build_presentations_layout,
-    build_progress_layout,
+    build_public_activity_layout,
     build_word_search_layout,
     register_didactica_callbacks,
 )
@@ -104,7 +105,7 @@ from app.import_to_db.import_log import (
 from app.logging_config import configure_secure_logging
 from app.mail.service import MailDeliveryError
 from app.mongo_indexes import initialize_mongo_indexes
-from app.privacy.policy import PRIVACY_NOTICE_VERSION, get_privacy_policy_config
+from app.privacy.policy import get_privacy_policy_config
 from app.privacy.service import (
     AccountDeletionError,
     delete_user_account,
@@ -129,7 +130,6 @@ from app.users.service import (
     get_user_record,
     get_user_record_by_email,
     list_users_page,
-    set_user_active_as_admin,
     set_user_password,
     update_user_as_admin,
     update_user_profile,
@@ -251,6 +251,8 @@ def create_dash_app() -> Dash:
             with localized_route_context(language):
                 return build_error_layout("404", language=language)
         try:
+            if route.public_id:
+                params = {**params, "public_id": [route.public_id]}
             with localized_route_context(route.language):
                 return _build_page_for_route(route.route_id, route.language, params, search)
         except DatabaseUnavailableError as exc:
@@ -270,6 +272,7 @@ def create_dash_app() -> Dash:
     register_home_callbacks(app)
     register_about_callbacks(app)
     register_didactica_callbacks(app)
+    register_admin_users_callbacks(app)
     return app
 
 
@@ -354,10 +357,8 @@ def _build_page_for_route(
                 id="educator-activity-owner-denied-redirect",
                 refresh=False,
             )
-    if route_id == "progress":
-        if not current_user.is_authenticated:
-            return build_login_layout(next_path=route_path("progress", language))
-        return build_progress_layout()
+    if route_id == "educator_public_activity":
+        return build_public_activity_layout(_first_param(params, "public_id"))
     if route_id == "reports":
         if not user_has_permission(current_user, Permission.GENERATE_REPORTS):
             return build_reports_access_denied_layout()
@@ -453,10 +454,6 @@ def _build_page_for_route(
 
 
 def _build_application_shell() -> Component:
-    try:
-        authenticated = bool(current_user.is_authenticated)
-    except RuntimeError:
-        authenticated = False
     config = get_privacy_policy_config()
     footer_links: list[Component] = [
         dcc.Link(
@@ -466,49 +463,11 @@ def _build_application_shell() -> Component:
             className="site-footer-link site-footer-link--privacy",
         )
     ]
-    if authenticated:
-        footer_links.append(
-            dcc.Link(
-                text("Gestión de datos personales", "Personal data management"),
-                href=route_path("profile"),
-                refresh=False,
-                className="site-footer-link",
-            )
-        )
     footer_links.append(
         html.A(
             config.contact_email,
             href=f"mailto:{config.contact_email}",
             className="site-footer-link",
-        )
-    )
-    banner_links: list[Component] = [
-        dcc.Link(
-            ui_text_component("privacy_title"),
-            href=route_path("privacy"),
-            refresh=False,
-            className="privacy-notice-link",
-        )
-    ]
-    if authenticated:
-        banner_links.append(
-            dcc.Link(
-                ui_text_component("privacy_manage_data"),
-                href=route_path("profile"),
-                refresh=False,
-                className="privacy-notice-link",
-            )
-        )
-    banner_links.append(
-        html.Button(
-            ui_text("privacy_understood", "es"),
-            type="button",
-            className="privacy-notice-accept",
-            **text_attrs(
-                ui_text("privacy_understood", "es"),
-                ui_text("privacy_understood", "en"),
-            ),
-            **dash_attrs({"data-privacy-notice-accept": "true"}),
         )
     )
     return html.Div(
@@ -573,23 +532,6 @@ def _build_application_shell() -> Component:
                 ],
                 className="site-footer",
             ),
-            html.Aside(
-                [
-                    html.P(ui_text_component("privacy_notice")),
-                    html.Div(banner_links, className="privacy-notice-actions"),
-                ],
-                id="privacy-notice",
-                className="privacy-notice",
-                hidden=True,
-                role="status",
-                **dash_attrs(
-                    {
-                        "aria-label": "Aviso de privacidad",
-                        "data-privacy-notice": "true",
-                        "data-notice-version": PRIVACY_NOTICE_VERSION,
-                    }
-                ),
-            ),
         ],
         className="app-shell",
     )
@@ -639,10 +581,22 @@ def _register_client_preferences_callbacks(app: Dash) -> None:
             }
             let nextHref = window.dash_clientside.no_update;
             if (isToggle && routeConfig && routeConfig.pathIndex && routeConfig.routes) {
-                const routeId = routeConfig.pathIndex[pathname];
+                let routeId = routeConfig.pathIndex[pathname];
+                let dynamicSuffix = "";
+                if (!routeId && Array.isArray(routeConfig.dynamicRouteIds)) {
+                    routeId = routeConfig.dynamicRouteIds.find(function(candidate) {
+                        const candidateRoute = routeConfig.routes[candidate];
+                        const base = candidateRoute && candidateRoute[inferred];
+                        if (base && typeof pathname === "string" && pathname.indexOf(base + "/") === 0) {
+                            dynamicSuffix = pathname.slice(base.length);
+                            return true;
+                        }
+                        return false;
+                    });
+                }
                 const route = routeConfig.routes[routeId];
                 if (route && route[selected]) {
-                    nextHref = route[selected] + (search || "") + (hash || "");
+                    nextHref = route[selected] + dynamicSuffix + (search || "") + (hash || "");
                 }
             }
             return [selected, nextHref];
@@ -699,6 +653,7 @@ def _register_error_routes(app: Dash) -> None:
             return None
         if (
             path in PUBLIC_PAGE_PATHS
+            or match_route(path) is not None
             or path == "/health"
             or path == "/_favicon.ico"
             or path == "/_reload-hash"
@@ -1030,25 +985,6 @@ def _register_auth_routes(app: Dash) -> None:
                 return _redirect("/admin", error="storage", **return_params)
             return _redirect("/admin", status="user_deleted", **return_params)
 
-        if action == "toggle_active":
-            active = request.form.get("active") == "true"
-            try:
-                set_user_active_as_admin(
-                    user_id=user_id,
-                    active=active,
-                    actor_user_id=current_user.get_id(),
-                )
-            except ValueError as exc:
-                return _redirect("/admin", error=str(exc), **return_params)
-            except UserStorageError:
-                logger.exception("admin_user_activation_failed")
-                return _redirect("/admin", error="storage", **return_params)
-            return _redirect(
-                "/admin",
-                status="user_activated" if active else "user_deactivated",
-                **return_params,
-            )
-
         if action == "update":
             try:
                 updated = update_user_as_admin(
@@ -1308,7 +1244,6 @@ def _mongo_indexes_on_startup(local_mode: bool) -> bool:
 def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
     allowed = {
         "source",
-        "template_id",
         "category",
         "indicator_id",
         "indicator_label",
@@ -1325,7 +1260,6 @@ def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
         "organization",
         "author",
         "language",
-        "include_spanish_context",
         "generated_on",
     }
     values: dict[str, object] = {

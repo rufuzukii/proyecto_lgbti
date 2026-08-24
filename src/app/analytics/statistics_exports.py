@@ -40,7 +40,9 @@ SUMMARY_TABLE_EXPORT_FIELDS = (
     "status",
     "fra_value",
     "ilga_score",
-    "difference_from_fra_median",
+    "legal_rank",
+    "social_rank",
+    "ranking_position_difference",
 )
 
 logger = logging.getLogger(__name__)
