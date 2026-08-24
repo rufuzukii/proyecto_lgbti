@@ -56,7 +56,7 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     results = _component_by_id(layout, "stats-results-content")
     assert query_state is not None
     assert results is not None
-    assert "Selecciona una categoría y un indicador para comenzar." not in str(query_state)
+    assert query_state.children is None
     assert "is-hidden" in query_state.className.split()
     assert "is-hidden" in results.className.split()
 
@@ -91,6 +91,28 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     assert _component_by_id(layout, "stats-source-select") is None
     assert _component_by_id(layout, "stats-year-select") is None
     assert _component_by_id(layout, "ilga-criterion-select") is None
+
+
+def test_statistics_header_places_fixed_guidance_before_report_action() -> None:
+    rendered = str(statistics_page._header())
+
+    title = "Estadísticas europeas LGBTIQ+"
+    introduction = (
+        "Explora la realidad sociodemográfica, la protección legal y la relación "
+        "entre ambas."
+    )
+    instruction = (
+        "Para generar una respuesta, selecciona una Categoría y un Indicador."
+    )
+    report_action = "stats-create-report-link"
+
+    assert title in rendered
+    assert introduction in rendered
+    assert instruction in rendered
+    assert "To generate a result, select a Category and an Indicator." in rendered
+    assert rendered.index(title) < rendered.index(introduction)
+    assert rendered.index(introduction) < rendered.index(instruction)
+    assert rendered.index(instruction) < rendered.index(report_action)
 
 
 def test_combined_visual_slots_are_available_in_the_initial_layout(
@@ -213,8 +235,8 @@ def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
         "es",
     )
 
-    assert "Selecciona una categoría y un indicador para comenzar." in str(initial[0])
-    assert initial[1] == "stats-query-state"
+    assert initial[0] is None
+    assert initial[1].endswith("is-hidden")
     assert initial[2].endswith("is-hidden")
     assert "No data is available for this selection." in str(no_data[0])
     assert no_data[1] == "stats-query-state"

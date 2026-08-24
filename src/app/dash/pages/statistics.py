@@ -466,7 +466,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         category: str | None,
         indicator: str | None,
         language: str | None,
-    ) -> tuple[Component, str, str]:
+    ) -> tuple[Component | None, str, str]:
         clean_language = "en" if language == "en" else "es"
         query_state = resolve_statistics_view_state(
             result,
@@ -477,19 +477,18 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
         if query_state is StatisticsViewState.READY:
             return (
-                build_empty_state(
-                    ui_text("statistics_initial_prompt", clean_language),
-                    class_name="stats-query-state-card",
-                ),
+                None,
                 "stats-query-state is-hidden",
                 "stats-results-content",
             )
         if query_state in {
+            StatisticsViewState.INITIAL,
             StatisticsViewState.LOADING_INDICATORS,
+            StatisticsViewState.AWAITING_INDICATOR,
             StatisticsViewState.LOADING_STATISTICS,
         }:
             return (
-                build_empty_state("", class_name="stats-query-state-card"),
+                None,
                 "stats-query-state is-hidden",
                 "stats-results-content is-hidden",
             )
@@ -499,10 +498,12 @@ def register_statistics_callbacks(app: Dash) -> None:
             message_key = "statistics_survey_empty"
         elif query_state is StatisticsViewState.NO_DATA:
             message_key = "statistics_no_data"
-        elif query_state is StatisticsViewState.AWAITING_INDICATOR:
-            message_key = "statistics_indicator_prompt"
         else:
-            message_key = "statistics_initial_prompt"
+            return (
+                None,
+                "stats-query-state is-hidden",
+                "stats-results-content is-hidden",
+            )
         return (
             build_empty_state(
                 ui_text(message_key, clean_language),
@@ -1525,10 +1526,17 @@ def _header() -> Component:
     return build_page_header(
         eyebrow=text("Panel de Estadísticas", "Statistics panel"),
         title=text("Estadísticas europeas LGBTIQ+", "European LGBTIQ+ statistics"),
-        description=text(
-            "Explora la realidad sociodemográfica, la protección legal y la relación entre ambas.",
-            "Explore lived experience, legal protection and the relationship between them.",
-        ),
+        description=[
+            text(
+                "Explora la realidad sociodemográfica, la protección legal y la relación entre ambas.",
+                "Explore the sociodemographic reality, legal protection and the relationship between both.",
+            ),
+            html.Br(),
+            text(
+                "Para generar una respuesta, selecciona una Categoría y un Indicador.",
+                "To generate a result, select a Category and an Indicator.",
+            ),
+        ],
         actions=[
             dcc.Link(
                 text(

@@ -822,14 +822,6 @@ UI_TEXT = {
         "es": "Rango que refleja que una estimación futura no puede conocerse con total precisión.",
         "en": "A range reflecting that a future estimate cannot be known with complete precision.",
     },
-    "statistics_initial_prompt": {
-        "es": "Selecciona una categoría y un indicador para comenzar.",
-        "en": "Select a category and an indicator to get started.",
-    },
-    "statistics_indicator_prompt": {
-        "es": "Selecciona un indicador para continuar.",
-        "en": "Select an indicator to continue.",
-    },
     "statistics_survey_empty": {
         "es": "Todavía no hay datos disponibles para esta encuesta.",
         "en": "No data is available for this survey yet.",

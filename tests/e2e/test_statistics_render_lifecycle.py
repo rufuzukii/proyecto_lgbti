@@ -98,8 +98,8 @@ def test_initial_category_and_ready_lifecycle_never_exposes_plotly_placeholders(
     assert loading_indicators[1].endswith("is-hidden")
     assert loading_indicators[2].endswith("is-hidden")
     assert "Selecciona una categoría" not in str(loading_indicators[0])
-    assert "Selecciona una categoría y un indicador" not in str(awaiting_indicator[0])
-    assert "Selecciona un indicador para continuar." in str(awaiting_indicator[0])
+    assert awaiting_indicator[0] is None
+    assert awaiting_indicator[1].endswith("is-hidden")
     assert awaiting_indicator[2].endswith("is-hidden")
     assert stale[2].endswith("is-hidden")
     assert rendering[2].endswith("is-hidden")
