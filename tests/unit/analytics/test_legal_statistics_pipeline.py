@@ -61,6 +61,34 @@ def test_ilga_repository_uses_one_projected_aggregate_without_limit(monkeypatch)
     }
 
 
+def test_ilga_repository_uses_minimal_find_for_overall_history(monkeypatch) -> None:
+    collection = MagicMock()
+    cursor = MagicMock()
+    cursor.sort.return_value = [
+        {
+            "_id": "doc-2026",
+            "year": 2026,
+            "normalization": {"applied": False},
+            "countries": [
+                {"country_code": "ES", "country": "Spain", "ranking": 78.0},
+                {"country_code": "FR", "country": "France", "ranking": 62.0},
+            ],
+        }
+    ]
+    collection.find.return_value = cursor
+    monkeypatch.setattr(analytics_repository, "_mongo_collection", lambda _name: collection)
+
+    rows = analytics_repository.get_ilga_analysis_rows("Ranking total")
+
+    collection.aggregate.assert_not_called()
+    collection.find.assert_called_once()
+    assert [(row["country_code"], row["ranking"]) for row in rows] == [
+        ("ES", 78.0),
+        ("FR", 62.0),
+    ]
+    assert all(row["criteria"] == [] for row in rows)
+
+
 def test_legal_statistics_cache_key_tracks_database_year_catalog(monkeypatch) -> None:
     query = IlgaStatisticsQuery(year=2026, category="Ranking total")
     monkeypatch.setattr(statistics_service, "get_ilga_years", lambda: [2026])

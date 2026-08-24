@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -63,6 +64,7 @@ from app.analytics.statistics_service import (
     get_fra_control_payload,
     get_fra_statistics,
 )
+from app.cache import cache
 from app.dash.components.dropdown_options import (
     build_dropdown_options,
     option_value_or_none,
@@ -80,6 +82,8 @@ from app.fra_surveys import FRA_SURVEYS, default_fra_survey, get_fra_survey
 from app.taxonomy import taxonomy_pair
 
 logger = logging.getLogger(__name__)
+STATISTICS_DASHBOARD_CACHE_SECONDS = 300
+STATISTICS_DASHBOARD_CACHE_VERSION = 1
 
 FRA_SURVEY_OPTIONS = [
     {
@@ -2531,6 +2535,73 @@ def _render_dashboard(
     temporal_countries: list[str] | None = None,
     ranking_page: int | None = 0,
 ):
+    cache_key = _statistics_dashboard_cache_key(
+        result,
+        selected,
+        language,
+        temporal_countries=temporal_countries,
+        ranking_page=ranking_page,
+    )
+    if cache_key is None:
+        return _render_dashboard_uncached(
+            result,
+            selected,
+            language,
+            temporal_countries=temporal_countries,
+            ranking_page=ranking_page,
+        )
+    return cache.get_or_compute(
+        cache_key,
+        lambda: _render_dashboard_uncached(
+            result,
+            selected,
+            language,
+            temporal_countries=temporal_countries,
+            ranking_page=ranking_page,
+        ),
+        timeout=STATISTICS_DASHBOARD_CACHE_SECONDS,
+    )
+
+
+def _statistics_dashboard_cache_key(
+    result: dict[str, Any],
+    selected: list[str],
+    language: str,
+    *,
+    temporal_countries: list[str] | None,
+    ranking_page: int | None,
+) -> str | None:
+    query_token = str(result.get("_query_token") or "").strip()
+    if not query_token or not getattr(cache, "app", None):
+        return None
+    result_payload = json.dumps(
+        result,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    )
+    identity = {
+        "version": STATISTICS_DASHBOARD_CACHE_VERSION,
+        "query_token": query_token,
+        "result_digest": hashlib.sha256(result_payload.encode("utf-8")).hexdigest(),
+        "selected": selected,
+        "language": language,
+        "temporal_countries": temporal_countries or [],
+        "ranking_page": ranking_page,
+    }
+    serialized = json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return f"statistics-dashboard:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
+
+
+def _render_dashboard_uncached(
+    result: dict[str, Any],
+    selected: list[str],
+    language: str,
+    *,
+    temporal_countries: list[str] | None = None,
+    ranking_page: int | None = 0,
+):
     render_started_at = time.perf_counter()
     if result.get("status") != "ok":
         raise ValueError("statistics_dashboard_requires_ready_result")
@@ -2579,11 +2650,15 @@ def _render_dashboard(
         result.get("indicator_code"),
         len(ranking),
     )
-    temporal = build_temporal_evolution_chart(
-        history,
-        selected,
-        language,
-        visible_countries=temporal_countries,
+    temporal = (
+        build_temporal_evolution_chart(
+            history,
+            selected,
+            language,
+            visible_countries=temporal_countries,
+        )
+        if history
+        else None
     )
     comparative_ranking = build_comparative_ranking_chart(
         visible_ranking,
@@ -2592,10 +2667,14 @@ def _render_dashboard(
         indicator=str(result.get("indicator") or ""),
         year=result.get("year"),
     )
-    average = build_eu_average_comparison_chart(
-        ranking,
-        selected,
-        language,
+    average = (
+        build_eu_average_comparison_chart(
+            ranking,
+            selected,
+            language,
+        )
+        if selected
+        else None
     )
     comparison = build_response_country_comparison_chart(
         detail,
@@ -2673,12 +2752,14 @@ def _render_dashboard(
     )
     figures = {
         "map": map_figure,
-        "temporal": temporal,
         "ranking": comparative_ranking,
-        "average": average,
         "response_comparison": comparison,
         "responses": response,
     }
+    if temporal is not None:
+        figures["temporal"] = temporal
+    if average is not None:
+        figures["average"] = average
     if quadrants is not None:
         figures["quadrants"] = quadrants
     if ranking_gap is not None:

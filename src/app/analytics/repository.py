@@ -1141,7 +1141,12 @@ def get_ilga_analysis_rows(
     ]
     started_at = time.perf_counter()
     try:
-        rows = list(_mongo_collection("Indicator_ilga").aggregate(pipeline))
+        collection = _mongo_collection("Indicator_ilga")
+        rows = (
+            _get_ilga_overall_score_rows(collection)
+            if clean_category == "Ranking total"
+            else list(collection.aggregate(pipeline))
+        )
     except Exception:
         logger.exception(
             "ilga_analysis_read_failed",
@@ -1161,6 +1166,43 @@ def get_ilga_analysis_rows(
             "query_ms": round((time.perf_counter() - started_at) * 1000, 2),
         },
     )
+    return rows
+
+
+def _get_ilga_overall_score_rows(collection: Any) -> list[dict[str, Any]]:
+    """Project and flatten overall scores without repeating metadata in MongoDB."""
+    documents = list(
+        collection.find(
+            {"dataset": "ilga_rainbow_map"},
+            {
+                "_id": 1,
+                "year": 1,
+                "normalization": 1,
+                "countries.country_code": 1,
+                "countries.country": 1,
+                "countries.ranking": 1,
+            },
+        ).sort([("year", 1), ("_id", -1)])
+    )
+    rows: list[dict[str, Any]] = []
+    for document in documents:
+        document_id = str(document.get("_id") or "")
+        for country_index, country in enumerate(document.get("countries") or []):
+            if not isinstance(country, dict):
+                continue
+            rows.append(
+                {
+                    "document_id": document_id,
+                    "year": document.get("year"),
+                    "normalization": document.get("normalization"),
+                    "country_index": country_index,
+                    "country_code": country.get("country_code"),
+                    "country_name": country.get("country"),
+                    "ranking": country.get("ranking"),
+                    "criteria": [],
+                }
+            )
+    rows.sort(key=lambda row: (row.get("year") or 0, str(row.get("country_code") or "")))
     return rows
 
 

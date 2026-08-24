@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unicodedata
+from functools import lru_cache
 from typing import Any
 
 from app.analytics.geography import ISO2_TO_ISO3
@@ -79,6 +80,11 @@ COUNTRY_NAME_ALIASES: dict[str, str] = {
 
 def repair_text_encoding(value: Any) -> str:
     text = str(value or "")
+    return _repair_text_encoding_cached(text)
+
+
+@lru_cache(maxsize=8192)
+def _repair_text_encoding_cached(text: str) -> str:
     if not text:
         return ""
     text = text.replace("\ufeff", "")
@@ -93,7 +99,12 @@ def repair_text_encoding(value: Any) -> str:
 
 
 def normalize_text_key(value: Any) -> str:
-    text = repair_text_encoding(value).strip().casefold().replace("_", " ")
+    return _normalize_text_key_cached(repair_text_encoding(value))
+
+
+@lru_cache(maxsize=4096)
+def _normalize_text_key_cached(value: str) -> str:
+    text = value.strip().casefold().replace("_", " ")
     text = "".join(
         character
         for character in unicodedata.normalize("NFKD", text)
@@ -104,6 +115,11 @@ def normalize_text_key(value: Any) -> str:
 
 def normalize_filter_type(value: Any) -> str:
     text = repair_text_encoding(value).strip()
+    return _normalize_filter_type_cached(text)
+
+
+@lru_cache(maxsize=1024)
+def _normalize_filter_type_cached(text: str) -> str:
     if not text:
         return ""
     return FILTER_TYPE_ALIASES.get(normalize_text_key(text), text)
@@ -111,6 +127,11 @@ def normalize_filter_type(value: Any) -> str:
 
 def normalize_filter_value(value: Any) -> str:
     text = repair_text_encoding(value).strip()
+    return _normalize_filter_value_cached(text)
+
+
+@lru_cache(maxsize=4096)
+def _normalize_filter_value_cached(text: str) -> str:
     if not text:
         return ""
     return VALUE_ALIASES.get(text, text)
@@ -118,10 +139,16 @@ def normalize_filter_value(value: Any) -> str:
 
 def normalize_country_code(code: Any, country_name: Any | None = None) -> str:
     clean_code = repair_text_encoding(code).strip().upper()
+    clean_country_name = normalize_text_key(country_name) if not clean_code else ""
+    return _normalize_country_code_cached(clean_code, clean_country_name)
+
+
+@lru_cache(maxsize=1024)
+def _normalize_country_code_cached(clean_code: str, clean_country_name: str) -> str:
     if clean_code:
         clean_code = COUNTRY_CODE_ALIASES.get(clean_code, clean_code)
         return ISO3_TO_ISO2.get(clean_code, clean_code)
-    return COUNTRY_NAME_ALIASES.get(normalize_text_key(country_name), "")
+    return COUNTRY_NAME_ALIASES.get(clean_country_name, "")
 
 
 def display_option(label: Any, value: Any | None = None, disabled: bool = False) -> dict[str, Any]:

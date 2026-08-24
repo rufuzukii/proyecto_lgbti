@@ -342,39 +342,23 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
     if not normalized:
         return _empty_ilga_analysis_dataframe()
 
-    dataframe = pd.DataFrame(normalized)
-    resolved_rows: list[dict[str, Any]] = []
-    duplicate_groups = 0
-    conflicting_groups = 0
-    group_columns = ["year", "country_code", "indicator_id", "category"]
-    for _key, group in dataframe.groupby(group_columns, sort=False, dropna=False):
-        latest_document = max(group["document_id"].astype(str).tolist(), default="")
-        candidates = group[group["document_id"].astype(str).eq(latest_document)].sort_values(
-            ["country_index", "criterion_index"], kind="stable"
-        )
-        duplicate_groups += int(len(group) > 1)
-        numeric_values = {
-            float(value)
-            for value in candidates["value"].tolist()
-            if value is not None and pd.notna(value)
-        }
-        chosen = cast(dict[str, Any], candidates.iloc[0].to_dict())
-        if len(numeric_values) > 1:
-            conflicting_groups += 1
-            chosen["value"] = None
-            chosen["criterion_value"] = None
-            chosen["response"] = "not_available"
-            chosen["response_order"] = ILGA_RESPONSE_ORDER["not_available"]
-        resolved_rows.append(chosen)
-
-    resolved = pd.DataFrame(resolved_rows)
-    latest_names = (
-        resolved.sort_values(["year", "document_id", "country_index"], kind="stable")
-        .groupby("country_code", sort=False)
-        .tail(1)
-        .set_index("country_code")["country_name"]
-        .to_dict()
+    resolved_rows, duplicate_groups, conflicting_groups = _resolve_ilga_analysis_rows(
+        normalized
     )
+    resolved = pd.DataFrame(resolved_rows)
+    latest_names: dict[str, str] = {}
+    latest_name_keys: dict[str, tuple[int, str, int, int]] = {}
+    for position, row in enumerate(resolved_rows):
+        country_code = str(row.get("country_code") or "")
+        candidate_key = (
+            int(row.get("year") or 0),
+            str(row.get("document_id") or ""),
+            int(row.get("country_index") or 0),
+            position,
+        )
+        if candidate_key >= latest_name_keys.get(country_code, (-1, "", -1, -1)):
+            latest_name_keys[country_code] = candidate_key
+            latest_names[country_code] = str(row.get("country_name") or country_code)
     resolved["country_name"] = resolved["country_code"].map(latest_names)
     resolved["country"] = resolved["country_name"]
     discarded = {key: value for key, value in discarded.items() if value}
@@ -391,6 +375,54 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
             },
         )
     return resolved[_empty_ilga_analysis_dataframe().columns.tolist()].reset_index(drop=True)
+
+
+def _resolve_ilga_analysis_rows(
+    normalized: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Resolve duplicate ILGA rows without constructing one DataFrame per group."""
+    groups: dict[tuple[Any, ...], list[tuple[int, dict[str, Any]]]] = {}
+    for position, row in enumerate(normalized):
+        key = (
+            row.get("year"),
+            row.get("country_code"),
+            row.get("indicator_id"),
+            row.get("category"),
+        )
+        groups.setdefault(key, []).append((position, row))
+
+    resolved: list[dict[str, Any]] = []
+    duplicate_groups = 0
+    conflicting_groups = 0
+    for rows in groups.values():
+        latest_document = max(str(row.get("document_id") or "") for _position, row in rows)
+        candidates = sorted(
+            (
+                (position, row)
+                for position, row in rows
+                if str(row.get("document_id") or "") == latest_document
+            ),
+            key=lambda item: (
+                int(item[1].get("country_index") or 0),
+                int(item[1].get("criterion_index") or 0),
+                item[0],
+            ),
+        )
+        duplicate_groups += int(len(rows) > 1)
+        numeric_values = {
+            float(row["value"])
+            for _position, row in candidates
+            if row.get("value") is not None and pd.notna(row.get("value"))
+        }
+        chosen = dict(candidates[0][1])
+        if len(numeric_values) > 1:
+            conflicting_groups += 1
+            chosen["value"] = None
+            chosen["criterion_value"] = None
+            chosen["response"] = "not_available"
+            chosen["response_order"] = ILGA_RESPONSE_ORDER["not_available"]
+        resolved.append(chosen)
+    return resolved, duplicate_groups, conflicting_groups
 
 
 def _ilga_normalization_fields(value: Any) -> dict[str, Any]:

@@ -139,3 +139,40 @@ def test_browser_payload_drops_server_only_fra_intermediates() -> None:
     assert "metrics" not in payload
     assert "response_details_diagnostics" not in payload
     assert payload["detail_data"] == [{"answer": "Yes"}]
+
+
+def test_dashboard_render_cache_is_bounded_to_an_exact_query_identity(monkeypatch) -> None:
+    class Cache:
+        app = object()
+
+        def __init__(self) -> None:
+            self.values: dict[str, Any] = {}
+            self.calculations = 0
+
+        def get_or_compute(self, key, factory, *, timeout):
+            assert timeout == statistics.STATISTICS_DASHBOARD_CACHE_SECONDS
+            if key not in self.values:
+                self.calculations += 1
+                self.values[key] = factory()
+            return self.values[key]
+
+    local_cache = Cache()
+    renders: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr(statistics, "cache", local_cache)
+    monkeypatch.setattr(
+        statistics,
+        "_render_dashboard_uncached",
+        lambda _result, selected, language, **_kwargs: renders.append(
+            (language, tuple(selected))
+        )
+        or tuple(range(33)),
+    )
+    result = {**_result(), "_query_token": "survey:2023:indicator"}
+
+    first = statistics._render_dashboard(result, [], "es")
+    second = statistics._render_dashboard(result, [], "es")
+    statistics._render_dashboard(result, ["ES"], "es")
+
+    assert first == second
+    assert local_cache.calculations == 2
+    assert renders == [("es", ()), ("es", ("ES",))]
