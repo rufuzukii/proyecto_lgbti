@@ -95,6 +95,8 @@ def test_country_status_card_uses_bilingual_descriptions_when_available() -> Non
         if hasattr(item, "to_plotly_json")
     }
     assert {"Overall situation", "Summary.", "Legal context.", "Progress."} <= translated
+    assert "Algunos textos solo están disponibles" not in str(card)
+    assert "Some descriptions are only available" not in str(card)
 
 
 def test_country_status_section_localizes_structural_headings() -> None:

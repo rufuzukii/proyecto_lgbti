@@ -25,20 +25,15 @@ def _walk(component: Any):
             yield from _walk(children)
 
 
-def test_application_owned_ui_copy_does_not_use_guillemets() -> None:
-    roots = (
-        ROOT / "src" / "app" / "dash",
-        ROOT / "src" / "app" / "reports",
-        ROOT / "src" / "app" / "edu" / "translations.py",
-    )
-    files = [
-        path
-        for root in roots
-        for path in ([root] if root.is_file() else root.rglob("*.py"))
-    ]
+def test_application_owned_quoted_copy_uses_guillemets() -> None:
+    statistics = (PAGES / "statistics.py").read_text(encoding="utf-8")
+    reports = (PAGES / "reports.py").read_text(encoding="utf-8")
+    didactica = (PAGES / "didactica.py").read_text(encoding="utf-8")
 
-    assert all("«" not in path.read_text(encoding="utf-8") for path in files)
-    assert all("»" not in path.read_text(encoding="utf-8") for path in files)
+    assert "«{answer}»" in statistics
+    assert "«{content.indicator}»" in reports
+    assert "«{correct_term}»" in didactica
+    assert '"{answer}" in "{indicator}"' not in statistics
 
 
 def test_footer_attributions_are_uniform_and_use_the_requested_copy() -> None:

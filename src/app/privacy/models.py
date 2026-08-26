@@ -10,14 +10,12 @@ class PersonalDataInventory:
 
     profile: bool
     account_security: int = 0
-    security_tokens: int = 0
     teacher_games: int = 0
     import_logs: int = 0
     security_audit_events: int = 0
     admin_audit_events: int = 0
     supabase_objects: int = 0
     persisted_reports: int = 0
-    persisted_contact_attachments: int = 0
 
     @property
     def removable_content_count(self) -> int:
@@ -27,14 +25,12 @@ class PersonalDataInventory:
         return {
             "profile": self.profile,
             "account_security": self.account_security,
-            "security_tokens": self.security_tokens,
             "teacher_games": self.teacher_games,
             "import_logs": self.import_logs,
             "security_audit_events": self.security_audit_events,
             "admin_audit_events": self.admin_audit_events,
             "supabase_objects": self.supabase_objects,
             "persisted_reports": self.persisted_reports,
-            "persisted_contact_attachments": self.persisted_contact_attachments,
         }
 
 

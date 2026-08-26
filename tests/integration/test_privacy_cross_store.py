@@ -64,7 +64,7 @@ def test_postgres_deletion_removes_private_imports_and_user_in_one_transaction(
     )
 
 
-def test_mongo_deletion_removes_private_content_tokens_and_account_state(
+def test_mongo_deletion_removes_private_content_and_account_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
@@ -86,11 +86,11 @@ def test_mongo_deletion_removes_private_content_tokens_and_account_state(
 
     # Assert
     assert content == {"teacher_games": 1}
-    assert security == {"security_tokens": 1, "account_security": 1}
+    assert security == {"account_security": 1}
     assert deleted_queries[service.GAMES_COLLECTION] == [
         {"$or": [{"owner_user_id": USER_ID}, {"owner_id": USER_ID}]}
     ]
-    assert deleted_queries[service.TOKEN_COLLECTION] == [{"user_id": USER_ID}]
+    assert deleted_queries[service.ACCOUNT_COLLECTION] == [{"user_id": USER_ID}]
 
 
 def test_supabase_stage_is_explicitly_idempotent_when_no_personal_objects_exist() -> None:

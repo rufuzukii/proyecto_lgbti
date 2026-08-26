@@ -25,6 +25,10 @@ STATUS_MESSAGES = {
         "La cuenta se ha eliminado correctamente.",
         "The account was deleted successfully.",
     ),
+    "user_validated": (
+        "La cuenta se ha marcado como validada.",
+        "The account was marked as validated.",
+    ),
 }
 
 ERROR_MESSAGES = {
@@ -104,8 +108,8 @@ def build_admin_users_layout(
                                         eyebrow=text("Administración", "Administration"),
                                         title=text("Gestión de usuarios", "User management"),
                                         description=text(
-                                            "Revisa, edita y elimina cuentas de usuario.",
-                                            "Review, edit, and delete user accounts.",
+                                            "Revisa, valida, edita y elimina cuentas de usuario.",
+                                            "Review, validate, edit, and delete user accounts.",
                                         ),
                                         class_name="admin-page-header",
                                     ),
@@ -335,6 +339,11 @@ def _build_users_table(
                         "Acceso", className="admin-table-heading", **text_attrs("Acceso", "Access")
                     ),
                     html.Div(
+                        "Validación",
+                        className="admin-table-heading",
+                        **text_attrs("Validación", "Validation"),
+                    ),
+                    html.Div(
                         "Eliminar",
                         className="admin-table-heading",
                         **text_attrs("Eliminar", "Delete"),
@@ -475,6 +484,26 @@ def _build_user_row(
                     disabled=is_current,
                 ),
                 className="admin-table-cell",
+            ),
+            html.Div(
+                (
+                    html.Span(
+                        "Validada",
+                        className="admin-validation-badge is-validated",
+                        **text_attrs("Validada", "Validated"),
+                    )
+                    if user.admin_validated
+                    else html.Button(
+                        "Validar cuenta",
+                        type="submit",
+                        name="action",
+                        value="validate",
+                        disabled=is_current,
+                        className="admin-action-button admin-validate-button",
+                        **text_attrs("Validar cuenta", "Validate account"),
+                    )
+                ),
+                className="admin-table-cell admin-validation-cell",
             ),
             html.Div(
                 html.Button(

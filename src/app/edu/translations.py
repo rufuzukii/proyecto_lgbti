@@ -70,6 +70,8 @@ TEXT = {
     "results": ("resultados", "results"),
     "related": ("Conceptos relacionados", "Related concepts"),
     "source": ("Fuente", "Source"),
+    "based_on": ("Basado en", "Based on"),
+    "consult_source": ("Consultar fuente", "View source"),
     "start": ("Empezar", "Start"),
     "next": ("Siguiente", "Next"),
     "previous": ("Anterior", "Previous"),
@@ -89,8 +91,8 @@ TEXT = {
     "objectives": ("Objetivos", "Objectives"),
     "sources": ("Fuentes", "Sources"),
     "glossary_original_language": (
-        "Las definiciones se presentan en español, idioma de las fuentes consultadas.",
-        "Definitions remain in Spanish, the language of the consulted sources; no unofficial English translation is attributed to them.",
+        "RainbowLens sintetiza las nuevas definiciones con finalidad educativa y acredita en cada tarjeta las fuentes consultadas.",
+        "RainbowLens synthesises the new definitions for educational purposes and credits the consulted sources on each card.",
     ),
     "minutes": ("minutos", "minutes"),
     "guess_term": ("Adivina el término", "Guess the term"),
@@ -121,8 +123,8 @@ TEXT = {
         "Order the countries from higher to lower legal protection using the up and down buttons. Scores will appear after you check.",
     ),
     "rank_countries_methodology": (
-        "Las puntuaciones utilizadas proceden de los datos legales de ILGA-Europe disponibles en RainbowLens DataHub. Una puntuación más alta representa un mayor grado de protección y reconocimiento legal según los criterios del índice; no es una medida absoluta de bienestar.",
-        "The scores come from ILGA-Europe legal data available in RainbowLens DataHub. A higher score represents greater legal protection and recognition under the index criteria; it is not an absolute measure of wellbeing.",
+        "Las puntuaciones utilizadas proceden de los datos legales de ILGA-Europe disponibles en RainbowLens DataHub. Una puntuación más alta representa un mayor grado de protección y reconocimiento legal según los criterios del índice. No es una medida absoluta de bienestar.",
+        "The scores come from ILGA-Europe legal data available in RainbowLens DataHub. A higher score represents greater legal protection and recognition under the index criteria. It is not an absolute measure of wellbeing.",
     ),
     "check": ("Comprobar", "Check"),
     "new_round": ("Nueva partida", "New game"),
@@ -223,8 +225,8 @@ TEXT = {
     "language": ("Idioma", "Language"),
     "teacher_note": ("Nota del docente", "Educator note"),
     "teacher_note_help": (
-        "Contenido propio del docente; no modifica las definiciones ni las fuentes de RainbowLens.",
-        "Educator-authored content; it does not modify RainbowLens definitions or sources.",
+        "Contenido propio del docente. No modifica las definiciones ni las fuentes de RainbowLens.",
+        "Educator-authored content. It does not modify RainbowLens definitions or sources.",
     ),
     "activity_status": ("Estado", "Status"),
     "draft": ("Borrador", "Draft"),
@@ -305,6 +307,13 @@ TEXT = {
 }
 
 CATEGORIES = {
+    "diversity_identities": ("Diversidad e identidades", "Diversity and identities"),
+    "rights_legal_protection": ("Derechos y protección legal", "Rights and legal protection"),
+    "families_reproductive_rights": (
+        "Familias y derechos reproductivos",
+        "Families and reproductive rights",
+    ),
+    "social_experiences": ("Experiencias sociales", "Social experiences"),
     "sexual_orientation": ("Orientación sexual", "Sexual orientation"),
     "gender_identity": ("Identidad de género", "Gender identity"),
     "gender_expression": ("Expresión de género", "Gender expression"),

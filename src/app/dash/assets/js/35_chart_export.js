@@ -44,12 +44,83 @@
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
     try {
-      await window.Plotly.downloadImage(graph, options);
+      await downloadPlotlyImage(graph, meta, options);
     } catch (_errorReason) {
       setErrorVisibility(error, true);
     } finally {
       button.disabled = false;
       button.removeAttribute("aria-busy");
+    }
+  }
+
+  async function downloadPlotlyImage(graph, meta, options) {
+    if (meta.export_showlegend !== true
+      || typeof window.Plotly.newPlot !== "function"
+      || typeof document.createElement !== "function"
+      || !document.body) {
+      await window.Plotly.downloadImage(graph, options);
+      return;
+    }
+
+    const exportGraph = document.createElement("div");
+    exportGraph.setAttribute("aria-hidden", "true");
+    exportGraph.style.position = "fixed";
+    exportGraph.style.inset = "auto auto 200vh 200vw";
+    exportGraph.style.width = `${options.width}px`;
+    exportGraph.style.height = `${options.height}px`;
+    document.body.insertAdjacentElement("beforeend", exportGraph);
+
+    const currentLayout = graph.layout || {};
+    const currentMargin = currentLayout.margin || {};
+    const annotations = Array.isArray(currentLayout.annotations)
+      ? currentLayout.annotations.slice()
+      : [];
+    if (meta.export_source) {
+      annotations.push({
+        text: String(meta.export_source),
+        x: 0,
+        y: -0.28,
+        xref: "paper",
+        yref: "paper",
+        xanchor: "left",
+        yanchor: "top",
+        align: "left",
+        showarrow: false,
+        font: {size: 11, color: "#475569"},
+      });
+    }
+    const exportLayout = Object.assign({}, currentLayout, {
+      autosize: false,
+      width: options.width,
+      height: options.height,
+      paper_bgcolor: "#ffffff",
+      plot_bgcolor: "#ffffff",
+      font: Object.assign({}, currentLayout.font || {}, {color: "#1f2937"}),
+      margin: Object.assign({}, currentMargin, {bottom: Math.max(Number(currentMargin.b) || 0, 190)}),
+      showlegend: true,
+      legend: Object.assign({}, currentLayout.legend || {}, {
+        orientation: "h",
+        x: 0.5,
+        xanchor: "center",
+        y: -0.13,
+        yanchor: "top",
+        title: {text: String(meta.export_legend_title || "")},
+      }),
+      annotations,
+    });
+
+    try {
+      await window.Plotly.newPlot(exportGraph, graph.data, exportLayout, {
+        staticPlot: true,
+        responsive: false,
+        displayModeBar: false,
+      });
+      await window.Plotly.downloadImage(exportGraph, options);
+    } finally {
+      if (typeof window.Plotly.purge === "function") {
+        window.Plotly.purge(exportGraph);
+      }
+      exportGraph.remove();
     }
   }
 

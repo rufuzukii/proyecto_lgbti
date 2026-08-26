@@ -113,8 +113,8 @@ class PDFExporter:
                     [
                         _t(
                             language,
-                            f'Se analiza "{report.indicator}" para {report.configuration.year or "el periodo disponible"} como contexto externo para apoyar políticas de diversidad e inclusión.',
-                            f"The report analyses “{report.indicator}” for {report.configuration.year or 'the available period'} as external context supporting diversity and inclusion policies.",
+                            f'Se analiza «{report.indicator}» para {report.configuration.year or "el periodo disponible"} como contexto externo para apoyar políticas de diversidad e inclusión.',
+                            f"The report analyses «{report.indicator}» for {report.configuration.year or 'the available period'} as external context supporting diversity and inclusion policies.",
                         )
                     ],
                     styles,

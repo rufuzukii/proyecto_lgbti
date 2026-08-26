@@ -331,7 +331,7 @@ main {
   }
 
   .admin-table-row {
-    min-width: 920px;
+    min-width: 1070px;
   }
 }
 
@@ -421,8 +421,8 @@ main {
   }
 
   .admin-table-row {
-    grid-template-columns: 88px minmax(160px, 1fr) minmax(190px, 1fr) minmax(160px, 1fr) 120px 92px;
-    min-width: 860px;
+    grid-template-columns: 88px minmax(160px, 1fr) minmax(190px, 1fr) minmax(160px, 1fr) 120px 140px 92px;
+    min-width: 1000px;
   }
 
   .admin-import-modal:target {

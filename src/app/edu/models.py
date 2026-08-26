@@ -23,10 +23,15 @@ class LocalizedText:
 class GlossarySource:
     name: str
     url: str
+    title: str = ""
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> GlossarySource:
-        return cls(name=str(value.get("name", "")).strip(), url=str(value.get("url", "")).strip())
+        return cls(
+            name=str(value.get("name", "")).strip(),
+            url=str(value.get("url", "")).strip(),
+            title=str(value.get("title", "")).strip(),
+        )
 
 
 @dataclass(frozen=True)
@@ -36,6 +41,12 @@ class GlossaryTerm:
     definition: str
     category: str
     sources: tuple[GlossarySource, ...]
+    term_en: str = ""
+    definition_en: str = ""
+    aliases: tuple[str, ...] = ()
+    attribution: str = "source"
+    guess_game: bool = True
+    word_search: bool = True
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> GlossaryTerm:
@@ -45,7 +56,19 @@ class GlossaryTerm:
             definition=str(value["definition"]).strip(),
             category=str(value["category"]).strip(),
             sources=tuple(GlossarySource.from_mapping(item) for item in value.get("sources", [])),
+            term_en=str(value.get("term_en", "")).strip(),
+            definition_en=str(value.get("definition_en", "")).strip(),
+            aliases=tuple(str(item).strip() for item in value.get("aliases", []) if str(item).strip()),
+            attribution=str(value.get("attribution", "source")).strip() or "source",
+            guess_game=bool(value.get("games", {}).get("guess_term", True)),
+            word_search=bool(value.get("games", {}).get("word_search", True)),
         )
+
+    def localized_term(self, language: str) -> str:
+        return self.term_en if language == "en" and self.term_en else self.term
+
+    def localized_definition(self, language: str) -> str:
+        return self.definition_en if language == "en" and self.definition_en else self.definition
 
 
 @dataclass(frozen=True)

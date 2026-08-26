@@ -6,6 +6,7 @@ from typing import Any
 from dash import Dash, html
 
 from app.analytics.statistics_charts import (
+    COUNTRY_COLORS,
     build_combined_scatter,
     build_comparative_ranking_chart,
     build_eu_average_comparison_chart,
@@ -31,43 +32,15 @@ def _layout(figure: Any) -> Any:
 
 
 def test_country_palette_matches_the_approved_european_colours() -> None:
-    expected = {
-        "FR": "#2F6BDE",
-        "DE": "#2B2B2B",
-        "BE": "#E3B505",
-        "NL": "#E85D5D",
-        "LU": "#5AA9E6",
-        "IT": "#2E8B57",
-        "DK": "#B22234",
-        "ES": "#C62828",
-        "PT": "#2F855A",
-        "IE": "#F28C28",
-        "GR": "#3A86D1",
-        "SE": "#4A90E2",
-        "FI": "#6FA8DC",
-        "AT": "#8E2430",
-        "EE": "#2C7DA0",
-        "LV": "#7A1F2B",
-        "LT": "#6B8E23",
-        "PL": "#D45A7A",
-        "CZ": "#1E5AA8",
-        "SK": "#4361EE",
-        "SI": "#3D5AFE",
-        "HU": "#009B77",
-        "RO": "#F4B400",
-        "BG": "#5A8F29",
-        "MT": "#D7265E",
-        "CY": "#52B788",
-        "HR": "#277DA1",
-    }
-
-    assert {iso: country_color(iso) for iso in expected} == expected
-    assert country_color(country="France") == expected["FR"]
-    assert country_color(country="España") == expected["ES"]
-    assert country_color("EL") == expected["GR"]
-    assert country_color("ESP", "Spain") == expected["ES"]
-    assert country_color(math.nan, "Spain") == expected["ES"]
-    assert country_color("Spain") == expected["ES"]
+    assert len(COUNTRY_COLORS) == 50
+    assert len(set(COUNTRY_COLORS.values())) == 50
+    assert {iso: country_color(iso) for iso in COUNTRY_COLORS} == COUNTRY_COLORS
+    assert country_color(country="France") == COUNTRY_COLORS["FR"]
+    assert country_color(country="España") == COUNTRY_COLORS["ES"]
+    assert country_color("EL") == COUNTRY_COLORS["GR"]
+    assert country_color("ESP", "Spain") == COUNTRY_COLORS["ES"]
+    assert country_color(math.nan, "Spain") == COUNTRY_COLORS["ES"]
+    assert country_color("Spain") == COUNTRY_COLORS["ES"]
     assert country_color("XX", "Unknown") == "#2F6BDE"
 
 

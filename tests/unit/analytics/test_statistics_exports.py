@@ -357,6 +357,83 @@ const button = {{
     assert completed.returncode == 0, completed.stderr
 
 
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
+def test_response_comparison_export_builds_a_plotly_legend_and_attribution() -> None:
+    script_path = ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js"
+    harness = f"""
+const fs = require("fs");
+const vm = require("vm");
+const captures = {{}};
+const graph = {{
+  data: [
+    {{type: "bar", name: "España", x: ["Yes"], y: [63]}},
+    {{type: "bar", name: "Francia", x: ["Yes"], y: [54]}}
+  ],
+  layout: {{
+    showlegend: false,
+    margin: {{l: 72, r: 28, t: 96, b: 96}},
+    meta: {{
+      export_showlegend: true,
+      export_legend_title: "Países",
+      export_source: "Fuente: FRA",
+      export_filename: "comparacion-respuestas.png"
+    }}
+  }}
+}};
+const exportGraph = {{style: {{}}, setAttribute: () => {{}}, remove: () => {{captures.removed = true;}}}};
+const wrapper = {{querySelector: () => graph, matches: () => false}};
+const errorStatus = {{hidden: true}};
+global.window = {{
+  RainbowLens: {{}},
+  Plotly: {{
+    newPlot: async (target, data, layout) => {{
+      target.data = data;
+      target.layout = layout;
+      captures.layout = layout;
+    }},
+    downloadImage: async (target) => {{captures.downloadTarget = target;}},
+    purge: () => {{captures.purged = true;}}
+  }},
+  console
+}};
+global.document = {{
+  addEventListener: () => {{}},
+  getElementById: () => wrapper,
+  createElement: () => exportGraph,
+  body: {{insertAdjacentElement: () => {{captures.appended = true;}}}}
+}};
+vm.runInThisContext(fs.readFileSync({json.dumps(str(script_path))}, "utf8"));
+const attributes = {{}};
+const button = {{
+  disabled: false,
+  dataset: {{chartExportTarget: "stats-response-comparison-graph"}},
+  parentElement: null,
+  closest: () => ({{querySelector: () => errorStatus}}),
+  getAttribute: (name) => attributes[name] || null,
+  setAttribute: (name, value) => {{attributes[name] = value;}},
+  removeAttribute: (name) => {{delete attributes[name];}}
+}};
+(async () => {{
+  await window.RainbowLens.chartExport.downloadChart(button);
+  if (!captures.layout.showlegend) throw new Error("legend missing");
+  if (captures.layout.legend.title.text !== "Países") throw new Error("legend title missing");
+  if (!captures.layout.annotations.some((item) => item.text === "Fuente: FRA")) throw new Error("source missing");
+  if (captures.downloadTarget !== exportGraph) throw new Error("original graph exported");
+  if (!captures.appended || !captures.purged || !captures.removed) throw new Error("temporary graph leak");
+}})().catch((error) => {{console.error(error); process.exitCode = 1;}});
+"""
+
+    completed = subprocess.run(
+        ["node", "-e", harness],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_rendered_export_metadata_tracks_visible_filters_and_country_selection() -> None:
     result = {
         "status": "ok",

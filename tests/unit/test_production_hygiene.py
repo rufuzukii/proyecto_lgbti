@@ -38,11 +38,22 @@ def test_render_startup_runs_only_the_wsgi_application() -> None:
     assert "Datos_" not in render_config
 
 
-def test_render_uses_https_email_transport_and_declares_oauth_secrets() -> None:
+def test_runtime_and_render_have_no_automatic_email_infrastructure() -> None:
     render_config = (PROJECT_ROOT / "render.yaml").read_text(encoding="utf-8")
+    runtime_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in PRODUCTION_ROOT.rglob("*.py")
+        if path.is_file()
+    )
 
-    assert "key: EMAIL_TRANSPORT\n        value: gmail_api" in render_config
-    assert "key: GMAIL_API_CLIENT_ID\n        sync: false" in render_config
-    assert "key: GMAIL_API_CLIENT_SECRET\n        sync: false" in render_config
-    assert "key: GMAIL_API_REFRESH_TOKEN\n        sync: false" in render_config
-    assert "key: SMTP_STARTTLS\n        value: \"false\"" in render_config
+    for marker in (
+        "smtplib",
+        "SMTP_HOST",
+        "MAIL_SERVER",
+        "GMAIL_API_CLIENT_ID",
+        "send_verification_email",
+        "CONTACT_MAX_ATTEMPTS",
+        "CONTACT_WINDOW_SECONDS",
+    ):
+        assert marker not in runtime_source
+        assert marker not in render_config

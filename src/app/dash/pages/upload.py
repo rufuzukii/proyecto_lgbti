@@ -312,16 +312,6 @@ def register_upload_callbacks(app: Dash) -> None:
                 ),
                 _build_upload_component(),
             )
-        if not bool(getattr(current_user, "email_verified", True)):
-            return (
-                build_error_message(
-                    (
-                        "Debes verificar tu correo antes de importar datos.",
-                        "You must verify your email before importing data.",
-                    )
-                ),
-                _build_upload_component(),
-            )
         limiter_key = rate_limit_key(subject=current_user.get_id() or "", scope="upload")
         if upload_rate_limiter.is_blocked(limiter_key):
             return (

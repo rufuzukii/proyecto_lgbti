@@ -23,7 +23,6 @@ from app.privacy.policy import get_privacy_policy_config
 from app.users.account_security import (
     ACCOUNT_COLLECTION,
     SECURITY_AUDIT_COLLECTION,
-    TOKEN_COLLECTION,
     get_account_security_many,
 )
 from app.users.audit import COLLECTION_NAME as ADMIN_AUDIT_COLLECTION
@@ -71,9 +70,6 @@ def get_personal_data_inventory(user_id: str) -> PersonalDataInventory:
         account_security = get_mongo_collection(ACCOUNT_COLLECTION).count_documents(
             {"user_id": user_id}
         )
-        security_tokens = get_mongo_collection(TOKEN_COLLECTION).count_documents(
-            {"user_id": user_id}
-        )
         teacher_games = get_mongo_collection(GAMES_COLLECTION).count_documents(
             _teacher_activity_owner_query(user_id)
         )
@@ -88,7 +84,6 @@ def get_personal_data_inventory(user_id: str) -> PersonalDataInventory:
     return PersonalDataInventory(
         profile=bool(values.get("profile")),
         account_security=account_security,
-        security_tokens=security_tokens,
         teacher_games=teacher_games,
         import_logs=int(values.get("import_logs") or 0),
         security_audit_events=security_audit,
@@ -386,10 +381,8 @@ def _delete_personal_supabase_objects(_user_id: str) -> int:
 
 
 def _delete_security_state(user_id: str) -> dict[str, int]:
-    tokens = get_mongo_collection(TOKEN_COLLECTION).delete_many({"user_id": user_id})
     account = get_mongo_collection(ACCOUNT_COLLECTION).delete_many({"user_id": user_id})
     return {
-        "security_tokens": int(tokens.deleted_count),
         "account_security": int(account.deleted_count),
     }
 

@@ -9,7 +9,7 @@ from werkzeug.security import generate_password_hash
 from app.privacy import service as privacy_service
 from app.users import service
 from app.users.account_security import AccountSecurityState
-from app.users.schemas import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, UserRole, UserType
+from app.users.schemas import MAX_PASSWORD_LENGTH, UserRole, UserType
 
 
 @dataclass
@@ -51,7 +51,7 @@ def _record(*, active: bool = True) -> service.UserRecord:
         password_hash=generate_password_hash("valid-password"),
         user_type=UserType.COMUN,
         active=active,
-        email_verified=True,
+        admin_validated=False,
     )
 
 
@@ -119,19 +119,17 @@ def test_authentication_requires_a_valid_password_and_active_account(
     assert (result is not None) is accepted
 
 
-def test_profile_email_change_invalidates_sessions_and_verification(
+def test_profile_email_change_invalidates_sessions_without_changing_admin_validation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
     record = _record()
     updated_row = {**_row(), "email": "new@example.com", "username": "Alex Updated"}
     connection = _Connection(_Result(row=updated_row))
-    unverified: list[str] = []
     incremented: list[str] = []
     events: list[tuple[str, str]] = []
     monkeypatch.setattr(service, "get_user_record", lambda _user_id: record)
     monkeypatch.setattr(service, "_connect", lambda: connection)
-    monkeypatch.setattr(service, "mark_email_unverified", unverified.append)
     monkeypatch.setattr(service, "increment_session_version", incremented.append)
     monkeypatch.setattr(
         service,
@@ -141,7 +139,7 @@ def test_profile_email_change_invalidates_sessions_and_verification(
     monkeypatch.setattr(
         service,
         "_account_state",
-        lambda user_id: AccountSecurityState(user_id, True, False, 1),
+        lambda user_id: AccountSecurityState(user_id, True, False, None, None, 1),
     )
 
     # Act
@@ -154,47 +152,10 @@ def test_profile_email_change_invalidates_sessions_and_verification(
 
     # Assert
     assert updated.email == "new@example.com"
-    assert updated.email_verified is False
-    assert unverified == [record.id]
+    assert updated.admin_validated is False
     assert incremented == [record.id]
     assert events == [(record.id, "email_changed")]
     assert connection.committed is True
-
-
-@pytest.mark.parametrize(
-    "password",
-    ["x" * (MIN_PASSWORD_LENGTH - 1), "x" * (MAX_PASSWORD_LENGTH + 1)],
-)
-def test_password_update_enforces_length_policy(password: str) -> None:
-    # Act / Assert
-    with pytest.raises(ValueError, match="weak_password"):
-        service.set_user_password(user_id=_record().id, new_password=password)
-
-
-def test_password_update_persists_hash_and_invalidates_sessions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    connection = _Connection(_Result(rowcount=1))
-    incremented: list[str] = []
-    events: list[tuple[str, str]] = []
-    monkeypatch.setattr(service, "_connect", lambda: connection)
-    monkeypatch.setattr(service, "generate_password_hash", lambda _password: "new-hash")
-    monkeypatch.setattr(service, "increment_session_version", incremented.append)
-    monkeypatch.setattr(
-        service,
-        "_record_security_event_safely",
-        lambda user_id, action: events.append((user_id, action)),
-    )
-
-    # Act
-    service.set_user_password(user_id=_record().id, new_password="new-valid-password")
-
-    # Assert
-    assert connection.calls[0][1] == ("new-hash", _record().id)
-    assert connection.committed is True
-    assert incremented == [_record().id]
-    assert events == [(_record().id, "password_reset")]
 
 
 def test_admin_deletion_maps_cross_store_error_to_public_validation_code(

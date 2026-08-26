@@ -114,5 +114,8 @@ cython_debug/
 # IDE local settings
 .idea/
 
+# Local browser-test artifacts
+.playwright-mcp/
+
 # Local functionality registry
 registro_funcionalidades/

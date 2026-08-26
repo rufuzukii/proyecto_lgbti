@@ -1803,8 +1803,13 @@ def _map_panel() -> Component:
                         className="stats-map-ranking",
                         **dash_attrs(
                             {
-                                "aria-label": "Ranking de países / Country ranking",
+                                "aria-label": "Ranking de países",
                                 "aria-live": "polite",
+                                **attribute_attrs(
+                                    "aria-label",
+                                    "Ranking de países",
+                                    "Country ranking",
+                                ),
                             }
                         ),
                     ),
@@ -2067,8 +2072,8 @@ def _chart_help(kind: str) -> Component:
             "Selected countries are compared with the simple mean of participating countries with a valid value for the same survey, indicator, response and filters. Null values are excluded and genuine zeros are retained.",
         ),
         "response_comparison": (
-            "Compara el reparto de respuestas FRA entre países. Cada serie mantiene la misma pregunta, año y segmentación; los porcentajes no disponibles no se convierten en cero.",
-            "This compares the FRA response distribution across countries. Every series keeps the same question, year and segmentation; unavailable percentages are not converted to zero.",
+            "Compara el reparto de respuestas FRA entre países. Cada serie mantiene la misma pregunta, año y segmentación. Los porcentajes no disponibles no se convierten en cero.",
+            "This compares the FRA response distribution across countries. Every series keeps the same question, year and segmentation. Unavailable percentages are not converted to zero.",
         ),
         "response": (
             "Muestra el detalle de las opciones de respuesta para el universo de países de la consulta. Lee conjuntamente porcentajes, países disponibles y ausencias de datos.",
@@ -2079,8 +2084,8 @@ def _chart_help(kind: str) -> Component:
             "What does it show? It compares each country's legal protection and FRA result. It is only shown for yes/no answers with a clear interpretation or for quantitative answers. How should it be read? The lines mark the medians: the value leaving roughly half the countries on either side. Values exactly on a median belong to the at-or-above side. Numeric answers without a clear direction are described only as higher or lower FRA values, without calling them better or worse. What can we observe? Countries where both results occupy different positions within the group, without subtracting or treating the scales as equivalent.",
         ),
         "ranking_gap": (
-            "¿Qué muestra? Compara la posición de cada país en el ranking legal de ILGA-Europe con su posición según el resultado FRA seleccionado. ¿Cómo se interpreta? Una separación pequeña indica posiciones parecidas; los países con mayor diferencia aparecen primero. Para experiencias desfavorables, una proporción FRA menor ocupa una posición social mejor. ¿Qué podemos observar? Posiciones legales y sociales distintas, sin afirmar que una dimensión cause la otra.",
-            "What does it show? It compares each country's ILGA-Europe legal rank with its position for the selected FRA result. How should it be read? A small separation means similar positions; countries with the largest difference appear first. For adverse experiences, a lower FRA percentage receives a better social position. What can we observe? Different legal and social positions, without claiming that one dimension causes the other.",
+            "¿Qué muestra? Compara la posición de cada país en el ranking legal de ILGA-Europe con su posición según el resultado FRA seleccionado. ¿Cómo se interpreta? Una separación pequeña indica posiciones parecidas. Los países con mayor diferencia aparecen primero. Para experiencias desfavorables, una proporción FRA menor ocupa una posición social mejor. ¿Qué podemos observar? Posiciones legales y sociales distintas, sin afirmar que una dimensión cause la otra.",
+            "What does it show? It compares each country's ILGA-Europe legal rank with its position for the selected FRA result. How should it be read? A small separation means similar positions. Countries with the largest difference appear first. For adverse experiences, a lower FRA percentage receives a better social position. What can we observe? Different legal and social positions, without claiming that one dimension causes the other.",
         ),
     }
     es, en = copy[kind]
@@ -2140,7 +2145,7 @@ def _chart_export_control(graph_id: str) -> Component:
                 text("Descargar PNG", "Download PNG"),
                 type="button",
                 className="stats-chart-export-button",
-                title="Descargar PNG / Download PNG",
+                title="Descargar PNG",
                 **dash_attrs(
                     {
                         "data-chart-export": "true",
@@ -2149,6 +2154,11 @@ def _chart_export_control(graph_id: str) -> Component:
                         "data-export-width": str(EXPORT_WIDTH),
                         "data-export-height": str(EXPORT_HEIGHT),
                         "data-export-scale": str(EXPORT_SCALE),
+                        **attribute_attrs(
+                            "title",
+                            "Descargar PNG",
+                            "Download PNG",
+                        ),
                         "aria-controls": graph_id,
                     }
                 ),
@@ -3095,8 +3105,8 @@ def _combined_compatibility_messages(
             )
         else:
             copy = (
-                f'Los cuadrantes no se muestran para "{answer}" en "{indicator}" porque esta respuesta no puede interpretarse de forma segura como un dato Sí/No o cuantitativo con una dirección clara.',
-                f'The quadrants are not shown for "{answer}" in "{indicator}" because this answer cannot be interpreted safely as yes/no or quantitative data with a clear direction.',
+                f'Los cuadrantes no se muestran para «{answer}» en «{indicator}» porque esta respuesta no puede interpretarse de forma segura como un dato Sí/No o cuantitativo con una dirección clara.',
+                f'The quadrants are not shown for «{answer}» in «{indicator}» because this answer cannot be interpreted safely as yes/no or quantitative data with a clear direction.',
             )
         messages.append(html.P(text(*copy, language=language)))
     if not supported.get("ranking_gap"):
@@ -3140,7 +3150,7 @@ def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component
             "unknown": "The meaning of a high percentage cannot be determined reliably from the wording, so no favourable/adverse conclusion is automated.",
         }[direction]
         hypothesis = (
-            f'This block compares the percentage for "{answer}" in "{indicator}" '
+            f'This block compares the percentage for «{answer}» in «{indicator}» '
             "with each country's overall ILGA-Europe legal-protection score."
         )
         reading = (
@@ -3170,7 +3180,7 @@ def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component
             "unknown": "No puede determinarse con fiabilidad qué significa un porcentaje alto a partir del enunciado, por lo que no se automatiza una conclusión favorable o desfavorable.",
         }[direction]
         hypothesis = (
-            f'Este bloque compara el porcentaje de la respuesta "{answer}" en "{indicator}" '
+            f'Este bloque compara el porcentaje de la respuesta «{answer}» en «{indicator}» '
             "con la puntuación legal global ILGA-Europe de cada país."
         )
         reading = (
@@ -3207,9 +3217,9 @@ def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component
         children.append(
             html.P(
                 (
-                    "La puntuación ILGA histórica se ha normalizado a una escala 0-100; consulta la metodología de la fuente antes de comparar series."
+                    "La puntuación ILGA histórica se ha normalizado a una escala 0-100. Consulta la metodología de la fuente antes de comparar series."
                     if language != "en"
-                    else "The historical ILGA score was normalised to a 0-100 scale; consult the source methodology before comparing time series."
+                    else "The historical ILGA score was normalised to a 0-100 scale. Consult the source methodology before comparing time series."
                 ),
                 className="stats-methodology-warning",
             )

@@ -217,8 +217,12 @@ def build_dictionary_layout() -> Component:
                         html.P(
                             [
                                 text(
-                                    "Definiciones recopiladas y adaptadas a partir de los glosarios de ",
-                                    "Definitions compiled and adapted from the glossaries of ",
+                                    "Definiciones educativas redactadas por RainbowLens y acreditadas "
+                                    "en cada tarjeta. El catálogo conserva también términos adaptados "
+                                    "de los glosarios de ",
+                                    "Educational definitions written by RainbowLens and credited on "
+                                    "each card. The catalogue also retains terms adapted from the "
+                                    "glossaries of ",
                                 ),
                                 html.A(
                                     "UNAM ↗",
@@ -1192,7 +1196,7 @@ def register_didactica_callbacks(app: Dash) -> None:
                 else:
                     feedback = (
                         f'{tr("incorrect", language)}. '
-                        f'{tr("correct_answer_was", language)}: "{correct_term}".'
+                        f'{tr("correct_answer_was", language)}: «{correct_term}».'
                     )
                 feedback_class = (
                     "didactica-feedback is-success" if correct else "didactica-feedback is-error"
@@ -1894,4 +1898,4 @@ def _game_hint(game_id: str, identifier: str, language: str) -> str:
     term = get_glossary_term(identifier)
     if term is None:
         raise ValueError("unknown_glossary_term")
-    return f'{tr("hint_text", language)} "{term.term[0].upper()}".'
+    return f'{tr("hint_text", language)} «{term.term[0].upper()}».'

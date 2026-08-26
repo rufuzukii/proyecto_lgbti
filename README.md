@@ -1,65 +1,152 @@
-# proyecto_lgbti
+# RainbowLens DataHub
 
-Plataforma para el análisis y visualización de datos del colectivo LGBTIQ+ en Europa. El objetivo es integrar fuentes oficiales (datos socioeconómicos, legislativos y estadísticos), permitir comparativas entre países y ofrecer salidas reutilizables (gráficos, tablas e informes) para mejorar la toma de decisiones en ámbitos institucionales, educativos y de RRHH.
+RainbowLens DataHub es una aplicación web que centraliza, visualiza y analiza información social, legal y educativa sobre la realidad LGBTIQ+ en Europa y España.
 
-## Enfoque
-- Integración de datos multifuente (CSV, APIs, informes) en bases relacional y no relacional.
-- Análisis comparativo por país, categoría y periodo temporal.
-- Visualizaciones interactivas y exportables.
-- Informes de diversidad basados en evidencia.
+Aplicación pública: [proyecto-lgbti.onrender.com](https://proyecto-lgbti.onrender.com)
 
-## Seguridad básica (configuración)
-- `API_KEY` o `API_KEYS`: clave(s) para acceder a la API (cabecera `X-API-Key`).
-- `AUTH_MAX_ATTEMPTS` y `AUTH_WINDOW_SECONDS`: límites de intentos para login/registro.
+## Qué es RainbowLens DataHub
 
-## Cache
-- `CACHE_DEFAULT_TIMEOUT`: duración de consultas cacheadas, 300 segundos por defecto.
-- `CACHE_VERSION`: versión incluida en el prefijo de claves para invalidar despliegues de forma controlada.
-- `LOCAL_CACHE_MAX_ENTRIES`: máximo de entradas por worker, 512 por defecto.
-- `LOCAL_CACHE_MAX_VALUE_BYTES`: tamaño máximo de un resultado cacheado, 4 MiB por defecto.
-- `LOCAL_CACHE_MAX_TOTAL_BYTES`: presupuesto total por worker, 64 MiB por defecto.
-- `HTTP_GZIP_MIN_BYTES`: tamaño mínimo para comprimir respuestas JSON/CSS/JS, 1024 bytes por defecto.
-- `STATIC_CACHE_MAX_AGE`: caché del navegador para CSS, JavaScript e imágenes; 86400 segundos por defecto.
+El proyecto reúne datos públicos de distintas fuentes en una interfaz bilingüe ES/EN. Permite explorar diferencias entre países, consultar evolución temporal y reutilizar los resultados en actividades educativas e informes orientados a recursos humanos.
 
-La caché es local, acotada, con TTL y aislada por worker. No es una fuente de verdad ni necesita
-servicios externos: tras un reinicio se reconstruye bajo demanda desde PostgreSQL, MongoDB o
-Supabase. Las consultas de indicadores FRA y datos ILGA se invalidan automáticamente cuando un
-administrador aprueba una nueva importación.
+## Objetivos principales
 
-## Despliegue y salud
+- Facilitar la consulta de datos sociales y legales relacionados con la realidad LGBTIQ+.
+- Mantener diferenciados los datos oficiales, el procesamiento realizado por RainbowLens y las proyecciones exploratorias.
+- Ofrecer visualizaciones, tablas e informes comprensibles y exportables.
+- Proporcionar recursos didácticos con definiciones breves y fuentes institucionales.
 
-`render.yaml` crea un único servicio web y configura `GET /health` como health check. El endpoint
-es una comprobación ligera de vida de la aplicación y no abre conexiones externas en cada sondeo.
-Para ejecutar las pruebas de humo contra un despliegue real, define
-`RENDER_EXTERNAL_URL` antes de lanzar `pytest tests/smoke`.
+## Funcionalidades
 
-## Seguridad de cuentas y correo
+- Mapa europeo y ranking legal basado en ILGA-Europe.
+- Estadísticas de encuestas FRA y análisis combinado FRA + ILGA-Europe.
+- Tendencias históricas y proyecciones estadísticas identificadas como estimaciones de RainbowLens.
+- Consulta de información española procedente de informes de FELGTBI+.
+- Diccionario, presentaciones, juegos y Espacio Docente.
+- Generación de informes para contextos de diversidad, inclusión y recursos humanos.
+- Registro con acceso inmediato, autenticación por roles y validación administrativa informativa.
+- Contacto directo mediante [rainbowlensdatahub@gmail.com](mailto:rainbowlensdatahub@gmail.com).
 
-Los registros nuevos quedan pendientes de verificación. Los tokens de verificación y
-recuperación son de un solo uso, se almacenan mediante hash y caducan. El envío se centraliza
-en un servicio que solo informa de éxito cuando el proveedor acepta el mensaje. En local se usa
-`EMAIL_TRANSPORT=smtp`; requiere `SMTP_HOST`, `SMTP_PORT`, `SMTP_USE_SSL`, `SMTP_STARTTLS`,
-`SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `SMTP_TIMEOUT_SECONDS`. Los servicios
-Render Free no permiten salida por los puertos SMTP habituales, por lo que `render.yaml` selecciona
-`EMAIL_TRANSPORT=gmail_api` y requiere `GMAIL_API_CLIENT_ID`, `GMAIL_API_CLIENT_SECRET`,
-`GMAIL_API_REFRESH_TOKEN` y `GMAIL_API_TIMEOUT_SECONDS`. Este transporte usa HTTPS y el permiso
-OAuth mínimo de envío de Gmail; no necesita Redis ni una librería adicional.
+## Fuentes de datos
 
-Los enlaces usan `PUBLIC_BASE_URL`, `RENDER_EXTERNAL_URL` o el hostname externo proporcionado por
-Render, en ese orden. En producción se exige HTTPS. No se guardan credenciales ni URLs privadas
-en el repositorio. Para dominios personalizados se puede definir `TRUSTED_HOSTS` como una lista
-separada por comas. Un error de correo no impide arrancar la aplicación: el intento falla de forma
-controlada y deja la cuenta pendiente y con opción de reenvío.
+- European Union Agency for Fundamental Rights (FRA).
+- ILGA-Europe, Rainbow Map y Annual Review.
+- Federación Estatal LGTBI+ (FELGTBI+).
 
-Los límites se configuran con `EMAIL_TOKEN_MAX_ATTEMPTS`, `EMAIL_TOKEN_WINDOW_SECONDS`,
-`PASSWORD_RESET_MAX_ATTEMPTS` y `PASSWORD_RESET_WINDOW_SECONDS`. Las operaciones sensibles
-(informes, solicitudes de rol, contenido docente y subidas) requieren correo verificado.
+RainbowLens procesa y visualiza estos materiales sin presentarse como afiliado ni respaldado por las instituciones de origen. Cada área conserva sus atribuciones y enlaces oficiales.
 
-## Puntos de entrada
+## Arquitectura general
 
-- `rainbowlens-dash`: inicia la interfaz local mediante el entrypoint declarado en `pyproject.toml`.
-- `uvicorn app.api:app`: inicia la API FastAPI cuando se necesita como servicio independiente.
-- `wsgi.py`: expone el servidor Flask interno de Dash para Gunicorn/Render.
-- `render.yaml`: despliega `wsgi:server` en producción.
-- `requirements.txt`: dependencias Python.
-- `.env`: configuración local sensible; no debe compartirse.
+La interfaz Dash se ejecuta sobre Flask. La API independiente utiliza FastAPI. PostgreSQL almacena cuentas y datos relacionales, MongoDB conserva datos analíticos y Supabase Storage aloja recursos compatibles con S3. La capa `analytics` separa repositorios, normalización, servicios y construcción de figuras.
+
+## Tecnologías principales
+
+- Python 3.14
+- Dash, Flask y Flask-Login
+- Plotly, Pandas y GeoPandas
+- FastAPI
+- PostgreSQL y psycopg
+- MongoDB y PyMongo
+- Supabase Storage y boto3
+- Gunicorn y Render
+
+## Estructura básica del proyecto
+
+```text
+src/app/
+├── analytics/       Datos, servicios y visualizaciones
+├── api/             API FastAPI
+├── auth/            Registro, login y autorización
+├── dash/            Interfaz, páginas y recursos estáticos
+├── edu/             Catálogo y servicios didácticos
+├── import_to_db/    Importadores y validación de fuentes
+├── reports/         Construcción y exportación de informes
+└── users/           Modelo y gestión de usuarios
+tests/               Pruebas unitarias, integración, E2E lógico y humo
+scripts/             Utilidades de mantenimiento verificables
+render.yaml          Definición del servicio de producción
+wsgi.py              Entrada WSGI para Gunicorn
+```
+
+## Instalación local
+
+Requiere Python 3.14.
+
+```bash
+python -m venv .venv
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]"
+```
+
+## Configuración
+
+La configuración local puede cargarse desde un archivo `.env` no versionado. En Render, los mismos nombres se configuran desde el panel de variables de entorno.
+
+Variables principales:
+
+```text
+APP_ENV
+LOCAL_MODE
+SECRET_KEY
+DATABASE_URL
+POSTGRES_SSL_MODE
+MONGO_URI
+MONGO_DB
+```
+
+Variables opcionales según los servicios utilizados:
+
+```text
+API_KEY
+API_KEYS
+SUPABASE_URL
+SUPABASE_S3_ENDPOINT
+SUPABASE_S3_ACCESS_KEY
+SUPABASE_S3_SECRET_KEY
+SUPABASE_S3_REGION
+SUPABASE_STORAGE_BUCKET
+DIDACTIC_SLIDES_BUCKET
+PRIVACY_CONTROLLER_NAME
+PRIVACY_CONTACT_EMAIL
+```
+
+La aplicación no utiliza SMTP ni requiere variables de correo transaccional.
+
+## Ejecución
+
+```bash
+rainbowlens-dash
+```
+
+La API puede iniciarse de forma independiente con:
+
+```bash
+uvicorn app.api:app
+```
+
+## Tests
+
+```bash
+python -m compileall .
+python -m pytest
+python -m pytest --cov=app --cov-report=term-missing
+python -m pyright
+ruff check .
+```
+
+Para las pruebas de humo contra un despliegue real se define `RENDER_EXTERNAL_URL` y se ejecuta `python -m pytest tests/smoke`.
+
+## Despliegue
+
+`render.yaml` describe un único servicio web Gunicorn y utiliza `GET /health` como comprobación de vida. Los secretos de PostgreSQL, MongoDB y almacenamiento se proporcionan únicamente mediante variables seguras de Render.
+
+## Privacidad y uso de datos
+
+La aplicación trabaja principalmente con fuentes públicas agregadas. Las cuentas conservan los datos necesarios para autenticación, perfil y funciones docentes. No se envían correos automáticos ni se comprueba el control de la dirección registrada. La política de privacidad de la aplicación detalla responsables, conservación, derechos y proveedores.
+
+## Fuentes y atribuciones
+
+Las denominaciones, publicaciones y datasets oficiales mantienen su nombre original. Las transformaciones, normalizaciones, comparaciones y proyecciones propias se identifican como procesamiento de RainbowLens DataHub.
+
+## Estado del proyecto
+
+Proyecto académico en desarrollo activo como Trabajo de Fin de Grado. La arquitectura actual es común a local y Render. La integración futura de un servicio transaccional compatible con producción queda fuera del alcance de esta versión.

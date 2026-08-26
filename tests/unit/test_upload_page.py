@@ -144,16 +144,16 @@ def test_upload_callback_accepts_authorized_professional_profile(monkeypatch) ->
     assert result.to_plotly_json()["props"]["children"] == "ok"
 
 
-def test_upload_callback_rejects_unverified_professional_profile(monkeypatch) -> None:
+def test_upload_callback_allows_non_admin_validated_professional_profile(monkeypatch) -> None:
     monkeypatch.setattr(
         upload_page,
         "current_user",
         SimpleNamespace(
             is_authenticated=True,
-            email_verified=False,
+            admin_validated=False,
             role="common",
             user_type="rrhh",
-            get_id=lambda: "rrhh-unverified",
+            get_id=lambda: "rrhh-pending-validation",
         ),
     )
     app = Dash("upload-unverified-test", suppress_callback_exceptions=True)
@@ -172,19 +172,18 @@ def test_upload_callback_rejects_unverified_professional_profile(monkeypatch) ->
         for metadata in app.callback_map.values()
         if metadata["inputs"] == [{"id": "upload-csv", "property": "contents"}]
     )
-    process_calls: list[object] = []
     monkeypatch.setattr(
         upload_page,
         "_process_upload",
-        lambda *_args, **_kwargs: process_calls.append(object()),
+        lambda *_args, **_kwargs: html.Div("ok"),
     )
+    monkeypatch.setattr(upload_page, "rate_limit_key", lambda **_kwargs: "upload-key")
 
     result, _reset = callback(
         _data_uri(b"%PDF-1.4\n%%EOF"), "report.pdf", "FELGTB"
     )
 
-    assert process_calls == []
-    assert result.to_plotly_json()["props"]["className"] == "upload-message upload-message-error"
+    assert result.to_plotly_json()["props"]["children"] == "ok"
 
 
 @pytest.mark.parametrize("user_type", ["comun", "docente"])

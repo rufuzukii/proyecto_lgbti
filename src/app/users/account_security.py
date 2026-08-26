@@ -1,21 +1,16 @@
 from __future__ import annotations
 
-import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from hashlib import sha256
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 from pymongo import ReturnDocument
 
-from app.mongo import get_mongo_collection
+from app.mongo import get_mongo_collection, get_mongo_database
 from app.privacy.policy import get_privacy_policy_config
 
 ACCOUNT_COLLECTION = "user_account_security"
-# This is a MongoDB collection name, not a credential.
-TOKEN_COLLECTION = "user_security_tokens"  # nosec B105
 SECURITY_AUDIT_COLLECTION = "user_security_audit"
-TokenPurpose = Literal["email_verification", "password_reset"]
 
 
 class AccountSecurityStorageError(RuntimeError):
@@ -26,7 +21,9 @@ class AccountSecurityStorageError(RuntimeError):
 class AccountSecurityState:
     user_id: str
     active: bool
-    email_verified: bool
+    admin_validated: bool
+    validated_at: datetime | None
+    validated_by: str | None
     session_version: int
     legacy_default: bool = False
 
@@ -42,7 +39,7 @@ def initialize_new_account(user_id: str) -> AccountSecurityState:
                 "$setOnInsert": {
                     "user_id": user_id,
                     "active": True,
-                    "email_verified": False,
+                    "admin_validated": False,
                     "session_version": 0,
                     "created_at": now,
                 },
@@ -56,6 +53,26 @@ def initialize_new_account(user_id: str) -> AccountSecurityState:
     return _state_from_document(document, user_id=user_id, legacy_default=False)
 
 
+def migrate_account_validation_schema() -> None:
+    """Replace obsolete email-verification state and remove its token collection."""
+    now = datetime.now(UTC)
+    try:
+        collection = get_mongo_collection(ACCOUNT_COLLECTION)
+        collection.update_many(
+            {"admin_validated": {"$exists": False}},
+            {"$set": {"admin_validated": False, "updated_at": now}},
+        )
+        collection.update_many(
+            {"email_verified": {"$exists": True}},
+            {"$unset": {"email_verified": ""}, "$set": {"updated_at": now}},
+        )
+        database = get_mongo_database()
+        if "user_security_tokens" in database.list_collection_names():
+            database.drop_collection("user_security_tokens")
+    except Exception as exc:
+        raise AccountSecurityStorageError("account_validation_migration_failed") from exc
+
+
 def get_account_security(user_id: str) -> AccountSecurityState:
     if not user_id:
         raise ValueError("user_id_required")
@@ -67,7 +84,9 @@ def get_account_security(user_id: str) -> AccountSecurityState:
         return AccountSecurityState(
             user_id=user_id,
             active=True,
-            email_verified=True,
+            admin_validated=False,
+            validated_at=None,
+            validated_by=None,
             session_version=0,
             legacy_default=True,
         )
@@ -96,18 +115,27 @@ def get_account_security_many(user_ids: list[str]) -> dict[str, AccountSecurityS
     return {
         user_id: by_id.get(
             user_id,
-            AccountSecurityState(user_id, True, True, 0, legacy_default=True),
+            AccountSecurityState(user_id, True, False, None, None, 0, legacy_default=True),
         )
         for user_id in unique_ids
     }
 
 
-def mark_email_verified(user_id: str) -> AccountSecurityState:
-    return _update_account_state(user_id, {"email_verified": True}, upsert_defaults=True)
-
-
-def mark_email_unverified(user_id: str) -> AccountSecurityState:
-    return _update_account_state(user_id, {"email_verified": False}, upsert_defaults=True)
+def mark_admin_validated(user_id: str, actor_user_id: str) -> AccountSecurityState:
+    if not user_id or not actor_user_id:
+        raise ValueError("validation_actor_required")
+    if user_id == actor_user_id:
+        raise ValueError("self_manage")
+    now = datetime.now(UTC)
+    return _update_account_state(
+        user_id,
+        {
+            "admin_validated": True,
+            "validated_at": now,
+            "validated_by": actor_user_id,
+        },
+        upsert_defaults=True,
+    )
 
 
 def increment_session_version(user_id: str) -> int:
@@ -119,7 +147,7 @@ def increment_session_version(user_id: str) -> int:
                 "$setOnInsert": {
                     "user_id": user_id,
                     "active": True,
-                    "email_verified": True,
+                    "admin_validated": False,
                     "created_at": now,
                 },
                 "$inc": {"session_version": 1},
@@ -131,59 +159,6 @@ def increment_session_version(user_id: str) -> int:
     except Exception as exc:
         raise AccountSecurityStorageError("account_security_unavailable") from exc
     return max(0, int((document or {}).get("session_version") or 0))
-
-
-def issue_security_token(
-    user_id: str,
-    purpose: TokenPurpose,
-    *,
-    ttl_seconds: int,
-) -> str:
-    if ttl_seconds < 60:
-        raise ValueError("token_ttl_too_short")
-    token = secrets.token_urlsafe(32)
-    now = datetime.now(UTC)
-    token_hash = _hash_token(token)
-    collection = get_mongo_collection(TOKEN_COLLECTION)
-    try:
-        collection.update_many(
-            {"user_id": user_id, "purpose": purpose, "used_at": None},
-            {"$set": {"used_at": now, "invalidated_reason": "superseded"}},
-        )
-        collection.insert_one(
-            {
-                "user_id": user_id,
-                "purpose": purpose,
-                "token_hash": token_hash,
-                "created_at": now,
-                "expires_at": now + timedelta(seconds=ttl_seconds),
-                "used_at": None,
-            }
-        )
-    except Exception as exc:
-        raise AccountSecurityStorageError("security_token_unavailable") from exc
-    return token
-
-
-def consume_security_token(token: str, purpose: TokenPurpose) -> str | None:
-    if not isinstance(token, str) or len(token) < 32 or len(token) > 256:
-        return None
-    now = datetime.now(UTC)
-    try:
-        document = get_mongo_collection(TOKEN_COLLECTION).find_one_and_update(
-            {
-                "token_hash": _hash_token(token),
-                "purpose": purpose,
-                "used_at": None,
-                "expires_at": {"$gt": now},
-            },
-            {"$set": {"used_at": now}},
-            return_document=ReturnDocument.BEFORE,
-        )
-    except Exception as exc:
-        raise AccountSecurityStorageError("security_token_unavailable") from exc
-    user_id = str((document or {}).get("user_id") or "")
-    return user_id or None
 
 
 def record_security_event(user_id: str, action: str) -> None:
@@ -214,7 +189,7 @@ def _update_account_state(
         defaults = {
             "user_id": user_id,
             "active": True,
-            "email_verified": True,
+            "admin_validated": False,
             "session_version": 0,
             "created_at": now,
         }
@@ -243,11 +218,11 @@ def _state_from_document(
     return AccountSecurityState(
         user_id=user_id,
         active=bool(values.get("active", True)),
-        email_verified=bool(values.get("email_verified", legacy_default)),
+        admin_validated=bool(values.get("admin_validated", False)),
+        validated_at=(
+            values.get("validated_at") if isinstance(values.get("validated_at"), datetime) else None
+        ),
+        validated_by=(str(values["validated_by"]) if values.get("validated_by") else None),
         session_version=max(0, int(values.get("session_version") or 0)),
         legacy_default=legacy_default,
     )
-
-
-def _hash_token(token: str) -> str:
-    return sha256(token.encode("utf-8")).hexdigest()

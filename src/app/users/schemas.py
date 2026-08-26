@@ -1,3 +1,4 @@
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, EmailStr, Field, SecretStr
@@ -43,5 +44,7 @@ class UserRead(BaseModel):
     user_type: UserType | None = None
     version: str = ""
     active: bool = True
-    email_verified: bool = True
+    admin_validated: bool = False
+    validated_at: datetime | None = None
+    validated_by: str | None = None
     session_version: int = 0

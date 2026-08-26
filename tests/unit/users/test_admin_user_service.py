@@ -125,7 +125,7 @@ def test_user_page_uses_one_count_and_one_paged_query(monkeypatch: pytest.Monkey
         service,
         "get_account_security_many",
         lambda user_ids: {
-            user_id: service.AccountSecurityState(user_id, True, True, 0)
+            user_id: service.AccountSecurityState(user_id, True, False, None, None, 0)
             for user_id in user_ids
         },
     )
@@ -158,3 +158,32 @@ def test_admin_cannot_modify_their_own_account_from_user_management() -> None:
             organization="RainbowLens",
             actor_user_id=user_id,
         )
+
+
+def test_admin_validation_persists_and_records_actor(monkeypatch: pytest.MonkeyPatch) -> None:
+    target = _user_row(user_type="comun")
+    actor_id = "00000000-0000-0000-0000-000000000099"
+    events: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        service,
+        "get_user_record",
+        lambda _user_id: service._row_to_user_record(target),
+    )
+    monkeypatch.setattr(
+        service,
+        "mark_admin_validated",
+        lambda user_id, validated_by: service.AccountSecurityState(
+            user_id, True, True, None, validated_by, 0
+        ),
+    )
+    monkeypatch.setattr(service, "_record_admin_event_safely", lambda **event: events.append(event))
+    validated = service.validate_user_as_admin(user_id=target["id"], actor_user_id=actor_id)
+    assert validated.admin_validated is True
+    assert validated.validated_by == actor_id
+    assert events[0]["action"] == "account_validated"
+
+
+def test_admin_validation_rejects_self_management() -> None:
+    user_id = "00000000-0000-0000-0000-000000000001"
+    with pytest.raises(ValueError, match="self_manage"):
+        service.validate_user_as_admin(user_id=user_id, actor_user_id=user_id)

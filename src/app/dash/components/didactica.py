@@ -52,17 +52,29 @@ def resource_card(
 
 
 def glossary_card(term: GlossaryTerm, language: str) -> Component:
-    source_label = "sources" if len(term.sources) > 1 else "source"
+    source_label = (
+        "based_on"
+        if term.attribution == "based_on"
+        else ("sources" if len(term.sources) > 1 else "source")
+    )
     source_links: list[Component | str] = []
     for index, source in enumerate(term.sources):
         if index:
             source_links.append(" · ")
         source_links.append(
             html.A(
-                [source.name, " ↗"],
+                [source.name, f" — {source.title}" if source.title else "", " ↗"],
                 href=source.url,
                 target="_blank",
                 rel="noopener noreferrer",
+                **dash_attrs(
+                    {
+                        "aria-label": (
+                            f"{tr('consult_source', language)}: {source.name}"
+                            + (f" — {source.title}" if source.title else "")
+                        )
+                    }
+                ),
             )
         )
     return html.Article(
@@ -70,11 +82,11 @@ def glossary_card(term: GlossaryTerm, language: str) -> Component:
             html.Div(
                 [
                     html.Span(category_name(term.category, language), className="didactica-chip"),
-                    html.H2(term.term),
+                    html.H2(term.localized_term(language)),
                 ],
                 className="didactica-card-heading",
             ),
-            html.P(term.definition, className="didactica-definition"),
+            html.P(term.localized_definition(language), className="didactica-definition"),
             html.P(
                 [html.Strong(f"{tr(source_label, language)}: "), *source_links],
                 className="didactica-glossary-sources",

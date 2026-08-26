@@ -38,7 +38,7 @@ class _User:
     organization = "Rainbow Org"
     role = UserRole.COMMON
     user_type = UserType.DOCENTE
-    email_verified = True
+    admin_validated = False
 
     @staticmethod
     def get_id() -> str:
@@ -119,12 +119,10 @@ def test_recipients_card_omits_transfer_paragraph_without_configured_location() 
         audit_retention_days=90,
         deletion_job_retention_days=30,
         backup_retention=None,
-        email_retention=None,
         access_log_retention=None,
         hosting_location=None,
         postgres_provider=None,
         mongo_provider=None,
-        email_provider=None,
         transfer_safeguards=None,
     )
 

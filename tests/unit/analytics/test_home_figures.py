@@ -22,9 +22,14 @@ def test_home_ilga_choropleth_uses_iso3_locations() -> None:
     assert list(trace.locations) == ["ESP", "PRT"]
     assert list(trace.text) == ["Spain", "Portugal"]
     assert trace.customdata[0][0] == "ES"
-    assert trace.colorbar.x == -0.035
+    assert trace.colorbar.x == -0.015
     assert trace.colorbar.xanchor == "right"
-    assert figure.layout.margin.l == 88
+    assert trace.colorbar.thickness == 10
+    assert trace.colorbar.len == 0.62
+    assert figure.layout.margin.l == 56
+    assert figure.layout.geo.center.lon == 18
+    assert figure.layout.geo.center.lat == 54
+    assert figure.layout.geo.projection.scale == 1.23
     assert figure.layout.dragmode is False
 
 
@@ -45,4 +50,7 @@ def test_home_fra_choropleth_uses_iso3_locations() -> None:
     assert list(trace.z) == [52.0, 47.0]
     assert list(trace.text) == ["Spain", "Portugal"]
     assert trace.customdata[0][0] == "ES"
+    assert trace.colorbar.x == -0.015
+    assert trace.colorbar.thickness == 10
+    assert figure.layout.margin.l == 56
     assert figure.layout.dragmode is False

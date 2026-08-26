@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from app import dash_app as dash_app_module
-from app.mail.service import MailDeliveryError
 from app.users.schemas import UserRead, UserRole, UserType
 from app.users.service import UserRecord
 
 
-def _record(*, verified: bool = False) -> UserRecord:
+def _record(*, admin_validated: bool = False) -> UserRecord:
     return UserRecord(
         id="4cf35a2f-a5df-4c31-914d-2ca72a339139",
         username="Account user",
@@ -20,7 +17,7 @@ def _record(*, verified: bool = False) -> UserRecord:
         password_hash="hash",
         user_type=UserType.COMUN,
         active=True,
-        email_verified=verified,
+        admin_validated=admin_validated,
     )
 
 
@@ -30,29 +27,24 @@ def _app(monkeypatch: pytest.MonkeyPatch):
     return dash_app_module.create_dash_app()
 
 
-def test_registration_creates_unverified_account_and_sends_single_use_link(
+def test_registration_creates_immediately_available_account_without_email(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     created = UserRead(
-        id="4cf35a2f-a5df-4c31-914d-2ca72a339139",
+        id=_record().id,
         username="New user",
         email="new@example.com",
         role=UserRole.COMMON,
         user_type=UserType.COMUN,
-        email_verified=False,
+        admin_validated=False,
     )
-    sent: list[tuple[str, str, str]] = []
-    monkeypatch.setattr(dash_app_module, "create_user", lambda *_args, **_kwargs: created)
-    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
+    created_users: list[UserRead] = []
     monkeypatch.setattr(
         dash_app_module,
-        "send_verification_email",
-        lambda email, token, language: sent.append((email, token, language)),
+        "create_user",
+        lambda *_args, **_kwargs: created_users.append(created) or created,
     )
     app = _app(monkeypatch)
-
-    # Act
     response = app.server.test_client().post(
         "/auth/register",
         data={
@@ -62,61 +54,19 @@ def test_registration_creates_unverified_account_and_sends_single_use_link(
             "password": "a-secure-password",
         },
     )
-
-    # Assert
     assert response.status_code == 302
-    assert response.headers["Location"].endswith(
-        "/es/verificar-correo?status=registration_sent"
-    )
-    assert sent == [("new@example.com", "token", "es")]
+    assert "/es/iniciar-sesion?" in response.headers["Location"]
+    assert "notice=account_created" in response.headers["Location"]
+    assert created_users == [created]
 
 
-def test_registration_delivery_failure_does_not_claim_email_was_sent(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    created = UserRead(
-        id="4cf35a2f-a5df-4c31-914d-2ca72a339139",
-        username="New user",
-        email="new@example.com",
-        role=UserRole.COMMON,
-        user_type=UserType.COMUN,
-        email_verified=False,
-    )
-    monkeypatch.setattr(dash_app_module, "create_user", lambda *_args, **_kwargs: created)
-    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
-
-    def fail_delivery(*_args, **_kwargs):
-        raise MailDeliveryError("mail_delivery_failed")
-
-    monkeypatch.setattr(dash_app_module, "send_verification_email", fail_delivery)
-    app = _app(monkeypatch)
-
-    response = app.server.test_client().post(
-        "/auth/register",
-        data={
-            "csrf_token": "valid",
-            "name": "New user",
-            "email": "new@example.com",
-            "password": "a-secure-password",
-        },
-    )
-
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith(
-        "/es/verificar-correo?status=delivery_failed"
-    )
-
-
-def test_existing_registration_is_redirected_to_recoverable_resend_flow(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_duplicate_email_returns_registration_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         dash_app_module,
         "create_user",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("email_exists")),
     )
     app = _app(monkeypatch)
-
     response = app.server.test_client().post(
         "/auth/register",
         data={
@@ -126,159 +76,58 @@ def test_existing_registration_is_redirected_to_recoverable_resend_flow(
             "password": "a-secure-password",
         },
     )
+    assert "/es/registro?" in response.headers["Location"]
+    assert "error=email_exists" in response.headers["Location"]
 
-    assert response.headers["Location"].endswith("/es/verificar-correo?status=sent")
 
-
-def test_verification_resend_only_claims_success_after_provider_acceptance(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sent: list[tuple[str, str, str]] = []
-    monkeypatch.setattr(dash_app_module, "get_user_record_by_email", lambda _email: _record())
-    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
-    monkeypatch.setattr(
-        dash_app_module,
-        "send_verification_email",
-        lambda email, token, language: sent.append((email, token, language)),
-    )
+def test_non_validated_account_can_sign_in_immediately(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dash_app_module, "authenticate_user", lambda *_args: _record())
     app = _app(monkeypatch)
-
     response = app.server.test_client().post(
-        "/auth/resend-verification",
-        data={"csrf_token": "valid", "email": "account@example.test"},
+        "/auth/login",
+        data={
+            "csrf_token": "valid",
+            "email": "account@example.test",
+            "password": "a-secure-password",
+            "next": "/es/perfil",
+        },
     )
-
-    assert response.headers["Location"].endswith(
-        "/es/verificar-correo?status=resend_sent"
-    )
-    assert sent == [("account@example.test", "token", "es")]
-
-
-def test_verification_resend_provider_failure_is_retryable_and_not_success(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(dash_app_module, "get_user_record_by_email", lambda _email: _record())
-    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
-    monkeypatch.setattr(
-        dash_app_module,
-        "send_verification_email",
-        lambda *_args: (_ for _ in ()).throw(MailDeliveryError("mail_delivery_failed")),
-    )
-    app = _app(monkeypatch)
-
-    response = app.server.test_client().post(
-        "/auth/resend-verification",
-        data={"csrf_token": "valid", "email": "account@example.test"},
-    )
-
-    assert response.headers["Location"].endswith(
-        "/es/verificar-correo?status=delivery_failed"
-    )
-
-
-def test_verification_link_marks_email_and_cannot_expose_token(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    marked: list[str] = []
-    monkeypatch.setattr(
-        dash_app_module,
-        "consume_security_token",
-        lambda token, purpose: _record().id
-        if (token, purpose) == ("valid-token", "email_verification")
-        else None,
-    )
-    monkeypatch.setattr(dash_app_module, "get_user_record", lambda _user_id: _record())
-    monkeypatch.setattr(dash_app_module, "mark_email_verified", marked.append)
-    monkeypatch.setattr(dash_app_module, "record_security_event", lambda *_args: None)
-    app = _app(monkeypatch)
-
-    # Act
-    response = app.server.test_client().get("/account/verify-email/valid-token")
-
-    # Assert
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/es/verificar-correo?status=verified")
-    assert "valid-token" not in response.headers["Location"]
-    assert marked == [_record().id]
+    assert response.headers["Location"].endswith("/es/perfil")
 
 
-def test_password_recovery_response_does_not_reveal_account_existence(
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/account/verify-email/obsolete-token"),
+        ("post", "/auth/resend-verification"),
+        ("post", "/auth/forgot-password"),
+        ("post", "/auth/reset-password"),
+    ],
+)
+def test_removed_email_routes_return_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    path: str,
+) -> None:
+    app = _app(monkeypatch)
+    response = getattr(app.server.test_client(), method)(path)
+    # Dash owns a generic GET route, so a removed POST endpoint may resolve as
+    # either not found or method not allowed. In both cases no legacy handler runs.
+    assert response.status_code in {404, 405}
+
+
+def test_account_validation_migration_runs_when_index_setup_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
-    app = _app(monkeypatch)
-    client = app.server.test_client()
-    monkeypatch.setattr(dash_app_module, "get_user_record_by_email", lambda _email: None)
-
-    # Act
-    missing = client.post(
-        "/auth/forgot-password",
-        data={"csrf_token": "valid", "email": "missing@example.test"},
-    )
-    monkeypatch.setattr(dash_app_module, "get_user_record_by_email", lambda _email: _record())
-    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
-    monkeypatch.setattr(dash_app_module, "send_password_reset_email", lambda *_args: None)
-    existing = client.post(
-        "/auth/forgot-password",
-        data={"csrf_token": "valid", "email": "account@example.test"},
-    )
-
-    # Assert
-    assert missing.status_code == existing.status_code == 302
-    assert missing.headers["Location"] == existing.headers["Location"]
-    assert missing.headers["Location"].endswith("/es/recuperar-contrasena?status=sent")
-
-
-def test_password_reset_requires_matching_policy_then_invalidates_sessions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Arrange
-    changes: list[tuple[str, str]] = []
+    calls: list[str] = []
+    monkeypatch.setenv("MONGO_ENSURE_INDEXES_ON_STARTUP", "false")
     monkeypatch.setattr(
         dash_app_module,
-        "consume_security_token",
-        lambda token, purpose: _record().id
-        if (token, purpose) == ("valid-token", "password_reset")
-        else None,
-    )
-    monkeypatch.setattr(
-        dash_app_module,
-        "set_user_password",
-        lambda *, user_id, new_password: changes.append((user_id, new_password)),
-    )
-    app = _app(monkeypatch)
-    client = app.server.test_client()
-
-    # Act
-    mismatch = client.post(
-        "/auth/reset-password",
-        data={
-            "csrf_token": "valid",
-            "token": "valid-token",
-            "password": "a-secure-password",
-            "password_confirmation": "another-password",
-        },
-    )
-    completed = client.post(
-        "/auth/reset-password",
-        data={
-            "csrf_token": "valid",
-            "token": "valid-token",
-            "password": "a-secure-password",
-            "password_confirmation": "a-secure-password",
-        },
+        "migrate_account_validation_schema",
+        lambda: calls.append("migration"),
     )
 
-    # Assert
-    assert "error=password_mismatch" in mismatch.headers["Location"]
-    assert completed.headers["Location"].endswith(
-        "/es/restablecer-contrasena?status=completed"
-    )
-    assert changes == [(_record().id, "a-secure-password")]
+    _app(monkeypatch)
 
-
-def test_unverified_user_contract_is_explicit() -> None:
-    user = SimpleNamespace(is_authenticated=True, email_verified=False)
-
-    assert dash_app_module._is_email_verified(user) is False
+    assert calls == ["migration"]

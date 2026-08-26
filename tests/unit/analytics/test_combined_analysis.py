@@ -354,8 +354,8 @@ def test_compatibility_hides_often_and_builds_dynamic_messages() -> None:
     assert support["ranking_gap"] is False
     assert support["any_visualization"] is False
     assert support["download"] is False
-    assert '"Often"' in message
-    assert '"conduct at school due to being LGBTIQ"' in message
+    assert "«Often»" in message
+    assert "«conduct at school due to being LGBTIQ»" in message
 
 
 def test_age_bucket_has_only_two_methodological_messages_and_no_analysis() -> None:
@@ -381,8 +381,8 @@ def test_age_bucket_has_only_two_methodological_messages_and_no_analysis() -> No
     assert support["download"] is False
     assert len(messages) == 2
     rendered = _component_text(messages)
-    assert '"10-14y.o."' in rendered
-    assert f'"{indicator}"' in rendered
+    assert "«10-14y.o.»" in rendered
+    assert f"«{indicator}»" in rendered
 
 
 def test_combined_service_uses_nearest_legal_year_in_one_shared_payload(monkeypatch) -> None:

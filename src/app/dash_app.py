@@ -27,7 +27,7 @@ from app.cache import init_cache
 from app.config import get_app_config
 from app.dash.components.source_attribution import build_footer_attributions
 from app.dash.i18n import dash_attrs, text_attrs, ui_text, ui_text_component
-from app.dash.layouts.about import build_about_layout, register_about_callbacks
+from app.dash.layouts.about import build_about_layout
 from app.dash.layouts.error_page import (
     build_database_unavailable_layout,
     build_error_layout,
@@ -63,12 +63,6 @@ from app.dash.pages.reports import (
     build_reports_layout,
     register_reports_callbacks,
 )
-from app.dash.pages.session.account import (
-    build_forgot_password_layout,
-    build_reset_password_layout,
-    build_verification_required_layout,
-    build_verify_email_layout,
-)
 from app.dash.pages.session.login import build_login_layout
 from app.dash.pages.session.register import build_register_layout
 from app.dash.pages.spain import build_spain_layout, register_spain_callbacks
@@ -103,7 +97,6 @@ from app.import_to_db.import_log import (
     list_pending_import_logs,
 )
 from app.logging_config import configure_secure_logging
-from app.mail.service import MailDeliveryError
 from app.mongo_indexes import initialize_mongo_indexes
 from app.privacy.policy import get_privacy_policy_config
 from app.privacy.service import (
@@ -113,14 +106,7 @@ from app.privacy.service import (
     personal_data_export_bytes,
 )
 from app.trends import build_trends_layout, register_trend_callbacks
-from app.users.account_emails import send_password_reset_email, send_verification_email
-from app.users.account_security import (
-    AccountSecurityStorageError,
-    consume_security_token,
-    issue_security_token,
-    mark_email_verified,
-    record_security_event,
-)
+from app.users.account_security import migrate_account_validation_schema
 from app.users.schemas import UserRegister, UserRole, UserType
 from app.users.service import (
     UserRecord,
@@ -128,11 +114,10 @@ from app.users.service import (
     authenticate_user,
     create_user,
     get_user_record,
-    get_user_record_by_email,
     list_users_page,
-    set_user_password,
     update_user_as_admin,
     update_user_profile,
+    validate_user_as_admin,
 )
 
 logger = logging.getLogger(__name__)
@@ -185,7 +170,7 @@ class SessionUser(UserMixin):
     organization: str | None
     user_type: UserType | None = None
     active: bool = True
-    email_verified: bool = True
+    admin_validated: bool = False
     session_version: int = 0
 
 
@@ -218,6 +203,10 @@ def create_dash_app() -> Dash:
         except Exception:
             logger.warning("mongo_index_initialization_failed", exc_info=True)
     else:
+        try:
+            migrate_account_validation_schema()
+        except Exception:
+            logger.warning("account_validation_migration_failed", exc_info=True)
         logger.info("mongo_index_initialization_skipped run_with=python_-m_app.mongo_indexes")
     _register_error_routes(app)
 
@@ -270,7 +259,6 @@ def create_dash_app() -> Dash:
     register_reports_callbacks(app)
     register_spain_callbacks(app)
     register_home_callbacks(app)
-    register_about_callbacks(app)
     register_didactica_callbacks(app)
     register_admin_users_callbacks(app)
     return app
@@ -368,8 +356,6 @@ def _build_page_for_route(
             return build_login_layout(next_path=route_path("upload", language))
         if not user_has_permission(current_user, Permission.UPLOAD_DATA):
             return build_access_denied_layout()
-        if not _is_email_verified(current_user):
-            return build_verification_required_layout()
         return build_upload_layout()
     if route_id == "login":
         if current_user.is_authenticated:
@@ -390,16 +376,6 @@ def _build_page_for_route(
         return build_register_layout(
             next_path=_safe_next(_first_param(params, "next"), route_path("profile", language)),
             error_code=_first_param(params, "error"),
-        )
-    if route_id == "verify_email":
-        return build_verify_email_layout(_first_param(params, "status"))
-    if route_id == "forgot_password":
-        return build_forgot_password_layout(_first_param(params, "status"))
-    if route_id == "reset_password":
-        return build_reset_password_layout(
-            _first_param(params, "token"),
-            status=_first_param(params, "status"),
-            error=_first_param(params, "error"),
         )
     if route_id == "admin":
         if not current_user.is_authenticated:
@@ -663,7 +639,6 @@ def _register_error_routes(app: Dash) -> None:
                     "/assets/",
                     "/static/",
                     "/didactica/docentes/descargar/",
-                    "/account/verify-email/",
                 )
             )
         ):
@@ -721,17 +696,6 @@ def _register_auth_routes(app: Dash) -> None:
         window_seconds=int(os.getenv("AUTH_WINDOW_SECONDS", "300")),
         namespace="dash-auth",
     )
-    verification_limiter = create_rate_limiter(
-        max_attempts=int(os.getenv("EMAIL_TOKEN_MAX_ATTEMPTS", "4")),
-        window_seconds=int(os.getenv("EMAIL_TOKEN_WINDOW_SECONDS", "900")),
-        namespace="email-verification",
-    )
-    recovery_limiter = create_rate_limiter(
-        max_attempts=int(os.getenv("PASSWORD_RESET_MAX_ATTEMPTS", "4")),
-        window_seconds=int(os.getenv("PASSWORD_RESET_WINDOW_SECONDS", "900")),
-        namespace="password-reset",
-    )
-
     @app.server.post("/auth/login")
     def login():
         next_path = _safe_next(request.form.get("next"), "/user")
@@ -789,11 +753,11 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/register", error="invalid_payload", next_path=next_path)
 
         try:
-            created_user = create_user(payload, role=UserRole.COMMON)
+            create_user(payload, role=UserRole.COMMON)
         except ValueError as exc:
             rate_limiter.record_failure(rate_key)
             if str(exc) == "email_exists":
-                return _redirect("/verify-email", status="sent")
+                return _redirect("/register", error="email_exists", next_path=next_path)
             return _redirect("/register", error="registration_failed", next_path=next_path)
         except UserStorageError:
             logger.exception("register_storage_error")
@@ -802,125 +766,8 @@ def _register_auth_routes(app: Dash) -> None:
             logger.exception("register_failed")
             return _redirect("/register", error="storage", next_path=next_path)
 
-        delivery_status = "registration_sent"
-        try:
-            verification_token = issue_security_token(
-                created_user.id,
-                "email_verification",
-                ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
-            )
-            send_verification_email(
-                str(created_user.email or payload.email),
-                verification_token,
-                _navigation_language(next_path),
-            )
-        except AccountSecurityStorageError:
-            logger.exception("verification_email_token_failed")
-            delivery_status = "delivery_failed"
-        except MailDeliveryError as exc:
-            logger.warning(
-                "verification_email_delivery_failed category=%s code=%s",
-                exc.category.value,
-                exc.code,
-            )
-            delivery_status = "delivery_failed"
         rate_limiter.reset(rate_key)
-        return _redirect("/verify-email", status=delivery_status)
-
-    @app.server.get("/account/verify-email/<token>")
-    def verify_email(token: str):
-        try:
-            user_id = consume_security_token(token, "email_verification")
-            record = get_user_record(user_id or "") if user_id else None
-            if record is None:
-                return _redirect("/verify-email", status="invalid")
-            mark_email_verified(record.id)
-            try:
-                record_security_event(record.id, "email_verified")
-            except AccountSecurityStorageError:
-                logger.exception("email_verification_audit_failed")
-        except AccountSecurityStorageError, UserStorageError:
-            logger.exception("email_verification_failed")
-            return _redirect("/verify-email", status="invalid")
-        return _redirect("/verify-email", status="verified")
-
-    @app.server.post("/auth/resend-verification")
-    def resend_verification():
-        if not validate_csrf_token(request.form.get("csrf_token")):
-            return _redirect("/verify-email", status="csrf")
-        email = request.form.get("email", "")
-        rate_key = rate_limit_key(subject=email.casefold()[:254], scope="email-verification")
-        delivery_status = "sent"
-        if not verification_limiter.is_blocked(rate_key):
-            try:
-                record = get_user_record_by_email(email)
-                if record is not None and record.active and not record.email_verified:
-                    token = issue_security_token(
-                        record.id,
-                        "email_verification",
-                        ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
-                    )
-                    send_verification_email(record.email, token, _navigation_language())
-                    delivery_status = "resend_sent"
-                verification_limiter.record_failure(rate_key)
-            except MailDeliveryError as exc:
-                logger.warning(
-                    "verification_resend_failed category=%s code=%s",
-                    exc.category.value,
-                    exc.code,
-                )
-                delivery_status = "delivery_failed"
-            except AccountSecurityStorageError, UserStorageError:
-                logger.exception("verification_resend_failed")
-                delivery_status = "delivery_failed"
-        return _redirect("/verify-email", status=delivery_status)
-
-    @app.server.post("/auth/forgot-password")
-    def forgot_password():
-        if not validate_csrf_token(request.form.get("csrf_token")):
-            return _redirect("/forgot-password", status="sent")
-        email = request.form.get("email", "")
-        rate_key = rate_limit_key(subject=email.casefold()[:254], scope="password-reset-request")
-        if not recovery_limiter.is_blocked(rate_key):
-            try:
-                record = get_user_record_by_email(email)
-                if record is not None and record.active:
-                    token = issue_security_token(
-                        record.id,
-                        "password_reset",
-                        ttl_seconds=int(os.getenv("PASSWORD_RESET_TTL_SECONDS", "3600")),
-                    )
-                    send_password_reset_email(record.email, token, _navigation_language())
-                recovery_limiter.record_failure(rate_key)
-            except AccountSecurityStorageError, MailDeliveryError, UserStorageError:
-                logger.exception("password_reset_request_failed")
-        return _redirect("/forgot-password", status="sent")
-
-    @app.server.post("/auth/reset-password")
-    def reset_password():
-        token = request.form.get("token", "")
-        if not validate_csrf_token(request.form.get("csrf_token")):
-            return _redirect("/reset-password", token=token, error="invalid_token")
-        password = request.form.get("password", "")
-        confirmation = request.form.get("password_confirmation", "")
-        if password != confirmation:
-            return _redirect("/reset-password", token=token, error="password_mismatch")
-        if not (12 <= len(password) <= 128):
-            return _redirect("/reset-password", token=token, error="weak_password")
-        rate_key = rate_limit_key(subject=token[:128], scope="password-reset-consume")
-        if recovery_limiter.is_blocked(rate_key):
-            return _redirect("/reset-password", error="invalid_token")
-        try:
-            user_id = consume_security_token(token, "password_reset")
-            if not user_id:
-                recovery_limiter.record_failure(rate_key)
-                return _redirect("/reset-password", error="invalid_token")
-            set_user_password(user_id=user_id, new_password=password)
-        except AccountSecurityStorageError, UserStorageError:
-            logger.exception("password_reset_failed")
-            return _redirect("/reset-password", error="storage")
-        recovery_limiter.reset(rate_key)
-        return _redirect("/reset-password", status="completed")
+        return _redirect("/login", notice="account_created", next_path=next_path)
 
     @app.server.post("/auth/logout")
     def logout():
@@ -937,7 +784,6 @@ def _register_auth_routes(app: Dash) -> None:
         if not validate_csrf_token(request.form.get("csrf_token")):
             return _redirect("/user", mode="edit", error="csrf")
 
-        previous_email = str(getattr(current_user, "email", "") or "").casefold()
         try:
             updated = update_user_profile(
                 user_id=current_user.get_id(),
@@ -958,26 +804,6 @@ def _register_auth_routes(app: Dash) -> None:
         login_user(_session_user_from_record(updated), remember=False, fresh=True)
         session["_security_version"] = updated.session_version
         rotate_csrf_token()
-        if updated.email.casefold() != previous_email:
-            delivery_status = "sent"
-            try:
-                token = issue_security_token(
-                    updated.id,
-                    "email_verification",
-                    ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
-                )
-                send_verification_email(updated.email, token, _navigation_language())
-            except AccountSecurityStorageError:
-                logger.exception("profile_verification_token_failed")
-                delivery_status = "delivery_failed"
-            except MailDeliveryError as exc:
-                logger.warning(
-                    "profile_verification_email_failed category=%s code=%s",
-                    exc.category.value,
-                    exc.code,
-                )
-                delivery_status = "delivery_failed"
-            return _redirect("/verify-email", status=delivery_status)
         return _redirect("/user", status="profile_updated")
 
     @app.server.post("/admin/users")
@@ -995,6 +821,21 @@ def _register_auth_routes(app: Dash) -> None:
             "q": (request.form.get("q") or "")[:120] or None,
             "page": str(_positive_int(request.form.get("page"), default=1)),
         }
+        if action == "validate":
+            if user_id == current_user.get_id():
+                return _redirect("/admin", error="self_manage", **return_params)
+            try:
+                validate_user_as_admin(
+                    user_id=user_id,
+                    actor_user_id=current_user.get_id(),
+                )
+            except ValueError as exc:
+                return _redirect("/admin", error=str(exc), **return_params)
+            except UserStorageError:
+                logger.exception("admin_user_validation_failed")
+                return _redirect("/admin", error="storage", **return_params)
+            return _redirect("/admin", status="user_validated", **return_params)
+
         if action == "delete":
             if user_id == current_user.get_id():
                 return _redirect("/admin", error="self_delete", **return_params)
@@ -1186,7 +1027,7 @@ def _session_user_from_record(record: UserRecord) -> SessionUser:
         organization=record.organization,
         user_type=record.user_type,
         active=record.active,
-        email_verified=record.email_verified,
+        admin_validated=record.admin_validated,
         session_version=record.session_version,
     )
 
@@ -1304,10 +1145,6 @@ def _safe_next(value: str | None, default: str = "/es/perfil") -> str:
 
 def _is_admin() -> bool:
     return is_admin_user(current_user)
-
-
-def _is_email_verified(user: object) -> bool:
-    return bool(getattr(user, "email_verified", True))
 
 
 def _redirect(path: str, **params: str | None):

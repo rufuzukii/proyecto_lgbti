@@ -896,8 +896,8 @@ def _configuration_panel(
                 ),
             ),
             _field(
-                "Organización (opcional; aparecerá en el PDF)",
-                "Organisation (optional; shown in the PDF)",
+                "Organización (opcional. Aparecerá en el PDF)",
+                "Organisation (optional. It will appear in the PDF)",
                 dcc.Input(
                     id="report-organization-input",
                     value=config.organization,
@@ -907,8 +907,8 @@ def _configuration_panel(
                 ),
             ),
             _field(
-                "Autor o departamento (opcional; aparecerá en el PDF)",
-                "Author or department (optional; shown in the PDF)",
+                "Autor o departamento (opcional. Aparecerá en el PDF)",
+                "Author or department (optional. It will appear in the PDF)",
                 dcc.Input(
                     id="report-author-input",
                     value=config.author,
@@ -1219,9 +1219,9 @@ def _preview_content(content) -> list[Component]:
                 "Contexto" if language == "es" else "Context",
                 [
                     (
-                        f'El informe analiza "{content.indicator}" para {content.configuration.year or "el periodo disponible"}.'
+                        f'El informe analiza «{content.indicator}» para {content.configuration.year or "el periodo disponible"}.'
                         if language == "es"
-                        else f"The report analyses “{content.indicator}” for {content.configuration.year or 'the available period'}."
+                        else f"The report analyses «{content.indicator}» for {content.configuration.year or 'the available period'}."
                     )
                 ],
             )

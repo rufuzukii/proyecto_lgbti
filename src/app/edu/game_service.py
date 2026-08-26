@@ -17,7 +17,7 @@ def new_game_state(
 ) -> dict[str, Any]:
     if game_id != "guess_term":
         raise ValueError("unknown_game")
-    catalog_ids = {term.id for term in list_glossary_terms()}
+    catalog_ids = {term.id for term in list_glossary_terms() if term.guess_game}
     identifiers = (
         [str(identifier) for identifier in term_ids if str(identifier) in catalog_ids]
         if term_ids is not None
@@ -43,11 +43,10 @@ def new_game_state(
 
 
 def guess_options(term_id: str, language: str) -> list[dict[str, str]]:
-    del language
-    terms = list(list_glossary_terms())
+    terms = [term for term in list_glossary_terms() if term.guess_game]
     correct = next(term for term in terms if term.id == term_id)
     alternatives = [term for term in terms if term.id != term_id]
     random.SystemRandom().shuffle(alternatives)
     selected = [correct, *alternatives[:3]]
     random.SystemRandom().shuffle(selected)
-    return [{"label": term.term, "value": term.id} for term in selected]
+    return [{"label": term.localized_term(language), "value": term.id} for term in selected]

@@ -22,18 +22,6 @@ services:
         value: "6"
       - key: AUTH_WINDOW_SECONDS
         value: "300"
-      - key: EMAIL_VERIFICATION_TTL_SECONDS
-        value: "86400"
-      - key: EMAIL_TOKEN_MAX_ATTEMPTS
-        value: "4"
-      - key: EMAIL_TOKEN_WINDOW_SECONDS
-        value: "900"
-      - key: PASSWORD_RESET_TTL_SECONDS
-        value: "3600"
-      - key: PASSWORD_RESET_MAX_ATTEMPTS
-        value: "4"
-      - key: PASSWORD_RESET_WINDOW_SECONDS
-        value: "900"
       - key: DATABASE_URL
         sync: false
       - key: POSTGRES_SSL_MODE
@@ -126,10 +114,6 @@ services:
         value: "10"
       - key: REPORT_RATE_WINDOW_SECONDS
         value: "3600"
-      - key: CONTACT_MAX_ATTEMPTS
-        value: "5"
-      - key: CONTACT_WINDOW_SECONDS
-        value: "3600"
       - key: PRIVACY_CONTROLLER_NAME
         sync: false
       - key: PRIVACY_CONTACT_EMAIL
@@ -150,8 +134,6 @@ services:
         value: "3600"
       - key: PRIVACY_BACKUP_RETENTION
         sync: false
-      - key: PRIVACY_EMAIL_RETENTION
-        sync: false
       - key: PRIVACY_ACCESS_LOG_RETENTION
         sync: false
       - key: PRIVACY_HOSTING_LOCATION
@@ -160,33 +142,5 @@ services:
         sync: false
       - key: PRIVACY_MONGO_PROVIDER
         sync: false
-      - key: PRIVACY_EMAIL_PROVIDER
-        sync: false
       - key: PRIVACY_TRANSFER_SAFEGUARDS
         sync: false
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: "465"
-      - key: SMTP_USE_SSL
-        value: "true"
-      - key: SMTP_STARTTLS
-        value: "false"
-      - key: SMTP_USERNAME
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false
-      - key: SMTP_TIMEOUT_SECONDS
-        value: "15"
-      - key: EMAIL_TRANSPORT
-        value: gmail_api
-      - key: GMAIL_API_CLIENT_ID
-        sync: false
-      - key: GMAIL_API_CLIENT_SECRET
-        sync: false
-      - key: GMAIL_API_REFRESH_TOKEN
-        sync: false
-      - key: GMAIL_API_TIMEOUT_SECONDS
-        value: "10"

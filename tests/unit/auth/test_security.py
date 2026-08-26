@@ -15,7 +15,6 @@ from app.config import get_app_config
 from app.dash_app import _safe_next
 from app.http_security import client_ip, configure_flask_security, rate_limit_key
 from app.logging_config import redact_sensitive_text
-from app.mail.service import MailDeliveryError
 from app.users import service as user_service
 from app.users.schemas import UserRegister
 
@@ -118,40 +117,24 @@ def test_logs_redact_credentials_and_configured_secrets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     configured_secret = "configured-secret-value"
-    smtp_secret = "smtp-secret-value"
     monkeypatch.setenv("SECRET_KEY", configured_secret)
-    monkeypatch.setenv("SMTP_PASSWORD", smtp_secret)
 
     redacted = redact_sensitive_text(
         "postgresql://user:database-password@db.example/app "
-        f"token=browser-token value={configured_secret} smtp={smtp_secret}"
+        f"token=browser-token value={configured_secret}"
     )
 
     assert "database-password" not in redacted
     assert "browser-token" not in redacted
     assert configured_secret not in redacted
-    assert smtp_secret not in redacted
-    assert redacted.count("***") >= 4
+    assert redacted.count("***") >= 3
 
 
-@pytest.mark.parametrize(
-    ("delivery_fails", "expected_delivery"),
-    [(False, "sent"), (True, "failed")],
-)
-def test_auth_api_reports_real_verification_delivery_status(
+def test_auth_api_creates_an_immediately_available_account(
     monkeypatch: pytest.MonkeyPatch,
-    delivery_fails: bool,
-    expected_delivery: str,
 ) -> None:
     user = SimpleNamespace(id="user-id", email="user@example.com")
     monkeypatch.setattr("app.auth.app.create_user", lambda _payload: user)
-    monkeypatch.setattr("app.auth.app.issue_security_token", lambda *_args, **_kwargs: "token")
-
-    def send(*_args: object) -> None:
-        if delivery_fails:
-            raise MailDeliveryError("mail_delivery_failed")
-
-    monkeypatch.setattr("app.auth.app.send_verification_email", send)
     response = create_auth_app().test_client().post(
         "/auth/register",
         json={
@@ -163,8 +146,8 @@ def test_auth_api_reports_real_verification_delivery_status(
 
     assert response.status_code == 201
     assert response.get_json() == {
-        "status": "verification_pending",
-        "email_delivery": expected_delivery,
+        "status": "account_created",
+        "user_id": "user-id",
     }
 
 

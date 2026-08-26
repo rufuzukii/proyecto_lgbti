@@ -17,9 +17,6 @@ from app.auth.rate_limit import create_rate_limiter
 from app.config import get_app_config
 from app.http_security import configure_flask_security, rate_limit_key
 from app.logging_config import configure_secure_logging
-from app.mail.service import MailDeliveryError
-from app.users.account_emails import send_verification_email
-from app.users.account_security import AccountSecurityStorageError, issue_security_token
 from app.users.schemas import UserRegister, UserRole, UserType
 from app.users.service import UserStorageError, authenticate_user, create_user, get_user
 
@@ -31,7 +28,7 @@ class AuthUser(UserMixin):
     role: UserRole
     user_type: UserType | None = None
     active: bool = True
-    email_verified: bool = True
+    admin_validated: bool = False
     session_version: int = 0
 
 
@@ -82,7 +79,7 @@ def create_auth_app() -> Flask:
             role=user.role,
             user_type=user.user_type,
             active=user.active,
-            email_verified=user.email_verified,
+            admin_validated=user.admin_validated,
             session_version=user.session_version,
         )
 
@@ -111,31 +108,8 @@ def create_auth_app() -> Flask:
             logger.exception("register_storage_error")
             return jsonify({"status": "error", "message": "storage_not_configured"}), 503
 
-        delivery_status = "sent"
-        try:
-            token = issue_security_token(
-                user.id,
-                "email_verification",
-                ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
-            )
-            send_verification_email(str(user.email or data.email), token)
-        except AccountSecurityStorageError:
-            logger.exception("verification_email_token_failed")
-            delivery_status = "failed"
-        except MailDeliveryError as exc:
-            logger.warning(
-                "verification_email_delivery_failed category=%s code=%s",
-                exc.category.value,
-                exc.code,
-            )
-            delivery_status = "failed"
         rate_limiter.reset(rate_key)
-        return jsonify(
-            {
-                "status": "verification_pending",
-                "email_delivery": delivery_status,
-            }
-        ), 201
+        return jsonify({"status": "account_created", "user_id": user.id}), 201
 
     @app.post("/auth/login")
     def login():
@@ -171,7 +145,7 @@ def create_auth_app() -> Flask:
                 role=record.role,
                 user_type=record.user_type,
                 active=record.active,
-                email_verified=record.email_verified,
+                admin_validated=record.admin_validated,
                 session_version=record.session_version,
             )
         )

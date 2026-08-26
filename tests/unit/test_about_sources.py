@@ -2,10 +2,8 @@ import logging
 from typing import Any
 from unittest.mock import patch
 
-from dash import Dash
-
 from app.dash.components.ilga_criteria import build_ilga_country_criteria_panel
-from app.dash.layouts.about import build_about_layout, register_about_callbacks
+from app.dash.layouts.about import build_about_layout
 from app.source_attribution import FRA_SURVEYS
 
 REQUIRED_URLS = {
@@ -146,13 +144,6 @@ def test_shared_ilga_criterion_shows_percentage_and_ranking_contribution() -> No
     assert "0.16 puntos" in _text_content(tables[0])
     assert "50 %" in _text_content(tables[1])
     assert "0.55 puntos" in _text_content(tables[1])
-
-
-def test_about_registers_no_local_ilga_callbacks() -> None:
-    app = Dash("about-no-interactive-ilga", suppress_callback_exceptions=True)
-    register_about_callbacks(app)
-
-    assert all("about-ilga" not in key for key in app.callback_map)
 
 
 def _walk(component: Any):

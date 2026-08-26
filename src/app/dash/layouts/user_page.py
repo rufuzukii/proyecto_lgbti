@@ -257,20 +257,6 @@ def _profile_card(
                         email or "No definido",
                         email or "Not set",
                     ),
-                    _detail_row(
-                        "Correo verificado",
-                        "Verified email",
-                        (
-                            "S\u00ed"
-                            if bool(getattr(current_user, "email_verified", True))
-                            else "Pendiente"
-                        ),
-                        (
-                            "Yes"
-                            if bool(getattr(current_user, "email_verified", True))
-                            else "Pending"
-                        ),
-                    ),
                     _detail_row("Organización", "Organization", organization_es, organization_en),
                 ],
                 className="profile-details user-detail-grid",

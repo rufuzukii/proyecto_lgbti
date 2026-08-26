@@ -237,6 +237,7 @@
 .didactica-glossary-sources {
   font-size: 0.84rem;
   margin-top: auto;
+  overflow-wrap: anywhere;
   padding-top: 0.2rem;
 }
 

@@ -94,11 +94,11 @@ UI_TEXT = {
     "ilga_normalization_note_caution": {
         "es": (
             "Los valores se muestran en una escala común para facilitar la comparación "
-            "visual entre ediciones; esto no elimina las diferencias metodológicas."
+            "visual entre ediciones. Esto no elimina las diferencias metodológicas."
         ),
         "en": (
             "Values are shown on a common scale to facilitate visual comparison between "
-            "editions; this does not remove methodological differences."
+            "editions. This does not remove methodological differences."
         ),
     },
     "footer_attributions_title": {
@@ -246,13 +246,11 @@ UI_TEXT = {
     "home_trends_description": {
         "es": (
             "Analiza la evolución histórica de la situación legal LGBTIQ+ y consulta "
-            "proyecciones estadísticas exploratorias basadas en los datos disponibles; "
-            "no son predicciones oficiales."
+            "proyecciones estadísticas exploratorias basadas en los datos disponibles."
         ),
         "en": (
             "Analyse the historical evolution of the LGBTIQ+ legal situation and review "
-            "exploratory statistical projections based on available data; they are not "
-            "official predictions."
+            "exploratory statistical projections based on available data."
         ),
     },
     "home_trends_action": {"es": "Ver Tendencias", "en": "View Trends"},

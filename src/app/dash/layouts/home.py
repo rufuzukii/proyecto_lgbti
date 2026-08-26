@@ -42,6 +42,7 @@ from app.dash.components.source_attribution import build_source_attribution
 from app.dash.graph_config import fixed_europe_map_config
 from app.dash.i18n import (
     COUNTRY_NAMES,
+    attribute_attrs,
     country_labels,
     dash_attrs,
     text,
@@ -186,13 +187,10 @@ def build_home_layout() -> Component:
                                                 id="home-map-export-button",
                                                 type="button",
                                                 className="home-map-export-button",
-                                                title="Descargar imagen / Download image",
+                                                title="Descargar imagen",
                                                 **dash_attrs(
                                                     {
-                                                        "aria-label": (
-                                                            "Descargar imagen del mapa de Europa / "
-                                                            "Download Europe map image"
-                                                        ),
+                                                        "aria-label": "Descargar imagen del mapa de Europa",
                                                         "aria-controls": "home-map-graph",
                                                         "data-chart-export": "true",
                                                         "data-chart-export-target": "home-map-graph",
@@ -200,6 +198,16 @@ def build_home_layout() -> Component:
                                                         "data-export-width": "1600",
                                                         "data-export-height": "900",
                                                         "data-export-scale": "2",
+                                                        **attribute_attrs(
+                                                            "title",
+                                                            "Descargar imagen",
+                                                            "Download image",
+                                                        ),
+                                                        **attribute_attrs(
+                                                            "aria-label",
+                                                            "Descargar imagen del mapa de Europa",
+                                                            "Download Europe map image",
+                                                        ),
                                                     }
                                                 ),
                                             ),
@@ -248,10 +256,12 @@ def build_home_layout() -> Component:
                                         className="home-legal-ranking",
                                         **dash_attrs(
                                             {
-                                                "aria-label": (
-                                                    "Ranking legal de países / "
-                                                    "Country legal ranking"
-                                                )
+                                                "aria-label": "Ranking legal de países",
+                                                **attribute_attrs(
+                                                    "aria-label",
+                                                    "Ranking legal de países",
+                                                    "Country legal ranking",
+                                                ),
                                             }
                                         ),
                                     ),
@@ -983,17 +993,6 @@ def _country_status_card(
             **text_attrs(summary_es, summary_en),
         )
     )
-    if _status_uses_language_fallback(status):
-        children.append(
-            html.P(
-                "Algunos textos solo están disponibles en su idioma original.",
-                className="country-status-card__translation-note",
-                **text_attrs(
-                    "Algunos textos solo están disponibles en su idioma original.",
-                    "Some descriptions are only available in their original language.",
-                ),
-            )
-        )
     if details_children:
         children.append(
             html.Details(
@@ -1505,18 +1504,6 @@ def _status_translated_list(status: dict[str, Any], key: str) -> tuple[list[str]
     es = [str(item) for item in es_value] if isinstance(es_value, list) else fallback
     en = [str(item) for item in en_value] if isinstance(en_value, list) else es
     return es, en
-
-
-def _status_uses_language_fallback(status: dict[str, Any]) -> bool:
-    scalar_keys = ("title", "summary", "legal_context", "social_context", "observations")
-    list_keys = ("positive_developments", "main_challenges")
-    for key in (*scalar_keys, *list_keys):
-        if not status.get(key):
-            continue
-        translations = status.get(f"{key}_i18n")
-        if not isinstance(translations, dict) or not translations.get("es") or not translations.get("en"):
-            return True
-    return False
 
 
 def _clean_status_observations(value: Any) -> str:

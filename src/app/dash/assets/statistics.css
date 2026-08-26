@@ -1190,13 +1190,19 @@
 .stats-map-visual-grid {
   align-items: stretch;
   display: grid;
-  grid-template-columns: minmax(0, 2.65fr) minmax(235px, 0.9fr);
+  grid-template-columns: minmax(0, 3.4fr) minmax(210px, 0.72fr);
   min-width: 0;
   overflow: hidden;
 }
 
 .stats-map-visual-grid > .stats-deferred-graph-slot {
   min-width: 0;
+}
+
+/* Dash writes height: 100% inline after Plotly mounts. Keep the map responsive. */
+.stats-mapbox-graph.europe-map-container {
+  height: min(68vh, 680px) !important;
+  min-height: 480px !important;
 }
 
 .stats-map-ranking {
@@ -2100,6 +2106,20 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
 
   .stats-map-ranking-list {
     max-height: 370px;
+  }
+}
+
+@media (max-width: 767px) {
+  .stats-mapbox-graph.europe-map-container {
+    height: 58vh !important;
+    min-height: 340px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .stats-mapbox-graph.europe-map-container {
+    height: 52vh !important;
+    min-height: 300px !important;
   }
 }
 

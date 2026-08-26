@@ -223,8 +223,8 @@ def _fra_metadata(year: int | None) -> SourceAttributionMetadata:
             f"Source: FRA, {source_name}{f', {survey_year}' if survey else ''}. Data adapted and "
             f"visualised by {PROCESSED_BY}."
         ),
-        last_updated_es="Encuesta utilizada más reciente: 2023; resultados publicados en 2024.",
-        last_updated_en="Most recent survey used: 2023; results published in 2024.",
+        last_updated_es="Encuesta utilizada más reciente: 2023. Resultados publicados en 2024.",
+        last_updated_en="Most recent survey used: 2023. Results published in 2024.",
         description_es=(
             "Datos de encuesta sobre experiencias, discriminación, seguridad, condiciones "
             "de vida y derechos de las personas LGBTIQ+ en Europa."
@@ -246,14 +246,14 @@ def _ilga_metadata(year: int | None) -> SourceAttributionMetadata:
         "Los datos legales y las puntuaciones mostradas en este apartado se basan en "
         "ILGA-Europe's Rainbow Map y en sus publicaciones anuales. Agradecemos a "
         "ILGA-Europe su labor de recopilación, análisis y difusión de información sobre "
-        "la situación de los derechos LGBTI en Europa. Los datos han sido procesados y "
+        "la situación de los derechos LGBTIQ+ en Europa. Los datos han sido procesados y "
         f"adaptados para su visualización en {PROCESSED_BY}. {PROCESSED_BY} no está "
         "afiliada ni representa oficialmente a ILGA-Europe."
     )
     full_en = (
         "The legal data and scores shown in this section are based on ILGA-Europe's "
         "Rainbow Map and its annual publications. We thank ILGA-Europe for its work "
-        "collecting, analysing and sharing information on the situation of LGBTI rights "
+        "collecting, analysing and sharing information on the situation of LGBTIQ+ rights "
         "in Europe. The data have been processed and adapted for visualisation in "
         f"{PROCESSED_BY}. {PROCESSED_BY} is not affiliated with and does not officially "
         "represent ILGA-Europe."
@@ -294,11 +294,11 @@ def _ilga_metadata(year: int | None) -> SourceAttributionMetadata:
         ),
         description_es=(
             "Puntuaciones, rankings, criterios jurídicos y contexto anual sobre leyes y "
-            "políticas que afectan a las personas LGBTI en Europa."
+            "políticas que afectan a las personas LGBTIQ+ en Europa."
         ),
         description_en=(
             "Scores, rankings, legal criteria and annual context on laws and policies "
-            "affecting LGBTI people in Europe."
+            "affecting LGBTIQ+ people in Europe."
         ),
         official_links=(
             SourceLink("ILGA-Europe", "ILGA-Europe", ILGA_URL),

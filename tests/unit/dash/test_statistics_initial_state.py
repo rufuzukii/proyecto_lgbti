@@ -77,7 +77,11 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     graphs = [item for item in _walk(layout) if type(item).__name__ == "Graph"]
     assert [graph.id for graph in graphs] == ["stats-map-graph"]
     assert _component_by_id(layout, "stats-map-graph-slot") is not None
-    assert _component_by_id(layout, "stats-map-ranking") is not None
+    ranking = cast(Any, _component_by_id(layout, "stats-map-ranking"))
+    assert ranking is not None
+    ranking_props = ranking.to_plotly_json()["props"]
+    assert ranking_props["aria-label"] == "Ranking de países"
+    assert ranking_props["data-i18n-aria-label-en"] == "Country ranking"
     map_graph = cast(Any, _component_by_id(layout, "stats-map-graph"))
     map_props = map_graph.to_plotly_json()["props"]
     assert "figure" not in map_props

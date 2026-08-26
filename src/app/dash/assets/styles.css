@@ -835,8 +835,7 @@ body[data-theme="dark"] .user-role-badge {
   color: var(--color-text);
 }
 
-body[data-theme="dark"] .profile-detail,
-body[data-theme="dark"] .about-contact-upload {
+body[data-theme="dark"] .profile-detail {
   background: var(--panel-muted);
   border-color: var(--panel-border);
   color: var(--color-text);
@@ -879,18 +878,6 @@ body[data-theme="dark"] .auth-input {
   background-color: #0f1522 !important;
   border-color: var(--color-border);
   color: var(--color-text) !important;
-}
-
-body[data-theme="dark"] .about-contact-textarea {
-  background: #0f1522;
-  border-color: var(--color-border);
-  color: var(--color-text);
-}
-
-body[data-theme="dark"] .about-contact-readonly {
-  background: #1a2232;
-  border-color: var(--color-border);
-  color: var(--color-text-muted);
 }
 
 body[data-theme="dark"] .auth-input-disabled {

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pymongo import ReturnDocument
@@ -18,10 +17,6 @@ class _MemoryCollection:
 
     def find(self, query: dict[str, Any]) -> list[dict[str, Any]]:
         return [deepcopy(item) for item in self.documents if _matches(item, query)]
-
-    def insert_one(self, document: dict[str, Any]) -> object:
-        self.documents.append(deepcopy(document))
-        return object()
 
     def update_many(self, query: dict[str, Any], update: dict[str, Any]) -> object:
         for document in self.documents:
@@ -44,14 +39,22 @@ class _MemoryCollection:
                 return deepcopy(document) if return_document == ReturnDocument.AFTER else before
         if not upsert:
             return None
-        document = {
-            key: value
-            for key, value in query.items()
-            if not isinstance(value, dict)
-        }
+        document = {key: value for key, value in query.items() if not isinstance(value, dict)}
         _apply_update(document, update, inserting=True)
         self.documents.append(document)
         return deepcopy(document) if return_document == ReturnDocument.AFTER else None
+
+
+class _MemoryDatabase:
+    def __init__(self, names: list[str]) -> None:
+        self.names = names
+        self.dropped: list[str] = []
+
+    def list_collection_names(self) -> list[str]:
+        return self.names
+
+    def drop_collection(self, name: str) -> None:
+        self.dropped.append(name)
 
 
 def _matches(document: dict[str, Any], query: dict[str, Any]) -> bool:
@@ -60,7 +63,7 @@ def _matches(document: dict[str, Any], query: dict[str, Any]) -> bool:
         if isinstance(expected, dict):
             if "$in" in expected and actual not in expected["$in"]:
                 return False
-            if "$gt" in expected and not (actual is not None and actual > expected["$gt"]):
+            if "$exists" in expected and (key in document) is not expected["$exists"]:
                 return False
         elif actual != expected:
             return False
@@ -71,6 +74,8 @@ def _apply_update(document: dict[str, Any], update: dict[str, Any], *, inserting
     if inserting:
         document.update(deepcopy(update.get("$setOnInsert") or {}))
     document.update(deepcopy(update.get("$set") or {}))
+    for key in (update.get("$unset") or {}):
+        document.pop(key, None)
     for key, increment in (update.get("$inc") or {}).items():
         document[key] = int(document.get(key) or 0) + int(increment)
 
@@ -85,97 +90,56 @@ def _collections(monkeypatch) -> dict[str, _MemoryCollection]:
     return collections
 
 
-def test_new_accounts_start_active_but_unverified(monkeypatch) -> None:
-    # Arrange
+def test_new_accounts_start_active_and_not_admin_validated(monkeypatch) -> None:
     _collections(monkeypatch)
-
-    # Act
     created = account_security.initialize_new_account("user-1")
     loaded = account_security.get_account_security("user-1")
-
-    # Assert
     assert created.active is True
-    assert created.email_verified is False
+    assert created.admin_validated is False
+    assert created.validated_at is None
     assert loaded == created
 
 
-def test_legacy_accounts_without_metadata_remain_compatible(monkeypatch) -> None:
-    # Arrange
-    _collections(monkeypatch)
-
-    # Act
-    state = account_security.get_account_security("legacy-user")
-
-    # Assert
-    assert state.active is True
-    assert state.email_verified is True
-    assert state.legacy_default is True
-
-
-def test_token_is_hashed_single_use_and_purpose_specific(monkeypatch) -> None:
-    # Arrange
-    collections = _collections(monkeypatch)
-
-    # Act
-    token = account_security.issue_security_token(
-        "user-1",
-        "email_verification",
-        ttl_seconds=600,
-    )
-    wrong_purpose = account_security.consume_security_token(token, "password_reset")
-    first_use = account_security.consume_security_token(token, "email_verification")
-    second_use = account_security.consume_security_token(token, "email_verification")
-
-    # Assert
-    stored = collections[account_security.TOKEN_COLLECTION].documents[0]
-    assert token not in str(stored)
-    assert len(stored["token_hash"]) == 64
-    assert wrong_purpose is None
-    assert first_use == "user-1"
-    assert second_use is None
-
-
-def test_issuing_a_new_token_invalidates_the_previous_one(monkeypatch) -> None:
-    # Arrange
-    _collections(monkeypatch)
-    previous = account_security.issue_security_token(
-        "user-1", "password_reset", ttl_seconds=600
-    )
-
-    # Act
-    current = account_security.issue_security_token("user-1", "password_reset", ttl_seconds=600)
-
-    # Assert
-    assert account_security.consume_security_token(previous, "password_reset") is None
-    assert account_security.consume_security_token(current, "password_reset") == "user-1"
-
-
-def test_expired_token_is_rejected(monkeypatch) -> None:
-    # Arrange
-    collections = _collections(monkeypatch)
-    token = account_security.issue_security_token(
-        "user-1", "email_verification", ttl_seconds=600
-    )
-    collections[account_security.TOKEN_COLLECTION].documents[0]["expires_at"] = (
-        datetime.now(UTC) - timedelta(seconds=1)
-    )
-
-    # Act / Assert
-    assert account_security.consume_security_token(token, "email_verification") is None
-
-
-def test_session_version_is_persistent_without_changing_technical_active_state(
-    monkeypatch,
-) -> None:
-    # Arrange
+def test_admin_validation_is_persistent_and_attributed(monkeypatch) -> None:
     _collections(monkeypatch)
     account_security.initialize_new_account("user-1")
+    validated = account_security.mark_admin_validated("user-1", "admin-1")
+    loaded = account_security.get_account_security("user-1")
+    assert validated.admin_validated is True
+    assert validated.validated_by == "admin-1"
+    assert validated.validated_at is not None
+    assert loaded == validated
 
-    # Act
+
+def test_admin_cannot_validate_own_account(monkeypatch) -> None:
+    _collections(monkeypatch)
+    try:
+        account_security.mark_admin_validated("admin-1", "admin-1")
+    except ValueError as exc:
+        assert str(exc) == "self_manage"
+    else:
+        raise AssertionError("self validation must be rejected")
+
+
+def test_schema_migration_defaults_existing_accounts_and_removes_legacy_email_data(
+    monkeypatch,
+) -> None:
+    collections = _collections(monkeypatch)
+    security = collections.setdefault(account_security.ACCOUNT_COLLECTION, _MemoryCollection())
+    security.documents.append({"user_id": "legacy", "email_verified": True})
+    database = _MemoryDatabase(["user_security_tokens"])
+    monkeypatch.setattr(account_security, "get_mongo_database", lambda: database)
+    account_security.migrate_account_validation_schema()
+    assert security.documents[0]["admin_validated"] is False
+    assert "email_verified" not in security.documents[0]
+    assert database.dropped == ["user_security_tokens"]
+
+
+def test_session_version_is_persistent_without_changing_validation(monkeypatch) -> None:
+    _collections(monkeypatch)
+    account_security.initialize_new_account("user-1")
     session_version = account_security.increment_session_version("user-1")
     loaded = account_security.get_account_security("user-1")
-
-    # Assert
     assert session_version == 1
-    assert loaded.active is True
+    assert loaded.admin_validated is False
     assert loaded.session_version == 1

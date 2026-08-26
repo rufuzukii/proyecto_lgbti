@@ -547,8 +547,8 @@ def _conclusions(
     else:
         assessment = _t(
             config.language,
-            "La diferencia describe la posición respecto al valor central; no permite afirmar si el resultado es mejor o peor.",
-            "The difference describes the position relative to the midpoint; it does not establish whether the result is better or worse.",
+            "La diferencia describe la posición respecto al valor central. No permite afirmar si el resultado es mejor o peor.",
+            "The difference describes the position relative to the midpoint. It does not establish whether the result is better or worse.",
         )
     return [f"{primary_name}: {assessment}"]
 
@@ -574,8 +574,8 @@ def _methodology(
             ),
             _t(
                 language,
-                "La relación observada resume si ambas medidas tienden a variar juntas; no demuestra que una sea la causa de la otra.",
-                "The observed relationship summarises whether both measures tend to vary together; it does not prove that one causes the other.",
+                "La relación observada resume si ambas medidas tienden a variar juntas. No demuestra que una sea la causa de la otra.",
+                "The observed relationship summarises whether both measures tend to vary together. It does not prove that one causes the other.",
             ),
         ]
     if "fra" in source_key:
@@ -587,8 +587,8 @@ def _methodology(
             ),
             _t(
                 language,
-                "Las diferencias se expresan en puntos porcentuales; no implican causalidad ni representan datos internos de la organización.",
-                "Differences are expressed in percentage points; they do not imply causality or represent internal organisation data.",
+                "Las diferencias se expresan en puntos porcentuales. No implican causalidad ni representan datos internos de la organización.",
+                "Differences are expressed in percentage points. They do not imply causality or represent internal organisation data.",
             ),
         ]
     return [
@@ -691,16 +691,16 @@ def _limitations(
             items.append(
                 _t(
                     config.language,
-                    f"La encuesta social ({fra_year}) y la puntuación legal ({ilga_year}) corresponden a años diferentes; la comparación es exploratoria y no simultánea.",
-                    f"The social survey ({fra_year}) and legal score ({ilga_year}) are from different years; the comparison is exploratory rather than simultaneous.",
+                    f"La encuesta social ({fra_year}) y la puntuación legal ({ilga_year}) corresponden a años diferentes. La comparación es exploratoria y no simultánea.",
+                    f"The social survey ({fra_year}) and legal score ({ilga_year}) are from different years. The comparison is exploratory rather than simultaneous.",
                 )
             )
     if not is_hr_relevant_indicator(indicator):
         items.append(
             _t(
                 config.language,
-                "El indicador seleccionado no se ha clasificado como directamente laboral; las recomendaciones mostradas son generales.",
-                "The selected indicator was not classified as directly workplace-related; recommendations shown are general.",
+                "El indicador seleccionado no se ha clasificado como directamente laboral. Las recomendaciones mostradas son generales.",
+                "The selected indicator was not classified as directly workplace-related. The recommendations shown are general.",
             )
         )
     missing = sum(1 for row in result.get("ranking") or [] if row.get("value") is None)
@@ -895,7 +895,7 @@ def _chart_explanation(
     explanations = {
         "ranking": (
             _t(language, "Ordena los países según el valor del indicador seleccionado.", "Ranks countries by the selected indicator value."),
-            _t(language, "Una posición alta solo significa un valor numérico mayor; no implica automáticamente una situación mejor.", "A high position only means a higher numeric value; it is not automatically better."),
+            _t(language, "Una posición alta solo significa un valor numérico mayor. No implica automáticamente una situación mejor.", "A high position only means a higher numeric value. It is not automatically better."),
         ),
         "average": (
             _t(language, "Compara los países elegidos con la media de los países que tienen un dato válido.", "Compares selected countries with the mean among countries with a valid value."),
@@ -915,7 +915,7 @@ def _chart_explanation(
         ),
         "scatter": (
             _t(language, "Cada punto representa un país y cruza su resultado social con su protección legal.", "Each point is a country, linking its social result and legal protection."),
-            _t(language, "Más a la derecha significa mayor puntuación legal; más arriba significa mayor porcentaje para la respuesta elegida.", "Further right means a higher legal score; further up means a higher percentage for the selected answer."),
+            _t(language, "Más a la derecha significa mayor puntuación legal. Más arriba significa mayor porcentaje para la respuesta elegida.", "Further right means a higher legal score. Further up means a higher percentage for the selected answer."),
         ),
         "quadrants": (
             _t(language, "Sitúa cada país respecto a la mediana legal y la mediana social del conjunto comparable.", "Places each country relative to the legal and social medians of the comparable set."),

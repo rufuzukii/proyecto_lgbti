@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from dash import Dash, html
+from dash import html
 from dash.development.base_component import Component
 
-from app.dash.components.contact_form import (
-    build_contact_panel,
-    register_contact_form_callbacks,
-)
+from app.contact import CONTACT_EMAIL, contact_mailto
 from app.dash.components.page_structure import build_page_header
 from app.dash.i18n import dash_attrs, text, text_attrs, ui_text, ui_text_component
 from app.dash.layouts.navigation import build_navbar
+from app.dash.routes import current_route_language
 from app.source_attribution import FELGTBI_REPORTS_URL, FRA_SURVEYS, ILGA_RAINBOW_MAP_URL
 
 PRIMARY_SOURCES = [
@@ -302,7 +300,7 @@ def build_about_layout() -> Component:
                         ],
                         className="about-recommended-section",
                     ),
-                    build_contact_panel(),
+                    _contact_section(),
                 ],
                 className="about-shell app-page app-page-container",
             ),
@@ -449,5 +447,37 @@ def _source_card_link(link: Any) -> Component:
     )
 
 
-def register_about_callbacks(app: Dash) -> None:
-    register_contact_form_callbacks(app)
+def _contact_section() -> Component:
+    language = current_route_language()
+    description_es = "Para contactar con RainbowLens DataHub, envía un correo electrónico a"
+    description_en = "To contact RainbowLens DataHub, send an email to"
+    aria_es = f"Enviar un correo electrónico a {CONTACT_EMAIL}"
+    aria_en = f"Send an email to {CONTACT_EMAIL}"
+    return html.Section(
+        [
+            html.H2("¡Contáctanos!", **text_attrs("¡Contáctanos!", "Contact us!")),
+            html.P(
+                [
+                    html.Span(
+                        f"{description_es} ",
+                        **text_attrs(f"{description_es} ", f"{description_en} "),
+                    ),
+                    html.A(
+                        CONTACT_EMAIL,
+                        href=contact_mailto(language),
+                        **dash_attrs(
+                            {
+                                "aria-label": aria_en if language == "en" else aria_es,
+                                "data-i18n-aria-label-es": aria_es,
+                                "data-i18n-aria-label-en": aria_en,
+                            }
+                        ),
+                    ),
+                    ".",
+                ],
+                className="about-lead",
+            ),
+        ],
+        id="about-contact",
+        className="about-contact-card user-card",
+    )

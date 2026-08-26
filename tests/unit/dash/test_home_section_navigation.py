@@ -179,8 +179,8 @@ def test_home_cards_describe_the_current_user_facing_features() -> None:
     )
     assert "segmentaciones" not in UI_TEXT["home_statistics_description"]["es"]
     assert "plantillas de informe" not in UI_TEXT["home_profile_description"]["es"]
-    assert "no son predicciones oficiales" in UI_TEXT["home_trends_description"]["es"]
-    assert "not official predictions" in UI_TEXT["home_trends_description"]["en"]
+    assert "no son predicciones oficiales" not in UI_TEXT["home_trends_description"]["es"]
+    assert "not official predictions" not in UI_TEXT["home_trends_description"]["en"]
     assert "FELGTBI+" in UI_TEXT["home_spain_description"]["es"]
     assert "glosario" in UI_TEXT["home_didactics_description"]["es"]
     assert "sources, methodology and purpose" in UI_TEXT["home_about_description"]["en"]

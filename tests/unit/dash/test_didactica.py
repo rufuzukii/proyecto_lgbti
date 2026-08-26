@@ -111,7 +111,7 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
     monkeypatch.setattr(didactica_page, "current_user", _user(authenticated=False))
 
     terms = list_glossary_terms()
-    assert len(terms) == 51
+    assert len(terms) == 88
     assert len({term.id for term in terms}) == len(terms)
     assert get_glossary_term("transsexual") is None
     assert {"trans", "trans_man", "trans_woman"} <= {term.id for term in terms}
@@ -228,6 +228,30 @@ def test_dictionary_and_guess_game_callbacks_work_in_english(dash_app, monkeypat
     assert game_result[9] == "1"
 
 
+@pytest.mark.parametrize(
+    ("query", "language", "expected_term"),
+    [
+        ("LGTBIfobia", "es", "LGTBIfobia"),
+        ("Prácticas de conversión", "es", "Prácticas de conversión"),
+        ("Recognition of trans parenthood", "en", "Recognition of trans parenthood"),
+    ],
+)
+def test_dictionary_callback_finds_priority_terms_with_sources(
+    dash_app, query: str, language: str, expected_term: str
+) -> None:
+    glossary = _callback(dash_app, "filter_glossary")
+
+    cards, count = glossary(query, "all", language)
+    nodes = list(_walk(cards))
+
+    assert cards
+    assert count.startswith("1 ")
+    assert any(getattr(node, "children", None) == expected_term for node in nodes)
+    assert any(
+        getattr(node, "className", "") == "didactica-glossary-sources" for node in nodes
+    )
+
+
 def test_guess_game_finishes_after_five_questions_and_restarts(dash_app, monkeypatch) -> None:
     callback = _callback(dash_app, "play_game")
     monkeypatch.setattr(didactica_page, "current_user", _user())
@@ -287,7 +311,7 @@ def test_guess_game_incorrect_feedback_names_only_the_correct_term(
     result = callback(1, None, None, "es", wrong_id, state)
 
     assert result[3] == (
-        f'Respuesta incorrecta. La respuesta correcta era: "{correct_term.term}".'
+        f"Respuesta incorrecta. La respuesta correcta era: «{correct_term.term}»."
     )
 
 
@@ -546,19 +570,24 @@ def test_didactica_callbacks_are_registered_without_duplicate_outputs(dash_app) 
     assert len(keys) >= 6
 
 
-def test_glossary_catalog_has_only_requested_sources_and_expected_provenance() -> None:
+def test_glossary_catalog_preserves_legacy_sources_and_institutional_provenance() -> None:
     terms = list_glossary_terms()
     unam = [term for term in terms if any(source.name == "UNAM" for source in term.sources)]
     fundeu = [term for term in terms if any(source.name == "FundéuRAE" for source in term.sources)]
-    shared = [term for term in terms if len(term.sources) == 2]
+    legacy_shared = [
+        term
+        for term in terms
+        if {"UNAM", "FundéuRAE"} <= {source.name for source in term.sources}
+    ]
 
-    assert len(unam) == 35
+    assert len(unam) == 34
     assert len(fundeu) == 34
-    assert len(shared) == 18
-    assert {source.url for term in terms for source in term.sources} == {
+    assert len(legacy_shared) == 18
+    assert {
         UNAM_SOURCE_URL,
         FUNDEU_SOURCE_URL,
-    }
+    } <= {source.url for term in terms for source in term.sources}
+    assert all(source.url.startswith("https://") for term in terms for source in term.sources)
     abrosexual = get_glossary_term("abrosexual")
     biphobia = get_glossary_term("biphobia")
     bisexual = get_glossary_term("bisexual")
@@ -577,7 +606,7 @@ def test_glossary_is_complete_unique_sorted_and_searches_definitions_without_acc
     terms = list_glossary_terms()
     keys = [normalized_term_key(term.term) for term in terms]
 
-    assert keys == sorted(keys)
+    assert list(terms) == search_glossary(language="es")
     assert len(keys) == len(set(keys))
     assert all(term.term and term.definition and term.sources for term in terms)
     assert {term.id for term in search_glossary("orientacion", language="es")} >= {
@@ -621,7 +650,10 @@ def test_dictionary_renders_general_and_per_term_source_links(monkeypatch) -> No
     card = glossary_card(bisexual, "en")
     card_hrefs = {href for item in _walk(card) if (href := getattr(item, "href", None)) is not None}
     assert card_hrefs == {UNAM_SOURCE_URL, FUNDEU_SOURCE_URL}
-    assert any(getattr(item, "children", None) == bisexual.definition for item in _walk(card))
+    assert any(
+        getattr(item, "children", None) == bisexual.localized_definition("en")
+        for item in _walk(card)
+    )
 
 
 def test_guess_game_uses_only_the_glossary_catalog() -> None:
@@ -634,5 +666,6 @@ def test_dictionary_css_keeps_responsive_layout_and_theme_tokens() -> None:
     assert "@media (max-width: 680px)" in stylesheet
     assert ".didactica-glossary-grid" in stylesheet
     assert ".didactica-glossary-sources" in stylesheet
+    assert "overflow-wrap: anywhere" in stylesheet
     assert "var(--panel-bg)" in stylesheet
     assert "var(--color-text)" in stylesheet

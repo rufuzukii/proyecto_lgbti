@@ -91,13 +91,6 @@
     "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
   },
   {
-    "id": "demiboy",
-    "term": "Demichico",
-    "definition": "Persona de cualquier género asignado que se identifica parcialmente con ser hombre y con características masculinas.",
-    "category": "gender_identity",
-    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}]
-  },
-  {
     "id": "demigender",
     "term": "Demigénero",
     "definition": "Persona que mantiene una conexión parcial, pero no plena, con una identidad de género concreta o con el concepto de género. El término puede abarcar identidades no binarias con esa conexión parcial.",
@@ -212,7 +205,7 @@
   {
     "id": "homoparentality",
     "term": "Homoparentalidad",
-    "definition": "Relación entre dos madres lesbianas o dos padres gais y sus hijas e hijos derivada del vínculo jurídico de filiación; también se denomina homomaternidad u homopaternidad.",
+    "definition": "Relación entre dos madres lesbianas o dos padres gais y sus hijas e hijos derivada del vínculo jurídico de filiación. También se denomina homomaternidad u homopaternidad.",
     "category": "family_diversity",
     "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
   },
@@ -232,10 +225,19 @@
   },
   {
     "id": "intersex",
-    "term": "Intersexual",
-    "definition": "Persona que presenta variaciones de las características sexuales respecto de la norma genital dimórfica basada en dos formas biológicas vinculadas con la reproducción.",
-    "category": "sex_characteristics",
-    "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+    "term": "Intersexualidad",
+    "term_en": "Intersex",
+    "definition": "Realidad de las personas que nacen con variaciones naturales de las características sexuales, como la anatomía sexual o reproductiva, los cromosomas o las hormonas. No determina por sí misma la orientación sexual ni la identidad de género.",
+    "definition_en": "The reality of people born with natural variations in sex characteristics, such as sexual or reproductive anatomy, chromosomes or hormones. It does not in itself determine sexual orientation or gender identity.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": true},
+    "sources": [
+      {"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"},
+      {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"},
+      {"name": "Boletín Oficial del Estado (BOE)", "title": "Ley 4/2023", "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-5366"},
+      {"name": "Council of Europe", "title": "Recommendation on Equal Rights for Intersex Persons", "url": "https://www.coe.int/en/web/sogi/intersexrecommendation"}
+    ]
   },
   {
     "id": "lesbian",
@@ -254,7 +256,7 @@
   {
     "id": "lgbtiq",
     "term": "LGTBIQ+",
-    "definition": "Siglas que reúnen los términos lesbiana, gay, trans, bisexual, intersexual y queer. El signo más incluye otras diversidades sexuales y de género; existen variantes del acrónimo que explicitan más identidades.",
+    "definition": "Siglas que reúnen los términos lesbiana, gay, trans, bisexual, intersexual y queer. El signo más incluye otras diversidades sexuales y de género. Existen variantes del acrónimo que explicitan más identidades.",
     "category": "gender_concepts",
     "sources": [{"name": "UNAM", "url": "https://coordinaciongenero.unam.mx/avada_portfolio/glosario-de-las-diversidades-sexogenericas-lgbtiq/"}, {"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
   },
@@ -355,5 +357,466 @@
     "definition": "Persona cuyo género no coincide con el sexo que le fue asignado al nacer, con independencia de que siga o no algún tratamiento.",
     "category": "gender_identity",
     "sources": [{"name": "FundéuRAE", "url": "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"}]
+  },
+  {
+    "id": "sexual_diversity",
+    "term": "Diversidad sexual",
+    "term_en": "Sexual diversity",
+    "definition": "Variedad de orientaciones sexuales y de formas de vivir la sexualidad y las relaciones afectivo-sexuales. Incluye experiencias diversas y no se limita a la homosexualidad.",
+    "definition_en": "The variety of sexual orientations and ways of experiencing sexuality and affective or sexual relationships. It includes diverse experiences and is not limited to homosexuality.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "aliases": ["sexual orientations", "orientaciones sexuales"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "World Health Organization (WHO)", "title": "Gender and health", "url": "https://www.who.int/news-room/questions-and-answers/item/gender-and-health"}]
+  },
+  {
+    "id": "gender_diversity",
+    "term": "Diversidad de género",
+    "term_en": "Gender diversity",
+    "definition": "Variedad de identidades, expresiones y experiencias relacionadas con el género. Reconoce que no todas las personas se identifican o expresan dentro de expectativas binarias o sociales únicas.",
+    "definition_en": "The variety of identities, expressions and experiences related to gender. It recognises that not everyone identifies or expresses themselves within a single binary or social expectation.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "aliases": ["gender identities", "gender expressions", "identidades de género"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "World Health Organization (WHO)", "title": "Gender and health", "url": "https://www.who.int/news-room/questions-and-answers/item/gender-and-health"}]
+  },
+  {
+    "id": "bodily_diversity",
+    "term": "Diversidad corporal",
+    "term_en": "Bodily diversity",
+    "definition": "Diversidad natural de los cuerpos y de sus características sexuales, incluidas sus posibles variaciones. Este enfoque evita reducir esas diferencias a categorías médicas que deban corregirse.",
+    "definition_en": "The natural diversity of bodies and their sex characteristics, including their possible variations. This approach avoids reducing those differences to medical categories that must be corrected.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "Council of Europe", "title": "Recommendation on Equal Rights for Intersex Persons", "url": "https://www.coe.int/en/web/sogi/intersexrecommendation"}]
+  },
+  {
+    "id": "gender_diverse_people",
+    "term": "Personas de género diverso",
+    "term_en": "Gender-diverse people",
+    "definition": "Expresión amplia para personas cuyas identidades o expresiones de género se sitúan fuera de las categorías socialmente normativas. Puede incluir personas no binarias, agénero y otras identidades, pero no designa una identidad única obligatoria.",
+    "definition_en": "An umbrella expression for people whose gender identities or expressions fall outside socially normative categories. It may include non-binary, agender and other identities, but it is not one compulsory identity.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "aliases": ["género diverso", "gender diverse", "non-binary", "agénero"],
+    "games": {"guess_term": false, "word_search": false},
+    "sources": [{"name": "United Nations High Commissioner for Refugees (UNHCR)", "title": "Master glossary of terms", "url": "https://www.unhcr.org/glossary"}]
+  },
+  {
+    "id": "trans_realities",
+    "term": "Realidad trans",
+    "term_en": "Trans realities",
+    "definition": "Conjunto diverso de experiencias, necesidades, situaciones sociales, reconocimiento y derechos de las personas trans. Describe realidades humanas y sociales, no un diagnóstico médico.",
+    "definition_en": "The diverse experiences, needs, social circumstances, recognition and rights of trans people. It describes human and social realities, not a medical diagnosis.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "Boletín Oficial del Estado (BOE)", "title": "Ley 4/2023", "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-5366"},
+      {"name": "World Health Organization (WHO)", "title": "Gender incongruence and transgender health in the ICD", "url": "https://www.who.int/standards/classifications/frequently-asked-questions/gender-incongruence-and-transgender-health-in-the-icd"}
+    ]
+  },
+  {
+    "id": "trans_rights",
+    "term": "Derechos trans",
+    "term_en": "Trans rights",
+    "definition": "Derechos y garantías dirigidos a asegurar a las personas trans igualdad, no discriminación, dignidad, autonomía, reconocimiento de su identidad y acceso efectivo a servicios y derechos.",
+    "definition_en": "Rights and safeguards intended to ensure equality, non-discrimination, dignity, autonomy, recognition of identity and effective access to services and rights for trans people.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "Boletín Oficial del Estado (BOE)", "title": "Ley 4/2023", "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-5366"},
+      {"name": "Council of Europe", "title": "Promoting human rights and equality for LGBTI persons", "url": "https://www.coe.int/en/web/sogi/promoting-hr-for-lgbti-persons"}
+    ]
+  },
+  {
+    "id": "lgtbiphobia",
+    "term": "LGTBIfobia",
+    "term_en": "LGBTI-phobia",
+    "definition": "Rechazo, prejuicio, discriminación, intolerancia u hostilidad hacia las personas LGBTIQ+ por serlo o por ser percibidas como tales. También puede dirigirse a sus familiares o a quienes defienden sus derechos.",
+    "definition_en": "Rejection, prejudice, discrimination, intolerance or hostility towards LGBTIQ+ people because they are, or are perceived to be, LGBTIQ+. It may also target their relatives or people who defend their rights.",
+    "category": "diversity_identities",
+    "attribution": "based_on",
+    "aliases": ["LGBTI-phobia", "LGBTIfobia"],
+    "games": {"guess_term": true, "word_search": true},
+    "sources": [{"name": "Boletín Oficial del Estado (BOE)", "title": "Ley 4/2023", "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-5366"}]
+  },
+  {
+    "id": "conversion_practices",
+    "term": "Prácticas de conversión",
+    "term_en": "Conversion practices",
+    "definition": "Prácticas o esfuerzos que pretenden cambiar, reprimir o suprimir la orientación sexual, la identidad de género o la expresión de género de una persona. El concepto es más amplio que la expresión «terapia de conversión».",
+    "definition_en": "Practices or efforts intended to change, repress or suppress a person's sexual orientation, gender identity or gender expression. The concept is broader than the expression “conversion therapy”.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "aliases": ["terapias de conversión", "conversion therapy"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "Council of Europe", "title": "PACE Resolution 2643 (2026)", "url": "https://pace.coe.int/en/files/35883/html"},
+      {"name": "Boletín Oficial del Estado (BOE)", "title": "Ley 4/2023", "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-5366"}
+    ]
+  },
+  {
+    "id": "hate_crimes",
+    "term": "Delitos de odio",
+    "term_en": "Hate crimes",
+    "definition": "Conductas tipificadas como delito cuya víctima, lugar u objetivo se selecciona por una motivación basada en prejuicios. Estos prejuicios pueden referirse, entre otros motivos, a la orientación sexual, la identidad de género o las características sexuales.",
+    "definition_en": "Criminal offences in which a victim, place or target is selected because of a bias motive. That bias may concern, among other grounds, sexual orientation, gender identity or sex characteristics.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "aliases": ["delito de odio", "hate crime"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ECRI / Council of Europe", "title": "ECRI Glossary", "url": "https://www.coe.int/en/web/european-commission-against-racism-and-intolerance/ecri-glossary"}]
+  },
+  {
+    "id": "hate_speech",
+    "term": "Discursos de odio",
+    "term_en": "Hate speech",
+    "definition": "Expresiones que promueven, incitan, difunden o justifican odio, violencia o discriminación contra una persona o grupo por determinadas características. Se relacionan con los delitos de odio, pero no son el mismo concepto ni toda expresión ofensiva constituye automáticamente un delito.",
+    "definition_en": "Expressions that promote, incite, spread or justify hatred, violence or discrimination against a person or group because of particular characteristics. Hate speech is related to hate crime, but it is not the same concept and not every offensive expression is automatically a crime.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "aliases": ["discurso de odio"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ECRI / Council of Europe", "title": "ECRI Glossary", "url": "https://www.coe.int/en/web/european-commission-against-racism-and-intolerance/ecri-glossary"}]
+  },
+  {
+    "id": "legal_gender_recognition",
+    "term": "Reconocimiento legal del género",
+    "term_en": "Legal gender recognition",
+    "definition": "Procedimiento mediante el cual una persona puede obtener el reconocimiento jurídico de su género y actualizarlo en registros o documentos oficiales. Los requisitos y efectos del procedimiento varían entre países.",
+    "definition_en": "The procedure through which a person can obtain legal recognition of their gender and update it in official records or documents. Requirements and effects vary between countries.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "aliases": ["LGR", "reconocimiento jurídico del género"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — methodology and criteria", "url": "https://rainbowmap.ilga-europe.org/about/"}]
+  },
+  {
+    "id": "depathologisation",
+    "term": "Despatologización",
+    "term_en": "Depathologisation",
+    "definition": "Proceso de dejar de considerar determinadas identidades o experiencias de género como trastornos mentales. En la CIE-11, la OMS trasladó la incongruencia de género fuera del capítulo de trastornos mentales y del comportamiento.",
+    "definition_en": "The process of ceasing to treat particular gender identities or experiences as mental disorders. In ICD-11, WHO moved gender incongruence out of the chapter on mental and behavioural disorders.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "World Health Organization (WHO)", "title": "Gender incongruence and transgender health in the ICD", "url": "https://www.who.int/standards/classifications/frequently-asked-questions/gender-incongruence-and-transgender-health-in-the-icd"}]
+  },
+  {
+    "id": "intersex_bodily_integrity",
+    "term": "Integridad corporal intersex",
+    "term_en": "Intersex bodily integrity",
+    "definition": "Derecho de las personas intersex a la autonomía y a decidir sobre intervenciones que afecten a sus características sexuales. Implica protección frente a procedimientos médicamente innecesarios realizados sin su consentimiento libre e informado.",
+    "definition_en": "The right of intersex people to bodily autonomy and to decide about interventions affecting their sex characteristics. It includes protection from medically unnecessary procedures performed without their free and informed consent.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "Council of Europe", "title": "Recommendation on Equal Rights for Intersex Persons", "url": "https://www.coe.int/en/web/sogi/intersexrecommendation"},
+      {"name": "ILGA-Europe", "title": "Rainbow Map — methodology and criteria", "url": "https://rainbowmap.ilga-europe.org/about/"}
+    ]
+  },
+  {
+    "id": "informed_consent",
+    "term": "Consentimiento informado",
+    "term_en": "Informed consent",
+    "definition": "Decisión libre y expresa tomada después de recibir y comprender información suficiente sobre una intervención, sus efectos y alternativas. Debe prestarse sin presión, engaño ni coerción.",
+    "definition_en": "A free and explicit decision made after receiving and understanding sufficient information about an intervention, its effects and alternatives. It must be given without pressure, deception or coercion.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "Council of Europe", "title": "Recommendation on Equal Rights for Intersex Persons", "url": "https://www.coe.int/en/web/sogi/intersexrecommendation"}]
+  },
+  {
+    "id": "non_consensual_medical_interventions",
+    "term": "Intervenciones médicas no consentidas",
+    "term_en": "Non-consensual medical interventions",
+    "definition": "Procedimientos médicos realizados sin el consentimiento previo, libre, informado, expreso y documentado de la persona afectada. En el contexto intersex, incluye intervenciones sobre características sexuales que pueden aplazarse hasta que la propia persona pueda decidir.",
+    "definition_en": "Medical procedures carried out without the affected person's prior, free, informed, explicit and documented consent. In the intersex context, this includes interventions on sex characteristics that can be postponed until the person can decide for themselves.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "games": {"guess_term": false, "word_search": false},
+    "sources": [
+      {"name": "Council of Europe", "title": "Recommendation on Equal Rights for Intersex Persons", "url": "https://www.coe.int/en/web/sogi/intersexrecommendation"},
+      {"name": "Boletín Oficial del Estado (BOE)", "title": "Ley 4/2023", "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-5366"}
+    ]
+  },
+  {
+    "id": "lgbtiq_asylum",
+    "term": "Asilo por motivos LGTBIQ+",
+    "term_en": "Asylum based on SOGIESC",
+    "definition": "Aplicación de la protección de asilo cuando existe un temor fundado de persecución relacionado con la orientación sexual, la identidad o expresión de género o las características sexuales. Ser LGTBIQ+ no concede asilo automáticamente: cada solicitud debe evaluarse individualmente.",
+    "definition_en": "The application of asylum protection where there is a well-founded fear of persecution related to sexual orientation, gender identity or expression, or sex characteristics. Being LGBTIQ+ does not automatically grant asylum. Each claim must be assessed individually.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "aliases": ["SOGIESC asylum", "asilo LGTBIQ+"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "United Nations High Commissioner for Refugees (UNHCR)", "title": "LGBTIQ+ persons", "url": "https://www.unhcr.org/what-we-do/protect-human-rights/safeguarding-individuals/lgbtiq-persons"}]
+  },
+  {
+    "id": "international_protection",
+    "term": "Protección internacional",
+    "term_en": "International protection",
+    "definition": "Protección que un Estado ofrece a personas que no pueden obtener protección efectiva en su país de origen y cumplen los requisitos jurídicos aplicables. Puede abarcar solicitudes relacionadas con diversidad SOGIESC, pero es un concepto más amplio que el asilo por motivos LGTBIQ+.",
+    "definition_en": "Protection provided by a state to people who cannot obtain effective protection in their country of origin and meet the applicable legal requirements. It may include claims related to diverse SOGIESC, but is broader than LGBTIQ+-related asylum.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "United Nations High Commissioner for Refugees (UNHCR)", "title": "LGBTIQ+ persons", "url": "https://www.unhcr.org/what-we-do/protect-human-rights/safeguarding-individuals/lgbtiq-persons"},
+      {"name": "European Union Agency for Asylum (EUAA)", "title": "Practical Guide on applicants with diverse SOGIESC", "url": "https://www.euaa.europa.eu/publications/practical-guide-SOGIESC-examination-procedure"}
+    ]
+  },
+  {
+    "id": "civil_society_space",
+    "term": "Espacio de la sociedad civil",
+    "term_en": "Civil society space",
+    "definition": "Entorno en el que ciudadanía, asociaciones, organizaciones y activistas pueden informarse, expresarse, organizarse, participar y defender derechos. Un espacio abierto permite también el trabajo libre y seguro de las organizaciones LGTBIQ+.",
+    "definition_en": "The environment in which people, associations, organisations and activists can access information, express themselves, organise, participate and defend rights. An open space also enables LGBTIQ+ organisations to work freely and safely.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "Office of the United Nations High Commissioner for Human Rights (OHCHR)", "title": "Civic space and human rights defenders", "url": "https://europe.ohchr.org/areas-of-work/civic-space"}]
+  },
+  {
+    "id": "lgbtiq_human_rights_defenders",
+    "term": "Personas defensoras de los derechos LGTBIQ+",
+    "term_en": "LGBTIQ+ human rights defenders",
+    "definition": "Personas que, individualmente o junto a otras, promueven, protegen o defienden pacíficamente los derechos humanos de las personas LGTBIQ+. Se identifican por su actividad y no por una profesión o afiliación concreta.",
+    "definition_en": "People who, individually or with others, peacefully promote, protect or defend the human rights of LGBTIQ+ people. They are identified by what they do, not by a particular profession or affiliation.",
+    "category": "rights_legal_protection",
+    "attribution": "based_on",
+    "games": {"guess_term": false, "word_search": false},
+    "sources": [{"name": "Office of the United Nations High Commissioner for Human Rights (OHCHR)", "title": "Human Rights Defenders: Protecting the Right to Defend Human Rights", "url": "https://www.ohchr.org/sites/default/files/Documents/Publications/FactSheet29en.pdf"}]
+  },
+  {
+    "id": "marriage_equality",
+    "term": "Matrimonio igualitario",
+    "term_en": "Marriage equality",
+    "definition": "Reconocimiento legal del matrimonio entre personas del mismo sexo con los derechos y obligaciones que establezca la legislación. Su disponibilidad y alcance no son iguales en todos los países europeos.",
+    "definition_en": "Legal recognition of marriage between people of the same sex, with the rights and duties established by law. Its availability and scope are not the same in every European country.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "same_sex_couples",
+    "term": "Parejas del mismo sexo",
+    "term_en": "Same-sex couples",
+    "definition": "Parejas formadas por personas del mismo sexo, con independencia de que su relación tenga reconocimiento como matrimonio, unión registrada, convivencia u otra figura jurídica.",
+    "definition_en": "Couples formed by people of the same sex, regardless of whether their relationship is recognised as marriage, registered partnership, cohabitation or another legal status.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "registered_partnership",
+    "term": "Unión registrada",
+    "term_en": "Registered partnership",
+    "definition": "Figura legal que reconoce formalmente una relación de pareja sin convertirla en matrimonio. Los derechos, obligaciones y requisitos asociados varían según el país.",
+    "definition_en": "A legal status that formally recognises a couple's relationship without making it a marriage. The associated rights, duties and requirements vary by country.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "cohabitation_recognition",
+    "term": "Reconocimiento de la convivencia",
+    "term_en": "Recognition of cohabitation",
+    "definition": "Reconocimiento jurídico de ciertos derechos u obligaciones derivados de la convivencia de una pareja aunque no exista matrimonio ni unión registrada. Su alcance depende de cada ordenamiento.",
+    "definition_en": "Legal recognition of certain rights or duties arising from a couple's cohabitation even without marriage or a registered partnership. Its scope depends on each legal system.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "joint_adoption",
+    "term": "Adopción conjunta",
+    "term_en": "Joint adoption",
+    "definition": "Posibilidad legal de que las dos personas de una pareja soliciten y asuman conjuntamente la adopción y la filiación de una niña, niño o adolescente.",
+    "definition_en": "The legal possibility for both members of a couple to apply jointly for adoption and become the legal parents of a child or young person.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "second_parent_adoption",
+    "term": "Adopción del hijo o hija de la pareja",
+    "term_en": "Second-parent adoption",
+    "definition": "Procedimiento que permite a una persona adoptar al hijo o hija de su pareja sin sustituir la filiación de esa pareja. Su finalidad es reconocer jurídicamente a la segunda persona progenitora.",
+    "definition_en": "A procedure allowing a person to adopt their partner's child without replacing that partner's legal parenthood. Its purpose is to recognise the second parent in law.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": false, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "co_parenthood",
+    "term": "Coparentalidad",
+    "term_en": "Co-parenthood",
+    "definition": "Reconocimiento jurídico de la segunda persona progenitora dentro de una pareja, especialmente desde el nacimiento, sin barreras derivadas de la orientación sexual o la identidad de género de quienes forman la familia.",
+    "definition_en": "Legal recognition of the second parent within a couple, particularly from birth, without barriers arising from the sexual orientation or gender identity of the people forming the family.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "aliases": ["automatic co-parent recognition", "reconocimiento automático de coparentalidad"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "assisted_reproduction",
+    "term": "Reproducción asistida",
+    "term_en": "Medically assisted reproduction",
+    "definition": "Conjunto de procedimientos médicos destinados a facilitar un embarazo. En el análisis de igualdad familiar se observa si las personas o parejas pueden acceder sin barreras legales discriminatorias por orientación sexual o identidad de género.",
+    "definition_en": "Medical procedures intended to help achieve a pregnancy. In family-equality analysis, the focus is whether individuals or couples can access them without discriminatory legal barriers based on sexual orientation or gender identity.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"}]
+  },
+  {
+    "id": "trans_parenthood",
+    "term": "Parentalidad trans",
+    "term_en": "Recognition of trans parenthood",
+    "definition": "Reconocimiento jurídico de las personas trans como progenitoras de sus hijos e hijas de forma acorde con su identidad y situación legal, sin discriminación por ser trans.",
+    "definition_en": "Legal recognition of trans people as parents of their children in a way that respects their identity and legal status, without discrimination because they are trans.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "aliases": ["trans parenthood"],
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Recognition of trans parenthood", "url": "https://rainbowmap.ilga-europe.org/about/"}]
+  },
+  {
+    "id": "families_with_lgbtiq_parents",
+    "term": "Familias con progenitores LGTBIQ+",
+    "term_en": "Families with LGBTIQ+ parents",
+    "definition": "Familias en las que una o más personas progenitoras son LGTBIQ+. Incluyen estructuras familiares diversas y deben poder ejercer sus derechos sin discriminación por la orientación sexual, identidad o expresión de género o características sexuales de sus integrantes.",
+    "definition_en": "Families in which one or more parents are LGBTIQ+. They include diverse family structures and should be able to exercise their rights without discrimination based on family members' sexual orientation, gender identity or expression, or sex characteristics.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "games": {"guess_term": false, "word_search": false},
+    "sources": [
+      {"name": "ILGA-Europe", "title": "Rainbow Map — Family criteria", "url": "https://rainbowmap.ilga-europe.org/categories/family/"},
+      {"name": "Boletín Oficial del Estado (BOE)", "title": "Ley 4/2023", "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2023-5366"}
+    ]
+  },
+  {
+    "id": "non_discriminatory_blood_donation",
+    "term": "Donación de sangre sin exclusiones discriminatorias",
+    "term_en": "Blood donation without discriminatory exclusions",
+    "definition": "Enfoque en el que la elegibilidad para donar sangre o tejidos se basa en una evaluación clínica e individual del riesgo, sin excluir a una persona únicamente por su orientación sexual o identidad de género.",
+    "definition_en": "An approach in which eligibility to donate blood or tissue is based on clinical, individual risk assessment, without excluding someone solely because of their sexual orientation or gender identity.",
+    "category": "families_reproductive_rights",
+    "attribution": "based_on",
+    "aliases": ["blood donations", "donación de sangre"],
+    "games": {"guess_term": false, "word_search": false},
+    "sources": [{"name": "ILGA-Europe", "title": "Rainbow Map — Blood donation criterion", "url": "https://rainbowmap.ilga-europe.org/about/"}]
+  },
+  {
+    "id": "living_openly_lgbtiq",
+    "term": "Vivir abiertamente como persona LGBTIQ+",
+    "term_en": "Living openly as an LGBTIQ+ person",
+    "definition": "Poder compartir o no ocultar la propia orientación sexual, identidad o expresión de género o características sexuales en la vida cotidiana. La decisión depende de cada persona y de su seguridad. Nadie está obligado a ser públicamente visible.",
+    "definition_en": "Being able to share or not hide one's sexual orientation, gender identity or expression, or sex characteristics in daily life. The decision depends on each person and their safety. Nobody is required to be publicly visible.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "aliases": ["living openly", "salir del armario"],
+    "games": {"guess_term": false, "word_search": false},
+    "sources": [{"name": "European Union Agency for Fundamental Rights (FRA)", "title": "EU LGBTIQ Survey III", "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii"}]
+  },
+  {
+    "id": "lgbtiq_youth",
+    "term": "Juventud LGBTIQ+",
+    "term_en": "LGBTIQ+ youth",
+    "definition": "Personas LGBTIQ+ durante la infancia, adolescencia y juventud, cuyas experiencias pueden incluir necesidades específicas de apoyo, igualdad, participación, educación segura y protección frente a discriminación o violencia.",
+    "definition_en": "LGBTIQ+ people during childhood, adolescence and youth, whose experiences may involve particular needs for support, equality, participation, safe education and protection from discrimination or violence.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "European Union Agency for Fundamental Rights (FRA)", "title": "EU LGBTIQ Survey III", "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii"},
+      {"name": "Council of Europe", "title": "Inclusive education", "url": "https://www.coe.int/en/web/sogi/inclusive-education"}
+    ]
+  },
+  {
+    "id": "social_acceptance",
+    "term": "Aceptación social",
+    "term_en": "Social acceptance",
+    "definition": "Grado en que las personas LGBTIQ+ perciben reconocimiento, respeto e inclusión en su familia, comunidad, trabajo u otros entornos. Es una experiencia amplia que no puede reducirse a un único indicador estadístico.",
+    "definition_en": "The extent to which LGBTIQ+ people perceive recognition, respect and inclusion in their family, community, workplace or other settings. It is a broad experience that cannot be reduced to a single statistical indicator.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "European Union Agency for Fundamental Rights (FRA)", "title": "EU LGBTIQ Survey III", "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii"}]
+  },
+  {
+    "id": "diversity_and_inclusion",
+    "term": "Diversidad e inclusión",
+    "term_en": "Diversity and inclusion",
+    "definition": "La diversidad describe la presencia de personas con distintas características, identidades y experiencias. La inclusión describe hasta qué punto son valoradas, respetadas, tratadas con equidad y pueden participar y pertenecer plenamente.",
+    "definition_en": "Diversity describes the presence of people with different characteristics, identities and experiences. Inclusion describes the extent to which they are valued, respected, treated fairly and able to participate and belong fully.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "International Labour Organization (ILO)", "title": "Transforming enterprises through diversity and inclusion", "url": "https://www.ilo.org/publications/transforming-enterprises-through-diversity-and-inclusion"}]
+  },
+  {
+    "id": "visibility_and_safety",
+    "term": "Visibilidad y seguridad",
+    "term_en": "Visibility and safety",
+    "definition": "Relación entre poder mostrar abiertamente la propia orientación, identidad, expresión o características sexuales y sentirse a salvo de discriminación, acoso o violencia. Una mayor visibilidad no siempre es segura y cada persona debe poder decidir.",
+    "definition_en": "The relationship between being able to openly show one's sexual orientation, identity, expression or sex characteristics and feeling safe from discrimination, harassment or violence. Greater visibility is not always safe, and each person must be able to decide.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "European Union Agency for Fundamental Rights (FRA)", "title": "EU LGBTIQ Survey III", "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii"},
+      {"name": "Council of Europe", "title": "Promoting human rights and equality for LGBTI persons", "url": "https://www.coe.int/en/web/sogi/promoting-hr-for-lgbti-persons"}
+    ]
+  },
+  {
+    "id": "violence_and_harassment",
+    "term": "Violencia y acoso",
+    "term_en": "Violence and harassment",
+    "definition": "Conjunto de comportamientos, prácticas o amenazas inaceptables, aisladas o repetidas, que causan o pueden causar daño físico, psicológico, sexual o económico. En las experiencias LGBTIQ+ pueden estar motivadas por prejuicios sobre la diversidad SOGIESC.",
+    "definition_en": "A range of unacceptable behaviours, practices or threats, whether isolated or repeated, that cause or may cause physical, psychological, sexual or economic harm. In LGBTIQ+ experiences they may be motivated by bias concerning diverse SOGIESC.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [
+      {"name": "International Labour Organization (ILO)", "title": "Violence and Harassment Convention, 2019 (No. 190)", "url": "https://normlex.ilo.org/dyn/nrmlx_en/f?p=NORMLEXPUB:12100:0::NO:12100:P12100_INSTRUMENT_ID:3999810:NO"},
+      {"name": "European Union Agency for Fundamental Rights (FRA)", "title": "EU LGBTIQ Survey III", "url": "https://fra.europa.eu/en/publications-and-resources/data-and-maps/2024/eu-lgbtiq-survey-iii"}
+    ]
+  },
+  {
+    "id": "physical_violence",
+    "term": "Violencia física",
+    "term_en": "Physical violence",
+    "definition": "Uso intencionado, real o amenazado, de fuerza física contra otra persona que causa o puede causar daño. Es una forma de violencia y puede estar motivada por prejuicios, aunque no siempre lo está.",
+    "definition_en": "The intentional, actual or threatened use of physical force against another person that causes or may cause harm. It is a form of violence and may be bias-motivated, although it is not always so.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "World Health Organization (WHO)", "title": "Physical violence indicator metadata", "url": "https://www.who.int/data/gho/indicator-metadata-registry/imr-details/proportion-of-adolescents-who-experienced-physical-violence-during-the-past-12-months"}]
+  },
+  {
+    "id": "sexual_violence",
+    "term": "Violencia sexual",
+    "term_en": "Sexual violence",
+    "definition": "Acto o intento de naturaleza sexual dirigido contra una persona sin su consentimiento o mediante coerción, con independencia de la relación entre las personas o del lugar en que ocurra.",
+    "definition_en": "A sexual act or attempt directed against a person without their consent or through coercion, regardless of the relationship between those involved or the setting in which it occurs.",
+    "category": "social_experiences",
+    "attribution": "based_on",
+    "games": {"guess_term": true, "word_search": false},
+    "sources": [{"name": "World Health Organization (WHO)", "title": "Understanding and addressing violence against women: sexual violence", "url": "https://www.who.int/publications/i/item/WHO-RHR-12.37"}]
   }
 ]

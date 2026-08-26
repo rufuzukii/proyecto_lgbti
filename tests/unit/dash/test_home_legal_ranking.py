@@ -72,7 +72,9 @@ def test_home_places_one_accessible_ranking_beside_the_existing_map(monkeypatch)
     assert "Alemania" in str(ranking_rows[-1])
     export_props = components["home-map-export-button"].to_plotly_json()["props"]
     error_props = components["home-map-export-status"].to_plotly_json()["props"]
-    assert export_props["aria-label"]
+    assert export_props["aria-label"] == "Descargar imagen del mapa de Europa"
+    assert export_props["data-i18n-aria-label-en"] == "Download Europe map image"
+    assert export_props["data-i18n-title-en"] == "Download image"
     assert export_props["data-chart-export"] == "true"
     assert export_props["data-chart-export-target"] == "home-map-graph"
     assert export_props["aria-controls"] == "home-map-graph"
@@ -121,7 +123,7 @@ def test_home_map_export_reuses_the_rendered_plot_without_a_server_callback(monk
 def test_home_ranking_css_is_dark_mode_safe_and_stacks_below_the_map() -> None:
     css = Path("src/app/dash/assets/home.css").read_text(encoding="utf-8")
 
-    assert "grid-template-columns: minmax(0, 2.35fr) minmax(240px, 0.85fr);" in css
+    assert "grid-template-columns: minmax(0, 3.3fr) minmax(210px, 0.72fr);" in css
     assert "@media (max-width: 1050px)" in css
     assert ".home-map-visual-grid {\n    grid-template-columns: minmax(0, 1fr);" in css
     assert 'body[data-theme="dark"] .home-legal-ranking' in css

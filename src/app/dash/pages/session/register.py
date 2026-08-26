@@ -9,6 +9,10 @@ from app.dash.layouts.navigation import build_navbar
 from app.dash.routes import route_path
 
 ERROR_MESSAGES = {
+    "email_exists": (
+        "Ya existe una cuenta con ese correo electrónico.",
+        "An account with that email address already exists.",
+    ),
     "invalid_payload": (
         "Introduce un nombre, correo electrónico y contraseña válidos.",
         "Enter a valid name, email address, and password.",

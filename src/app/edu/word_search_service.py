@@ -55,6 +55,8 @@ def select_word_search_terms(
     requested = max(1, min(int(count), MAX_WORD_COUNT))
     unique: dict[str, GlossaryTerm] = {}
     for term in terms:
+        if not term.word_search:
+            continue
         normalized = normalize_word_search_term(term.term)
         if normalized and len(normalized) <= max_length:
             unique.setdefault(normalized, term)

@@ -37,5 +37,5 @@ def record_user_admin_event(
 def _safe_snapshot(value: dict[str, Any] | None) -> dict[str, Any] | None:
     if value is None:
         return None
-    allowed = {"username", "email", "organization", "user_type", "active"}
+    allowed = {"username", "email", "organization", "user_type", "active", "admin_validated"}
     return {key: value.get(key) for key in allowed if key in value}

@@ -226,8 +226,8 @@ def _data_inventory_card() -> Component:
                 [
                     "nombre visible, correo electrónico, rol y hash de contraseña",
                     "display name, email address, role and password hash",
-                    "estado de la cuenta, verificación del correo y versión de sesión",
-                    "account status, email verification and session version",
+                    "marca de validación administrativa y versión de sesión",
+                    "administrative validation marker and session version",
                     "identificador técnico de usuario y fecha de creación",
                     "technical user identifier and creation date",
                 ],
@@ -238,8 +238,6 @@ def _data_inventory_card() -> Component:
                 [
                     "organización indicada en el registro o actualizada por administración",
                     "organisation supplied during registration or updated by an administrator",
-                    "mensajes, perfil solicitado y adjuntos enviados voluntariamente por correo",
-                    "messages, requested profile and attachments voluntarily sent by email",
                 ],
             ),
             _subsection(
@@ -256,8 +254,8 @@ def _data_inventory_card() -> Component:
                 "Datos técnicos y temporales",
                 "Technical and temporary data",
                 [
-                    "cookie técnica de sesión, tokens almacenados solo como hash y registros de seguridad",
-                    "technical session cookie, tokens stored only as hashes and security records",
+                    "cookie técnica de sesión y registros de seguridad",
+                    "technical session cookie and security records",
                     "claves de limitación de intentos derivadas mediante hash y datos de caché",
                     "hashed rate-limit keys and cached data",
                     "logs de acceso del alojamiento, que pueden incluir IP, fecha, ruta, estado, referente y agente de usuario",
@@ -269,7 +267,7 @@ def _data_inventory_card() -> Component:
             html.P(
                 text(
                     "Los informes se construyen en memoria y archivos temporales, no existe un historial de informes guardado.",
-                    "Reports are built in memory and temporary files; no saved report history exists.",
+                    "Reports are built in memory and temporary files. No saved report history exists.",
                 ),
                 className="privacy-fact-note",
             ),
@@ -299,12 +297,6 @@ def _purposes_card() -> Component:
                 "Interés legítimo en proteger cuentas, datos y servicio, limitado y documentado.",
                 "Legitimate interest in protecting accounts, data and the service, limited and documented.",
             ),
-            _policy_row(
-                "Enviar una solicitud de rol, mensaje o adjunto opcional al equipo responsable.",
-                "Send an optional role request, message or attachment to the responsible team.",
-                "Consentimiento mediante el envío voluntario; puede retirarse contactando con el responsable.",
-                "Consent through voluntary submission; it can be withdrawn by contacting the controller.",
-            ),
         ],
         secondary_key="privacy_legal_basis",
     )
@@ -317,28 +309,24 @@ def _retention_card(config: PrivacyPolicyConfig) -> Component:
             _bullet_list(
                 [
                     (
-                        "Cuenta, perfil y juegos docentes: mientras la cuenta exista; se eliminan al completar la solicitud.",
-                        "Account, profile and educator games: while the account exists; deleted when the request completes.",
+                        "Cuenta, perfil y juegos docentes: mientras la cuenta exista. Se eliminan al completar la solicitud.",
+                        "Account, profile and educator games: while the account exists. They are deleted when the request completes.",
                     ),
                     (
-                        "Tokens: hasta 24 horas para verificación y 1 hora para recuperación; MongoDB los elimina por caducidad.",
-                        "Tokens: up to 24 hours for verification and 1 hour for recovery; MongoDB removes them on expiry.",
-                    ),
-                    (
-                        "Sesión: 12 horas por defecto; se invalida al cambiar credenciales o eliminar la cuenta.",
-                        "Session: 12 hours by default; invalidated after credential changes or account deletion.",
+                        "Sesión: 12 horas por defecto. Se invalida al cambiar credenciales o eliminar la cuenta.",
+                        "Session: 12 hours by default. It is invalidated after credential changes or account deletion.",
                     ),
                     (
                         "Caché: 5 minutos por defecto. Los límites de intentos caducan entre 5 minutos y 1 hora según el flujo.",
                         "Cache: 5 minutes by default. Attempt limits expire between 5 minutes and 1 hour depending on the flow.",
                     ),
                     (
-                        f"Auditoría de seguridad: {config.audit_retention_days} días; al eliminar la cuenta se retira la identidad y queda una referencia irreversible.",
-                        f"Security audit: {config.audit_retention_days} days; account deletion removes identity and leaves an irreversible reference.",
+                        f"Auditoría de seguridad: {config.audit_retention_days} días. Al eliminar la cuenta se retira la identidad y queda una referencia irreversible.",
+                        f"Security audit: {config.audit_retention_days} days. Account deletion removes identity and leaves an irreversible reference.",
                     ),
                     (
-                        f"Informes: solo durante la generación. Mensajes y adjuntos recibidos: {config.email_retention or 'según la retención del buzón, que el responsable debe configurar'}.",
-                        f"Reports: only during generation. Received messages and attachments: {config.email_retention or 'according to mailbox retention, which the controller must configure'}.",
+                        "Informes: solo durante la generación. El enlace de contacto abre el cliente de correo del usuario y la aplicación no almacena el mensaje.",
+                        "Reports: only during generation. The contact link opens the user's email client and the application does not store the message.",
                     ),
                     (
                         f"Logs de acceso de Render: {config.access_log_retention or 'durante el periodo en que puedan ser conservados por el servicio conforme a su funcionamiento y configuración'}.",
@@ -362,12 +350,8 @@ def _recipients_card(config: PrivacyPolicyConfig) -> Component:
             f"MongoDB{_provider_suffix(config.mongo_provider)} for security, educator games and auditing.",
         ),
         (
-            "Supabase Storage para figuras de fuentes públicas; actualmente no recibe archivos personales de cuenta.",
-            "Supabase Storage for public-source figures; it currently receives no personal account files.",
-        ),
-        (
-            f"El proveedor SMTP{_provider_suffix(config.email_provider)} para verificación, recuperación y mensajes de contacto.",
-            f"The SMTP provider{_provider_suffix(config.email_provider)} for verification, recovery and contact messages.",
+            "Supabase Storage para figuras de fuentes públicas. Actualmente no recibe archivos personales de cuenta.",
+            "Supabase Storage for public-source figures. It currently receives no personal account files.",
         ),
     ]
     children: list[Component] = [_bullet_list(providers)]

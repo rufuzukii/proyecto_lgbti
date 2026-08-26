@@ -53,33 +53,56 @@ from app.taxonomy import taxonomy_label
 logger = logging.getLogger(__name__)
 
 COUNTRY_COLORS = {
-    "FR": "#2F6BDE",
-    "DE": "#2B2B2B",
-    "BE": "#E3B505",
-    "NL": "#E85D5D",
-    "LU": "#5AA9E6",
-    "IT": "#2E8B57",
-    "DK": "#B22234",
-    "ES": "#C62828",
-    "PT": "#2F855A",
-    "IE": "#F28C28",
-    "GR": "#3A86D1",
-    "SE": "#4A90E2",
-    "FI": "#6FA8DC",
-    "AT": "#8E2430",
-    "EE": "#2C7DA0",
-    "LV": "#7A1F2B",
-    "LT": "#6B8E23",
-    "PL": "#D45A7A",
-    "CZ": "#1E5AA8",
-    "SK": "#4361EE",
-    "SI": "#3D5AFE",
-    "HU": "#009B77",
-    "RO": "#F4B400",
-    "BG": "#5A8F29",
-    "MT": "#D7265E",
-    "CY": "#52B788",
-    "HR": "#277DA1",
+    "AD": "#6D28D9",
+    "AL": "#C1121F",
+    "AM": "#B91C1C",
+    "AT": "#7F1D1D",
+    "AZ": "#0284C7",
+    "BA": "#1D4ED8",
+    "BE": "#D4A017",
+    "BG": "#65A30D",
+    "BY": "#047857",
+    "CH": "#EF4444",
+    "CY": "#10B981",
+    "CZ": "#1E40AF",
+    "DE": "#3F3F46",
+    "DK": "#9F1239",
+    "EE": "#0F766E",
+    "ES": "#DC2626",
+    "FI": "#0891B2",
+    "FR": "#2563EB",
+    "GB": "#4F46E5",
+    "GE": "#D14343",
+    "GR": "#0369A1",
+    "HR": "#075985",
+    "HU": "#0D9488",
+    "IE": "#EA580C",
+    "IS": "#1E3A8A",
+    "IT": "#059669",
+    "LI": "#7C3AED",
+    "LT": "#4D7C0F",
+    "LU": "#0EA5E9",
+    "LV": "#881337",
+    "MC": "#E11D48",
+    "MD": "#F97316",
+    "ME": "#991B1B",
+    "MK": "#D97706",
+    "MT": "#C026D3",
+    "NL": "#F43F5E",
+    "NO": "#BE123C",
+    "PL": "#DB2777",
+    "PT": "#15803D",
+    "RO": "#F59E0B",
+    "RS": "#4338CA",
+    "RU": "#334155",
+    "SE": "#3B82F6",
+    "SI": "#8B5CF6",
+    "SK": "#6366F1",
+    "SM": "#38BDF8",
+    "TR": "#C81E3A",
+    "UA": "#EAB308",
+    "VA": "#FACC15",
+    "XK": "#06B6D4",
 }
 DEFAULT_COUNTRY_COLOR = "#2F6BDE"
 EUROPE_MAP_COLORSCALE = [
@@ -397,9 +420,9 @@ def build_europe_choropleth(
                     language,
                 ),
                 "ticksuffix": "%",
-                "thickness": 13,
-                "len": 0.7,
-                "x": -0.035,
+                "thickness": 10,
+                "len": 0.62,
+                "x": -0.015,
                 "xanchor": "right",
                 "y": 0.5,
                 "tickvals": [0, 20, 40, 60, 80, 100],
@@ -487,8 +510,8 @@ def build_europe_choropleth(
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
-            "center": {"lon": 20, "lat": 54},
-            "projection": {"scale": 1.18},
+            "center": {"lon": 18, "lat": 54},
+            "projection": {"scale": 1.23},
             "showframe": False,
             "showcoastlines": True,
             "coastlinecolor": "#b9c0ca",
@@ -513,7 +536,7 @@ def build_europe_choropleth(
     )
     _apply_base_layout(
         figure,
-        margin={"l": 88, "r": 0, "t": 0, "b": 0},
+        margin={"l": 56, "r": 0, "t": 0, "b": 0},
     )
     if not unavailable.empty and not has_verified_fra_scope:
         figure.add_annotation(
@@ -2129,7 +2152,11 @@ def build_response_country_comparison_chart(
         bargap=0.2,
         bargroupgap=0.06,
         height=610 if country_count > 12 else 560,
-        meta={"minimum_width": minimum_width},
+        meta={
+            "minimum_width": minimum_width,
+            "export_showlegend": True,
+            "export_legend_title": _chart_text(language, "Países", "Countries"),
+        },
         xaxis={
             "title": _chart_text(language, "Respuesta", "Answer"),
             "categoryorder": "array",
@@ -2680,7 +2707,7 @@ def build_combined_scatter(
     response_label = answer or _chart_text(language, "Respuesta seleccionada", "Selected answer")
     y_title = (
         f"{_chart_text(language, 'Personas que respondieron', 'People answering')} "
-        f'"{response_label}" (%)'
+        f'«{response_label}» (%)'
     )
     customdata = [
         [
@@ -2918,7 +2945,7 @@ def build_combined_quadrant_chart(
             ),
             "range": [0, 100],
         },
-        yaxis={"title": f'FRA "{response_label}" (%)', "range": [0, 100]},
+        yaxis={"title": f'FRA «{response_label}» (%)', "range": [0, 100]},
         annotations=annotations,
     )
     _apply_base_layout(figure, margin={"l": 70, "r": 25, "t": 35, "b": 70})
@@ -2987,7 +3014,7 @@ def build_ranking_position_gap_chart(
         f"{_chart_text(language, 'Diferencia', 'Difference')}: %{{customdata[3]}} "
         f"{_chart_text(language, 'posiciones', 'positions')}<br>"
         f"{_chart_text(language, 'Puntuación legal', 'Legal score')}: %{{customdata[4]:.1f}}<br>"
-        f'FRA "{answer_label}": %{{customdata[5]:.1f}}%<extra></extra>'
+        f'FRA «{answer_label}»: %{{customdata[5]:.1f}}%<extra></extra>'
     )
     for key, label_es, label_en, colour, symbol in (
         ("ilga_rank", "Posición legal", "Legal position", "#7c3aed", "diamond"),
@@ -3156,8 +3183,8 @@ def build_experience_legal_radar(
     else:
         interpretation = _chart_text(
             language,
-            f"Las dos series presentan un nivel medio similar; la mayor diferencia descriptiva aparece en {largest_label}. Las fuentes no permiten inferir causalidad.",
-            f"The two series have a similar average level; the largest descriptive gap is in {largest_label}. These sources do not support causal inference.",
+            f"Las dos series presentan un nivel medio similar. La mayor diferencia descriptiva aparece en {largest_label}. Las fuentes no permiten inferir causalidad.",
+            f"The two series have a similar average level. The largest descriptive gap is in {largest_label}. These sources do not support causal inference.",
         )
     return figure, True, metadata, interpretation
 

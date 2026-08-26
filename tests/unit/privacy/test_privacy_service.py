@@ -99,7 +99,7 @@ def test_deletion_orchestrates_all_stores_before_postgres(
     monkeypatch.setattr(
         service,
         "_delete_security_state",
-        lambda _user_id: events.append("security") or {"security_tokens": 1},
+        lambda _user_id: events.append("security") or {"account_security": 1},
     )
     monkeypatch.setattr(
         service,
@@ -230,7 +230,6 @@ def test_inventory_counts_only_real_user_linked_stores(monkeypatch: pytest.Monke
 
     counts = {
         service.ACCOUNT_COLLECTION: 1,
-        service.TOKEN_COLLECTION: 2,
         service.GAMES_COLLECTION: 3,
         service.SECURITY_AUDIT_COLLECTION: 4,
         service.ADMIN_AUDIT_COLLECTION: 5,
@@ -252,7 +251,6 @@ def test_inventory_counts_only_real_user_linked_stores(monkeypatch: pytest.Monke
     assert inventory.admin_audit_events == 5
     assert inventory.supabase_objects == 0
     assert inventory.persisted_reports == 0
-    assert inventory.persisted_contact_attachments == 0
 
 
 def test_portability_export_excludes_passwords_tokens_and_internal_ids(
@@ -296,7 +294,12 @@ def test_portability_export_excludes_passwords_tokens_and_internal_ids(
 
         def find_one(self, _query: object, _projection: object):
             if self.name == service.ACCOUNT_COLLECTION:
-                return {"active": True, "email_verified": True}
+                return {
+                    "active": True,
+                    "admin_validated": True,
+                    "validated_at": None,
+                    "validated_by": "admin-id",
+                }
             return None
 
         def find(self, _query: object, _projection: object):

@@ -1931,9 +1931,24 @@ def test_response_comparison_uses_an_external_country_legend() -> None:
     graph = cast(Any, _component_by_id(component, "stats-response-comparison-graph"))
 
     assert graph.figure.layout.showlegend is False
+    assert graph.figure.layout.meta["export_showlegend"] is True
+    assert graph.figure.layout.meta["export_legend_title"] == "Países"
     assert "stats-country-legend" in str(component)
     assert "España" in str(component)
     assert "Francia" in str(component)
+
+
+def test_country_palette_covers_europe_with_unique_deterministic_colours() -> None:
+    from app.analytics.geography import ISO2_TO_ISO3
+    from app.analytics.statistics_charts import country_color
+
+    assert set(ISO2_TO_ISO3).issubset(COUNTRY_COLORS)
+    assert len(COUNTRY_COLORS.values()) == len(set(COUNTRY_COLORS.values()))
+    assert all(
+        isinstance(colour, str) and len(colour) == 7 and colour.startswith("#")
+        for colour in COUNTRY_COLORS.values()
+    )
+    assert all(country_color(code) == country_color(code) for code in ISO2_TO_ISO3)
 
 
 def test_fra_methodology_uses_exact_localized_copy() -> None:
@@ -2064,9 +2079,11 @@ def test_percentage_choropleth_distinguishes_zero_low_values_and_null() -> None:
     assert trace.marker.line.color == "#334155"
     assert trace.marker.line.width >= 0.85
     assert list(trace.colorbar.tickvals) == [0, 20, 40, 60, 80, 100]
-    assert trace.colorbar.x == pytest.approx(-0.035)
+    assert trace.colorbar.x == pytest.approx(-0.015)
     assert trace.colorbar.xanchor == "right"
-    assert figure.layout.margin.l == 88
+    assert trace.colorbar.thickness == 10
+    assert trace.colorbar.len == pytest.approx(0.62)
+    assert figure.layout.margin.l == 56
 
 
 def test_choropleth_uses_home_map_framing_and_keeps_country_selection() -> None:
@@ -2078,15 +2095,15 @@ def test_choropleth_uses_home_map_framing_and_keeps_country_selection() -> None:
     focused = build_europe_choropleth(rows, source="FRA", selected_isos=["ES"])
     reset = build_europe_choropleth(rows, source="FRA", selected_isos=[])
 
-    assert europe.layout.geo.center.lon == 20
+    assert europe.layout.geo.center.lon == 18
     assert europe.layout.geo.center.lat == 54
-    assert europe.layout.geo.projection.scale == 1.18
+    assert europe.layout.geo.projection.scale == 1.23
     assert europe.layout.margin.b == 0
     assert europe.layout.margin.t == 0
     assert focused.layout.geo.projection.scale == europe.layout.geo.projection.scale
     assert focused.layout.geo.lonaxis.range is None
     assert _trace(focused, 1).customdata[0][0] == "ES"
-    assert reset.layout.geo.projection.scale == 1.18
+    assert reset.layout.geo.projection.scale == 1.23
     assert reset.layout.uirevision.endswith("-europe")
 
 

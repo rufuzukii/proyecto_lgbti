@@ -192,7 +192,6 @@
 
 .Select-control,
 .auth-input,
-.about-contact-textarea,
 .admin-user-search-input,
 .reports-input,
 .reports-textarea {
@@ -206,7 +205,6 @@
 
 .Select.is-focused:not(.is-open) > .Select-control,
 .auth-input:focus-visible,
-.about-contact-textarea:focus-visible,
 .admin-user-search-input:focus-visible,
 .reports-input:focus-visible,
 .reports-textarea:focus-visible {

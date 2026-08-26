@@ -12,6 +12,7 @@ from pymongo.errors import OperationFailure
 from app.fra_surveys import FRA_SURVEYS
 from app.mongo import get_mongo_collection, get_mongo_database
 from app.privacy.policy import get_privacy_policy_config
+from app.users.account_security import migrate_account_validation_schema
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ def spain_report_collection_names() -> set[str]:
 @lru_cache(maxsize=1)
 def initialize_mongo_indexes() -> None:
     """Create application indexes once at process startup or from the setup CLI."""
+    migrate_account_validation_schema()
     ensure_fra_indexes()
     _ensure_collection_indexes(
         "Indicator_ilga",
@@ -184,21 +186,6 @@ def _initialize_non_report_indexes() -> None:
     _ensure_collection_indexes(
         "user_account_security",
         [IndexModel([("user_id", ASCENDING)], unique=True, name="account_security_user")],
-    )
-    _ensure_collection_indexes(
-        "user_security_tokens",
-        [
-            IndexModel(
-                [("purpose", ASCENDING), ("token_hash", ASCENDING)],
-                unique=True,
-                name="security_token_hash",
-            ),
-            IndexModel(
-                [("user_id", ASCENDING), ("purpose", ASCENDING), ("used_at", ASCENDING)],
-                name="security_tokens_by_user",
-            ),
-            IndexModel([("expires_at", ASCENDING)], expireAfterSeconds=0, name="security_token_ttl"),
-        ],
     )
     _ensure_collection_indexes(
         "user_security_audit",

@@ -102,9 +102,9 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
                 colorbar={
                     "title": ui_text("chart_percentage", language),
                     "ticksuffix": "%",
-                    "thickness": 13,
-                    "len": 0.7,
-                    "x": -0.035,
+                    "thickness": 10,
+                    "len": 0.62,
+                    "x": -0.015,
                     "xanchor": "right",
                     "y": 0.5,
                 },
@@ -125,11 +125,13 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
         )
 
     figure.update_layout(
-        margin={"l": 88, "r": 0, "t": 0, "b": 0},
+        margin={"l": 56, "r": 0, "t": 0, "b": 0},
         dragmode=False,
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
+            "center": {"lon": 18, "lat": 54},
+            "projection": {"scale": 1.23},
             "showframe": False,
             "showcoastlines": True,
             "coastlinecolor": "#b9c0ca",
@@ -199,7 +201,11 @@ def build_fra_choropleth(
                 colorbar={
                     "title": ui_text("chart_percentage", language),
                     "ticksuffix": "%",
-                    "thickness": 13,
+                    "thickness": 10,
+                    "len": 0.62,
+                    "x": -0.015,
+                    "xanchor": "right",
+                    "y": 0.5,
                 },
                 hovertemplate=(
                     "<b>%{text}</b><br>%{customdata[1]}: %{customdata[2]}<extra></extra>"
@@ -236,11 +242,13 @@ def build_fra_choropleth(
         )
 
     figure.update_layout(
-        margin={"l": 0, "r": 0, "t": 0, "b": 0},
+        margin={"l": 56, "r": 0, "t": 0, "b": 0},
         dragmode=False,
         geo={
             "scope": "europe",
             "projection_type": "natural earth",
+            "center": {"lon": 18, "lat": 54},
+            "projection": {"scale": 1.23},
             "showframe": False,
             "showcoastlines": True,
             "coastlinecolor": "#b9c0ca",
