@@ -107,6 +107,75 @@ def test_registration_delivery_failure_does_not_claim_email_was_sent(
     )
 
 
+def test_existing_registration_is_redirected_to_recoverable_resend_flow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        dash_app_module,
+        "create_user",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("email_exists")),
+    )
+    app = _app(monkeypatch)
+
+    response = app.server.test_client().post(
+        "/auth/register",
+        data={
+            "csrf_token": "valid",
+            "name": "Existing user",
+            "email": "account@example.com",
+            "password": "a-secure-password",
+        },
+    )
+
+    assert response.headers["Location"].endswith("/es/verificar-correo?status=sent")
+
+
+def test_verification_resend_only_claims_success_after_provider_acceptance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(dash_app_module, "get_user_record_by_email", lambda _email: _record())
+    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
+    monkeypatch.setattr(
+        dash_app_module,
+        "send_verification_email",
+        lambda email, token, language: sent.append((email, token, language)),
+    )
+    app = _app(monkeypatch)
+
+    response = app.server.test_client().post(
+        "/auth/resend-verification",
+        data={"csrf_token": "valid", "email": "account@example.test"},
+    )
+
+    assert response.headers["Location"].endswith(
+        "/es/verificar-correo?status=resend_sent"
+    )
+    assert sent == [("account@example.test", "token", "es")]
+
+
+def test_verification_resend_provider_failure_is_retryable_and_not_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(dash_app_module, "get_user_record_by_email", lambda _email: _record())
+    monkeypatch.setattr(dash_app_module, "issue_security_token", lambda *_args, **_kwargs: "token")
+    monkeypatch.setattr(
+        dash_app_module,
+        "send_verification_email",
+        lambda *_args: (_ for _ in ()).throw(MailDeliveryError("mail_delivery_failed")),
+    )
+    app = _app(monkeypatch)
+
+    response = app.server.test_client().post(
+        "/auth/resend-verification",
+        data={"csrf_token": "valid", "email": "account@example.test"},
+    )
+
+    assert response.headers["Location"].endswith(
+        "/es/verificar-correo?status=delivery_failed"
+    )
+
+
 def test_verification_link_marks_email_and_cannot_expose_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

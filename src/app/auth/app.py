@@ -111,6 +111,7 @@ def create_auth_app() -> Flask:
             logger.exception("register_storage_error")
             return jsonify({"status": "error", "message": "storage_not_configured"}), 503
 
+        delivery_status = "sent"
         try:
             token = issue_security_token(
                 user.id,
@@ -118,10 +119,23 @@ def create_auth_app() -> Flask:
                 ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
             )
             send_verification_email(str(user.email or data.email), token)
-        except (AccountSecurityStorageError, MailDeliveryError):
-            logger.exception("verification_email_delivery_failed")
+        except AccountSecurityStorageError:
+            logger.exception("verification_email_token_failed")
+            delivery_status = "failed"
+        except MailDeliveryError as exc:
+            logger.warning(
+                "verification_email_delivery_failed category=%s code=%s",
+                exc.category.value,
+                exc.code,
+            )
+            delivery_status = "failed"
         rate_limiter.reset(rate_key)
-        return jsonify({"status": "verification_pending"}), 201
+        return jsonify(
+            {
+                "status": "verification_pending",
+                "email_delivery": delivery_status,
+            }
+        ), 201
 
     @app.post("/auth/login")
     def login():

@@ -790,8 +790,10 @@ def _register_auth_routes(app: Dash) -> None:
 
         try:
             created_user = create_user(payload, role=UserRole.COMMON)
-        except ValueError:
+        except ValueError as exc:
             rate_limiter.record_failure(rate_key)
+            if str(exc) == "email_exists":
+                return _redirect("/verify-email", status="sent")
             return _redirect("/register", error="registration_failed", next_path=next_path)
         except UserStorageError:
             logger.exception("register_storage_error")
@@ -812,8 +814,15 @@ def _register_auth_routes(app: Dash) -> None:
                 verification_token,
                 _navigation_language(next_path),
             )
-        except AccountSecurityStorageError, MailDeliveryError:
-            logger.exception("verification_email_delivery_failed")
+        except AccountSecurityStorageError:
+            logger.exception("verification_email_token_failed")
+            delivery_status = "delivery_failed"
+        except MailDeliveryError as exc:
+            logger.warning(
+                "verification_email_delivery_failed category=%s code=%s",
+                exc.category.value,
+                exc.code,
+            )
             delivery_status = "delivery_failed"
         rate_limiter.reset(rate_key)
         return _redirect("/verify-email", status=delivery_status)
@@ -838,9 +847,10 @@ def _register_auth_routes(app: Dash) -> None:
     @app.server.post("/auth/resend-verification")
     def resend_verification():
         if not validate_csrf_token(request.form.get("csrf_token")):
-            return _redirect("/verify-email", status="sent")
+            return _redirect("/verify-email", status="csrf")
         email = request.form.get("email", "")
         rate_key = rate_limit_key(subject=email.casefold()[:254], scope="email-verification")
+        delivery_status = "sent"
         if not verification_limiter.is_blocked(rate_key):
             try:
                 record = get_user_record_by_email(email)
@@ -851,10 +861,19 @@ def _register_auth_routes(app: Dash) -> None:
                         ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
                     )
                     send_verification_email(record.email, token, _navigation_language())
+                    delivery_status = "resend_sent"
                 verification_limiter.record_failure(rate_key)
-            except AccountSecurityStorageError, MailDeliveryError, UserStorageError:
+            except MailDeliveryError as exc:
+                logger.warning(
+                    "verification_resend_failed category=%s code=%s",
+                    exc.category.value,
+                    exc.code,
+                )
+                delivery_status = "delivery_failed"
+            except AccountSecurityStorageError, UserStorageError:
                 logger.exception("verification_resend_failed")
-        return _redirect("/verify-email", status="sent")
+                delivery_status = "delivery_failed"
+        return _redirect("/verify-email", status=delivery_status)
 
     @app.server.post("/auth/forgot-password")
     def forgot_password():
@@ -948,8 +967,15 @@ def _register_auth_routes(app: Dash) -> None:
                     ttl_seconds=int(os.getenv("EMAIL_VERIFICATION_TTL_SECONDS", "86400")),
                 )
                 send_verification_email(updated.email, token, _navigation_language())
-            except AccountSecurityStorageError, MailDeliveryError:
-                logger.exception("profile_verification_email_failed")
+            except AccountSecurityStorageError:
+                logger.exception("profile_verification_token_failed")
+                delivery_status = "delivery_failed"
+            except MailDeliveryError as exc:
+                logger.warning(
+                    "profile_verification_email_failed category=%s code=%s",
+                    exc.category.value,
+                    exc.code,
+                )
                 delivery_status = "delivery_failed"
             return _redirect("/verify-email", status=delivery_status)
         return _redirect("/user", status="profile_updated")

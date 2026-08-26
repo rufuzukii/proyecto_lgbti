@@ -37,10 +37,19 @@ Para ejecutar las pruebas de humo contra un despliegue real, define
 
 Los registros nuevos quedan pendientes de verificación. Los tokens de verificación y
 recuperación son de un solo uso, se almacenan mediante hash y caducan. El envío se centraliza
-con `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y
-`SMTP_TIMEOUT_SECONDS`. Los enlaces usan `PUBLIC_BASE_URL` o el hostname externo proporcionado
-por Render; no se guardan credenciales ni URLs privadas en el repositorio. Para dominios
-personalizados se puede definir `TRUSTED_HOSTS` como una lista separada por comas.
+en un servicio que solo informa de éxito cuando el proveedor acepta el mensaje. En local se usa
+`EMAIL_TRANSPORT=smtp`; requiere `SMTP_HOST`, `SMTP_PORT`, `SMTP_USE_SSL`, `SMTP_STARTTLS`,
+`SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` y `SMTP_TIMEOUT_SECONDS`. Los servicios
+Render Free no permiten salida por los puertos SMTP habituales, por lo que `render.yaml` selecciona
+`EMAIL_TRANSPORT=gmail_api` y requiere `GMAIL_API_CLIENT_ID`, `GMAIL_API_CLIENT_SECRET`,
+`GMAIL_API_REFRESH_TOKEN` y `GMAIL_API_TIMEOUT_SECONDS`. Este transporte usa HTTPS y el permiso
+OAuth mínimo de envío de Gmail; no necesita Redis ni una librería adicional.
+
+Los enlaces usan `PUBLIC_BASE_URL`, `RENDER_EXTERNAL_URL` o el hostname externo proporcionado por
+Render, en ese orden. En producción se exige HTTPS. No se guardan credenciales ni URLs privadas
+en el repositorio. Para dominios personalizados se puede definir `TRUSTED_HOSTS` como una lista
+separada por comas. Un error de correo no impide arrancar la aplicación: el intento falla de forma
+controlada y deja la cuenta pendiente y con opción de reenvío.
 
 Los límites se configuran con `EMAIL_TOKEN_MAX_ATTEMPTS`, `EMAIL_TOKEN_WINDOW_SECONDS`,
 `PASSWORD_RESET_MAX_ATTEMPTS` y `PASSWORD_RESET_WINDOW_SECONDS`. Las operaciones sensibles

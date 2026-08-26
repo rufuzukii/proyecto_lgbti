@@ -30,8 +30,8 @@ def build_verify_email_layout(status: str | None = None) -> Component:
                 "The link is invalid or has expired. Request a new one.",
             ),
             "delivery_failed": (
-                "La cuenta se ha creado, pero el correo no pudo enviarse. Puedes solicitar otro enlace.",
-                "The account was created, but the email could not be sent. You can request another link.",
+                "No se ha podido enviar el correo de verificaci\u00f3n. Int\u00e9ntalo de nuevo en unos minutos.",
+                "The verification email could not be sent. Try again in a few minutes.",
             ),
             "sent": (
                 "Si la direcci\u00f3n es v\u00e1lida, recibir\u00e1s un enlace de verificaci\u00f3n.",
@@ -40,6 +40,14 @@ def build_verify_email_layout(status: str | None = None) -> Component:
             "registration_sent": (
                 "Te hemos enviado un enlace de verificaci\u00f3n.",
                 "We sent you a verification link.",
+            ),
+            "resend_sent": (
+                "Se ha enviado un nuevo correo de verificaci\u00f3n.",
+                "A new verification email has been sent.",
+            ),
+            "csrf": (
+                "La sesi\u00f3n ha caducado. Actualiza la p\u00e1gina e int\u00e9ntalo de nuevo.",
+                "The session expired. Refresh the page and try again.",
             ),
         }
         message = messages.get(
@@ -54,7 +62,7 @@ def build_verify_email_layout(status: str | None = None) -> Component:
             button_es="Reenviar enlace",
             button_en="Resend link",
         )
-        if status == "registration_sent":
+        if status in {"registration_sent", "resend_sent"}:
             notice = _registration_spam_notice()
     return _account_shell(title, message, content, notice=notice)
 

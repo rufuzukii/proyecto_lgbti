@@ -36,3 +36,13 @@ def test_render_startup_runs_only_the_wsgi_application() -> None:
     assert "backfill" not in wsgi.casefold()
     assert "rglob" not in wsgi
     assert "Datos_" not in render_config
+
+
+def test_render_uses_https_email_transport_and_declares_oauth_secrets() -> None:
+    render_config = (PROJECT_ROOT / "render.yaml").read_text(encoding="utf-8")
+
+    assert "key: EMAIL_TRANSPORT\n        value: gmail_api" in render_config
+    assert "key: GMAIL_API_CLIENT_ID\n        sync: false" in render_config
+    assert "key: GMAIL_API_CLIENT_SECRET\n        sync: false" in render_config
+    assert "key: GMAIL_API_REFRESH_TOKEN\n        sync: false" in render_config
+    assert "key: SMTP_STARTTLS\n        value: \"false\"" in render_config

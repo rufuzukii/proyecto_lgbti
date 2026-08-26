@@ -51,6 +51,20 @@ def test_spam_notice_is_absent_from_every_other_verification_state(
         )
 
 
+def test_successful_resend_includes_the_spam_notice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(account, "get_csrf_token", lambda: "csrf")
+    monkeypatch.setattr(account, "build_navbar", lambda **_kwargs: "navbar")
+
+    layout = account.build_verify_email_layout("resend_sent")
+
+    assert any(
+        getattr(component, "id", None) == "registration-spam-notice"
+        for component in _walk(layout)
+    )
+
+
 def test_spam_notice_styles_cover_light_dark_and_responsive_layout() -> None:
     assets = Path(__file__).resolve().parents[3] / "src" / "app" / "dash" / "assets"
     styles = (assets / "auth.css").read_text(encoding="utf-8")
