@@ -158,7 +158,8 @@ def test_word_search_uses_glossary_ids_and_calculates_board_size() -> None:
     fitting = [
         term.id
         for term in list_glossary_terms()
-        if 1 <= len(custom_game_service.normalize_word_search_term(term.term)) <= 10
+        if term.word_search_enabled("es")
+        and 1 <= len(custom_game_service.normalize_word_search_term(term.term)) <= 10
     ][:6]
     activity = custom_game_service.validate_activity(
         {
@@ -183,7 +184,8 @@ def test_word_search_activity_can_be_saved_and_rebuilt(monkeypatch) -> None:
     term_ids = [
         term.id
         for term in list_glossary_terms()
-        if len(custom_game_service.normalize_word_search_term(term.term)) <= 12
+        if term.word_search_enabled("es")
+        and len(custom_game_service.normalize_word_search_term(term.term)) <= 12
     ][:6]
     values = {
         "game_type": "word_search",
@@ -198,6 +200,28 @@ def test_word_search_activity_can_be_saved_and_rebuilt(monkeypatch) -> None:
     assert loaded is not None
     state = custom_game_service.build_activity_game_state(loaded, seed=9)
     assert len(state["words"]) == 6
+    assert all(word["direction"] != "left" for word in state["words"])
+
+
+def test_english_teacher_word_search_uses_english_terms() -> None:
+    term_ids = [
+        term.id
+        for term in list_glossary_terms()
+        if term.word_search_enabled("en")
+        and len(custom_game_service.normalize_word_search_term(term.term_en)) <= 10
+    ][:6]
+    activity = custom_game_service.validate_activity(
+        {
+            "game_type": "word_search",
+            "title": "Identity concepts",
+            "language": "en",
+            "configuration": {"term_ids": term_ids},
+        }
+    )
+
+    state = custom_game_service.build_activity_game_state(activity, seed=17)
+    expected = {term.localized_term("en") for term in list_glossary_terms() if term.id in term_ids}
+    assert {word["display"] for word in state["words"]} == expected
 
 
 def test_ranking_validates_real_year_codes_zero_and_ties(monkeypatch) -> None:

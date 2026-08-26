@@ -17,8 +17,8 @@ from app.auth.rate_limit import create_rate_limiter
 from app.config import get_app_config
 from app.http_security import configure_flask_security, rate_limit_key
 from app.logging_config import configure_secure_logging
-from app.users.schemas import UserRegister, UserRole, UserType
-from app.users.service import UserStorageError, authenticate_user, create_user, get_user
+from app.users.schemas import UserRead, UserRegister, UserRole, UserType
+from app.users.service import UserRecord, UserStorageError, authenticate_user, create_user, get_user
 
 
 @dataclass
@@ -28,7 +28,6 @@ class AuthUser(UserMixin):
     role: UserRole
     user_type: UserType | None = None
     active: bool = True
-    admin_validated: bool = False
     session_version: int = 0
 
 
@@ -73,15 +72,7 @@ def create_auth_app() -> Flask:
             session.clear()
             return None
         session["_security_version"] = user.session_version
-        return AuthUser(
-            id=user.id,
-            email=user.email,
-            role=user.role,
-            user_type=user.user_type,
-            active=user.active,
-            admin_validated=user.admin_validated,
-            session_version=user.session_version,
-        )
+        return _auth_user_from_record(user)
 
     @app.post("/auth/register")
     def register_user():
@@ -108,6 +99,10 @@ def create_auth_app() -> Flask:
             logger.exception("register_storage_error")
             return jsonify({"status": "error", "message": "storage_not_configured"}), 503
 
+        session.clear()
+        session.permanent = True
+        login_user(_auth_user_from_record(user), remember=False, fresh=True)
+        session["_security_version"] = user.session_version
         rate_limiter.reset(rate_key)
         return jsonify({"status": "account_created", "user_id": user.id}), 201
 
@@ -138,17 +133,7 @@ def create_auth_app() -> Flask:
             return jsonify({"status": "error", "message": "invalid_credentials"}), 401
         session.clear()
         session.permanent = True
-        login_user(
-            AuthUser(
-                id=record.id,
-                email=record.email,
-                role=record.role,
-                user_type=record.user_type,
-                active=record.active,
-                admin_validated=record.admin_validated,
-                session_version=record.session_version,
-            )
-        )
+        login_user(_auth_user_from_record(record))
         session["_security_version"] = record.session_version
         rate_limiter.reset(rate_key)
         return jsonify({"status": "ok"})
@@ -174,6 +159,17 @@ def create_auth_app() -> Flask:
         )
 
     return app
+
+
+def _auth_user_from_record(user: UserRead | UserRecord) -> AuthUser:
+    return AuthUser(
+        id=user.id,
+        email=user.email,
+        role=user.role,
+        user_type=user.user_type,
+        active=user.active,
+        session_version=user.session_version,
+    )
 
 
 def _rate_key(email: str | None, *, include_email: bool = True) -> str:

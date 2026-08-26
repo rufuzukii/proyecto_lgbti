@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -16,7 +14,7 @@ from app.dash_app import _safe_next
 from app.http_security import client_ip, configure_flask_security, rate_limit_key
 from app.logging_config import redact_sensitive_text
 from app.users import service as user_service
-from app.users.schemas import UserRegister
+from app.users.schemas import UserRead, UserRegister, UserRole, UserType
 
 
 def test_flask_security_sets_headers_cookies_and_auth_request_limit() -> None:
@@ -133,9 +131,18 @@ def test_logs_redact_credentials_and_configured_secrets(
 def test_auth_api_creates_an_immediately_available_account(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    user = SimpleNamespace(id="user-id", email="user@example.com")
+    user = UserRead(
+        id="user-id",
+        username="Test user",
+        email="user@example.com",
+        role=UserRole.COMMON,
+        user_type=UserType.COMUN,
+        session_version=0,
+    )
     monkeypatch.setattr("app.auth.app.create_user", lambda _payload: user)
-    response = create_auth_app().test_client().post(
+    monkeypatch.setattr("app.auth.app.get_user", lambda _user_id: user)
+    client = create_auth_app().test_client()
+    response = client.post(
         "/auth/register",
         json={
             "name": "Test user",
@@ -147,6 +154,11 @@ def test_auth_api_creates_an_immediately_available_account(
     assert response.status_code == 201
     assert response.get_json() == {
         "status": "account_created",
+        "user_id": "user-id",
+    }
+    assert client.get("/auth/me").get_json() == {
+        "role": "common",
+        "user_type": "comun",
         "user_id": "user-id",
     }
 

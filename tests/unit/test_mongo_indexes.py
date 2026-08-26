@@ -95,7 +95,7 @@ def test_fra_unique_identity_includes_value_bucket(monkeypatch) -> None:
         lambda name, indexes: captured.setdefault(name, list(indexes)),
     )
     monkeypatch.setattr(mongo_indexes, "_drop_obsolete_indexes", lambda *_args: None)
-    monkeypatch.setattr(mongo_indexes, "migrate_account_validation_schema", lambda: None)
+    monkeypatch.setattr(mongo_indexes, "migrate_account_security_schema", lambda: None)
 
     mongo_indexes.ensure_fra_indexes()
 

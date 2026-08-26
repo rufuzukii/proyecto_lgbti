@@ -100,7 +100,7 @@ def test_home_map_and_2026_legal_detail_complete_independent_flow(monkeypatch) -
         "DE",
         "FR",
     ]
-    assert "Country ranking" in str(english_map[5])
+    assert "Legal ranking · 2026" in str(english_map[5])
     assert "Spain" in str(english_map[5])
     assert english_map[6][0]["score"] == 77.0
     assert components["home-legal-country-select"].value is None

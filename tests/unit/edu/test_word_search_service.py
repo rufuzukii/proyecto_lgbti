@@ -86,6 +86,23 @@ def test_term_selection_returns_the_requested_random_count() -> None:
     assert len({term.id for term in selected}) == 8
 
 
+def test_term_selection_uses_localized_text_and_language_specific_eligibility() -> None:
+    term = GlossaryTerm(
+        id="intersex",
+        term="Intersexualidad",
+        term_en="Intersex",
+        definition="Definición.",
+        definition_en="Definition.",
+        category="sex_characteristics_intersex",
+        sources=(GlossarySource("UNAM", "https://example.test"),),
+        word_search_es=False,
+        word_search_en=True,
+    )
+
+    assert select_word_search_terms([term], language="es", seed=1) == ()
+    assert select_word_search_terms([term], language="en", seed=1) == (term,)
+
+
 def test_generation_with_seed_is_deterministic_and_fills_every_cell() -> None:
     # Arrange
     words = ["Diversidad", "Género", "Queer", "Bisexual"]
@@ -112,12 +129,28 @@ def test_words_too_long_for_the_requested_direction_are_discarded() -> None:
 
 
 @pytest.mark.parametrize("direction", DIRECTIONS)
-def test_generation_supports_every_forward_and_reverse_direction(direction: str) -> None:
+def test_generation_supports_every_allowed_direction(direction: str) -> None:
     # Arrange / Act
     generated = generate_word_search(["QUEER"], 6, 6, seed=1, directions=[direction])
 
     # Assert
     assert generated["placements"][0]["direction"] == direction
+
+
+def test_default_generation_never_places_a_word_horizontally_right_to_left() -> None:
+    words = ["DIVERSIDAD", "GENERO", "QUEER", "BISEXUAL", "INTERSEX", "TRANS"]
+
+    for seed in range(40):
+        generated = generate_word_search(words, 12, 12, seed=seed)
+        assert generated["placements"]
+        assert all(
+            placement["direction"] != "left"
+            and not (
+                placement["start"][0] == placement["end"][0]
+                and placement["start"][1] > placement["end"][1]
+            )
+            for placement in generated["placements"]
+        )
 
 
 def test_valid_collisions_share_only_matching_letters() -> None:

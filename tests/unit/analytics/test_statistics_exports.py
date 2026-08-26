@@ -358,7 +358,15 @@ const button = {{
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
-def test_response_comparison_export_builds_a_plotly_legend_and_attribution() -> None:
+@pytest.mark.parametrize(
+    ("theme", "expected_paper", "expected_font"),
+    (("light", "#ffffff", "#252a31"), ("dark", "#111827", "#f7f9fc")),
+)
+def test_response_comparison_export_builds_a_themed_plotly_legend_and_attribution(
+    theme: str,
+    expected_paper: str,
+    expected_font: str,
+) -> None:
     script_path = ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js"
     harness = f"""
 const fs = require("fs");
@@ -384,7 +392,23 @@ const exportGraph = {{style: {{}}, setAttribute: () => {{}}, remove: () => {{cap
 const wrapper = {{querySelector: () => graph, matches: () => false}};
 const errorStatus = {{hidden: true}};
 global.window = {{
-  RainbowLens: {{}},
+  RainbowLens: {{
+    state: {{currentTheme: () => {json.dumps(theme)}}},
+    theme: {{colorsForTheme: (selected) => ({{
+      paper: selected === "dark" ? "#111827" : "#ffffff",
+      plot: selected === "dark" ? "#111827" : "#ffffff",
+      font: selected === "dark" ? "#f7f9fc" : "#252a31",
+      axis: selected === "dark" ? "#aeb8c7" : "#252a31",
+      grid: selected === "dark" ? "#2d3748" : "#e5e9eb",
+      muted: selected === "dark" ? "#c4cede" : "#475569",
+      legend: selected === "dark" ? "rgba(17,24,39,0.94)" : "rgba(255,255,255,0.94)",
+      geoBg: selected === "dark" ? "#111827" : "#ffffff",
+      geoLand: selected === "dark" ? "#1a2232" : "#edf1f4",
+      geoOcean: "#dcebf2",
+      geoCoast: selected === "dark" ? "#536176" : "#b9c0ca",
+      mapbox: selected === "dark" ? "carto-darkmatter" : "open-street-map"
+    }})}}
+  }},
   Plotly: {{
     newPlot: async (target, data, layout) => {{
       target.data = data;
@@ -398,6 +422,7 @@ global.window = {{
 }};
 global.document = {{
   addEventListener: () => {{}},
+  documentElement: {{dataset: {{theme: {json.dumps(theme)}}}}},
   getElementById: () => wrapper,
   createElement: () => exportGraph,
   body: {{insertAdjacentElement: () => {{captures.appended = true;}}}}
@@ -418,6 +443,11 @@ const button = {{
   if (!captures.layout.showlegend) throw new Error("legend missing");
   if (captures.layout.legend.title.text !== "Países") throw new Error("legend title missing");
   if (!captures.layout.annotations.some((item) => item.text === "Fuente: FRA")) throw new Error("source missing");
+  if (captures.layout.paper_bgcolor !== {json.dumps(expected_paper)}) throw new Error("paper theme mismatch");
+  if (captures.layout.plot_bgcolor !== {json.dumps(expected_paper)}) throw new Error("plot theme mismatch");
+  if (captures.layout.font.color !== {json.dumps(expected_font)}) throw new Error("font theme mismatch");
+  if (captures.layout.legend.font.color !== {json.dumps(expected_font)}) throw new Error("legend theme mismatch");
+  if (graph.layout.paper_bgcolor !== undefined) throw new Error("visible figure mutated");
   if (captures.downloadTarget !== exportGraph) throw new Error("original graph exported");
   if (!captures.appended || !captures.purged || !captures.removed) throw new Error("temporary graph leak");
 }})().catch((error) => {{console.error(error); process.exitCode = 1;}});

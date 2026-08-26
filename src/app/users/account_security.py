@@ -21,9 +21,6 @@ class AccountSecurityStorageError(RuntimeError):
 class AccountSecurityState:
     user_id: str
     active: bool
-    admin_validated: bool
-    validated_at: datetime | None
-    validated_by: str | None
     session_version: int
     legacy_default: bool = False
 
@@ -39,7 +36,6 @@ def initialize_new_account(user_id: str) -> AccountSecurityState:
                 "$setOnInsert": {
                     "user_id": user_id,
                     "active": True,
-                    "admin_validated": False,
                     "session_version": 0,
                     "created_at": now,
                 },
@@ -53,24 +49,26 @@ def initialize_new_account(user_id: str) -> AccountSecurityState:
     return _state_from_document(document, user_id=user_id, legacy_default=False)
 
 
-def migrate_account_validation_schema() -> None:
-    """Replace obsolete email-verification state and remove its token collection."""
+def migrate_account_security_schema() -> None:
+    """Remove obsolete account-verification data while retaining session security."""
     now = datetime.now(UTC)
     try:
         collection = get_mongo_collection(ACCOUNT_COLLECTION)
-        collection.update_many(
-            {"admin_validated": {"$exists": False}},
-            {"$set": {"admin_validated": False, "updated_at": now}},
-        )
-        collection.update_many(
-            {"email_verified": {"$exists": True}},
-            {"$unset": {"email_verified": ""}, "$set": {"updated_at": now}},
-        )
+        for obsolete_field in (
+            "admin_validated",
+            "validated_at",
+            "validated_by",
+            "email_verified",
+        ):
+            collection.update_many(
+                {obsolete_field: {"$exists": True}},
+                {"$unset": {obsolete_field: ""}, "$set": {"updated_at": now}},
+            )
         database = get_mongo_database()
         if "user_security_tokens" in database.list_collection_names():
             database.drop_collection("user_security_tokens")
     except Exception as exc:
-        raise AccountSecurityStorageError("account_validation_migration_failed") from exc
+        raise AccountSecurityStorageError("account_security_migration_failed") from exc
 
 
 def get_account_security(user_id: str) -> AccountSecurityState:
@@ -84,9 +82,6 @@ def get_account_security(user_id: str) -> AccountSecurityState:
         return AccountSecurityState(
             user_id=user_id,
             active=True,
-            admin_validated=False,
-            validated_at=None,
-            validated_by=None,
             session_version=0,
             legacy_default=True,
         )
@@ -115,27 +110,10 @@ def get_account_security_many(user_ids: list[str]) -> dict[str, AccountSecurityS
     return {
         user_id: by_id.get(
             user_id,
-            AccountSecurityState(user_id, True, False, None, None, 0, legacy_default=True),
+            AccountSecurityState(user_id, True, 0, legacy_default=True),
         )
         for user_id in unique_ids
     }
-
-
-def mark_admin_validated(user_id: str, actor_user_id: str) -> AccountSecurityState:
-    if not user_id or not actor_user_id:
-        raise ValueError("validation_actor_required")
-    if user_id == actor_user_id:
-        raise ValueError("self_manage")
-    now = datetime.now(UTC)
-    return _update_account_state(
-        user_id,
-        {
-            "admin_validated": True,
-            "validated_at": now,
-            "validated_by": actor_user_id,
-        },
-        upsert_defaults=True,
-    )
 
 
 def increment_session_version(user_id: str) -> int:
@@ -147,7 +125,6 @@ def increment_session_version(user_id: str) -> int:
                 "$setOnInsert": {
                     "user_id": user_id,
                     "active": True,
-                    "admin_validated": False,
                     "created_at": now,
                 },
                 "$inc": {"session_version": 1},
@@ -177,37 +154,6 @@ def record_security_event(user_id: str, action: str) -> None:
         raise AccountSecurityStorageError("security_audit_unavailable") from exc
 
 
-def _update_account_state(
-    user_id: str,
-    changes: dict[str, Any],
-    *,
-    upsert_defaults: bool,
-) -> AccountSecurityState:
-    now = datetime.now(UTC)
-    update: dict[str, Any] = {"$set": {**changes, "updated_at": now}}
-    if upsert_defaults:
-        defaults = {
-            "user_id": user_id,
-            "active": True,
-            "admin_validated": False,
-            "session_version": 0,
-            "created_at": now,
-        }
-        for key in changes:
-            defaults.pop(key, None)
-        update["$setOnInsert"] = defaults
-    try:
-        document = get_mongo_collection(ACCOUNT_COLLECTION).find_one_and_update(
-            {"user_id": user_id},
-            update,
-            upsert=upsert_defaults,
-            return_document=ReturnDocument.AFTER,
-        )
-    except Exception as exc:
-        raise AccountSecurityStorageError("account_security_unavailable") from exc
-    return _state_from_document(document, user_id=user_id, legacy_default=False)
-
-
 def _state_from_document(
     document: Any,
     *,
@@ -218,11 +164,6 @@ def _state_from_document(
     return AccountSecurityState(
         user_id=user_id,
         active=bool(values.get("active", True)),
-        admin_validated=bool(values.get("admin_validated", False)),
-        validated_at=(
-            values.get("validated_at") if isinstance(values.get("validated_at"), datetime) else None
-        ),
-        validated_by=(str(values["validated_by"]) if values.get("validated_by") else None),
         session_version=max(0, int(values.get("session_version") or 0)),
         legacy_default=legacy_default,
     )

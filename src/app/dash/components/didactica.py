@@ -6,7 +6,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.dash.i18n import dash_attrs, text_attrs
-from app.dash.routes import route_path
+from app.dash.routes import current_route_language, route_path
 from app.edu.models import GlossaryTerm, TeacherResource
 from app.edu.translations import category_name, pair, tr
 
@@ -16,9 +16,11 @@ def translated(
     *,
     tag: Callable[..., Component] = html.Span,
     class_name: str | None = None,
+    language: str | None = None,
 ) -> Component:
     es, en = pair(key)
-    return tag(es, className=class_name, **text_attrs(es, en))
+    selected = language or current_route_language()
+    return tag(en if selected == "en" else es, className=class_name, **text_attrs(es, en))
 
 
 def resource_card(

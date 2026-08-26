@@ -85,7 +85,7 @@ def test_combined_export_figure_contains_map_legend_ranking_and_attribution() ->
     assert "RainbowLens DataHub" in figure.layout.title.text
     assert "European LGBTIQ+ map" in figure.layout.title.text
     annotation_text = " ".join(str(annotation.text) for annotation in figure.layout.annotations)
-    assert "Country ranking" in annotation_text
+    assert "Legal ranking · 2026" in annotation_text
     assert "ILGA-Europe's Rainbow Map 2026" in annotation_text
     assert "RainbowLens Datahub" in annotation_text
 

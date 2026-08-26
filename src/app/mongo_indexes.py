@@ -12,7 +12,7 @@ from pymongo.errors import OperationFailure
 from app.fra_surveys import FRA_SURVEYS
 from app.mongo import get_mongo_collection, get_mongo_database
 from app.privacy.policy import get_privacy_policy_config
-from app.users.account_security import migrate_account_validation_schema
+from app.users.account_security import migrate_account_security_schema
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def spain_report_collection_names() -> set[str]:
 @lru_cache(maxsize=1)
 def initialize_mongo_indexes() -> None:
     """Create application indexes once at process startup or from the setup CLI."""
-    migrate_account_validation_schema()
+    migrate_account_security_schema()
     ensure_fra_indexes()
     _ensure_collection_indexes(
         "Indicator_ilga",

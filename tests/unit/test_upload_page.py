@@ -144,16 +144,15 @@ def test_upload_callback_accepts_authorized_professional_profile(monkeypatch) ->
     assert result.to_plotly_json()["props"]["children"] == "ok"
 
 
-def test_upload_callback_allows_non_admin_validated_professional_profile(monkeypatch) -> None:
+def test_upload_callback_allows_an_authenticated_professional_profile(monkeypatch) -> None:
     monkeypatch.setattr(
         upload_page,
         "current_user",
         SimpleNamespace(
             is_authenticated=True,
-            admin_validated=False,
             role="common",
             user_type="rrhh",
-            get_id=lambda: "rrhh-pending-validation",
+            get_id=lambda: "rrhh-user",
         ),
     )
     app = Dash("upload-unverified-test", suppress_callback_exceptions=True)

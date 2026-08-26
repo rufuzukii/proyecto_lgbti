@@ -52,7 +52,6 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     edit = _component_with_class(components, "admin-edit-button")
     save = _component_with_class(components, "admin-save-button")
     delete = _component_with_class(components, "admin-delete-button")
-    validate = _component_with_class(components, "admin-validate-button")
     editable_fields = [
         component for component in components if "admin-editable-input" in _classes(component)
     ]
@@ -66,8 +65,6 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     assert _props(save)["hidden"] is True
     assert _props(save)["value"] == "update"
     assert _props(delete)["value"] == "delete"
-    assert _props(validate)["value"] == "validate"
-    assert _props(validate)["disabled"] is False
     assert _props(delete)["data-admin-user-delete"] == "true"
     assert len(editable_fields) == 3
     assert all("readOnly" not in _props(field) for field in editable_fields)
@@ -124,7 +121,6 @@ def test_current_user_row_is_fully_disabled_in_admin_table(monkeypatch) -> None:
     edit = _component_with_class(components, "admin-edit-button")
     save = _component_with_class(components, "admin-save-button")
     delete = _component_with_class(components, "admin-delete-button")
-    validate = _component_with_class(components, "admin-validate-button")
     editable_fields = [
         component for component in components if "admin-editable-input" in _classes(component)
     ]
@@ -139,7 +135,6 @@ def test_current_user_row_is_fully_disabled_in_admin_table(monkeypatch) -> None:
     assert _props(edit)["disabled"] is True
     assert _props(save)["disabled"] is True
     assert _props(delete)["disabled"] is True
-    assert _props(validate)["disabled"] is True
     assert all(_props(field)["disabled"] is True for field in editable_fields)
     assert _props(role)["disabled"] is True
     assert hidden_values["version"] == "version-1"
@@ -147,7 +142,7 @@ def test_current_user_row_is_fully_disabled_in_admin_table(monkeypatch) -> None:
     assert hidden_values["page"] == "2"
 
 
-def test_admin_user_table_has_no_account_status_or_activation_controls(monkeypatch) -> None:
+def test_admin_user_table_has_only_profile_role_and_required_actions(monkeypatch) -> None:
     monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
     user = UserRead(
         id="user-2",
@@ -163,28 +158,21 @@ def test_admin_user_table_has_no_account_status_or_activation_controls(monkeypat
     assert "Estado" not in rendered
     assert "Activar" not in rendered
     assert "Desactivar" not in rendered
-    assert "Validación" in rendered
-    assert "Validar cuenta" in rendered
+    assert "Validación" not in rendered
+    assert "Validada" not in rendered
+    assert "Validar cuenta" not in rendered
+    assert "Validation" not in str(table)
+    assert "Validated" not in str(table)
+    assert "Validate account" not in str(table)
     assert not any(item.get("value") == "toggle_active" for item in props)
+    assert not any(item.get("value") == "validate" for item in props)
 
 
-def test_validated_account_shows_badge_without_reverse_action(monkeypatch) -> None:
-    monkeypatch.setattr(admin_users, "get_csrf_token", lambda: "csrf-token")
-    table = admin_users._build_users_table(
-        [
-            UserRead(
-                id="user-2",
-                username="María",
-                email="maria@example.com",
-                role=UserRole.COMMON,
-                admin_validated=True,
-            )
-        ]
-    )
-    components = list(_walk(table))
-    badge = _component_with_class(components, "admin-validation-badge")
-    assert "Validada" in _text_content(badge)
-    assert not any(_props(item).get("value") == "unvalidate" for item in components)
+def test_admin_validation_styles_were_removed() -> None:
+    stylesheet = Path("src/app/dash/assets/admin.css").read_text(encoding="utf-8")
+
+    assert "admin-validation" not in stylesheet
+    assert "admin-validate-button" not in stylesheet
 
 
 def test_admin_search_callback_updates_only_results_component(monkeypatch) -> None:

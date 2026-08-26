@@ -38,7 +38,6 @@ class _User:
     organization = "Rainbow Org"
     role = UserRole.COMMON
     user_type = UserType.DOCENTE
-    admin_validated = False
 
     @staticmethod
     def get_id() -> str:

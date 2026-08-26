@@ -107,7 +107,7 @@ def build_legal_map_export_figure(
     ranking = legal_ranking_from_payload(ranking_rows)
     english = language == "en"
     colors = _export_colors(theme)
-    ranking_title = "Country ranking" if english else "Ranking de países"
+    ranking_title = "Legal ranking" if english else "Ranking legal"
     country_label = "Country" if english else "País"
     score_label = "Legal score" if english else "Puntuación legal"
     map_title = "European LGBTIQ+ map" if english else "Mapa europeo LGBTIQ+"

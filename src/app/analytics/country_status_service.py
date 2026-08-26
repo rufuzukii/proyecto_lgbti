@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 import bleach
@@ -14,6 +19,18 @@ from app.source_attribution import ILGA_ANNUAL_REVIEW_2026_PDF_URL
 ILGA_ANNUAL_REVIEW_2026_URL = ILGA_ANNUAL_REVIEW_2026_PDF_URL
 MISSING_STATUS_SUMMARY_ES = "Todavía no hay información disponible para este país."
 MISSING_STATUS_SUMMARY_EN = "No information is available for this country yet."
+COUNTRY_STATUS_EN_CATALOG_PATH = (
+    Path(__file__).with_name("data") / "country_status_2026_en.json"
+)
+_TEXT_FIELDS = (
+    "title",
+    "summary",
+    "legal_context",
+    "social_context",
+    "observations",
+)
+_LIST_FIELDS = ("positive_developments", "main_challenges")
+logger = logging.getLogger(__name__)
 
 
 def get_country_lgbti_status(
@@ -69,21 +86,93 @@ def _clean_status_record(record: dict[str, Any]) -> dict[str, Any]:
         "reviewed_at": _plain_text(record.get("reviewed_at")),
         "active": bool(record.get("active", True)),
     }
-    for key in (
-        "title",
-        "summary",
-        "legal_context",
-        "social_context",
-        "observations",
-    ):
+    for key in _TEXT_FIELDS:
         translations = _plain_text_translations(record.get(f"{key}_i18n"))
         if translations:
             cleaned[f"{key}_i18n"] = translations
-    for key in ("positive_developments", "main_challenges"):
+    for key in _LIST_FIELDS:
         translations = _plain_text_list_translations(record.get(f"{key}_i18n"))
         if translations:
             cleaned[f"{key}_i18n"] = translations
+    _merge_versioned_english_content(cleaned)
     return cleaned
+
+
+def _merge_versioned_english_content(record: dict[str, Any]) -> None:
+    catalog_year, records = _load_english_catalog()
+    if record.get("year") != catalog_year:
+        return
+
+    country_code = str(record.get("country_code") or "").upper()
+    catalog_record = records.get(country_code)
+    if not isinstance(catalog_record, dict):
+        return
+    fingerprints = catalog_record.get("_source_fingerprints")
+    if not isinstance(fingerprints, dict):
+        return
+
+    for key in _TEXT_FIELDS:
+        translations = record.get(f"{key}_i18n")
+        if not isinstance(translations, dict):
+            translations = {}
+        if translations.get("en") or not _source_matches(
+            record.get(key), fingerprints.get(key)
+        ):
+            continue
+        english_text = _plain_text(catalog_record.get(key))
+        if english_text:
+            record[f"{key}_i18n"] = translations
+            translations["en"] = english_text
+
+    for key in _LIST_FIELDS:
+        translations = record.get(f"{key}_i18n")
+        if not isinstance(translations, dict):
+            translations = {}
+        if translations.get("en") or not _source_matches(
+            record.get(key), fingerprints.get(key)
+        ):
+            continue
+        english_items = _plain_text_list(catalog_record.get(key))
+        if english_items:
+            record[f"{key}_i18n"] = translations
+            translations["en"] = english_items
+
+
+def _source_matches(value: Any, expected_fingerprint: Any) -> bool:
+    if not isinstance(expected_fingerprint, str) or not expected_fingerprint:
+        return False
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest() == expected_fingerprint
+
+
+@lru_cache(maxsize=1)
+def _load_english_catalog() -> tuple[int | None, dict[str, dict[str, Any]]]:
+    try:
+        payload = json.loads(COUNTRY_STATUS_EN_CATALOG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        logger.exception("country_status_english_catalog_load_failed")
+        return None, {}
+
+    try:
+        year = int(payload.get("year"))
+    except (AttributeError, TypeError, ValueError):
+        logger.error("country_status_english_catalog_invalid_year")
+        return None, {}
+    raw_records = payload.get("records")
+    if not isinstance(raw_records, dict):
+        logger.error("country_status_english_catalog_invalid_records")
+        return None, {}
+    return year, {
+        str(code).strip().upper(): record
+        for code, record in raw_records.items()
+        if isinstance(record, dict)
+    }
 
 
 def _missing_status(country_code: str, requested_year: int | None) -> dict[str, Any]:

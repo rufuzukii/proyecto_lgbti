@@ -106,8 +106,8 @@ from app.privacy.service import (
     personal_data_export_bytes,
 )
 from app.trends import build_trends_layout, register_trend_callbacks
-from app.users.account_security import migrate_account_validation_schema
-from app.users.schemas import UserRegister, UserRole, UserType
+from app.users.account_security import migrate_account_security_schema
+from app.users.schemas import UserRead, UserRegister, UserRole, UserType
 from app.users.service import (
     UserRecord,
     UserStorageError,
@@ -117,7 +117,6 @@ from app.users.service import (
     list_users_page,
     update_user_as_admin,
     update_user_profile,
-    validate_user_as_admin,
 )
 
 logger = logging.getLogger(__name__)
@@ -170,7 +169,6 @@ class SessionUser(UserMixin):
     organization: str | None
     user_type: UserType | None = None
     active: bool = True
-    admin_validated: bool = False
     session_version: int = 0
 
 
@@ -204,9 +202,9 @@ def create_dash_app() -> Dash:
             logger.warning("mongo_index_initialization_failed", exc_info=True)
     else:
         try:
-            migrate_account_validation_schema()
+            migrate_account_security_schema()
         except Exception:
-            logger.warning("account_validation_migration_failed", exc_info=True)
+            logger.warning("account_security_migration_failed", exc_info=True)
         logger.info("mongo_index_initialization_skipped run_with=python_-m_app.mongo_indexes")
     _register_error_routes(app)
 
@@ -753,7 +751,7 @@ def _register_auth_routes(app: Dash) -> None:
             return _redirect("/register", error="invalid_payload", next_path=next_path)
 
         try:
-            create_user(payload, role=UserRole.COMMON)
+            created = create_user(payload, role=UserRole.COMMON)
         except ValueError as exc:
             rate_limiter.record_failure(rate_key)
             if str(exc) == "email_exists":
@@ -766,8 +764,13 @@ def _register_auth_routes(app: Dash) -> None:
             logger.exception("register_failed")
             return _redirect("/register", error="storage", next_path=next_path)
 
+        session.clear()
+        session.permanent = True
+        login_user(_session_user_from_record(created), remember=False, fresh=True)
+        session["_security_version"] = created.session_version
+        rotate_csrf_token()
         rate_limiter.reset(rate_key)
-        return _redirect("/login", notice="account_created", next_path=next_path)
+        return redirect(next_path)
 
     @app.server.post("/auth/logout")
     def logout():
@@ -821,21 +824,6 @@ def _register_auth_routes(app: Dash) -> None:
             "q": (request.form.get("q") or "")[:120] or None,
             "page": str(_positive_int(request.form.get("page"), default=1)),
         }
-        if action == "validate":
-            if user_id == current_user.get_id():
-                return _redirect("/admin", error="self_manage", **return_params)
-            try:
-                validate_user_as_admin(
-                    user_id=user_id,
-                    actor_user_id=current_user.get_id(),
-                )
-            except ValueError as exc:
-                return _redirect("/admin", error=str(exc), **return_params)
-            except UserStorageError:
-                logger.exception("admin_user_validation_failed")
-                return _redirect("/admin", error="storage", **return_params)
-            return _redirect("/admin", status="user_validated", **return_params)
-
         if action == "delete":
             if user_id == current_user.get_id():
                 return _redirect("/admin", error="self_delete", **return_params)
@@ -1018,16 +1006,15 @@ def _register_docente_routes(app: Dash) -> None:
         )
 
 
-def _session_user_from_record(record: UserRecord) -> SessionUser:
+def _session_user_from_record(record: UserRecord | UserRead) -> SessionUser:
     return SessionUser(
         id=record.id,
         username=record.username,
-        email=record.email,
+        email=record.email or "",
         role=record.role,
         organization=record.organization,
         user_type=record.user_type,
         active=record.active,
-        admin_validated=record.admin_validated,
         session_version=record.session_version,
     )
 

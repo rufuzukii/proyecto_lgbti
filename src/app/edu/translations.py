@@ -6,7 +6,7 @@ TEXT = {
         "Aprende sobre diversidad LGBTIQ+, derechos y análisis de datos mediante recursos interactivos.",
         "Learn about LGBTIQ+ diversity, rights and data analysis through interactive resources.",
     ),
-    "dictionary": ("Diccionario LGBTIQ+", "LGBTIQ+ dictionary"),
+    "dictionary": ("Diccionario LGBTIQ+", "LGBTIQ+ Dictionary"),
     "dictionary_desc": (
         "Consulta conceptos relacionados con diversidad sexual, de género y corporal mediante definiciones claras y fuentes especializadas.",
         "Explore concepts related to sexual, gender and bodily diversity through clear definitions and specialist sources.",
@@ -146,8 +146,8 @@ TEXT = {
         "There are not enough countries with an available legal score to start the game.",
     ),
     "word_search_instructions": (
-        "Pulsa o toca la primera letra de una palabra y después su última letra. Las palabras pueden aparecer en horizontal, vertical o diagonal y en ambos sentidos.",
-        "Click or tap the first letter of a word and then its last letter. Words may run horizontally, vertically or diagonally in either direction.",
+        "Pulsa o toca la primera letra de una palabra y después su última letra. Las palabras pueden aparecer en horizontal de izquierda a derecha, en vertical o en diagonal.",
+        "Click or tap the first letter of a word and then its last letter. Words may run horizontally from left to right, vertically or diagonally.",
     ),
     "word_search_board": ("Tablero de la sopa de letras", "Word-search board"),
     "words": ("Palabras", "Words"),
@@ -307,22 +307,22 @@ TEXT = {
 }
 
 CATEGORIES = {
-    "diversity_identities": ("Diversidad e identidades", "Diversity and identities"),
+    "diversity_inclusion": ("Diversidad e inclusión", "Diversity and inclusion"),
     "rights_legal_protection": ("Derechos y protección legal", "Rights and legal protection"),
-    "families_reproductive_rights": (
-        "Familias y derechos reproductivos",
-        "Families and reproductive rights",
+    "families_rights": ("Familias y derechos", "Families and rights"),
+    "discrimination_social": (
+        "Discriminación y experiencias sociales",
+        "Discrimination and social experiences",
     ),
-    "social_experiences": ("Experiencias sociales", "Social experiences"),
     "sexual_orientation": ("Orientación sexual", "Sexual orientation"),
-    "gender_identity": ("Identidad de género", "Gender identity"),
-    "gender_expression": ("Expresión de género", "Gender expression"),
-    "sex_characteristics": ("Características sexuales", "Sex characteristics"),
-    "family_diversity": ("Diversidad familiar", "Family diversity"),
-    "rights": ("Discriminación y derechos", "Discrimination and rights"),
-    "inclusive_language": ("Lenguaje inclusivo", "Inclusive language"),
-    "intersectionality": ("Interseccionalidad", "Intersectionality"),
-    "gender_concepts": ("Género y sociedad", "Gender and society"),
+    "gender_identity_expression": (
+        "Identidad y expresión de género",
+        "Gender identity and expression",
+    ),
+    "sex_characteristics_intersex": (
+        "Características sexuales e intersexualidad",
+        "Sex characteristics and intersex",
+    ),
 }
 
 

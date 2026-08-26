@@ -71,19 +71,7 @@
       return;
     }
 
-    const dark = theme === "dark";
-    const colors = {
-      paper: dark ? "#111827" : "#ffffff",
-      plot: dark ? "#111827" : "#ffffff",
-      font: dark ? "#f7f9fc" : "#252a31",
-      axis: dark ? "#aeb8c7" : "#252a31",
-      grid: dark ? "#2d3748" : "#e5e9eb",
-      geoBg: dark ? "#111827" : "#ffffff",
-      geoLand: dark ? "#1a2232" : "#edf1f4",
-      geoOcean: "#dcebf2",
-      geoCoast: dark ? "#536176" : "#b9c0ca",
-      mapbox: dark ? "carto-darkmatter" : "open-street-map",
-    };
+    const colors = colorsForTheme(theme);
     const layout = {
       paper_bgcolor: colors.paper,
       plot_bgcolor: colors.plot,
@@ -111,6 +99,24 @@
       graph.dataset.themeApplied = theme;
       window.Plotly.relayout(graph, layout).catch(() => {});
     });
+  }
+
+  function colorsForTheme(theme) {
+    const dark = theme === "dark";
+    return {
+      paper: dark ? "#111827" : "#ffffff",
+      plot: dark ? "#111827" : "#ffffff",
+      font: dark ? "#f7f9fc" : "#252a31",
+      axis: dark ? "#aeb8c7" : "#252a31",
+      grid: dark ? "#2d3748" : "#e5e9eb",
+      muted: dark ? "#c4cede" : "#475569",
+      legend: dark ? "rgba(17,24,39,0.94)" : "rgba(255,255,255,0.94)",
+      geoBg: dark ? "#111827" : "#ffffff",
+      geoLand: dark ? "#1a2232" : "#edf1f4",
+      geoOcean: "#dcebf2",
+      geoCoast: dark ? "#536176" : "#b9c0ca",
+      mapbox: dark ? "carto-darkmatter" : "open-street-map",
+    };
   }
 
   function isPlotlyInitialized(graph) {
@@ -159,6 +165,7 @@
   app.theme = {
     applyTheme,
     applyToggleLabels,
+    colorsForTheme,
     restylePlotly,
     setTheme,
   };

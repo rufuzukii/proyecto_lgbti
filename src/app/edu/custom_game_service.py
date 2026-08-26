@@ -239,6 +239,7 @@ def build_activity_game_state(activity: Mapping[str, Any], *, seed: int | None =
         )
     if game_type == "word_search":
         return create_word_search_game(
+            language=str(activity.get("language") or "es"),
             seed=seed,
             word_count=int(configuration["word_count"]),
             term_ids=configuration.get("term_ids"),
@@ -272,7 +273,9 @@ def _validated_activity(values: Mapping[str, Any]) -> dict[str, Any]:
     status = str(values.get("status") or "DRAFT").strip().upper()
     if status not in ACTIVITY_STATUSES:
         raise CustomGameValidationError("invalid_status")
-    configuration = _validated_configuration(game_type, values.get("configuration"))
+    configuration = _validated_configuration(
+        game_type, values.get("configuration"), language=language
+    )
     return {
         "game_type": game_type,
         "title": title,
@@ -286,16 +289,16 @@ def _validated_activity(values: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _validated_configuration(game_type: str, raw: Any) -> dict[str, Any]:
+def _validated_configuration(game_type: str, raw: Any, *, language: str) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
         raise CustomGameValidationError("invalid_configuration")
     if game_type in {"guess_term", "word_search"}:
-        return _validated_glossary_configuration(game_type, raw)
+        return _validated_glossary_configuration(game_type, raw, language=language)
     return _validated_ranking_configuration(raw)
 
 
 def _validated_glossary_configuration(
-    game_type: str, raw: Mapping[str, Any]
+    game_type: str, raw: Mapping[str, Any], *, language: str
 ) -> dict[str, Any]:
     catalog = {term.id: term for term in list_glossary_terms()}
     term_ids = _identifier_list(raw.get("term_ids"))
@@ -320,7 +323,12 @@ def _validated_glossary_configuration(
             shuffle=_boolean(raw.get("shuffle"), default=True),
         )
         return configuration
-    normalized = [normalize_word_search_term(catalog[item].term) for item in term_ids]
+    if any(not catalog[item].word_search_enabled(language) for item in term_ids):
+        raise CustomGameValidationError("word_does_not_fit")
+    normalized = [
+        normalize_word_search_term(catalog[item].localized_term(language))
+        for item in term_ids
+    ]
     if any(not word or len(word) > MAX_BOARD_SIZE for word in normalized):
         raise CustomGameValidationError("word_does_not_fit")
     if len(set(normalized)) != len(normalized):

@@ -90,56 +90,48 @@ def _collections(monkeypatch) -> dict[str, _MemoryCollection]:
     return collections
 
 
-def test_new_accounts_start_active_and_not_admin_validated(monkeypatch) -> None:
-    _collections(monkeypatch)
+def test_new_accounts_start_active_with_an_initial_session_version(monkeypatch) -> None:
+    collections = _collections(monkeypatch)
     created = account_security.initialize_new_account("user-1")
     loaded = account_security.get_account_security("user-1")
     assert created.active is True
-    assert created.admin_validated is False
-    assert created.validated_at is None
+    assert created.session_version == 0
     assert loaded == created
+    stored = collections[account_security.ACCOUNT_COLLECTION].documents[0]
+    assert set(stored).isdisjoint({"admin_validated", "validated_at", "validated_by"})
 
 
-def test_admin_validation_is_persistent_and_attributed(monkeypatch) -> None:
-    _collections(monkeypatch)
-    account_security.initialize_new_account("user-1")
-    validated = account_security.mark_admin_validated("user-1", "admin-1")
-    loaded = account_security.get_account_security("user-1")
-    assert validated.admin_validated is True
-    assert validated.validated_by == "admin-1"
-    assert validated.validated_at is not None
-    assert loaded == validated
-
-
-def test_admin_cannot_validate_own_account(monkeypatch) -> None:
-    _collections(monkeypatch)
-    try:
-        account_security.mark_admin_validated("admin-1", "admin-1")
-    except ValueError as exc:
-        assert str(exc) == "self_manage"
-    else:
-        raise AssertionError("self validation must be rejected")
-
-
-def test_schema_migration_defaults_existing_accounts_and_removes_legacy_email_data(
+def test_schema_migration_removes_all_legacy_account_verification_data(
     monkeypatch,
 ) -> None:
     collections = _collections(monkeypatch)
     security = collections.setdefault(account_security.ACCOUNT_COLLECTION, _MemoryCollection())
-    security.documents.append({"user_id": "legacy", "email_verified": True})
+    security.documents.append(
+        {
+            "user_id": "legacy",
+            "active": True,
+            "session_version": 2,
+            "email_verified": True,
+            "admin_validated": True,
+            "validated_at": "legacy-date",
+            "validated_by": "legacy-admin",
+        }
+    )
     database = _MemoryDatabase(["user_security_tokens"])
     monkeypatch.setattr(account_security, "get_mongo_database", lambda: database)
-    account_security.migrate_account_validation_schema()
-    assert security.documents[0]["admin_validated"] is False
-    assert "email_verified" not in security.documents[0]
+    account_security.migrate_account_security_schema()
+    assert set(security.documents[0]).isdisjoint(
+        {"email_verified", "admin_validated", "validated_at", "validated_by"}
+    )
+    assert security.documents[0]["active"] is True
+    assert security.documents[0]["session_version"] == 2
     assert database.dropped == ["user_security_tokens"]
 
 
-def test_session_version_is_persistent_without_changing_validation(monkeypatch) -> None:
+def test_session_version_is_persistent(monkeypatch) -> None:
     _collections(monkeypatch)
     account_security.initialize_new_account("user-1")
     session_version = account_security.increment_session_version("user-1")
     loaded = account_security.get_account_security("user-1")
     assert session_version == 1
-    assert loaded.admin_validated is False
     assert loaded.session_version == 1

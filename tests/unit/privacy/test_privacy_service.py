@@ -294,12 +294,7 @@ def test_portability_export_excludes_passwords_tokens_and_internal_ids(
 
         def find_one(self, _query: object, _projection: object):
             if self.name == service.ACCOUNT_COLLECTION:
-                return {
-                    "active": True,
-                    "admin_validated": True,
-                    "validated_at": None,
-                    "validated_by": "admin-id",
-                }
+                return {"active": True}
             return None
 
         def find(self, _query: object, _projection: object):

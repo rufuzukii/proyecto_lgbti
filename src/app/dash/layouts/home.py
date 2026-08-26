@@ -21,6 +21,9 @@ from app.analytics.country_status_service import get_country_lgbti_status
 from app.analytics.figures import build_ilga_choropleth
 from app.analytics.home_legal_service import HOME_LEGAL_YEAR, get_home_legal_country_detail
 from app.analytics.legal_ranking import (
+    LEGAL_MAP_EXPORT_HEIGHT,
+    LEGAL_MAP_EXPORT_SCALE,
+    LEGAL_MAP_EXPORT_WIDTH,
     LegalRankingEntry,
     build_legal_ranking,
     legal_ranking_payload,
@@ -51,7 +54,7 @@ from app.dash.i18n import (
     ui_text_component,
 )
 from app.dash.layouts.navigation import build_navbar
-from app.dash.routes import route_path
+from app.dash.routes import current_route_language, route_path
 from app.dates import utc_today, utc_today_iso
 from app.source_attribution import ILGA_ANNUAL_REVIEW_2026_PDF_URL
 
@@ -80,10 +83,11 @@ EDITOR_LABELS_EN = {
 
 
 def build_home_layout() -> Component:
+    language = current_route_language()
     ilga_document = get_latest_ilga_document()
     ilga_years = get_ilga_years()
     current_year = ilga_document.get("year") if isinstance(ilga_document, dict) else None
-    initial_ranking = _localized_legal_ranking(ilga_document, "es")
+    initial_ranking = _localized_legal_ranking(ilga_document, language)
     if current_year and current_year not in ilga_years:
         ilga_years = [int(current_year), *ilga_years]
 
@@ -190,7 +194,7 @@ def build_home_layout() -> Component:
                                                 title="Descargar imagen",
                                                 **dash_attrs(
                                                     {
-                                                        "aria-label": "Descargar imagen del mapa de Europa",
+                                                        "aria-label": "Descargar imagen del mapa y ranking legal",
                                                         "aria-controls": "home-map-graph",
                                                         "data-chart-export": "true",
                                                         "data-chart-export-target": "home-map-graph",
@@ -205,8 +209,8 @@ def build_home_layout() -> Component:
                                                         ),
                                                         **attribute_attrs(
                                                             "aria-label",
-                                                            "Descargar imagen del mapa de Europa",
-                                                            "Download Europe map image",
+                                                            "Descargar imagen del mapa y ranking legal",
+                                                            "Download legal map and ranking image",
                                                         ),
                                                     }
                                                 ),
@@ -234,15 +238,19 @@ def build_home_layout() -> Component:
                                     dcc.Graph(
                                         id="home-map-graph",
                                         figure=_home_map_figure(
-                                            build_ilga_choropleth(ilga_document),
+                                            build_ilga_choropleth(ilga_document, language=language),
                                             current_year,
+                                            ranking=initial_ranking,
+                                            language=language,
                                         ),
                                         className="home-europe-map europe-map-container",
                                         config=cast(
                                             dcc.Graph.Config,
                                             {
                                                 "displayModeBar": True,
-                                                **fixed_europe_map_config(),
+                                                **fixed_europe_map_config(
+                                                    extra_mode_bar_buttons_to_remove=("toImage",)
+                                                ),
                                             },
                                         ),
                                     ),
@@ -250,7 +258,7 @@ def build_home_layout() -> Component:
                                         _legal_ranking_content(
                                             initial_ranking,
                                             current_year,
-                                            "es",
+                                            language,
                                         ),
                                         id="home-legal-ranking",
                                         className="home-legal-ranking",
@@ -302,6 +310,7 @@ def build_home_layout() -> Component:
 
 
 def _home_legal_country_section() -> Component:
+    language = current_route_language()
     return html.Section(
         [
             html.Div(
@@ -309,14 +318,16 @@ def _home_legal_country_section() -> Component:
                     ui_text_component(
                         "home_ilga_country_eyebrow",
                         class_name="home-ilga-detail-eyebrow",
+                        language=language,
                     ),
                     html.H2(
-                        ui_text_component("home_ilga_country_title"),
+                        ui_text_component("home_ilga_country_title", language=language),
                         className="home-ilga-detail-title",
                     ),
                     ui_text_component(
                         "home_ilga_country_intro",
                         class_name="home-ilga-detail-intro",
+                        language=language,
                     ),
                 ],
                 className="home-ilga-detail-header",
@@ -349,7 +360,7 @@ def _home_legal_country_section() -> Component:
                 html.Div(
                     [
                         html.Div(
-                            _home_legal_initial_state(),
+                            _home_legal_initial_state(language),
                             id="home-legal-details",
                             className="home-legal-details-panel",
                         ),
@@ -494,6 +505,8 @@ def register_home_callbacks(app: Dash) -> None:
             _home_map_figure(
                 build_ilga_choropleth(document, language=language or "es"),
                 ilga_year,
+                ranking=ranking,
+                language=language or "es",
             ),
             text("Mapa europeo LGBTIQ+", "European LGBTIQ+ map", language=language),
             _ilga_copy(document, language),
@@ -750,7 +763,13 @@ def register_home_callbacks(app: Dash) -> None:
         return [normalize_country_code(value) for value in country_values or []]
 
 
-def _home_map_figure(figure: Any, year: int | str | None = None) -> Any:
+def _home_map_figure(
+    figure: Any,
+    year: int | str | None = None,
+    *,
+    ranking: Sequence[LegalRankingEntry] = (),
+    language: str = "es",
+) -> Any:
     export_filename = "rainbowlens_mapa_legal_europa"
     if year is not None and str(year).strip():
         export_filename = f"{export_filename}_{year}"
@@ -765,9 +784,17 @@ def _home_map_figure(figure: Any, year: int | str | None = None) -> Any:
         meta={
             "export_filename": export_filename,
             "export_format": "png",
-            "export_width": 1600,
-            "export_height": 900,
-            "export_scale": 2,
+            "export_width": LEGAL_MAP_EXPORT_WIDTH,
+            "export_height": LEGAL_MAP_EXPORT_HEIGHT,
+            "export_scale": LEGAL_MAP_EXPORT_SCALE,
+            "export_map_ranking": legal_ranking_payload(ranking),
+            "export_map_title": (
+                "European LGBTIQ+ map" if language == "en" else "Mapa europeo LGBTIQ+"
+            ),
+            "export_ranking_title": _legal_ranking_title(year, language),
+            "export_country_label": "Country" if language == "en" else "País",
+            "export_score_label": "Legal score" if language == "en" else "Puntuación legal",
+            "export_source": f"ILGA-Europe · Rainbow Map {year or ''}".strip(),
         },
     )
     return figure
@@ -1622,9 +1649,7 @@ def _legal_ranking_content(
     language: str,
 ) -> list[Component]:
     english = language == "en"
-    title = "Country ranking" if english else "Ranking legal"
-    if year is not None and str(year).strip():
-        title = f"{title} · {year}"
+    title = _legal_ranking_title(year, language)
     if not ranking:
         return [
             html.H3(title, className="home-legal-ranking-title"),
@@ -1677,6 +1702,11 @@ def _legal_ranking_content(
         ),
         html.Ol(rows, className="home-legal-ranking-list"),
     ]
+
+
+def _legal_ranking_title(year: int | str | None, language: str) -> str:
+    title = "Legal ranking" if language == "en" else "Ranking legal"
+    return f"{title} · {year}" if year is not None and str(year).strip() else title
 
 
 def _control_field(

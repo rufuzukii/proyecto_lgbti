@@ -226,8 +226,8 @@ def _data_inventory_card() -> Component:
                 [
                     "nombre visible, correo electrónico, rol y hash de contraseña",
                     "display name, email address, role and password hash",
-                    "marca de validación administrativa y versión de sesión",
-                    "administrative validation marker and session version",
+                    "versión de sesión para invalidar accesos anteriores cuando sea necesario",
+                    "session version used to invalidate previous access when necessary",
                     "identificador técnico de usuario y fecha de creación",
                     "technical user identifier and creation date",
                 ],

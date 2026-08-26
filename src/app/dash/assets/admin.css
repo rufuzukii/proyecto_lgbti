@@ -174,8 +174,8 @@
   border-bottom: 1px solid var(--color-border);
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: 92px minmax(170px, 1.1fr) minmax(220px, 1.25fr) minmax(180px, 1fr) 130px 150px 96px;
-  min-width: 1130px;
+  grid-template-columns: 92px minmax(170px, 1.1fr) minmax(220px, 1.25fr) minmax(180px, 1fr) 130px 96px;
+  min-width: 980px;
   padding: 0.75rem;
 }
 
@@ -264,26 +264,6 @@
   font-weight: 900;
   padding: 0.65rem 0.85rem;
   width: 100%;
-}
-
-.admin-validation-badge {
-  border-radius: 999px;
-  display: inline-block;
-  font-size: 0.82rem;
-  font-weight: 900;
-  padding: 0.55rem 0.75rem;
-  text-align: center;
-  width: 100%;
-}
-
-.admin-validation-badge.is-validated {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.admin-validate-button {
-  background: #ede9fe;
-  color: var(--color-primary-dark);
 }
 
 .admin-save-button {

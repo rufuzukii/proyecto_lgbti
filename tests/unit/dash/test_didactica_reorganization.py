@@ -100,6 +100,29 @@ def test_direct_cards_use_localized_english_routes(monkeypatch) -> None:
     assert "/en/learning/games/word-search" in hrefs
 
 
+def test_dictionary_header_is_rendered_in_the_active_route_language(monkeypatch) -> None:
+    monkeypatch.setattr(didactica, "build_navbar", lambda **_kwargs: "")
+
+    with localized_route_context("es"):
+        spanish = didactica.build_dictionary_layout()
+    with localized_route_context("en"):
+        english = didactica.build_dictionary_layout()
+
+    spanish_titles = [
+        getattr(item, "children", None)
+        for item in _walk(spanish)
+        if item.__class__.__name__ == "H1"
+    ]
+    english_titles = [
+        getattr(item, "children", None)
+        for item in _walk(english)
+        if item.__class__.__name__ == "H1"
+    ]
+    assert "Diccionario LGBTIQ+" in spanish_titles
+    assert "LGBTIQ+ Dictionary" in english_titles
+    assert "Diccionario LGBTIQ+" not in english_titles
+
+
 def test_games_catalog_redirects_to_didactica_and_unknown_games_are_not_routable(
     monkeypatch,
 ) -> None:

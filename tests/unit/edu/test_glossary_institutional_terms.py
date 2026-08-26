@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 
+from app.analytics.legal_criteria import get_criterion_metadata
 from app.dash.components.didactica import glossary_card
 from app.edu.game_service import new_game_state
 from app.edu.glossary_service import (
@@ -16,8 +17,6 @@ REQUESTED_IDS = {
     "sexual_diversity",
     "gender_diversity",
     "bodily_diversity",
-    "gender_diverse_people",
-    "trans_realities",
     "trans_rights",
     "intersex",
     "lgtbiphobia",
@@ -30,11 +29,8 @@ REQUESTED_IDS = {
     "informed_consent",
     "non_consensual_medical_interventions",
     "lgbtiq_asylum",
-    "international_protection",
     "civil_society_space",
-    "lgbtiq_human_rights_defenders",
     "marriage_equality",
-    "same_sex_couples",
     "registered_partnership",
     "cohabitation_recognition",
     "joint_adoption",
@@ -45,7 +41,6 @@ REQUESTED_IDS = {
     "families_with_lgbtiq_parents",
     "non_discriminatory_blood_donation",
     "living_openly_lgbtiq",
-    "lgbtiq_youth",
     "social_acceptance",
     "diversity_and_inclusion",
     "visibility_and_safety",
@@ -83,7 +78,7 @@ def _walk(component):
 def test_all_requested_terms_are_bilingual_categorised_and_sourced() -> None:
     requested = [term for term in list_glossary_terms() if term.id in REQUESTED_IDS]
 
-    assert len(requested) == len(REQUESTED_IDS) == 39
+    assert len(requested) == len(REQUESTED_IDS) == 33
     assert {term.id for term in requested} == REQUESTED_IDS
     assert all(term.term and term.definition for term in requested)
     assert all(term.term_en and term.definition_en for term in requested)
@@ -97,10 +92,11 @@ def test_all_requested_terms_are_bilingual_categorised_and_sourced() -> None:
     )
     assert all(source.url.startswith("https://") for term in requested for source in term.sources)
     assert Counter(term.category for term in requested) == {
-        "diversity_identities": 8,
-        "rights_legal_protection": 12,
-        "families_reproductive_rights": 11,
-        "social_experiences": 8,
+        "diversity_inclusion": 3,
+        "sex_characteristics_intersex": 5,
+        "discrimination_social": 9,
+        "rights_legal_protection": 7,
+        "families_rights": 9,
     }
 
 
@@ -139,6 +135,26 @@ def test_search_indexes_spanish_english_and_aliases_without_accents() -> None:
     }
 
 
+def test_informed_consent_is_contextualised_for_intersex_people_without_conflating_asexuality() -> None:
+    term = get_glossary_term("informed_consent")
+
+    assert term is not None
+    assert term.term == "Consentimiento informado"
+    assert term.term_en == "Informed consent"
+    assert "personas intersex" in term.definition
+    assert "intersex people" in term.definition_en
+    assert "asexual" not in f"{term.definition} {term.definition_en}".casefold()
+    assert {source.name for source in term.sources} == {"Council of Europe"}
+
+
+def test_international_protection_is_removed_only_from_the_educational_catalog() -> None:
+    assert get_glossary_term("international_protection") is None
+    assert not search_glossary("Protección internacional")
+    legal = get_criterion_metadata("Asylum law (sexual orientation)", language="es")
+    assert legal["known"] == "true"
+    assert "protección internacional" in legal["summary"]
+
+
 def test_card_localises_content_and_exposes_secure_accessible_source_links() -> None:
     term = get_glossary_term("lgtbiphobia")
     assert term is not None
@@ -157,14 +173,14 @@ def test_card_localises_content_and_exposes_secure_accessible_source_links() -> 
 
 
 def test_game_metadata_excludes_unsuitable_terms_without_hiding_them() -> None:
-    long_term = get_glossary_term("lgbtiq_human_rights_defenders")
+    long_term = get_glossary_term("families_with_lgbtiq_parents")
     playable_term = get_glossary_term("trans_parenthood")
     word_search_term = get_glossary_term("intersex")
     assert long_term is not None
     assert playable_term is not None
     assert word_search_term is not None
     assert long_term.guess_game is False
-    assert long_term.word_search is False
+    assert long_term.word_search_enabled("es") is False
 
     state = new_game_state(
         "guess_term",
@@ -175,8 +191,58 @@ def test_game_metadata_excludes_unsuitable_terms_without_hiding_them() -> None:
     assert state["order"] == [playable_term.id]
     selected = select_word_search_terms(
         [long_term, word_search_term],
+        language="en",
         count=2,
         max_length=40,
         seed=7,
     )
     assert selected == (word_search_term,)
+
+
+def test_every_active_card_is_fully_bilingual_and_uses_a_visible_category() -> None:
+    terms = list_glossary_terms()
+
+    assert len(terms) == 62
+    assert all(term.term and term.term_en for term in terms)
+    assert all(term.definition and term.definition_en for term in terms)
+    assert {term.category for term in terms} == {
+        "sexual_orientation",
+        "gender_identity_expression",
+        "sex_characteristics_intersex",
+        "discrimination_social",
+        "rights_legal_protection",
+        "families_rights",
+        "diversity_inclusion",
+    }
+
+
+def test_scope_audit_removes_specialised_redundant_and_legacy_cards() -> None:
+    removed = {
+        "abrosexual", "androsexual", "anthrosexual", "bigender",
+        "cisheteropatriarchy", "sexed_body", "demigender", "gender_dysphoria",
+        "drag_king", "drag_queen", "endosex", "graysexual", "cis_man",
+        "homoparentality", "cis_woman", "omnisexual", "pangender", "polysexual",
+        "serophobia", "transgender", "gender_diverse_people", "trans_realities",
+        "lgbtiq_human_rights_defenders", "same_sex_couples", "lgbtiq_youth",
+        "international_protection",
+    }
+
+    assert removed.isdisjoint({term.id for term in list_glossary_terms()})
+
+
+def test_ilga_family_cards_use_exact_criteria_and_methodology_source() -> None:
+    family = {
+        term.id: term
+        for term in list_glossary_terms()
+        if term.category == "families_rights"
+    }
+    assert family["co_parenthood"].term == "Reconocimiento automático de la coparentalidad"
+    assert family["co_parenthood"].term_en == "Automatic co-parent recognition"
+    assert "desde el nacimiento" in family["co_parenthood"].definition
+    assert "from birth" in family["co_parenthood"].definition_en
+    for identifier in {
+        "marriage_equality", "registered_partnership", "cohabitation_recognition",
+        "joint_adoption", "second_parent_adoption", "co_parenthood",
+        "assisted_reproduction", "trans_parenthood",
+    }:
+        assert family[identifier].sources[0].url == "https://rainbowmap.ilga-europe.org/about/"

@@ -51,7 +51,6 @@ def _record(*, active: bool = True) -> service.UserRecord:
         password_hash=generate_password_hash("valid-password"),
         user_type=UserType.COMUN,
         active=active,
-        admin_validated=False,
     )
 
 
@@ -119,7 +118,7 @@ def test_authentication_requires_a_valid_password_and_active_account(
     assert (result is not None) is accepted
 
 
-def test_profile_email_change_invalidates_sessions_without_changing_admin_validation(
+def test_profile_email_change_invalidates_existing_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Arrange
@@ -139,7 +138,7 @@ def test_profile_email_change_invalidates_sessions_without_changing_admin_valida
     monkeypatch.setattr(
         service,
         "_account_state",
-        lambda user_id: AccountSecurityState(user_id, True, False, None, None, 1),
+        lambda user_id: AccountSecurityState(user_id, True, 1),
     )
 
     # Act
@@ -152,7 +151,7 @@ def test_profile_email_change_invalidates_sessions_without_changing_admin_valida
 
     # Assert
     assert updated.email == "new@example.com"
-    assert updated.admin_validated is False
+    assert updated.session_version == 1
     assert incremented == [record.id]
     assert events == [(record.id, "email_changed")]
     assert connection.committed is True

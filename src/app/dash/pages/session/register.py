@@ -59,8 +59,8 @@ def build_register_layout(
                                     html.H1(text("Crear cuenta", "Register")),
                                     html.P(
                                         text(
-                                            "Crea tu cuenta con tu nombre, correo electrónico y contraseña.",
-                                            "Create your account with your name, email address, and password.",
+                                            "Crea tu cuenta con tu nombre, correo electrónico y contraseña. La sesión se iniciará automáticamente.",
+                                            "Create your account with your name, email address, and password. You will be signed in automatically.",
                                         ),
                                         className="auth-copy",
                                     ),

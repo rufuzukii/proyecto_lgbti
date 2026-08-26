@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime
 from hashlib import sha256
 from typing import Any, cast
 
@@ -22,7 +21,6 @@ from app.users.account_security import (
     get_account_security_many,
     increment_session_version,
     initialize_new_account,
-    mark_admin_validated,
     record_security_event,
 )
 from app.users.audit import record_user_admin_event
@@ -55,9 +53,6 @@ class UserRecord:
     password_hash: str | None
     user_type: UserType | None = None
     active: bool = True
-    admin_validated: bool = False
-    validated_at: datetime | None = None
-    validated_by: str | None = None
     session_version: int = 0
 
     @property
@@ -395,37 +390,6 @@ def update_user_as_admin(
     return updated
 
 
-def validate_user_as_admin(*, user_id: str, actor_user_id: str) -> UserRead:
-    if not actor_user_id:
-        raise ValueError("actor_required")
-    if user_id == actor_user_id:
-        raise ValueError("self_manage")
-    record = get_user_record(user_id)
-    if record is None:
-        raise ValueError("user_not_found")
-    try:
-        state = mark_admin_validated(user_id, actor_user_id)
-    except AccountSecurityStorageError as exc:
-        raise UserStorageError("account_security_unavailable") from exc
-    _record_admin_event_safely(
-        actor_user_id=actor_user_id,
-        target_user_id=user_id,
-        action="account_validated",
-        before={"admin_validated": record.admin_validated},
-        after={"admin_validated": state.admin_validated},
-    )
-    return _row_to_user_read(
-        {
-            "id": record.id,
-            "username": record.username,
-            "email": record.email,
-            "organization": record.organization,
-            "user_type": record.user_type.value if record.user_type else None,
-        },
-        state,
-    )
-
-
 def delete_user_as_admin(*, user_id: str, actor_user_id: str) -> None:
     """Run the same cross-store erasure policy from the separate admin flow."""
 
@@ -520,9 +484,6 @@ def _row_to_user_record(
         password_hash=row.get("password_hash"),
         user_type=_parse_user_type(row.get("user_type")),
         active=state.active if state is not None else True,
-        admin_validated=state.admin_validated if state is not None else False,
-        validated_at=state.validated_at if state is not None else None,
-        validated_by=state.validated_by if state is not None else None,
         session_version=state.session_version if state is not None else 0,
     )
 
@@ -543,9 +504,7 @@ def _row_to_user_read(
         user_type=_parse_user_type(row.get("user_type")),
         version=_user_version(row),
         active=state.active if state is not None else True,
-        admin_validated=state.admin_validated if state is not None else False,
-        validated_at=state.validated_at if state is not None else None,
-        validated_by=state.validated_by if state is not None else None,
+        session_version=state.session_version if state is not None else 0,
     )
 
 
@@ -568,9 +527,6 @@ def _record_to_user_read(record: UserRecord) -> UserRead:
             }
         ),
         active=record.active,
-        admin_validated=record.admin_validated,
-        validated_at=record.validated_at,
-        validated_by=record.validated_by,
         session_version=record.session_version,
     )
 

@@ -9,6 +9,7 @@ from dash import Dash
 from dash.exceptions import PreventUpdate
 
 from app.dash.layouts import home
+from app.dash.routes import localized_route_context
 
 
 def _walk(component: Any):
@@ -85,6 +86,34 @@ def test_initial_home_keeps_map_visible_and_legal_selector_empty(monkeypatch) ->
     assert "Selecciona un país para consultar su situación legal en 2026" in str(
         components["home-legal-details"]
     )
+
+
+def test_initial_legal_country_title_uses_the_active_route_language(monkeypatch) -> None:
+    monkeypatch.setattr(home, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr(home, "current_user", SimpleNamespace(is_authenticated=False))
+    monkeypatch.setattr(
+        home,
+        "get_latest_ilga_document",
+        lambda: {"year": 2026, "countries": [_country("ES", "Spain", 77.0)]},
+    )
+    monkeypatch.setattr(home, "get_ilga_years", lambda: [2026])
+
+    with localized_route_context("en"):
+        layout = home.build_home_layout()
+    legal_section = next(
+        component
+        for component in _walk(layout)
+        if getattr(component, "id", None) == "home-legal-section"
+    )
+    title = next(
+        component
+        for component in _walk(legal_section)
+        if getattr(component, "className", None) == "home-ilga-detail-title"
+    )
+    visible_title = getattr(getattr(title, "children", None), "children", None)
+
+    assert visible_title == "Legal situation by country in 2026"
+    assert visible_title != "Situación legal por país en 2026"
 
 
 def test_map_click_updates_only_legal_selector_by_iso(monkeypatch) -> None:

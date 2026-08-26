@@ -1031,6 +1031,7 @@ def register_didactica_callbacks(app: Dash) -> None:
             configuration = dict(state.get("_activity_configuration") or {}) if isinstance(state, dict) else {}
             state = (
                 create_word_search_game(
+                    language=language,
                     word_count=int(configuration.get("word_count") or 8),
                     term_ids=configuration.get("term_ids"),
                     board_size=(
@@ -1040,7 +1041,7 @@ def register_didactica_callbacks(app: Dash) -> None:
                     ),
                 )
                 if configuration
-                else create_word_search_game()
+                else create_word_search_game(language=language)
             )
             if configuration:
                 state["_activity_configuration"] = configuration

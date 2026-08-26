@@ -23,7 +23,7 @@ El proyecto reúne datos públicos de distintas fuentes en una interfaz bilingü
 - Consulta de información española procedente de informes de FELGTBI+.
 - Diccionario, presentaciones, juegos y Espacio Docente.
 - Generación de informes para contextos de diversidad, inclusión y recursos humanos.
-- Registro con acceso inmediato, autenticación por roles y validación administrativa informativa.
+- Registro con inicio de sesión automático, acceso inmediato y autenticación por roles.
 - Contacto directo mediante [rainbowlensdatahub@gmail.com](mailto:rainbowlensdatahub@gmail.com).
 
 ## Fuentes de datos

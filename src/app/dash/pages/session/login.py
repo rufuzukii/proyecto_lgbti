@@ -161,14 +161,7 @@ def _message(message: tuple[str, str] | None, *, is_error: bool) -> Component | 
 
 
 def _notice(notice_code: str | None) -> Component | str:
-    if notice_code == "account_created":
-        message = (
-            "Cuenta creada correctamente. Ya puedes iniciar sesión en RainbowLens DataHub.",
-            "Account created successfully. You can now sign in to RainbowLens DataHub.",
-        )
-        content: Component | str = message[0]
-        translated = text_attrs(*message)
-    elif notice_code == "report_login_required":
+    if notice_code == "report_login_required":
         content = ui_text_component("report_login_required")
         translated = {}
     else:

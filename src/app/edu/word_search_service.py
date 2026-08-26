@@ -17,7 +17,6 @@ Cell = tuple[int, int]
 
 DIRECTIONS: dict[str, Direction] = {
     "right": (0, 1),
-    "left": (0, -1),
     "down": (1, 0),
     "up": (-1, 0),
     "down_right": (1, 1),
@@ -47,6 +46,7 @@ def normalize_word_search_term(value: str) -> str:
 def select_word_search_terms(
     terms: Sequence[GlossaryTerm],
     *,
+    language: str = "es",
     count: int = DEFAULT_WORD_COUNT,
     max_length: int = MAX_BOARD_SIZE,
     seed: int | None = None,
@@ -55,9 +55,9 @@ def select_word_search_terms(
     requested = max(1, min(int(count), MAX_WORD_COUNT))
     unique: dict[str, GlossaryTerm] = {}
     for term in terms:
-        if not term.word_search:
+        if not term.word_search_enabled(language):
             continue
-        normalized = normalize_word_search_term(term.term)
+        normalized = normalize_word_search_term(term.localized_term(language))
         if normalized and len(normalized) <= max_length:
             unique.setdefault(normalized, term)
     candidates = list(unique.values())
@@ -146,6 +146,7 @@ def generate_word_search(
 
 def create_word_search_game(
     *,
+    language: str = "es",
     seed: int | None = None,
     word_count: int = DEFAULT_WORD_COUNT,
     term_ids: Sequence[str] | None = None,
@@ -162,21 +163,23 @@ def create_word_search_game(
     )
     selected = select_word_search_terms(
         candidates,
+        language=language,
         count=word_count,
         max_length=board_size or DEFAULT_MAX_TERM_LENGTH,
         seed=effective_seed,
     )
-    longest = max((len(normalize_word_search_term(term.term)) for term in selected), default=10)
+    localized_terms = [term.localized_term(language) for term in selected]
+    longest = max((len(normalize_word_search_term(value)) for value in localized_terms), default=10)
     size = (
         max(longest, min(int(board_size), MAX_BOARD_SIZE))
         if board_size
-        else calculate_required_board_size([term.term for term in selected])
+        else calculate_required_board_size(localized_terms)
     )
     generated: dict[str, Any] = {}
     for candidate_size in range(size, MAX_BOARD_SIZE + 1):
         size = candidate_size
         generated = generate_word_search(
-            [term.term for term in selected],
+            localized_terms,
             size,
             size,
             seed=effective_seed,
@@ -186,7 +189,9 @@ def create_word_search_game(
     if len(generated.get("words_used", [])) != len(selected):
         raise ValueError("word_search_generation_failed")
 
-    terms_by_word = {normalize_word_search_term(term.term): term for term in selected}
+    terms_by_word = {
+        normalize_word_search_term(term.localized_term(language)): term for term in selected
+    }
     placements_by_word = {placement["word"]: placement for placement in generated["placements"]}
     game_words = []
     for normalized in generated["words_used"]:
@@ -195,7 +200,7 @@ def create_word_search_game(
         game_words.append(
             {
                 "id": term.id,
-                "display": term.term,
+                "display": term.localized_term(language),
                 "normalized": normalized,
                 "start": placement["start"],
                 "end": placement["end"],

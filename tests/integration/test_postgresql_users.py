@@ -24,9 +24,6 @@ def test_postgresql_users_schema_and_service_are_compatible(monkeypatch) -> None
             user_id: AccountSecurityState(
                 user_id=user_id,
                 active=True,
-                admin_validated=False,
-                validated_at=None,
-                validated_by=None,
                 session_version=0,
             )
             for user_id in user_ids

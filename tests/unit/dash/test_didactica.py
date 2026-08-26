@@ -111,12 +111,15 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
     monkeypatch.setattr(didactica_page, "current_user", _user(authenticated=False))
 
     terms = list_glossary_terms()
-    assert len(terms) == 88
+    assert len(terms) == 62
     assert len({term.id for term in terms}) == len(terms)
     assert get_glossary_term("transsexual") is None
     assert {"trans", "trans_man", "trans_woman"} <= {term.id for term in terms}
     assert "gender_identity" in {term.id for term in search_glossary("identidad", language="es")}
-    assert all(term.category == "rights" for term in search_glossary(category="rights"))
+    assert all(
+        term.category == "rights_legal_protection"
+        for term in search_glossary(category="rights_legal_protection")
+    )
 
     assert len(set(new_game_state("guess_term")["order"])) == 5
 
@@ -574,32 +577,24 @@ def test_glossary_catalog_preserves_legacy_sources_and_institutional_provenance(
     terms = list_glossary_terms()
     unam = [term for term in terms if any(source.name == "UNAM" for source in term.sources)]
     fundeu = [term for term in terms if any(source.name == "FundéuRAE" for source in term.sources)]
-    legacy_shared = [
-        term
-        for term in terms
-        if {"UNAM", "FundéuRAE"} <= {source.name for source in term.sources}
-    ]
-
-    assert len(unam) == 34
-    assert len(fundeu) == 34
-    assert len(legacy_shared) == 18
+    assert len(unam) == 16
+    assert len(fundeu) == 3
     assert {
         UNAM_SOURCE_URL,
         FUNDEU_SOURCE_URL,
     } <= {source.url for term in terms for source in term.sources}
     assert all(source.url.startswith("https://") for term in terms for source in term.sources)
-    abrosexual = get_glossary_term("abrosexual")
+    intersex = get_glossary_term("intersex")
     biphobia = get_glossary_term("biphobia")
     bisexual = get_glossary_term("bisexual")
-    assert abrosexual is not None
+    assert intersex is not None
     assert biphobia is not None
     assert bisexual is not None
-    assert {source.name for source in abrosexual.sources} == {"UNAM"}
-    assert {source.name for source in biphobia.sources} == {"FundéuRAE"}
-    assert {source.name for source in bisexual.sources} == {
-        "UNAM",
-        "FundéuRAE",
+    assert {source.name for source in intersex.sources} == {"Council of Europe"}
+    assert {source.name for source in biphobia.sources} == {
+        "Boletín Oficial del Estado (BOE)"
     }
+    assert {source.name for source in bisexual.sources} == {"UNAM"}
 
 
 def test_glossary_is_complete_unique_sorted_and_searches_definitions_without_accents() -> None:
@@ -612,8 +607,8 @@ def test_glossary_is_complete_unique_sorted_and_searches_definitions_without_acc
     assert {term.id for term in search_glossary("orientacion", language="es")} >= {
         "sexual_orientation"
     }
-    assert {term.id for term in search_glossary("miedo irracional", language="es")} == {
-        "serophobia"
+    assert {term.id for term in search_glossary("hate speech", language="en")} == {
+        "hate_speech"
     }
     assert all(key not in PROHIBITED_TERM_KEYS for key in keys)
 
@@ -649,7 +644,7 @@ def test_dictionary_renders_general_and_per_term_source_links(monkeypatch) -> No
     assert bisexual is not None
     card = glossary_card(bisexual, "en")
     card_hrefs = {href for item in _walk(card) if (href := getattr(item, "href", None)) is not None}
-    assert card_hrefs == {UNAM_SOURCE_URL, FUNDEU_SOURCE_URL}
+    assert card_hrefs == {UNAM_SOURCE_URL}
     assert any(
         getattr(item, "children", None) == bisexual.localized_definition("en")
         for item in _walk(card)

@@ -72,7 +72,8 @@ def search_glossary(
                     term.term_en,
                     term.definition,
                     term.definition_en,
-                    *term.aliases,
+                    *term.aliases_es,
+                    *term.aliases_en,
                 )
             )
         )
@@ -106,14 +107,14 @@ def validate_glossary_catalog(terms: tuple[GlossaryTerm, ...]) -> None:
         key = normalized_term_key(term.term)
         if not term.id or not term.term or not term.definition or not term.category:
             raise ValueError(f"incomplete_glossary_term:{term.id or key}")
-        if bool(term.term_en) != bool(term.definition_en):
+        if key in PROHIBITED_TERM_KEYS:
+            raise ValueError(f"prohibited_glossary_term:{term.term}")
+        if not term.term_en or not term.definition_en:
             raise ValueError(f"incomplete_glossary_translation:{term.id}")
         if term.attribution not in {"source", "based_on"}:
             raise ValueError(f"invalid_glossary_attribution:{term.id}")
         if term.id in identifiers or key in term_keys:
             raise ValueError(f"duplicate_glossary_term:{term.id}:{term.term}")
-        if key in PROHIBITED_TERM_KEYS:
-            raise ValueError(f"prohibited_glossary_term:{term.term}")
         if not term.sources:
             raise ValueError(f"missing_glossary_source:{term.id}")
         for definition in (term.definition, term.definition_en):

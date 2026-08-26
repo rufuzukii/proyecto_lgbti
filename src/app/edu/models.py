@@ -43,10 +43,13 @@ class GlossaryTerm:
     sources: tuple[GlossarySource, ...]
     term_en: str = ""
     definition_en: str = ""
-    aliases: tuple[str, ...] = ()
+    aliases_es: tuple[str, ...] = ()
+    aliases_en: tuple[str, ...] = ()
     attribution: str = "source"
     guess_game: bool = True
     word_search: bool = True
+    word_search_es: bool | None = None
+    word_search_en: bool | None = None
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> GlossaryTerm:
@@ -58,10 +61,35 @@ class GlossaryTerm:
             sources=tuple(GlossarySource.from_mapping(item) for item in value.get("sources", [])),
             term_en=str(value.get("term_en", "")).strip(),
             definition_en=str(value.get("definition_en", "")).strip(),
-            aliases=tuple(str(item).strip() for item in value.get("aliases", []) if str(item).strip()),
+            aliases_es=tuple(
+                str(item).strip()
+                for item in value.get("aliases_es", value.get("aliases", []))
+                if str(item).strip()
+            ),
+            aliases_en=tuple(
+                str(item).strip()
+                for item in value.get("aliases_en", value.get("aliases", []))
+                if str(item).strip()
+            ),
             attribution=str(value.get("attribution", "source")).strip() or "source",
             guess_game=bool(value.get("games", {}).get("guess_term", True)),
-            word_search=bool(value.get("games", {}).get("word_search", True)),
+            word_search=bool(
+                value.get("games", {}).get(
+                    "word_search",
+                    value.get("games", {}).get("word_search_es")
+                    or value.get("games", {}).get("word_search_en", True),
+                )
+            ),
+            word_search_es=(
+                bool(value["games"]["word_search_es"])
+                if "word_search_es" in value.get("games", {})
+                else None
+            ),
+            word_search_en=(
+                bool(value["games"]["word_search_en"])
+                if "word_search_en" in value.get("games", {})
+                else None
+            ),
         )
 
     def localized_term(self, language: str) -> str:
@@ -69,6 +97,13 @@ class GlossaryTerm:
 
     def localized_definition(self, language: str) -> str:
         return self.definition_en if language == "en" and self.definition_en else self.definition
+
+    def localized_aliases(self, language: str) -> tuple[str, ...]:
+        return self.aliases_en if language == "en" else self.aliases_es
+
+    def word_search_enabled(self, language: str) -> bool:
+        configured = self.word_search_en if language == "en" else self.word_search_es
+        return self.word_search if configured is None else configured
 
 
 @dataclass(frozen=True)

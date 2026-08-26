@@ -56,7 +56,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "app.dash" = ["assets/**/*.css", "assets/**/*.js", "assets/img/*"]
-"app.analytics" = ["data/*.geojson"]
+"app.analytics" = ["data/*.geojson", "data/*.json"]
 "app.edu" = ["data/*.json"]
 
 [tool.pytest.ini_options]
