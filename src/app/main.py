@@ -1,5 +1,5 @@
-from app.config import get_app_config
-from app.dash_app import create_dash_app
+from app.core.config import get_app_config
+from app.web.application import create_dash_app
 
 
 def run() -> None:

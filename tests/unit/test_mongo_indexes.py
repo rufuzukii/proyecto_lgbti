@@ -4,7 +4,7 @@ from typing import Any
 
 from pymongo import ASCENDING, IndexModel
 
-from app import mongo_indexes
+from app.infrastructure import mongo_indexes
 
 
 class FakeCollection:

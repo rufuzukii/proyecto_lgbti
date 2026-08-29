@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from collections import Counter
 
-from app.analytics.legal_criteria import get_criterion_metadata
-from app.dash.components.didactica import glossary_card
-from app.edu.game_service import new_game_state
-from app.edu.glossary_service import (
+from app.modules.didactics.components import glossary_card
+from app.modules.didactics.game_service import new_game_state
+from app.modules.didactics.glossary_service import (
+    UNAM_SOURCE_URL,
     get_glossary_term,
     list_glossary_terms,
     normalized_term_key,
     search_glossary,
 )
-from app.edu.word_search_service import select_word_search_terms
+from app.modules.didactics.word_search_service import select_word_search_terms
+from app.shared.data.legal_criteria import get_criterion_metadata
 
 REQUESTED_IDS = {
     "sexual_diversity",
@@ -120,6 +121,18 @@ def test_catalog_ids_and_normalised_spanish_names_are_unique() -> None:
     assert intersex.term == "Intersexualidad"
 
 
+def test_endosex_uses_the_unam_definition_and_intersex_context() -> None:
+    term = get_glossary_term("endosex")
+
+    assert term is not None
+    assert term.term == term.term_en == "Endosex"
+    assert term.category == "sex_characteristics_intersex"
+    assert "norma genital dimórfica" in term.definition
+    assert "intersex" in term.definition.casefold()
+    assert {source.name for source in term.sources} == {"UNAM"}
+    assert {source.url for source in term.sources} == {UNAM_SOURCE_URL}
+
+
 def test_search_indexes_spanish_english_and_aliases_without_accents() -> None:
     assert {term.id for term in search_glossary("PRACTICAS DE CONVERSION")} >= {
         "conversion_practices"
@@ -202,7 +215,7 @@ def test_game_metadata_excludes_unsuitable_terms_without_hiding_them() -> None:
 def test_every_active_card_is_fully_bilingual_and_uses_a_visible_category() -> None:
     terms = list_glossary_terms()
 
-    assert len(terms) == 62
+    assert len(terms) == 63
     assert all(term.term and term.term_en for term in terms)
     assert all(term.definition and term.definition_en for term in terms)
     assert {term.category for term in terms} == {
@@ -220,7 +233,7 @@ def test_scope_audit_removes_specialised_redundant_and_legacy_cards() -> None:
     removed = {
         "abrosexual", "androsexual", "anthrosexual", "bigender",
         "cisheteropatriarchy", "sexed_body", "demigender", "gender_dysphoria",
-        "drag_king", "drag_queen", "endosex", "graysexual", "cis_man",
+        "drag_king", "drag_queen", "graysexual", "cis_man",
         "homoparentality", "cis_woman", "omnisexual", "pangender", "polysexual",
         "serophobia", "transgender", "gender_diverse_people", "trans_realities",
         "lgbtiq_human_rights_defenders", "same_sex_couples", "lgbtiq_youth",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "proyecto-lgbti"
-version = "0.1.0"
+version = "1.0.0"
 description = "RainbowLens Datahub LGBTIQ+ data analysis and visualization platform"
 requires-python = ">=3.14,<3.15"
 dependencies = [
@@ -55,9 +55,10 @@ rainbowlens-dash = "app.main:run"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"app.dash" = ["assets/**/*.css", "assets/**/*.js", "assets/img/*"]
-"app.analytics" = ["data/*.geojson", "data/*.json"]
-"app.edu" = ["data/*.json"]
+"app.web" = ["assets/**/*.css", "assets/**/*.js", "assets/img/*"]
+"app.shared.data" = ["resources/*.geojson"]
+"app.modules.didactics" = ["data/*.json"]
+"app.modules.home" = ["data/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
@@ -107,7 +108,7 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 # These files intentionally contain mojibake sequences to repair and test imported data.
-"src/app/analytics/statistics_exports.py" = ["RUF001"]
+"src/app/modules/statistics/exports.py" = ["RUF001"]
 "tests/unit/analytics/test_statistics.py" = ["RUF001"]
 
 [tool.ruff.format]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dash import Dash
 
-from app.dash.pages import statistics as statistics_page
+from app.modules.statistics import page as statistics_page
 
 
 def _callback(app: Dash, name: str):

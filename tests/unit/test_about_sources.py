@@ -2,9 +2,9 @@ import logging
 from typing import Any
 from unittest.mock import patch
 
-from app.dash.components.ilga_criteria import build_ilga_country_criteria_panel
-from app.dash.layouts.about import build_about_layout
-from app.source_attribution import FRA_SURVEYS
+from app.modules.home.criteria_component import build_ilga_country_criteria_panel
+from app.shared.data.source_attribution import FRA_SURVEYS
+from app.web.about import build_about_layout
 
 REQUIRED_URLS = {
     "https://felgtbi.org/que-hacemos/investigacion/estado-lgtbi/",
@@ -18,7 +18,7 @@ REQUIRED_URLS.update(url for _, url in FRA_SURVEYS.values())
 
 
 def test_about_sources_include_required_external_links() -> None:
-    with patch("app.dash.layouts.about.build_navbar", return_value=""):
+    with patch("app.web.about.build_navbar", return_value=""):
         layout = build_about_layout()
 
     links = [component for component in _walk(layout) if _component_prop(component, "href")]
@@ -34,7 +34,7 @@ def test_about_sources_include_required_external_links() -> None:
 
 
 def test_about_source_cards_include_integrated_context_without_about_cards() -> None:
-    with patch("app.dash.layouts.about.build_navbar", return_value=""):
+    with patch("app.web.about.build_navbar", return_value=""):
         layout = build_about_layout()
 
     about_cards = [
@@ -81,7 +81,7 @@ def test_about_source_cards_include_integrated_context_without_about_cards() -> 
 
 
 def test_about_no_longer_contains_interactive_ilga_explorer() -> None:
-    with patch("app.dash.layouts.about.build_navbar", return_value=""):
+    with patch("app.web.about.build_navbar", return_value=""):
         layout = build_about_layout()
 
     assert _find_by_id_or_none(layout, "about-ilga-country") is None

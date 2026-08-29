@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from app.taxonomy import (
+from app.shared.data.taxonomy import (
     canonical_taxonomy_value,
     taxonomy_label,
     taxonomy_labels,
@@ -71,7 +71,7 @@ def test_unknown_value_uses_controlled_fallback_and_is_logged_once(caplog) -> No
     unknown = "A new canonical value"
 
     # Act
-    with caplog.at_level(logging.WARNING, logger="app.taxonomy"):
+    with caplog.at_level(logging.WARNING, logger="app.shared.data.taxonomy"):
         first = taxonomy_label("fra_category", unknown, "es")
         second = taxonomy_label("fra_category", unknown, "en")
 

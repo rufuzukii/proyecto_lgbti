@@ -2,6 +2,8 @@
 
 RainbowLens DataHub es una aplicación web que centraliza, visualiza y analiza información social, legal y educativa sobre la realidad LGBTIQ+ en Europa y España.
 
+Versión actual del código: **1.0.0**.
+
 Aplicación pública: [proyecto-lgbti.onrender.com](https://proyecto-lgbti.onrender.com)
 
 ## Qué es RainbowLens DataHub
@@ -22,7 +24,7 @@ El proyecto reúne datos públicos de distintas fuentes en una interfaz bilingü
 - Tendencias históricas y proyecciones estadísticas identificadas como estimaciones de RainbowLens.
 - Consulta de información española procedente de informes de FELGTBI+.
 - Diccionario, presentaciones, juegos y Espacio Docente.
-- Generación de informes para contextos de diversidad, inclusión y recursos humanos.
+- Generación de informes para contextos de diversidad, inclusión y recursos humanos, con narrativas revisables antes de crear un PDF editable.
 - Registro con inicio de sesión automático, acceso inmediato y autenticación por roles.
 - Contacto directo mediante [rainbowlensdatahub@gmail.com](mailto:rainbowlensdatahub@gmail.com).
 
@@ -36,7 +38,9 @@ RainbowLens procesa y visualiza estos materiales sin presentarse como afiliado n
 
 ## Arquitectura general
 
-La interfaz Dash se ejecuta sobre Flask. La API independiente utiliza FastAPI. PostgreSQL almacena cuentas y datos relacionales, MongoDB conserva datos analíticos y Supabase Storage aloja recursos compatibles con S3. La capa `analytics` separa repositorios, normalización, servicios y construcción de figuras.
+RainbowLens DataHub es un monolito modular: un único servicio Dash sobre Flask, organizado internamente por áreas funcionales. Los módulos comparten el mismo proceso y llaman a servicios Python; no existe comunicación HTTP interna. La API FastAPI es una interfaz opcional sobre los mismos módulos y no forma parte del servicio desplegado en Render.
+
+PostgreSQL almacena cuentas y datos relacionales, MongoDB conserva datos analíticos y Supabase Storage aloja recursos compatibles con S3. Sus clientes se centralizan en `infrastructure/`.
 
 ## Tecnologías principales
 
@@ -53,14 +57,21 @@ La interfaz Dash se ejecuta sobre Flask. La API independiente utiliza FastAPI. P
 
 ```text
 src/app/
-├── analytics/       Datos, servicios y visualizaciones
-├── api/             API FastAPI
-├── auth/            Registro, login y autorización
-├── dash/            Interfaz, páginas y recursos estáticos
-├── edu/             Catálogo y servicios didácticos
-├── import_to_db/    Importadores y validación de fuentes
-├── reports/         Construcción y exportación de informes
-└── users/           Modelo y gestión de usuarios
+├── api/             Interfaz FastAPI opcional
+├── core/            Configuración, seguridad, permisos y logging
+├── infrastructure/  MongoDB, PostgreSQL, Storage y caché
+├── modules/         Áreas funcionales del monolito
+│   ├── home/        Inicio y contexto legal
+│   ├── statistics/  Estadísticas FRA/ILGA y visualizaciones
+│   ├── trends/      Series históricas y forecasting
+│   ├── spain/       Informes FELGTBI+ de España
+│   ├── didactics/   Diccionario, juegos y espacio docente
+│   ├── reports/     Configuración y generación de informes
+│   ├── account/     Cuenta, usuarios y privacidad
+│   ├── administration/
+│   └── imports/     Pipelines de importación en runtime
+├── shared/          Componentes y lógica de datos reutilizada
+└── web/             Factory Dash, rutas, navegación y assets
 tests/               Pruebas unitarias, integración, E2E lógico y humo
 scripts/             Utilidades de mantenimiento verificables
 render.yaml          Definición del servicio de producción
@@ -106,10 +117,7 @@ SUPABASE_S3_REGION
 SUPABASE_STORAGE_BUCKET
 DIDACTIC_SLIDES_BUCKET
 PRIVACY_CONTROLLER_NAME
-PRIVACY_CONTACT_EMAIL
 ```
-
-La aplicación no utiliza SMTP ni requiere variables de correo transaccional.
 
 ## Ejecución
 
@@ -146,7 +154,3 @@ La aplicación trabaja principalmente con fuentes públicas agregadas. Las cuent
 ## Fuentes y atribuciones
 
 Las denominaciones, publicaciones y datasets oficiales mantienen su nombre original. Las transformaciones, normalizaciones, comparaciones y proyecciones propias se identifican como procesamiento de RainbowLens DataHub.
-
-## Estado del proyecto
-
-Proyecto académico en desarrollo activo como Trabajo de Fin de Grado. La arquitectura actual es común a local y Render. La integración futura de un servicio transaccional compatible con producción queda fuera del alcance de esta versión.

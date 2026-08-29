@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from app import dash_app as dash_app_module
-from app.users.schemas import UserRead, UserRole, UserType
-from app.users.service import UserRecord
+from app.modules.account.users.schemas import UserRead, UserRole, UserType
+from app.modules.account.users.service import UserRecord
+from app.web import application as dash_app_module
 
 USER_ID = "4cf35a2f-a5df-4c31-914d-2ca72a339139"
 

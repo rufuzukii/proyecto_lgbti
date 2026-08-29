@@ -6,10 +6,10 @@ from typing import Any, Self
 import pytest
 from werkzeug.security import generate_password_hash
 
-from app.privacy import service as privacy_service
-from app.users import service
-from app.users.account_security import AccountSecurityState
-from app.users.schemas import MAX_PASSWORD_LENGTH, UserRole, UserType
+from app.modules.account.privacy import service as privacy_service
+from app.modules.account.users import service
+from app.modules.account.users.account_security import AccountSecurityState
+from app.modules.account.users.schemas import MAX_PASSWORD_LENGTH, UserRole, UserType
 
 
 @dataclass
@@ -167,8 +167,8 @@ def test_admin_deletion_maps_cross_store_error_to_public_validation_code(
     monkeypatch.setattr(privacy_service, "delete_user_account_as_admin", fail)
 
     # Act / Assert
-    with pytest.raises(ValueError, match="storage_unavailable"):
-        service.delete_user_as_admin(
+    with pytest.raises(privacy_service.AccountDeletionError, match="storage_unavailable"):
+        privacy_service.delete_user_account_as_admin(
             user_id=_record().id,
             actor_user_id="00000000-0000-0000-0000-000000000002",
         )

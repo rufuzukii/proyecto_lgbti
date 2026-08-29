@@ -4,11 +4,11 @@ from pathlib import Path
 
 from dash.development.base_component import Component
 
-from app.dash.components.page_structure import build_page_header, page_section, surface
-from app.dash.i18n import text
+from app.shared.components.page_structure import build_page_header, page_section, surface
+from app.web.i18n import text
 
 ROOT = Path(__file__).resolve().parents[3]
-ASSETS = ROOT / "src" / "app" / "dash" / "assets"
+ASSETS = ROOT / "src" / "app" / "web" / "assets"
 
 
 def test_shared_page_primitives_expose_stable_visual_classes() -> None:
@@ -42,14 +42,14 @@ def test_design_tokens_cover_surfaces_spacing_controls_and_page_widths() -> None
 
 def test_primary_pages_use_the_shared_page_and_header_language() -> None:
     sources = {
-        "home": ROOT / "src/app/dash/layouts/home.py",
-        "statistics": ROOT / "src/app/dash/pages/statistics.py",
-        "trends": ROOT / "src/app/trends/layout.py",
-        "spain": ROOT / "src/app/dash/pages/spain.py",
-        "didactica": ROOT / "src/app/dash/pages/didactica.py",
-        "reports": ROOT / "src/app/dash/pages/reports.py",
-        "about": ROOT / "src/app/dash/layouts/about.py",
-        "privacy": ROOT / "src/app/dash/pages/privacy.py",
+        "home": ROOT / "src/app/modules/home/page.py",
+        "statistics": ROOT / "src/app/modules/statistics/page.py",
+        "trends": ROOT / "src/app/modules/trends/layout.py",
+        "spain": ROOT / "src/app/modules/spain/page.py",
+        "didactica": ROOT / "src/app/modules/didactics/page.py",
+        "reports": ROOT / "src/app/modules/reports/page.py",
+        "about": ROOT / "src/app/web/about.py",
+        "privacy": ROOT / "src/app/modules/account/privacy_page.py",
     }
     for name, path in sources.items():
         source = path.read_text(encoding="utf-8")
@@ -58,7 +58,7 @@ def test_primary_pages_use_the_shared_page_and_header_language() -> None:
 
 
 def test_home_map_is_a_shared_rounded_chart_surface() -> None:
-    home = (ROOT / "src/app/dash/layouts/home.py").read_text(encoding="utf-8")
+    home = (ROOT / "src/app/modules/home/page.py").read_text(encoding="utf-8")
     design = (ASSETS / "z_design_system.css").read_text(encoding="utf-8")
 
     assert 'className="home-map-stage app-surface app-chart-card"' in home
@@ -67,8 +67,8 @@ def test_home_map_is_a_shared_rounded_chart_surface() -> None:
 
 
 def test_home_and_didactica_have_real_shared_headers_with_eyebrows() -> None:
-    home = (ROOT / "src/app/dash/layouts/home.py").read_text(encoding="utf-8")
-    didactica = (ROOT / "src/app/dash/pages/didactica.py").read_text(encoding="utf-8")
+    home = (ROOT / "src/app/modules/home/page.py").read_text(encoding="utf-8")
+    didactica = (ROOT / "src/app/modules/didactics/page.py").read_text(encoding="utf-8")
 
     assert 'title=text("Inicio", "Home")' in home
     assert 'class_name="home-page-header"' in home

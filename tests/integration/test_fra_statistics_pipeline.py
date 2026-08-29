@@ -6,14 +6,14 @@ from typing import Any, cast
 
 from flask import Flask
 
-from app.analytics import repository
-from app.analytics.geography_service import prepare_europe_map_data
-from app.analytics.statistics_charts import build_europe_choropleth
-from app.analytics.statistics_models import FraStatisticsQuery
-from app.analytics.statistics_service import get_fra_statistics
-from app.cache import init_cache
-from app.import_to_db.fra import mongo as fra_mongo
-from app.import_to_db.fra import parse_fra_csv_text
+from app.infrastructure.cache import init_cache
+from app.modules.imports.fra import mongo as fra_mongo
+from app.modules.imports.fra import parse_fra_csv_text
+from app.modules.statistics.figures import build_europe_choropleth
+from app.modules.statistics.models import FraStatisticsQuery
+from app.modules.statistics.service import get_fra_statistics
+from app.shared.data import repository
+from app.shared.data.geography_service import prepare_europe_map_data
 
 
 class InMemoryFraCollection:

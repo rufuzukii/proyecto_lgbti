@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from flask_login import current_user
 
-from app import dash_app as dash_app_module
-from app.users.schemas import UserRole, UserType
-from app.users.service import UserRecord
+from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.account.users.service import UserRecord
+from app.web import application as dash_app_module
 
 
 def test_dash_login_survives_navigation_when_proxy_identifier_changes(monkeypatch) -> None:

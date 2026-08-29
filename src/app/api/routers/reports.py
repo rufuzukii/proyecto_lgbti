@@ -3,13 +3,13 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
-from app.reports.hr_reporting import (
+from app.modules.reports.hr_reporting import (
     HR_REPORT_SECTIONS,
     hr_report_charts,
     hr_report_objective,
 )
-from app.reports.models import ReportConfiguration
-from app.reports.service import ReportGenerationError, generate_report_pdf
+from app.modules.reports.models import ReportConfiguration
+from app.modules.reports.service import ReportGenerationError, generate_report_pdf
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 

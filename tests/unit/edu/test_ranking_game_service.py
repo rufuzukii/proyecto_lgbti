@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import app.edu.ranking_game_service as service
+import app.modules.didactics.ranking_game_service as service
 
 
 def _document() -> dict:

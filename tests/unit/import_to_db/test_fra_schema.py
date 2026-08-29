@@ -6,9 +6,9 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from app.import_to_db.fra import parse_fra_csv_text
-from app.import_to_db.fra.mongo import insert_indicator_fra_json
-from app.import_to_db.fra.schema import (
+from app.modules.imports.fra import parse_fra_csv_text
+from app.modules.imports.fra.mongo import insert_indicator_fra_json
+from app.modules.imports.fra.schema import (
     FraDuplicateConflictError,
     FraMetadataMismatchError,
     InvalidFraCsvError,
@@ -20,7 +20,7 @@ from app.import_to_db.fra.schema import (
     parse_fra_percentage,
     read_fra_csv_text,
 )
-from app.import_to_db.fra.validation import is_valid_fra_category
+from app.shared.data.fra_validation import is_valid_fra_category
 
 CURRENT_CSV = """topic,question,question_code,Location,country,Yes
 Discrimination,Discrimination in areas of life > Felt discriminated,D1_1,Spain,ES,42
@@ -319,7 +319,7 @@ def test_exact_duplicate_is_idempotent_but_conflicting_duplicate_is_rejected() -
 def test_repeated_persistence_uses_atomic_natural_key_replacement() -> None:
     payload = payload_dict(parse_fra_csv_text(CURRENT_CSV, file_name="fra.csv"))
     collection = MagicMock()
-    with patch("app.import_to_db.fra.mongo.get_mongo_collection", return_value=collection):
+    with patch("app.modules.imports.fra.mongo.get_mongo_collection", return_value=collection):
         insert_indicator_fra_json(payload)
         insert_indicator_fra_json(payload)
     assert collection.update_one.call_count == 2
@@ -424,7 +424,7 @@ def test_real_categories_with_long_text_or_colons_remain_valid(value: str) -> No
 
 
 def test_import_logs_one_summary_instead_of_warning_per_metadata_row(caplog) -> None:
-    caplog.set_level("INFO", logger="app.import_to_db.fra.schema")
+    caplog.set_level("INFO", logger="app.modules.imports.fra.schema")
     dataframe, schema = read_fra_csv_text(CURRENT_CSV)
     normalize_fra_csv(dataframe, schema)
 

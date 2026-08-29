@@ -6,10 +6,10 @@ from threading import Barrier, Lock
 
 from flask import Flask
 
-import app.health as health_module
-from app.auth.rate_limit import InMemoryRateLimiter
-from app.cache import cache, init_cache, local_cache_health_status
-from app.health import register_health_endpoint
+import app.core.health as health_module
+from app.core.auth.rate_limit import InMemoryRateLimiter
+from app.core.health import register_health_endpoint
+from app.infrastructure.cache import cache, init_cache, local_cache_health_status
 
 
 def test_production_uses_bounded_local_cache_without_external_service(monkeypatch) -> None:

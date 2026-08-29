@@ -1,6 +1,7 @@
 import pytest
 
-from app.import_to_db.felgtbi.importer import (
+from app.infrastructure.storage import supabase_public_image_url
+from app.modules.imports.felgtbi.importer import (
     StorageUploadError,
     _clean_figure_caption_title,
     _extract_figure_segments,
@@ -8,13 +9,12 @@ from app.import_to_db.felgtbi.importer import (
     _resolve_report_title,
     _upload_figure_with_retries,
     extract_pdf_pages,
-    parse_felgtbi_pdf_bytes,
     parse_felgtbi_text_pages,
 )
-from app.import_to_db.felgtbi.mongo import _prepare_indicator_document
-from app.import_to_db.felgtbi.pdf_reader import repair_block_text_spacing
-from app.import_to_db.felgtbi.storage import supabase_s3_client
-from app.storage import supabase_public_image_url
+from app.modules.imports.felgtbi.mongo import _prepare_indicator_document
+from app.modules.imports.felgtbi.pdf_reader import repair_block_text_spacing
+from app.modules.imports.felgtbi.pipeline import parse_felgtbi_pdf_bytes
+from app.modules.imports.felgtbi.storage import supabase_s3_client
 
 
 def test_felgtbi_text_pages_extract_percentages_as_indicator_documents() -> None:
@@ -416,10 +416,10 @@ def test_transient_figure_upload_is_retried_without_changing_storage_identity(mo
         return {"status": "reused", "storage_path": kwargs["storage_path"]}
 
     monkeypatch.setattr(
-        "app.import_to_db.felgtbi.importer._upload_figure_to_supabase",
+        "app.modules.imports.felgtbi.importer._upload_figure_to_supabase",
         fake_upload,
     )
-    monkeypatch.setattr("app.import_to_db.felgtbi.importer.time.sleep", lambda _value: None)
+    monkeypatch.setattr("app.modules.imports.felgtbi.importer.time.sleep", lambda _value: None)
 
     # Act
     result = _upload_figure_with_retries(

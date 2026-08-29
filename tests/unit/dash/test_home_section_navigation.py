@@ -5,15 +5,15 @@ from typing import Any, cast
 from dash import Dash
 from dash.development.base_component import Component
 
-import app.dash.layouts.home as home_layout
-from app.dash.components.section_navigation import (
+import app.modules.home.page as home_layout
+from app.web import navigation
+from app.web.i18n import UI_TEXT
+from app.web.section_navigation import (
     ANONYMOUS_ACCOUNT_SECTION,
     AUTHENTICATED_ACCOUNT_SECTION,
     PRIMARY_SECTIONS,
     build_home_section_navigation,
 )
-from app.dash.i18n import UI_TEXT
-from app.dash.layouts import navigation
 
 PRIMARY_PATHS = [
     "/es",
@@ -188,7 +188,7 @@ def test_home_cards_describe_the_current_user_facing_features() -> None:
 
 def test_home_card_css_covers_themes_responsive_layout_focus_and_motion() -> None:
     styles = (
-        Path(__file__).resolve().parents[3] / "src" / "app" / "dash" / "assets" / "home.css"
+        Path(__file__).resolve().parents[3] / "src" / "app" / "web" / "assets" / "home.css"
     ).read_text(encoding="utf-8")
 
     assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in styles

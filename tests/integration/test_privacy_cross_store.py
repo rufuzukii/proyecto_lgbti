@@ -6,7 +6,7 @@ from typing import Any, Self
 
 import pytest
 
-from app.privacy import service
+from app.modules.account.privacy import service
 
 USER_ID = "7bf1c278-4ad4-4cf3-a70d-9769590c5099"
 
@@ -51,7 +51,7 @@ def test_postgres_deletion_removes_private_imports_and_user_in_one_transaction(
 ) -> None:
     # Arrange
     connection = _Connection()
-    monkeypatch.setattr(service.psycopg, "connect", lambda *_args, **_kwargs: connection)
+    monkeypatch.setattr(service, "postgres_connection", lambda **_kwargs: connection)
 
     # Act
     result = service._delete_postgres_account(USER_ID)

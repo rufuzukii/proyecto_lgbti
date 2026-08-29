@@ -2,7 +2,7 @@ import hashlib
 import json
 from unittest.mock import patch
 
-from app.analytics.country_status_service import (
+from app.modules.home.country_status_service import (
     _load_english_catalog,
     get_country_lgbti_status,
 )
@@ -33,7 +33,7 @@ def test_country_status_returns_requested_order_and_deduplicates() -> None:
     ]
 
     with patch(
-        "app.analytics.country_status_service.get_country_lgbti_status_records",
+        "app.modules.home.country_status_service.get_country_lgbti_status_records",
         return_value=records,
     ) as repository:
         result = get_country_lgbti_status(["ES", "PT", "ES"], 2026)
@@ -45,7 +45,7 @@ def test_country_status_returns_requested_order_and_deduplicates() -> None:
 
 def test_country_status_keeps_fallback_year_visible() -> None:
     with patch(
-        "app.analytics.country_status_service.get_country_lgbti_status_records",
+        "app.modules.home.country_status_service.get_country_lgbti_status_records",
         return_value=[
             {
                 "country_code": "ES",
@@ -67,7 +67,7 @@ def test_country_status_keeps_fallback_year_visible() -> None:
 
 def test_country_status_preserves_stored_bilingual_content() -> None:
     with patch(
-        "app.analytics.country_status_service.get_country_lgbti_status_records",
+        "app.modules.home.country_status_service.get_country_lgbti_status_records",
         return_value=[
             {
                 "country_code": "ES",
@@ -109,7 +109,7 @@ def test_country_status_adds_versioned_english_content_when_source_matches() -> 
     }
     with (
         patch(
-            "app.analytics.country_status_service.get_country_lgbti_status_records",
+            "app.modules.home.country_status_service.get_country_lgbti_status_records",
             return_value=[
                 {
                     "country_code": "ES",
@@ -123,7 +123,7 @@ def test_country_status_adds_versioned_english_content_when_source_matches() -> 
             ],
         ),
         patch(
-            "app.analytics.country_status_service._load_english_catalog",
+            "app.modules.home.country_status_service._load_english_catalog",
             return_value=(2026, catalog),
         ),
     ):
@@ -142,7 +142,7 @@ def test_country_status_does_not_apply_stale_versioned_translation() -> None:
     }
     with (
         patch(
-            "app.analytics.country_status_service.get_country_lgbti_status_records",
+            "app.modules.home.country_status_service.get_country_lgbti_status_records",
             return_value=[
                 {
                     "country_code": "ES",
@@ -155,7 +155,7 @@ def test_country_status_does_not_apply_stale_versioned_translation() -> None:
             ],
         ),
         patch(
-            "app.analytics.country_status_service._load_english_catalog",
+            "app.modules.home.country_status_service._load_english_catalog",
             return_value=(2026, catalog),
         ),
     ):
@@ -186,7 +186,7 @@ def test_versioned_english_catalog_is_complete_and_fingerprinted() -> None:
 
 def test_country_status_returns_missing_card_payload() -> None:
     with patch(
-        "app.analytics.country_status_service.get_country_lgbti_status_records",
+        "app.modules.home.country_status_service.get_country_lgbti_status_records",
         return_value=[],
     ):
         result = get_country_lgbti_status(["FR"], 2026)

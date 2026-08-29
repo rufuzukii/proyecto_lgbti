@@ -6,8 +6,8 @@ from typing import Any, cast
 
 from dash import Dash, dcc
 
-import app.dash.pages.statistics as statistics_page
-from app.dash.statistics_state import StatisticsViewState, resolve_statistics_view_state
+import app.modules.statistics.page as statistics_page
+from app.modules.statistics.state import StatisticsViewState, resolve_statistics_view_state
 
 
 def _walk(component):
@@ -69,7 +69,6 @@ def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch)
     assert loading_props["overlay_style"] == {"visibility": "hidden"}
     assert loading_props["target_components"] == {
         "stats-data-store": "data",
-        "stats-dashboard-ready-store": "data",
         "stats-active-query-store": "data",
         "stats-survey-catalog-store": "data",
         "stats-indicator-catalog-store": "data",
@@ -142,7 +141,7 @@ def test_ranked_reason_help_is_bilingual_and_absent_for_standard_questions() -> 
 
 
 def test_chart_help_and_ranked_reason_styles_cover_mobile_and_dark_mode() -> None:
-    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/statistics.css").read_text(encoding="utf-8")
 
     assert "grid-column: 1 / -1" in css
     assert ".stats-chart-horizontal-scroll" in css
@@ -165,7 +164,7 @@ def test_chart_help_and_ranked_reason_styles_cover_mobile_and_dark_mode() -> Non
 
 
 def test_disabled_statistics_filters_remain_legible_and_responsive() -> None:
-    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/statistics.css").read_text(encoding="utf-8")
 
     assert ".stats-controls .Select.is-disabled > .Select-control" in css
     assert "cursor: not-allowed" in css
@@ -179,7 +178,7 @@ def test_disabled_statistics_filters_remain_legible_and_responsive() -> None:
 
 
 def test_large_response_distribution_matches_the_compact_tablet_layout() -> None:
-    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/statistics.css").read_text(encoding="utf-8")
     desktop_rule = css.split("@media (min-width: 1200px)", maxsplit=1)[1].split(
         "@media (max-width: 767px)", maxsplit=1
     )[0]
@@ -249,7 +248,8 @@ def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
     assert error[2].endswith("is-hidden")
     assert ready[1].endswith("is-hidden")
     assert ready[2] == "stats-results-content"
-    assert loading[1].endswith("is-hidden")
+    assert "Cargando estadísticas" in str(loading[0])
+    assert loading[1] == "stats-query-state stats-query-state-loading"
     assert loading[2].endswith("is-hidden")
 
 
@@ -335,7 +335,7 @@ def test_statistics_view_states_are_explicit() -> None:
 
 
 def test_indicator_catalog_prevents_initial_prompt_during_category_loading() -> None:
-    source = Path("src/app/dash/pages/statistics.py").read_text(encoding="utf-8")
+    source = Path("src/app/modules/statistics/page.py").read_text(encoding="utf-8")
 
     assert 'id="stats-indicator-catalog-store"' in source
     assert "indicatorCatalogReady" in source
@@ -604,7 +604,9 @@ def test_figure_failure_closes_loading_with_an_explicit_error_state(monkeypatch)
     )
 
 
-def test_statistics_loading_uses_spinner_only_without_message_callback(monkeypatch) -> None:
+def test_statistics_country_loading_shows_localized_message_and_hides_stale_results(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(statistics_page, "assert_analytics_databases_available", lambda: None)
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     layout = statistics_page.build_statistics_layout()
@@ -613,13 +615,56 @@ def test_statistics_loading_uses_spinner_only_without_message_callback(monkeypat
 
     assert spinner_children[0].className == "context-loading-spinner"
     assert spinner_children[1].className == "sr-only"
-    assert _component_by_id(layout, "stats-loading-message") is None
-
     app = Dash("statistics-loading-spinner-test", suppress_callback_exceptions=True)
     statistics_page.register_statistics_callbacks(app)
-    callback_names = {
-        value["callback"].__wrapped__.__name__
-        for value in app.callback_map.values()
-        if getattr(value.get("callback"), "__wrapped__", None)
-    }
-    assert "update_statistics_loading_message" not in callback_names
+    callback = _callback(app, "update_statistics_query_state")
+
+    state_card, state_class, results_class = callback(
+        {"status": "ok", "query_token": "D1"},
+        {
+            "status": "loading_statistics",
+            "query_token": "D1",
+            "reason": "countries",
+            "country_count": 1,
+        },
+        {"query_token": "D1", "phase": "loading_statistics"},
+        "Discrimination",
+        "D1",
+        "es",
+    )
+
+    assert "Cargando los datos correspondientes al país seleccionado" in str(state_card)
+    assert state_class == "stats-query-state stats-query-state-loading"
+    assert results_class == "stats-results-content is-hidden"
+
+    state_card, _, _ = callback(
+        {"status": "ok", "query_token": "D1"},
+        {
+            "status": "loading_statistics",
+            "query_token": "D1",
+            "reason": "countries",
+            "country_count": 2,
+        },
+        {"query_token": "D1", "phase": "loading_statistics"},
+        "Discrimination",
+        "D1",
+        "en",
+    )
+    assert "Loading data for the selected countries" in str(state_card)
+
+    state_card, _, results_class = callback(
+        {"status": "ok", "query_token": "D1"},
+        {
+            "status": "loading_statistics",
+            "query_token": "D1",
+            "reason": "countries",
+            "country_count": 0,
+        },
+        {"query_token": "D1", "phase": "loading_statistics"},
+        "Discrimination",
+        "D1",
+        "es",
+    )
+    assert "Cargando estadísticas" in str(state_card)
+    assert "países seleccionados" not in str(state_card)
+    assert results_class.endswith("is-hidden")

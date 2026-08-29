@@ -3,10 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from app import dash_app as dash_app_module
-from app.dash.components.section_navigation import PRIMARY_SECTIONS
-from app.dash.layouts import navigation
-from app.dash.routes import (
+from app.web import application as dash_app_module
+from app.web import navigation
+from app.web.routes import (
     LEGACY_REDIRECTS,
     ROUTES,
     canonical_safe_next,
@@ -16,6 +15,7 @@ from app.dash.routes import (
     match_route,
     route_path,
 )
+from app.web.section_navigation import PRIMARY_SECTIONS
 
 EXPECTED_ROUTES = {
     "home": ("/es", "/en"),
@@ -137,4 +137,6 @@ def test_language_switch_client_preserves_query_and_hash() -> None:
     module_source = Path(dash_app_module.__file__).read_text(encoding="utf-8")
     assert 'route[selected] + dynamicSuffix + (search || "") + (hash || "")' in module_source
     assert 'Output("url", "href")' in module_source
-    assert "document.title" in (Path(dash_app_module.__file__).parent / "dash" / "assets" / "js" / "10_i18n.js").read_text(encoding="utf-8")
+    assert "document.title" in (
+        Path(dash_app_module.__file__).parent / "assets" / "js" / "10_i18n.js"
+    ).read_text(encoding="utf-8")

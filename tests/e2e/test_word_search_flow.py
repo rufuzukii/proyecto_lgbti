@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import app.dash.pages.didactica as didactica_page
-import app.dash_app as dash_app_module
-from app.dash.routes import route_path
-from app.edu.glossary_service import get_glossary_term
-from app.users.schemas import UserRole
+import app.modules.didactics.page as didactica_page
+import app.web.application as dash_app_module
+from app.modules.account.users.schemas import UserRole
+from app.modules.didactics.glossary_service import get_glossary_term
+from app.web.routes import route_path
 
 
 def _walk(component):

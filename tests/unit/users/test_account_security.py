@@ -5,7 +5,7 @@ from typing import Any
 
 from pymongo import ReturnDocument
 
-from app.users import account_security
+from app.modules.account.users import account_security
 
 
 class _MemoryCollection:

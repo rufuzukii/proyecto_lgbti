@@ -6,13 +6,13 @@ from typing import Any, cast
 
 from dash import Dash, dcc
 
-import app.trends.callbacks as trend_callbacks
-import app.trends.layout as trend_layout
-from app.dash.i18n import ui_text
-from app.trends.callbacks import register_trend_callbacks
-from app.trends.charts import build_trend_figure
-from app.trends.forecasting_service import generate_forecast
-from app.trends.models import ForecastModelName, HistoricalPoint, TrendScope
+import app.modules.trends.callbacks as trend_callbacks
+import app.modules.trends.layout as trend_layout
+from app.modules.trends.callbacks import register_trend_callbacks
+from app.modules.trends.charts import build_trend_figure
+from app.modules.trends.forecasting_service import generate_forecast
+from app.modules.trends.models import ForecastModelName, HistoricalPoint, TrendScope
+from app.web.i18n import ui_text
 
 
 def _walk(component):
@@ -282,7 +282,7 @@ def test_loading_message_and_new_methodology_are_translated() -> None:
 
 
 def test_css_supports_dark_mode_responsive_cards_and_local_table_scroll() -> None:
-    css = Path("src/app/dash/assets/trends.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/trends.css").read_text(encoding="utf-8")
 
     assert '[data-theme="dark"] .trend-method-details summary' in css
     assert ".trend-table-scroll" in css and "overflow-x: auto" in css

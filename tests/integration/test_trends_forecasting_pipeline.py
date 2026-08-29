@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from app.trends import historical_series
-from app.trends.charts import build_trend_figure
-from app.trends.forecasting_service import generate_forecast
+from app.modules.trends import historical_series
+from app.modules.trends.charts import build_trend_figure
+from app.modules.trends.forecasting_service import generate_forecast
 
 
 def test_ilga_rows_to_forecast_result_and_figure(monkeypatch) -> None:

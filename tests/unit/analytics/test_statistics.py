@@ -5,11 +5,11 @@ import plotly.graph_objects as go
 import pytest
 from flask import Flask
 
-import app.analytics.repository as analytics_repository
-import app.dash.pages.statistics as statistics_page
-from app.analytics import statistics_service
-from app.analytics.percentage_display import normalize_percentage_values
-from app.analytics.statistics_charts import (
+import app.modules.statistics.page as statistics_page
+import app.shared.data.repository as analytics_repository
+from app.infrastructure.cache import cache, init_cache
+from app.modules.statistics import service as statistics_service
+from app.modules.statistics.figures import (
     COUNTRY_COLORS,
     EUROPE_MAP_COLORSCALE,
     NO_RESPONSE_COLOR,
@@ -24,7 +24,7 @@ from app.analytics.statistics_charts import (
     normalize_percentage,
     summarize_response_comparison,
 )
-from app.analytics.statistics_models import (
+from app.modules.statistics.models import (
     FRA_FILTER_GROUP_A,
     FRA_FILTER_GROUP_B,
     FraStatisticsQuery,
@@ -33,24 +33,7 @@ from app.analytics.statistics_models import (
     validate_fra_query,
     validate_statistics_filter_combination,
 )
-from app.analytics.statistics_normalizers import (
-    normalize_country_code,
-    normalize_filter_value,
-    repair_text_encoding,
-)
-from app.analytics.statistics_service import (
-    aggregate_fra_data,
-    build_fra_filter_value_options,
-    classify_external_data_error,
-    filter_fra_dataframe,
-    filter_fra_detail_dataframe,
-    filter_ilga_dataframe,
-    fra_document_to_dataframe,
-    get_fra_statistics,
-    ilga_document_to_dataframe,
-)
-from app.cache import cache, init_cache
-from app.dash.pages.statistics import (
+from app.modules.statistics.page import (
     FRA_SURVEY_OPTIONS,
     _category_options,
     _control_group,
@@ -71,6 +54,23 @@ from app.dash.pages.statistics import (
     _selected_category_value,
     build_statistics_layout,
 )
+from app.modules.statistics.service import (
+    aggregate_fra_data,
+    build_fra_filter_value_options,
+    classify_external_data_error,
+    filter_fra_dataframe,
+    filter_fra_detail_dataframe,
+    filter_ilga_dataframe,
+    fra_document_to_dataframe,
+    get_fra_statistics,
+    ilga_document_to_dataframe,
+)
+from app.shared.data.normalization import (
+    normalize_country_code,
+    normalize_filter_value,
+    repair_text_encoding,
+)
+from app.shared.data.percentage_display import normalize_percentage_values
 
 
 def _trace(figure: Any, index: int = 0) -> Any:
@@ -146,7 +146,7 @@ def test_statistics_social_data_heading_replaces_the_old_survey_heading() -> Non
 
 def test_spanish_ui_localizes_only_fra_category_labels(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.dash.pages.statistics.get_fra_categories",
+        "app.modules.statistics.page.get_fra_categories",
         lambda _year: ["Education", "Health and mental health"],
     )
 
@@ -173,7 +173,7 @@ def test_statistics_category_options_exclude_hidden_categories(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.dash.pages.statistics.get_fra_categories",
+        "app.modules.statistics.page.get_fra_categories",
         lambda _year=None: ["Discrimination", "Spanish LGBTIQ+ indicators", "Everyday life"],
     )
     values = [option["value"] for option in _category_options(2023)]
@@ -810,7 +810,7 @@ def test_get_fra_statistics_exposes_detail_data_without_country_or_answer_filter
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args, **_kwargs: document,
     )
 
@@ -877,7 +877,7 @@ def test_get_fra_statistics_uses_exact_all_filter_rows_for_map_ranking(monkeypat
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args, **_kwargs: document,
     )
 
@@ -934,7 +934,7 @@ def test_get_fra_statistics_uses_default_answer_instead_of_averaging_all_answers
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args, **_kwargs: document,
     )
 
@@ -1023,7 +1023,7 @@ def test_get_fra_statistics_does_not_fall_back_to_available_scope(monkeypatch) -
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args, **_kwargs: document,
     )
 
@@ -1075,7 +1075,7 @@ def test_response_details_compare_all_answers_when_no_is_selected(monkeypatch) -
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args, **_kwargs: document,
     )
 
@@ -1123,7 +1123,7 @@ def test_response_details_uses_filtered_dynamic_country_universe_and_canonical_c
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args, **_kwargs: document,
     )
     caplog.set_level("INFO")
@@ -1778,10 +1778,10 @@ def test_fra_repository_merges_every_document_for_indicator_in_one_find(monkeypa
 
 def test_statistics_layout_keeps_response_details_without_duplicate_panels(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
+        "app.modules.statistics.page.assert_analytics_databases_available", lambda: None
     )
-    monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _year: [])
-    monkeypatch.setattr("app.dash.pages.statistics.build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr("app.modules.statistics.page._category_options", lambda _year: [])
+    monkeypatch.setattr("app.modules.statistics.page.build_navbar", lambda **_kwargs: "")
 
     layout = build_statistics_layout()
 
@@ -1841,10 +1841,10 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
 
 def test_all_statistics_graphs_are_responsive_without_fixed_widths(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
+        "app.modules.statistics.page.assert_analytics_databases_available", lambda: None
     )
-    monkeypatch.setattr("app.dash.pages.statistics._category_options", lambda _year: [])
-    monkeypatch.setattr("app.dash.pages.statistics.build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr("app.modules.statistics.page._category_options", lambda _year: [])
+    monkeypatch.setattr("app.modules.statistics.page.build_navbar", lambda **_kwargs: "")
 
     graph_ids = (
         "stats-map-graph",
@@ -1939,8 +1939,8 @@ def test_response_comparison_uses_an_external_country_legend() -> None:
 
 
 def test_country_palette_covers_europe_with_unique_deterministic_colours() -> None:
-    from app.analytics.geography import ISO2_TO_ISO3
-    from app.analytics.statistics_charts import country_color
+    from app.modules.statistics.figures import country_color
+    from app.shared.data.geography import ISO2_TO_ISO3
 
     assert set(ISO2_TO_ISO3).issubset(COUNTRY_COLORS)
     assert len(COUNTRY_COLORS.values()) == len(set(COUNTRY_COLORS.values()))
@@ -2081,8 +2081,8 @@ def test_percentage_choropleth_distinguishes_zero_low_values_and_null() -> None:
     assert list(trace.colorbar.tickvals) == [0, 20, 40, 60, 80, 100]
     assert trace.colorbar.x == pytest.approx(-0.015)
     assert trace.colorbar.xanchor == "right"
-    assert trace.colorbar.thickness == 10
-    assert trace.colorbar.len == pytest.approx(0.62)
+    assert trace.colorbar.thickness == 8
+    assert trace.colorbar.len == pytest.approx(0.54)
     assert figure.layout.margin.l == 56
 
 
@@ -2133,7 +2133,7 @@ def test_social_attitudes_email_regression_keeps_all_all(monkeypatch) -> None:
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args: document,
     )
 

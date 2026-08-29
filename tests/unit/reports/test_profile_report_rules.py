@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.reports import service
-from app.reports.models import ReportConfiguration
-from app.reports.recommendations import (
+from app.modules.reports import service
+from app.modules.reports.models import ReportConfiguration
+from app.modules.reports.recommendations import (
     build_recommendations,
     indicator_semantics,
     result_level,

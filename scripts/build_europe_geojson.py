@@ -9,13 +9,13 @@ import geopandas as gpd
 import shapely
 from shapely.geometry import box
 
-from app.analytics.geography import ISO2_TO_ISO3
+from app.shared.data.geography import ISO2_TO_ISO3
 
 NATURAL_EARTH_URL = (
     "https://naturalearth.s3.amazonaws.com/50m_cultural/"
     "ne_50m_admin_0_countries.zip"
 )
-DEFAULT_OUTPUT = Path("src/app/analytics/data/europe_countries.geojson")
+DEFAULT_OUTPUT = Path("src/app/shared/data/resources/europe_countries.geojson")
 # Keep the European parts of transcontinental countries and remove overseas
 # territories that would otherwise force Plotly to a world-wide extent.
 EUROPE_WEB_BOUNDS = (-32.0, 25.0, 65.0, 82.0)

@@ -4,31 +4,31 @@ from types import SimpleNamespace
 import pytest
 from flask import Flask
 
-from app.analytics import repository
-from app.analytics.repository import (
-    FelgtbiDocument,
-    _has_valid_spain_section,
-    _spain_navigation_projection,
+from app.infrastructure.cache import init_cache
+from app.modules.imports.felgtbi.importer import (
+    _attach_page_assets,
+    parse_felgtbi_text_pages,
 )
-from app.cache import init_cache
-from app.dash.pages.spain import (
+from app.modules.imports.felgtbi.mongo import _prepare_indicator_document
+from app.modules.spain.page import (
     SPAIN_SLOT_CLASS,
     _figure_component,
     _spain_document_view_state,
     _spain_visualization_shell,
 )
-from app.import_to_db.felgtbi.importer import (
-    _attach_page_assets,
-    parse_felgtbi_text_pages,
-)
-from app.import_to_db.felgtbi.mongo import _prepare_indicator_document
-from app.import_to_db.felgtbi.semantics import (
+from app.shared.data import repository
+from app.shared.data.felgtbi.semantics import (
     ExtractionContext,
     analyze_chart_residual_text,
     clean_figure_paragraphs,
     is_semantically_useful_text,
     sanitize_report_document,
     semantic_noise_reason,
+)
+from app.shared.data.repository import (
+    FelgtbiDocument,
+    _has_valid_spain_section,
+    _spain_navigation_projection,
 )
 
 
@@ -273,7 +273,7 @@ def test_navigation_projection_does_not_fetch_heavy_section_content() -> None:
 
 def test_report_image_is_lazy_and_uses_only_storage_path(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.dash.pages.spain.supabase_public_image_url",
+        "app.modules.spain.page.supabase_public_image_url",
         lambda storage_path: f"https://storage.example/{storage_path}",
     )
     component = _figure_component(
@@ -325,11 +325,11 @@ def test_successful_figure_upload_attaches_storage_path_and_dimensions(monkeypat
     )
     monkeypatch.setitem(sys.modules, "fitz", fake_fitz)
     monkeypatch.setattr(
-        "app.import_to_db.felgtbi.importer._pixmap_image_bytes",
+        "app.modules.imports.felgtbi.importer._pixmap_image_bytes",
         lambda _pixmap: (b"image", 1200, 800, "image/webp"),
     )
     monkeypatch.setattr(
-        "app.import_to_db.felgtbi.importer._upload_figure_to_supabase",
+        "app.modules.imports.felgtbi.importer._upload_figure_to_supabase",
         lambda **kwargs: {
             "status": "uploaded",
             "storage_path": kwargs["storage_path"],

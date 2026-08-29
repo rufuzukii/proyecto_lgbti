@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 import app.api as api_module
 import app.api.routers.reports as reports_router
 from app.api import create_api_app
-from app.reports.service import ReportGenerationError
+from app.modules.reports.service import ReportGenerationError
 
 GENERAL_KEY = "g" * 32
 ADMIN_KEY = "a" * 32

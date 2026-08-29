@@ -4,9 +4,9 @@ from typing import Any
 
 import fitz
 
-from app.import_to_db.felgtbi import batch as felgtbi_batch
-from app.import_to_db.felgtbi import importer, mongo
-from app.import_to_db.felgtbi.pipeline import parse_felgtbi_pdf_bytes
+from app.modules.imports.felgtbi import batch as felgtbi_batch
+from app.modules.imports.felgtbi import importer, mongo
+from app.modules.imports.felgtbi.pipeline import parse_felgtbi_pdf_bytes
 
 
 class RecordingCollection:

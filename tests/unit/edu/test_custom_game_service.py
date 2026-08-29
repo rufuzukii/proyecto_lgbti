@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.edu import custom_game_service
-from app.edu.glossary_service import list_glossary_terms
-from app.users.schemas import UserRole, UserType
+from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.didactics import custom_game_service
+from app.modules.didactics.glossary_service import list_glossary_terms
 
 
 class Collection:

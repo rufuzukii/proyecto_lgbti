@@ -7,10 +7,10 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from app import dash_app as dash_app_module
-from app.analytics import repository
-from app.users.schemas import UserRole, UserType
-from app.users.service import UserRecord
+from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.account.users.service import UserRecord
+from app.shared.data import repository
+from app.web import application as dash_app_module
 
 PUBLIC_ROUTES = (
     "/es",

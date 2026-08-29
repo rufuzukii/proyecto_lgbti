@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from flask import Flask
 
-import app.analytics.repository as analytics_repository
-import app.trends.service as trend_service
-from app.cache import init_cache
-from app.trends import historical_series
-from app.trends.models import HistoricalPoint, TrendFilters
+import app.modules.trends.service as trend_service
+import app.shared.data.repository as analytics_repository
+from app.infrastructure.cache import init_cache
+from app.modules.trends import historical_series
+from app.modules.trends.models import HistoricalPoint, TrendFilters
 
 
 def _point(year: int, value: float, code: str = "ES") -> HistoricalPoint:

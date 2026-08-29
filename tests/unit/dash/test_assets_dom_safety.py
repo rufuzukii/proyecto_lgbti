@@ -2,11 +2,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from app.dash.layouts import navigation
+from app.web import navigation
 
 ROOT = Path(__file__).resolve().parents[3]
-ASSETS_JS = ROOT / "src" / "app" / "dash" / "assets" / "js"
-ASSETS_CSS = ROOT / "src" / "app" / "dash" / "assets"
+ASSETS_JS = ROOT / "src" / "app" / "web" / "assets" / "js"
+ASSETS_CSS = ROOT / "src" / "app" / "web" / "assets"
 
 
 def test_dash_assets_do_not_replace_react_owned_text_nodes() -> None:
@@ -324,7 +324,7 @@ def test_responsive_css_is_loaded_last_without_important_overrides() -> None:
     legacy_responsive_css = ASSETS_CSS / "responsive" / "responsive.css"
     styles = responsive_css.read_text(encoding="utf-8")
     bootstrap = (ASSETS_JS / "40_bootstrap.js").read_text(encoding="utf-8")
-    dash_app = (ROOT / "src" / "app" / "dash_app.py").read_text(encoding="utf-8")
+    dash_app = (ROOT / "src" / "app" / "web" / "application.py").read_text(encoding="utf-8")
     css_names = sorted(path.name for path in ASSETS_CSS.glob("*.css"))
 
     assert responsive_css.exists()

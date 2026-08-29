@@ -1,7 +1,7 @@
 import pytest
 
-from app.import_to_db.felgtbi import scraper
-from app.import_to_db.felgtbi.scraper import (
+from app.modules.imports.felgtbi import scraper
+from app.modules.imports.felgtbi.scraper import (
     discover_felgtbi_pdfs,
     parse_felgtbi_pdf_links,
 )

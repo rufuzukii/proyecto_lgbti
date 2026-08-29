@@ -11,7 +11,13 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 CATALOG_PATH = (
-    Path(__file__).resolve().parents[1] / "src" / "app" / "edu" / "data" / "glossary.json"
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "app"
+    / "modules"
+    / "didactics"
+    / "data"
+    / "glossary.json"
 )
 TIMEOUT_SECONDS = 12
 
@@ -65,4 +71,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

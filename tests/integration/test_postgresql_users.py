@@ -3,10 +3,10 @@ from __future__ import annotations
 import psycopg
 import pytest
 
-from app.config import get_postgres_connect_timeout, get_postgres_dsn
-from app.users import service
-from app.users.account_security import AccountSecurityState
-from app.users.schemas import UserType
+from app.core.config import get_postgres_connect_timeout, get_postgres_dsn
+from app.modules.account.users import service
+from app.modules.account.users.account_security import AccountSecurityState
+from app.modules.account.users.schemas import UserType
 
 
 def test_postgresql_users_schema_and_service_are_compatible(monkeypatch) -> None:

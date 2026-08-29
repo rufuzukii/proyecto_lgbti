@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from app.import_to_db.felgtbi.document_identity import (
+from app.modules.imports.felgtbi.models import PdfExtractionError
+from app.modules.imports.felgtbi.pipeline import parse_felgtbi_pdf_bytes
+from app.modules.imports.felgtbi.storage import figure_storage_path
+from app.modules.imports.felgtbi.validation import PdfValidationError, validate_felgtbi_pdf
+from app.shared.data.felgtbi.document_identity import (
     attach_source_document_metadata,
     build_pdf_source_document_id,
     clean_felgtbi_document_label,
     clean_felgtbi_indicator_label,
 )
-from app.import_to_db.felgtbi.models import PdfExtractionError
-from app.import_to_db.felgtbi.pipeline import parse_felgtbi_pdf_bytes
-from app.import_to_db.felgtbi.storage import figure_storage_path
-from app.import_to_db.felgtbi.validation import PdfValidationError, validate_felgtbi_pdf
 
 
 def test_pdf_validation_rejects_wrong_extension_signature_and_size(monkeypatch) -> None:

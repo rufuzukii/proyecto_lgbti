@@ -5,12 +5,11 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
-from app.dash.components.source_attribution import (
+from app.shared.components.source_attribution import (
     build_footer_attributions,
     build_source_attribution,
 )
-from app.dash_app import _build_application_shell
-from app.source_attribution import (
+from app.shared.data.source_attribution import (
     FELGTBI_REPORTS_URL,
     FELGTBI_URL,
     FRA_ORGANIZATION_URL,
@@ -21,6 +20,7 @@ from app.source_attribution import (
     source_metadata,
     source_storage_fields,
 )
+from app.web.application import _build_application_shell
 
 
 def test_fra_publication_year_resolves_to_survey_iii_attribution() -> None:
@@ -106,10 +106,10 @@ def test_footer_attributions_contain_three_accessible_official_source_blocks() -
 
 
 def test_attribution_styles_cover_dark_mode_mobile_wrapping_and_keyboard_focus() -> None:
-    component_styles = Path("src/app/dash/assets/source_attribution.css").read_text(
+    component_styles = Path("src/app/web/assets/source_attribution.css").read_text(
         encoding="utf-8"
     )
-    footer_styles = Path("src/app/dash/assets/styles.css").read_text(encoding="utf-8")
+    footer_styles = Path("src/app/web/assets/styles.css").read_text(encoding="utf-8")
 
     assert ':root[data-theme="dark"] .source-attribution' in component_styles
     assert "@media (max-width: 640px)" in component_styles
@@ -138,7 +138,7 @@ def test_attribution_styles_cover_dark_mode_mobile_wrapping_and_keyboard_focus()
 
 def test_application_footer_has_sources_and_privacy_without_obsolete_links() -> None:
     with patch(
-        "app.dash_app.current_user",
+        "app.web.application.current_user",
         SimpleNamespace(is_authenticated=False),
     ):
         shell = _build_application_shell()

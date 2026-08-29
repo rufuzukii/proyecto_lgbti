@@ -6,7 +6,7 @@ from typing import Any
 
 from dash import dcc
 
-from app.dash.pages import spain
+from app.modules.spain import page as spain
 
 
 def _walk(component: Any):
@@ -139,7 +139,7 @@ def test_document_selector_never_queries_all_years_without_a_valid_year(monkeypa
 
 
 def test_spain_indicator_dropdown_keeps_its_natural_height() -> None:
-    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/statistics.css").read_text(encoding="utf-8")
     selector_rule = css.split(".spain-topic-selector-row {", maxsplit=1)[1].split(
         "}", maxsplit=1
     )[0]

@@ -2,7 +2,7 @@ from typing import Any
 
 from dash import Dash
 
-from app.dash.layouts.home import (
+from app.modules.home.page import (
     _any_clicks,
     _country_status_card,
     _country_status_editor,
@@ -159,9 +159,9 @@ def test_admin_missing_country_status_card_renders_add_button() -> None:
 
 
 def test_home_country_status_editor_callbacks_use_existing_store_ids(monkeypatch) -> None:
-    monkeypatch.setattr("app.dash.layouts.home.build_navbar", lambda active=None: "")
-    monkeypatch.setattr("app.dash.layouts.home.get_latest_ilga_document", lambda: None)
-    monkeypatch.setattr("app.dash.layouts.home.get_ilga_years", list)
+    monkeypatch.setattr("app.modules.home.page.build_navbar", lambda active=None: "")
+    monkeypatch.setattr("app.modules.home.page.get_latest_ilga_document", lambda: None)
+    monkeypatch.setattr("app.modules.home.page.get_ilga_years", list)
 
     app = Dash(__name__, suppress_callback_exceptions=True)
     app.layout = build_home_layout()
@@ -188,12 +188,12 @@ def test_home_country_status_editor_callbacks_use_existing_store_ids(monkeypatch
 
 
 def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
-    monkeypatch.setattr("app.dash.layouts.home.build_navbar", lambda active=None: "")
+    monkeypatch.setattr("app.modules.home.page.build_navbar", lambda active=None: "")
     monkeypatch.setattr(
-        "app.dash.layouts.home.get_latest_ilga_document",
+        "app.modules.home.page.get_latest_ilga_document",
         lambda: {"year": 2026, "countries": []},
     )
-    monkeypatch.setattr("app.dash.layouts.home.get_ilga_years", lambda: [2026])
+    monkeypatch.setattr("app.modules.home.page.get_ilga_years", lambda: [2026])
 
     app = Dash(__name__, suppress_callback_exceptions=True)
     app.layout = build_home_layout()
@@ -241,12 +241,12 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
 
 
 def test_home_map_contains_only_legal_controls(monkeypatch) -> None:
-    monkeypatch.setattr("app.dash.layouts.home.build_navbar", lambda active=None: "")
+    monkeypatch.setattr("app.modules.home.page.build_navbar", lambda active=None: "")
     monkeypatch.setattr(
-        "app.dash.layouts.home.get_latest_ilga_document",
+        "app.modules.home.page.get_latest_ilga_document",
         lambda: {"year": 2026, "countries": []},
     )
-    monkeypatch.setattr("app.dash.layouts.home.get_ilga_years", lambda: [2026])
+    monkeypatch.setattr("app.modules.home.page.get_ilga_years", lambda: [2026])
 
     layout = build_home_layout()
     layout_ids = _component_ids(layout)

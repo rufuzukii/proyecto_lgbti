@@ -1,6 +1,6 @@
 import pytest
 
-from app.config import (
+from app.core.config import (
     get_app_config,
     get_mongo_config,
     get_postgres_config,

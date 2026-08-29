@@ -4,8 +4,8 @@ from typing import Any
 
 from flask import Flask
 
-from app.analytics import repository
-from app.cache import cache, init_cache
+from app.infrastructure.cache import cache, init_cache
+from app.shared.data import repository
 
 
 class _AggregateCollection:

@@ -9,22 +9,22 @@ import plotly.graph_objects as go
 from dash import Dash, dcc
 from PIL import Image
 
-from app.analytics.statistics_exports import (
-    _prepare_report_figure,
-    export_figure_for_report,
-)
-from app.auth.permissions import Permission, user_has_permission
-from app.dash.pages import reports as reports_page
-from app.dash_app import _report_params
-from app.reports import service as report_service
-from app.reports.builder import HRReportBuilder
-from app.reports.models import (
+from app.core.auth.permissions import Permission, user_has_permission
+from app.modules.account.users.schemas import UserRole
+from app.modules.reports import page as reports_page
+from app.modules.reports import service as report_service
+from app.modules.reports.builder import HRReportBuilder
+from app.modules.reports.models import (
     ReportConfiguration,
     ReportDataset,
     sanitize_report_text,
 )
-from app.reports.pdf_exporter import PDFExporter
-from app.users.schemas import UserRole
+from app.modules.reports.pdf_exporter import PDFExporter
+from app.modules.statistics.exports import (
+    _prepare_report_figure,
+    export_figure_for_report,
+)
+from app.web.application import _report_params
 
 
 def _fra_result() -> dict[str, Any]:
@@ -248,6 +248,89 @@ def test_custom_mode_hides_disabled_sections_and_adds_active_segmentation() -> N
     assert "Fuentes" in rendered_text
     assert "Recomendaciones" not in rendered_text
     assert len(content.charts) == 1
+    assert content.charts[0].observation == ""
+
+    textareas: list[Any] = [
+        cast(Any, item)
+        for component in preview
+        for item in _walk(component)
+        if isinstance(item, dcc.Textarea)
+    ]
+    chart_textareas = [
+        item for item in textareas if item.id["type"] == "report-chart-narrative"
+    ]
+    section_textareas = [
+        item for item in textareas if item.id["type"] == "report-section-narrative"
+    ]
+    assert len(chart_textareas) == 3
+    assert {item.id["field"] for item in chart_textareas} == {
+        "what_shows",
+        "how_to_read",
+        "observation",
+    }
+    assert all(item.maxLength == 2_000 for item in chart_textareas)
+    assert all(item.className == "reports-chart-narrative" for item in chart_textareas)
+    assert section_textareas == []
+
+
+def test_preview_exposes_generated_report_prose_as_editable_textareas() -> None:
+    content = HRReportBuilder().build(
+        _configuration(),
+        ReportDataset(_fra_result(), query_seconds=0.01),
+    )
+
+    section_textareas = [
+        cast(Any, item)
+        for component in reports_page._preview_content(content)
+        for item in _walk(component)
+        if isinstance(item, dcc.Textarea)
+        and item.id["type"] == "report-section-narrative"
+    ]
+
+    assert {item.id["section"] for item in section_textareas} == {
+        "executive",
+        "context",
+        "recommendations",
+    }
+    assert all(item.maxLength == 8_000 for item in section_textareas)
+    section_values = {item.id["section"]: item.value for item in section_textareas}
+    assert section_values["executive"] == "\n\n".join(content.executive_summary)
+    assert content.indicator in section_values["context"]
+    assert section_values["recommendations"] == "\n".join(
+        item.text for item in content.recommendations
+    )
+
+
+def test_chart_narrative_pattern_preserves_multiline_edits_and_empty_values() -> None:
+    narratives = reports_page._chart_narratives_from_pattern(
+        ["Primera línea\nSegunda línea", "", "Observación revisada"],
+        [
+            {"chart": "ranking", "field": "what_shows"},
+            {"chart": "ranking", "field": "how_to_read"},
+            {"chart": "ranking", "field": "observation"},
+        ],
+    )
+
+    assert narratives == {
+        "ranking": {
+            "what_shows": "Primera línea\nSegunda línea",
+            "how_to_read": "",
+            "observation": "Observación revisada",
+        }
+    }
+
+
+def test_section_narrative_pattern_preserves_edits_and_rejects_unknown_sections() -> None:
+    narratives = reports_page._section_narratives_from_pattern(
+        ["Resumen revisado", "", "No permitido"],
+        [
+            {"section": "executive"},
+            {"section": "context"},
+            {"section": "methodology"},
+        ],
+    )
+
+    assert narratives == {"executive": "Resumen revisado", "context": ""}
 
 
 def test_report_dataset_uses_one_query_for_all_countries(monkeypatch) -> None:
@@ -303,6 +386,7 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
             charts=["ranking", "average"],
             sections=[
                 "executive",
+                "context",
                 "methodology",
                 "metrics",
                 "comparison",
@@ -327,6 +411,25 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
         )
         chart_paths[chart.key] = path
 
+    report_service.apply_chart_narratives(
+        content,
+        {
+            "ranking": {
+                "what_shows": "Texto revisado\npor la persona usuaria",
+                "how_to_read": "",
+                "observation": "Observación final",
+            }
+        },
+    )
+    report_service.apply_section_narratives(
+        content,
+        {
+            "executive": "Resumen ejecutivo revisado",
+            "context": "Contexto revisado por la persona usuaria",
+            "recommendations": "Primera actuación revisada\nSegunda actuación revisada",
+        },
+    )
+
     pdf_bytes = PDFExporter().export(content, chart_paths)
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
     extracted = "\n".join(cast(str, page.get_text()) for page in document)
@@ -336,6 +439,10 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert "Informe de diversidad" in extracted
     assert "Resumen ejecutivo" in extracted
     assert "Posibles líneas de actuación" in extracted
+    assert "Resumen ejecutivo revisado" in extracted
+    assert "Contexto revisado por la persona usuaria" in extracted
+    assert "Primera actuación revisada" in extracted
+    assert "Segunda actuación revisada" in extracted
     assert "EU LGBTIQ Survey III, 2023" in extracted
     assert "España" in extracted
     assert "RainbowLens Datahub" in extracted
@@ -344,6 +451,20 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert metadata["creator"] == "RainbowLens Datahub"
     assert metadata["producer"] == "RainbowLens Datahub"
     assert "ReportLab" not in " ".join(str(value) for value in metadata.values())
+    widgets: list[Any] = [
+        cast(Any, widget)
+        for page in document
+        for widget in (list(page.widgets() or []))
+    ]
+    widget_values = {widget.field_name: widget.field_value for widget in widgets}
+    assert len(widgets) == len(content.charts) * 3
+    assert widget_values["chart_ranking_what_shows"] == (
+        "Texto revisado\npor la persona usuaria"
+    )
+    assert widget_values["chart_ranking_how_to_read"] == ""
+    assert widget_values["chart_ranking_observation"] == "Observación final"
+    assert all(widget.field_type_string == "Text" for widget in widgets)
+    assert all(widget.field_flags & 4096 for widget in widgets)
 
 
 def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:

@@ -4,10 +4,10 @@ from fastapi.responses import JSONResponse
 
 from app.api.routers import reports, users
 from app.api.security import require_admin_api_key, require_api_key
-from app.config import get_app_config
-from app.health import build_health_report
-from app.http_security import security_headers
-from app.logging_config import configure_secure_logging
+from app.core.config import get_app_config
+from app.core.health import build_health_report
+from app.core.http_security import security_headers
+from app.core.logging import configure_secure_logging
 
 
 def create_api_app() -> FastAPI:
@@ -16,7 +16,7 @@ def create_api_app() -> FastAPI:
     documentation_url = "/docs" if config.local_mode else None
     app = FastAPI(
         title="RainbowLens Datahub API",
-        version="0.1.0",
+        version="1.0.0",
         docs_url=documentation_url,
         redoc_url="/redoc" if config.local_mode else None,
         openapi_url="/openapi.json" if config.local_mode else None,

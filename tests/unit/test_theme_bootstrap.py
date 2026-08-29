@@ -1,10 +1,10 @@
 from pathlib import Path
 
-import app.dash_app as dash_app_module
-from app.dash.layouts.navigation import _theme_toggle
-from app.dash_app import DASH_INDEX_STRING
+import app.web.application as dash_app_module
+from app.web.application import DASH_INDEX_STRING
+from app.web.navigation import _theme_toggle
 
-ASSETS = Path(__file__).resolve().parents[2] / "src" / "app" / "dash" / "assets"
+ASSETS = Path(__file__).resolve().parents[2] / "src" / "app" / "web" / "assets"
 
 
 def test_saved_theme_is_applied_before_stylesheets_load() -> None:

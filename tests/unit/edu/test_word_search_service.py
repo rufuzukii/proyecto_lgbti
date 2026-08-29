@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.edu.models import GlossarySource, GlossaryTerm
-from app.edu.word_search_service import (
+from app.modules.didactics.models import GlossarySource, GlossaryTerm
+from app.modules.didactics.word_search_service import (
     DIRECTIONS,
     apply_word_search_selection,
     detect_word_selection,

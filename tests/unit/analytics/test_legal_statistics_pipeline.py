@@ -7,15 +7,15 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-import app.analytics.repository as analytics_repository
-from app.analytics import statistics_service
-from app.analytics.statistics_charts import (
+import app.shared.data.repository as analytics_repository
+from app.modules.statistics import service as statistics_service
+from app.modules.statistics.exports import EXPORT_WIDTH, prepare_figure_for_export
+from app.modules.statistics.figures import (
     build_ilga_response_details_chart,
     build_temporal_evolution_chart,
 )
-from app.analytics.statistics_exports import EXPORT_WIDTH, prepare_figure_for_export
-from app.analytics.statistics_models import IlgaStatisticsQuery
-from app.analytics.statistics_service import (
+from app.modules.statistics.models import IlgaStatisticsQuery
+from app.modules.statistics.service import (
     get_ilga_statistics,
     ilga_analysis_rows_to_dataframe,
 )
@@ -205,9 +205,9 @@ def test_legal_statistics_reuses_one_query_for_all_countries_and_years(monkeypat
         calls += 1
         return rows
 
-    monkeypatch.setattr("app.analytics.statistics_service.get_ilga_analysis_rows", load)
-    monkeypatch.setattr("app.analytics.statistics_service._server_cache_get", lambda _key: None)
-    monkeypatch.setattr("app.analytics.statistics_service._server_cache_set", lambda *_args: None)
+    monkeypatch.setattr("app.modules.statistics.service.get_ilga_analysis_rows", load)
+    monkeypatch.setattr("app.modules.statistics.service._server_cache_get", lambda _key: None)
+    monkeypatch.setattr("app.modules.statistics.service._server_cache_set", lambda *_args: None)
 
     result = get_ilga_statistics(IlgaStatisticsQuery(year=2026, category="Ranking total"))
 
@@ -254,11 +254,11 @@ def test_legal_details_detect_responses_and_keep_country_without_criterion(monke
     ]
     rows.append(_projected_country("PT", "Portugal", 2026, 45))
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_ilga_analysis_rows",
+        "app.modules.statistics.service.get_ilga_analysis_rows",
         lambda _category, _criterion: rows,
     )
-    monkeypatch.setattr("app.analytics.statistics_service._server_cache_get", lambda _key: None)
-    monkeypatch.setattr("app.analytics.statistics_service._server_cache_set", lambda *_args: None)
+    monkeypatch.setattr("app.modules.statistics.service._server_cache_get", lambda _key: None)
+    monkeypatch.setattr("app.modules.statistics.service._server_cache_set", lambda *_args: None)
 
     result = get_ilga_statistics(
         IlgaStatisticsQuery(year=2026, category="Family", criterion="Marriage equality")
@@ -376,7 +376,7 @@ def test_legal_response_chart_uses_semantic_stacked_counts_for_multiple_criteria
 
 
 def test_legal_sections_css_keeps_full_width_and_only_local_horizontal_scroll() -> None:
-    css = Path("src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/statistics.css").read_text(encoding="utf-8")
 
     assert ".stats-temporal-wrapper" in css
     assert ".stats-response-panel" in css

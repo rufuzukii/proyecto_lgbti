@@ -5,7 +5,7 @@ from typing import Any, cast
 
 import pytest
 
-from app.analytics.combined_analysis import (
+from app.modules.statistics.combined_analysis import (
     build_combined_analysis,
     classify_quadrant,
     combined_metrics,
@@ -16,20 +16,20 @@ from app.analytics.combined_analysis import (
     quadrant_eligibility,
     ranking_position_rows,
 )
-from app.analytics.statistics_charts import (
+from app.modules.statistics.exports import export_summary_table
+from app.modules.statistics.figures import (
     build_combined_quadrant_chart,
     build_combined_scatter,
     build_ranking_position_gap_chart,
 )
-from app.analytics.statistics_exports import export_summary_table
-from app.analytics.statistics_models import FraStatisticsQuery
-from app.analytics.statistics_service import get_combined_statistics_analysis
-from app.dash.pages.statistics import (
+from app.modules.statistics.models import FraStatisticsQuery
+from app.modules.statistics.page import (
     _combined_compatibility_messages,
     _combined_intro,
     _map_ranking_content,
     build_statistics_layout,
 )
+from app.modules.statistics.service import get_combined_statistics_analysis
 
 
 def _rows(count: int, *, inverse: bool = False) -> list[dict[str, float | str]]:
@@ -388,7 +388,7 @@ def test_age_bucket_has_only_two_methodological_messages_and_no_analysis() -> No
 def test_combined_service_uses_nearest_legal_year_in_one_shared_payload(monkeypatch) -> None:
     requested_years: list[int | None] = []
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_ilga_years", lambda: [2019, 2023, 2026]
+        "app.modules.statistics.service.get_ilga_years", lambda: [2019, 2023, 2026]
     )
 
     def fake_ilga(query, *, include_history):
@@ -401,7 +401,7 @@ def test_combined_service_uses_nearest_legal_year_in_one_shared_payload(monkeypa
             "normalization": {"applied": False},
         }
 
-    monkeypatch.setattr("app.analytics.statistics_service.get_ilga_statistics", fake_ilga)
+    monkeypatch.setattr("app.modules.statistics.service.get_ilga_statistics", fake_ilga)
     result = get_combined_statistics_analysis(
         FraStatisticsQuery(
             year=2023,
@@ -427,9 +427,9 @@ def test_statistics_layout_separates_fra_and_combined_without_redundant_charts(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.dash.pages.statistics.assert_analytics_databases_available", lambda: None
+        "app.modules.statistics.page.assert_analytics_databases_available", lambda: None
     )
-    monkeypatch.setattr("app.dash.pages.statistics.build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr("app.modules.statistics.page.build_navbar", lambda **_kwargs: "")
     layout = build_statistics_layout()
     combined = _component_by_id(layout, "stats-combined-block")
 

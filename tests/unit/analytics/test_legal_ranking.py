@@ -4,8 +4,8 @@ from typing import Any, cast
 
 import plotly.graph_objects as go
 
-from app.analytics.figures import build_ilga_choropleth
-from app.analytics.legal_ranking import (
+from app.modules.home.figures import build_ilga_choropleth
+from app.shared.data.legal_ranking import (
     LEGAL_MAP_EXPORT_HEIGHT,
     LEGAL_MAP_EXPORT_SCALE,
     LEGAL_MAP_EXPORT_WIDTH,
@@ -15,7 +15,7 @@ from app.analytics.legal_ranking import (
     legal_map_export_filename,
     legal_ranking_payload,
 )
-from app.dash.i18n import country_labels
+from app.web.i18n import country_labels
 
 
 def _document() -> dict:
@@ -97,7 +97,7 @@ def test_png_export_uses_kaleido_dimensions_and_descriptive_filename(monkeypatch
         calls.append(kwargs)
         return b"\x89PNG\r\n\x1a\nimage"
 
-    monkeypatch.setattr("app.analytics.legal_ranking.pio.to_image", fake_to_image)
+    monkeypatch.setattr("app.shared.data.legal_ranking.pio.to_image", fake_to_image)
 
     payload = export_legal_map_png(go.Figure())
 

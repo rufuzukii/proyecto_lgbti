@@ -2,8 +2,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import app.dash.pages.admin.users as admin_users
-from app.users.schemas import UserRead, UserRole, UserType
+import app.modules.administration.users_page as admin_users
+from app.modules.account.users.schemas import UserRead, UserRole, UserType
 
 
 def test_admin_layout_builds_accessible_search_form_with_supported_dash_props(monkeypatch) -> None:
@@ -169,7 +169,7 @@ def test_admin_user_table_has_only_profile_role_and_required_actions(monkeypatch
 
 
 def test_admin_validation_styles_were_removed() -> None:
-    stylesheet = Path("src/app/dash/assets/admin.css").read_text(encoding="utf-8")
+    stylesheet = Path("src/app/web/assets/admin.css").read_text(encoding="utf-8")
 
     assert "admin-validation" not in stylesheet
     assert "admin-validate-button" not in stylesheet
@@ -259,7 +259,7 @@ def test_delete_confirmation_dialog_has_cancel_and_confirm_actions() -> None:
 
 
 def test_admin_assets_define_editing_and_saving_states() -> None:
-    dash_root = Path(admin_users.__file__).parents[2]
+    dash_root = Path(admin_users.__file__).parents[2] / "web"
     bootstrap = dash_root / "assets" / "js" / "40_bootstrap.js"
     admin_css = dash_root / "assets" / "admin.css"
     auth_css = dash_root / "assets" / "auth.css"

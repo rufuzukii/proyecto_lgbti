@@ -5,8 +5,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-import app.import_to_db.fra.indicators as indicator_catalog
-from app.import_to_db.fra.payload import parse_fra_csv
+import app.modules.imports.fra.indicators as indicator_catalog
+from app.modules.imports.fra.payload import parse_fra_csv
 
 FRA_2019_CSV = """sep=\t
 "Question:"\t"Civil status"

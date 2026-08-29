@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from flask_login import current_user
 
-from app import dash_app as dash_app_module
-from app.dash.layouts import user_page
-from app.privacy.models import DeletionOutcome, PersonalDataInventory
-from app.privacy.service import AccountDeletionError
-from app.users.schemas import UserRole, UserType
-from app.users.service import UserRecord
+from app.modules.account import profile_page as user_page
+from app.modules.account.privacy.models import DeletionOutcome, PersonalDataInventory
+from app.modules.account.privacy.service import AccountDeletionError
+from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.account.users.service import UserRecord
+from app.web import application as dash_app_module
 
 USER_ID = "7bf1c278-4ad4-4cf3-a70d-9769590c5099"
 

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from botocore.exceptions import ClientError
 
-from app.edu import presentation_service
+from app.modules.didactics import presentation_service
 
 
 class StorageClient:

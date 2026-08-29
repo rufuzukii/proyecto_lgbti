@@ -2,7 +2,7 @@ from typing import Any, cast
 
 from dash import html
 
-from app.dash.components.loading import contextual_loading
+from app.shared.components.loading import contextual_loading
 
 
 def test_contextual_loading_delays_spinner_and_announces_specific_operation() -> None:

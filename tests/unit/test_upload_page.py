@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from dash import Dash, dcc, html
 
-import app.dash.pages.upload as upload_page
+from app.modules.administration import upload_page
 
 
 def _data_uri(payload: bytes, mime_type: str = "application/pdf") -> str:
@@ -266,7 +266,7 @@ def test_pdf_upload_is_processed_once_and_persisted_for_review(monkeypatch) -> N
         persisted.append(kwargs)
 
     monkeypatch.setattr(upload_page, "parse_file_by_source", fake_parse)
-    monkeypatch.setattr("app.import_to_db.register_pending_import", fake_register_pending_import)
+    monkeypatch.setattr("app.modules.imports.register_pending_import", fake_register_pending_import)
     monkeypatch.setattr(upload_page, "current_user", SimpleNamespace(is_authenticated=False))
     trace = {
         "upload_id": "upload-test",
@@ -304,11 +304,11 @@ def test_fra_upload_stays_pending_until_admin_approval(monkeypatch) -> None:
         ],
     )
     monkeypatch.setattr(
-        "app.import_to_db.register_pending_import",
+        "app.modules.imports.register_pending_import",
         lambda **kwargs: pending.append(kwargs),
     )
     monkeypatch.setattr(
-        "app.import_to_db.fra.upsert_indicators_from_json",
+        "app.modules.imports.fra.upsert_indicators_from_json",
         lambda *_args, **_kwargs: mongo_writes.append(object()),
     )
     monkeypatch.setattr(

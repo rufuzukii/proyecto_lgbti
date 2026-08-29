@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from app.import_to_db.felgtbi.importer import (
+from app.modules.imports.felgtbi.importer import (
     extract_pdf_pages,
     parse_felgtbi_text_pages,
 )

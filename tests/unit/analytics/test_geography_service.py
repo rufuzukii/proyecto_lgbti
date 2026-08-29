@@ -4,8 +4,8 @@ import statistics
 import time
 from pathlib import Path
 
-from app.analytics import geography_service
-from app.analytics.geography_service import (
+from app.shared.data import geography_service
+from app.shared.data.geography_service import (
     clear_geography_caches,
     europe_bounds,
     europe_centroids,
@@ -70,7 +70,7 @@ def test_geography_metadata_and_geojson_are_cached_and_complete() -> None:
     assert len(centroids) == 49
     assert bounds[0] < bounds[2]
     assert bounds[1] < bounds[3]
-    path = Path("src/app/analytics/data/europe_countries.geojson")
+    path = Path("src/app/shared/data/resources/europe_countries.geojson")
     assert path.stat().st_size < 250_000
     assert all("country_code" in feature["properties"] for feature in first_geojson["features"])
 

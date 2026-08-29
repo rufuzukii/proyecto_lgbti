@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.dash.pages.didactica as didactica_page
-import app.dash_app as dash_app_module
-from app.dash.routes import route_path
-from app.users.schemas import UserRole, UserType
+import app.modules.didactics.page as didactica_page
+import app.web.application as dash_app_module
+from app.modules.account.users.schemas import UserRole, UserType
+from app.web.routes import route_path
 
 
 def _walk(component):
@@ -115,7 +115,7 @@ def test_didactica_index_exposes_the_public_word_search_to_anonymous_users(monke
 
 def test_word_search_styles_cover_touch_mobile_and_dark_mode() -> None:
     # Arrange / Act
-    stylesheet = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
+    stylesheet = Path("src/app/web/assets/didactica.css").read_text(encoding="utf-8")
 
     # Assert
     assert ".word-search-grid" in stylesheet

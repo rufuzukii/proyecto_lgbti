@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 from dash import Dash, no_update
 from dash._utils import to_json
 
-from app.dash.pages import statistics
+from app.modules.statistics import page as statistics
 
 
 def _callback(app: Dash, name: str):

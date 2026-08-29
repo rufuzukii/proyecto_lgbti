@@ -1,0 +1,1 @@
+"""Shared FELGTBI+ document semantics."""

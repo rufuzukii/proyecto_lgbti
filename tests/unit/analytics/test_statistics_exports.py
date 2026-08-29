@@ -11,7 +11,7 @@ from typing import Any, cast
 import plotly.graph_objects as go
 import pytest
 
-from app.analytics.statistics_exports import (
+from app.modules.statistics.exports import (
     EXPORT_FILENAME_MAX_LENGTH,
     EXPORT_FORMAT,
     EXPORT_HEIGHT,
@@ -22,7 +22,7 @@ from app.analytics.statistics_exports import (
     export_summary_table,
     prepare_figure_for_export,
 )
-from app.dash.pages.statistics import _render_dashboard, build_statistics_layout
+from app.modules.statistics.page import _render_dashboard, build_statistics_layout
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -53,7 +53,7 @@ def test_export_filename_is_descriptive_safe_and_bounded() -> None:
 
 
 def test_statistics_css_allows_dynamic_graphs_to_grow_before_footer() -> None:
-    css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
+    css = (ROOT / "src/app/web/assets/statistics.css").read_text(encoding="utf-8")
 
     assert ".stats-response-panel {" in css
     assert "min-height: 520px;" in css
@@ -63,8 +63,8 @@ def test_statistics_css_allows_dynamic_graphs_to_grow_before_footer() -> None:
 
 
 def test_statistics_css_has_full_width_ranking_and_mobile_boundaries() -> None:
-    css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
-    shared_css = (ROOT / "src/app/dash/assets/styles.css").read_text(encoding="utf-8")
+    css = (ROOT / "src/app/web/assets/statistics.css").read_text(encoding="utf-8")
+    shared_css = (ROOT / "src/app/web/assets/styles.css").read_text(encoding="utf-8")
 
     assert ".stats-ranking-panel,\n.stats-response-comparison-section," in css
     assert ".stats-response-comparison-scroll {" in css
@@ -79,14 +79,16 @@ def test_statistics_css_has_full_width_ranking_and_mobile_boundaries() -> None:
     assert ".europe-map-container {" in shared_css
     assert "height: min(68vh, 680px);" in shared_css
     assert "min-height: 480px;" in shared_css
+    assert "height: min(74vh, 760px) !important;" in css
+    assert "min-height: 540px !important;" in css
     assert "height: 58vh;" in shared_css
     assert "min-height: 340px;" in shared_css
     assert "overflow-x: hidden" not in css
 
 
 def test_create_report_button_uses_primary_dark_background_and_black_text() -> None:
-    css = (ROOT / "src/app/dash/assets/statistics.css").read_text(encoding="utf-8")
-    reports_css = (ROOT / "src/app/dash/assets/reports.css").read_text(encoding="utf-8")
+    css = (ROOT / "src/app/web/assets/statistics.css").read_text(encoding="utf-8")
+    reports_css = (ROOT / "src/app/web/assets/reports.css").read_text(encoding="utf-8")
 
     assert ".stats-create-report-link.app-button-primary {" in css
     assert "  background: var(--color-primary-dark);" in css
@@ -238,15 +240,15 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "app.dash.pages.statistics.assert_analytics_databases_available",
+        "app.modules.statistics.page.assert_analytics_databases_available",
         lambda: None,
     )
     monkeypatch.setattr(
-        "app.dash.pages.statistics._category_options",
+        "app.modules.statistics.page._category_options",
         lambda _year: [],
     )
     monkeypatch.setattr(
-        "app.dash.pages.statistics.build_navbar",
+        "app.modules.statistics.page.build_navbar",
         lambda **_kwargs: "",
     )
 
@@ -283,7 +285,7 @@ def test_statistics_layout_has_one_accessible_export_action_per_graph(
 
 
 def test_client_export_reuses_rendered_plot_without_server_requests() -> None:
-    script = (ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js").read_text(
+    script = (ROOT / "src" / "app" / "web" / "assets" / "js" / "35_chart_export.js").read_text(
         encoding="utf-8"
     )
 
@@ -298,7 +300,7 @@ def test_client_export_reuses_rendered_plot_without_server_requests() -> None:
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
 def test_client_export_allows_two_consecutive_downloads() -> None:
-    script_path = ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js"
+    script_path = ROOT / "src" / "app" / "web" / "assets" / "js" / "35_chart_export.js"
     harness = f"""
 const fs = require("fs");
 const vm = require("vm");
@@ -367,7 +369,7 @@ def test_response_comparison_export_builds_a_themed_plotly_legend_and_attributio
     expected_paper: str,
     expected_font: str,
 ) -> None:
-    script_path = ROOT / "src" / "app" / "dash" / "assets" / "js" / "35_chart_export.js"
+    script_path = ROOT / "src" / "app" / "web" / "assets" / "js" / "35_chart_export.js"
     harness = f"""
 const fs = require("fs");
 const vm = require("vm");

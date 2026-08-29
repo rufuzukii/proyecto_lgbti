@@ -8,8 +8,8 @@ import pytest
 from dash import Dash
 from dash.exceptions import PreventUpdate
 
-from app.dash.layouts import home
-from app.dash.routes import localized_route_context
+from app.modules.home import page as home
+from app.web.routes import localized_route_context
 
 
 def _walk(component: Any):
@@ -248,7 +248,7 @@ def test_loading_is_scoped_to_legal_results_and_not_the_map(monkeypatch) -> None
 
 
 def test_legal_container_css_covers_dark_theme_and_mobile_width() -> None:
-    styles = Path("src/app/dash/assets/home.css").read_text(encoding="utf-8")
+    styles = Path("src/app/web/assets/home.css").read_text(encoding="utf-8")
 
     assert 'body[data-theme="dark"] .home-legal-section' in styles
     assert 'body[data-theme="dark"] .home-legal-details-panel' in styles

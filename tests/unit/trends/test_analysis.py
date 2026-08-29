@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from app.trends.forecast_metrics import mean_absolute_error, root_mean_squared_error
-from app.trends.forecast_models import fit_forecast_model
-from app.trends.forecast_validation import (
+from app.modules.trends.forecast_metrics import mean_absolute_error, root_mean_squared_error
+from app.modules.trends.forecast_models import fit_forecast_model
+from app.modules.trends.forecast_validation import (
     candidate_models,
     evaluate_candidate_models,
     select_best_forecasting_model,
     walk_forward_validation,
 )
-from app.trends.forecasting_service import bounded_score, generate_forecast
-from app.trends.models import ForecastModelName, HistoricalPoint, TrendDirection
+from app.modules.trends.forecasting_service import bounded_score, generate_forecast
+from app.modules.trends.models import ForecastModelName, HistoricalPoint, TrendDirection
 
 
 def _point(year: int | None, value: float | None, **overrides) -> HistoricalPoint:

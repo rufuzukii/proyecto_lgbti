@@ -1,6 +1,6 @@
-from app.dash.layouts.error_page import render_database_unavailable_response, render_error_response
-from app.dash_app import create_dash_app
-from app.errors import DatabaseUnavailableError
+from app.core.errors import DatabaseUnavailableError
+from app.web.application import create_dash_app
+from app.web.error_page import render_database_unavailable_response, render_error_response
 
 
 def test_database_unavailable_response_returns_503() -> None:
@@ -18,7 +18,7 @@ def test_database_unavailable_response_returns_503() -> None:
 
 
 def test_statistics_route_returns_503_when_database_is_unavailable(monkeypatch) -> None:
-    from app import dash_app as dash_app_module
+    from app.web import application as dash_app_module
 
     def raise_unavailable() -> None:
         raise DatabaseUnavailableError("PostgreSQL")

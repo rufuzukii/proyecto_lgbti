@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from app.dash.components.ranking_game import ranking_game_rows
-from app.dash.pages import didactica
-from app.dash.routes import localized_route_context
-from app.edu.ranking_game_service import check_ranking_game
-from app.users.schemas import UserRole
+from app.modules.account.users.schemas import UserRole
+from app.modules.didactics import page as didactica
+from app.modules.didactics.ranking_component import ranking_game_rows
+from app.modules.didactics.ranking_game_service import check_ranking_game
+from app.web.routes import localized_route_context
 
 
 def _walk(component):
@@ -162,7 +162,7 @@ def test_ranking_game_hides_scores_until_check_and_localizes_country_names(monke
 
 def test_didactica_rows_and_ranking_game_have_responsive_dark_theme_styles() -> None:
     # Arrange / Act
-    stylesheet = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
+    stylesheet = Path("src/app/web/assets/didactica.css").read_text(encoding="utf-8")
 
     # Assert
     assert ".didactica-mode-row" in stylesheet

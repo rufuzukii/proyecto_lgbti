@@ -5,13 +5,13 @@ from typing import Any
 
 from dash.development.base_component import Component
 
-from app.dash.components.source_attribution import build_footer_attributions
-from app.dash.i18n import UI_TEXT
-from app.source_attribution import FELGTBI_URL, FRA_ORGANIZATION_URL, ILGA_URL
+from app.shared.components.source_attribution import build_footer_attributions
+from app.shared.data.source_attribution import FELGTBI_URL, FRA_ORGANIZATION_URL, ILGA_URL
+from app.web.i18n import UI_TEXT
 
 ROOT = Path(__file__).resolve().parents[3]
-ASSETS = ROOT / "src" / "app" / "dash" / "assets"
-PAGES = ROOT / "src" / "app" / "dash" / "pages"
+ASSETS = ROOT / "src" / "app" / "web" / "assets"
+MODULES = ROOT / "src" / "app" / "modules"
 
 
 def _walk(component: Any):
@@ -26,9 +26,9 @@ def _walk(component: Any):
 
 
 def test_application_owned_quoted_copy_uses_guillemets() -> None:
-    statistics = (PAGES / "statistics.py").read_text(encoding="utf-8")
-    reports = (PAGES / "reports.py").read_text(encoding="utf-8")
-    didactica = (PAGES / "didactica.py").read_text(encoding="utf-8")
+    statistics = (MODULES / "statistics" / "page.py").read_text(encoding="utf-8")
+    reports = (MODULES / "reports" / "page.py").read_text(encoding="utf-8")
+    didactica = (MODULES / "didactics" / "page.py").read_text(encoding="utf-8")
 
     assert "«{answer}»" in statistics
     assert "«{content.indicator}»" in reports
@@ -78,7 +78,7 @@ def test_footer_attributions_are_uniform_and_use_the_requested_copy() -> None:
 
 def test_home_context_uses_natural_height_and_a_theme_divider() -> None:
     css = (ASSETS / "home.css").read_text(encoding="utf-8")
-    layout = (ROOT / "src" / "app" / "dash" / "layouts" / "home.py").read_text(
+    layout = (ROOT / "src" / "app" / "modules" / "home" / "page.py").read_text(
         encoding="utf-8"
     )
 
@@ -91,8 +91,8 @@ def test_home_context_uses_natural_height_and_a_theme_divider() -> None:
 def test_statistics_map_is_large_shared_and_responsive() -> None:
     shared_css = (ASSETS / "styles.css").read_text(encoding="utf-8")
     statistics_css = (ASSETS / "statistics.css").read_text(encoding="utf-8")
-    page = (PAGES / "statistics.py").read_text(encoding="utf-8")
-    home_page = (ROOT / "src/app/dash/layouts/home.py").read_text(encoding="utf-8")
+    page = (MODULES / "statistics" / "page.py").read_text(encoding="utf-8")
+    home_page = (ROOT / "src/app/modules/home/page.py").read_text(encoding="utf-8")
 
     assert 'className="stats-mapbox-graph europe-map-container"' in page
     assert 'className="home-europe-map europe-map-container"' in home_page
@@ -101,10 +101,12 @@ def test_statistics_map_is_large_shared_and_responsive() -> None:
     assert "height: 58vh;" in shared_css
     assert "height: 52vh;" in shared_css
     assert ".stats-mapbox-graph {\n  height:" not in statistics_css
+    assert ".stats-mapbox-graph.europe-map-container {" in statistics_css
+    assert "height: min(74vh, 760px) !important;" in statistics_css
 
 
 def test_report_workflow_is_centered_vertical_and_download_is_last() -> None:
-    page = (PAGES / "reports.py").read_text(encoding="utf-8")
+    page = (MODULES / "reports" / "page.py").read_text(encoding="utf-8")
     css = (ASSETS / "reports.css").read_text(encoding="utf-8")
 
     assert "reports-config-grid" not in page

@@ -6,10 +6,10 @@ from typing import Any
 import pytest
 from werkzeug.security import generate_password_hash
 
-from app.privacy import service
-from app.privacy.models import PersonalDataInventory
-from app.users.schemas import UserRole, UserType
-from app.users.service import UserRecord
+from app.modules.account.privacy import service
+from app.modules.account.privacy.models import PersonalDataInventory
+from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.account.users.service import UserRecord
 
 USER_ID = "7bf1c278-4ad4-4cf3-a70d-9769590c5099"
 
@@ -173,7 +173,7 @@ def test_last_administrator_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
         def execute(self, _query: str, _params: object):
             return SimpleNamespace(fetchall=lambda: [{"id": USER_ID}])
 
-    monkeypatch.setattr(service.psycopg, "connect", lambda *_args, **_kwargs: _Connection())
+    monkeypatch.setattr(service, "postgres_connection", lambda **_kwargs: _Connection())
     monkeypatch.setattr(
         service,
         "get_account_security_many",
@@ -234,7 +234,7 @@ def test_inventory_counts_only_real_user_linked_stores(monkeypatch: pytest.Monke
         service.SECURITY_AUDIT_COLLECTION: 4,
         service.ADMIN_AUDIT_COLLECTION: 5,
     }
-    monkeypatch.setattr(service.psycopg, "connect", lambda *_args, **_kwargs: _Connection())
+    monkeypatch.setattr(service, "postgres_connection", lambda **_kwargs: _Connection())
     monkeypatch.setattr(
         service,
         "get_mongo_collection",
@@ -301,7 +301,7 @@ def test_portability_export_excludes_passwords_tokens_and_internal_ids(
             return []
 
     monkeypatch.setattr(service, "get_user_record", lambda _user_id: _record())
-    monkeypatch.setattr(service.psycopg, "connect", lambda *_args, **_kwargs: _Connection())
+    monkeypatch.setattr(service, "postgres_connection", lambda **_kwargs: _Connection())
     monkeypatch.setattr(service, "get_mongo_collection", lambda name: _Collection(name))
 
     # Act

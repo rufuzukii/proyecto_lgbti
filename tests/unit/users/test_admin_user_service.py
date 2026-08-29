@@ -5,7 +5,8 @@ from typing import Any, Self
 
 import pytest
 
-from app.users import service
+from app.modules.account.privacy import service as privacy_service
+from app.modules.account.users import service
 
 
 @dataclass
@@ -108,8 +109,11 @@ def test_admin_cannot_delete_their_own_account() -> None:
     user_id = "00000000-0000-0000-0000-000000000001"
 
     # Act / Assert
-    with pytest.raises(ValueError, match="self_delete"):
-        service.delete_user_as_admin(user_id=user_id, actor_user_id=user_id)
+    with pytest.raises(privacy_service.AccountDeletionError, match="self_delete"):
+        privacy_service.delete_user_account_as_admin(
+            user_id=user_id,
+            actor_user_id=user_id,
+        )
 
 
 def test_user_page_uses_one_count_and_one_paged_query(monkeypatch: pytest.MonkeyPatch) -> None:

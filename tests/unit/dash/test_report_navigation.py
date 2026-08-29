@@ -5,10 +5,10 @@ from urllib.parse import parse_qs, urlsplit
 
 from dash import html
 
-import app.dash.pages.statistics as statistics_page
-import app.dash_app as dash_app_module
-from app.dash.layouts import navigation
-from app.users.schemas import UserRole, UserType
+import app.modules.statistics.page as statistics_page
+import app.web.application as dash_app_module
+from app.modules.account.users.schemas import UserRole, UserType
+from app.web import navigation
 
 
 def _user(*, authenticated: bool):

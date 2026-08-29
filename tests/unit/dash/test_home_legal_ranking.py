@@ -10,12 +10,12 @@ from typing import Any
 import pytest
 from dash import Dash
 
-from app.analytics.legal_ranking import (
+from app.modules.home import page as home
+from app.shared.data.legal_ranking import (
     LEGAL_MAP_EXPORT_HEIGHT,
     LEGAL_MAP_EXPORT_SCALE,
     LEGAL_MAP_EXPORT_WIDTH,
 )
-from app.dash.layouts import home
 
 
 def _walk(component: Any):
@@ -132,7 +132,7 @@ def test_home_map_export_reuses_the_rendered_plot_without_a_server_callback(monk
         for entry in app.callback_map.values()
         if getattr(entry.get("callback"), "__wrapped__", None)
     }
-    script = Path("src/app/dash/assets/js/35_chart_export.js").read_text(encoding="utf-8")
+    script = Path("src/app/web/assets/js/35_chart_export.js").read_text(encoding="utf-8")
 
     assert "download_home_legal_map" not in callback_names
     assert "window.Plotly.downloadImage(graph, options)" in script
@@ -142,7 +142,7 @@ def test_home_map_export_reuses_the_rendered_plot_without_a_server_callback(monk
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
 def test_home_map_download_composes_the_2026_legal_ranking_into_the_image() -> None:
-    script_path = Path("src/app/dash/assets/js/35_chart_export.js").resolve()
+    script_path = Path("src/app/web/assets/js/35_chart_export.js").resolve()
     harness = f"""
 const fs = require("fs");
 const vm = require("vm");
@@ -228,7 +228,7 @@ const button = {{
 
 
 def test_home_ranking_css_is_dark_mode_safe_and_stacks_below_the_map() -> None:
-    css = Path("src/app/dash/assets/home.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/home.css").read_text(encoding="utf-8")
 
     assert "grid-template-columns: minmax(0, 3.3fr) minmax(210px, 0.72fr);" in css
     assert "@media (max-width: 1050px)" in css

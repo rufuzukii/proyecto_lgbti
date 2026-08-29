@@ -5,7 +5,7 @@ from typing import Any
 
 from dash import Dash
 
-from app.dash.layouts import home
+from app.modules.home import page as home
 
 
 def _walk(component: Any):

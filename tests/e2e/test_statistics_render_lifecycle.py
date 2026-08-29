@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dash import Dash
 
-from app.dash.pages import statistics as statistics_page
+from app.modules.statistics import page as statistics_page
 
 
 def _walk(component):
@@ -107,7 +107,7 @@ def test_initial_category_and_ready_lifecycle_never_exposes_plotly_placeholders(
 
 
 def test_theme_relayout_guard_prevents_the_known_preinitialization_warning() -> None:
-    source = Path("src/app/dash/assets/js/20_theme.js").read_text(encoding="utf-8")
+    source = Path("src/app/web/assets/js/20_theme.js").read_text(encoding="utf-8")
 
     assert "if (!isPlotlyInitialized(graph))" in source
     assert "graph._fullLayout" in source
@@ -117,7 +117,7 @@ def test_theme_relayout_guard_prevents_the_known_preinitialization_warning() -> 
 
 
 def test_statistics_callbacks_update_the_stable_interactive_map() -> None:
-    source = Path("src/app/dash/pages/statistics.py").read_text(encoding="utf-8")
+    source = Path("src/app/modules/statistics/page.py").read_text(encoding="utf-8")
 
     assert 'Output("stats-map-graph-slot", "children")' not in source
     assert 'Output("stats-map-graph", "figure")' in source

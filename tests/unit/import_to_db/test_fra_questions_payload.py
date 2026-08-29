@@ -1,9 +1,9 @@
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from app.import_to_db.fra import parse_fra_csv_text
-from app.import_to_db.fra.indicators import _consolidate_catalog_documents, _normalize_documents
-from app.import_to_db.fra.mongo import (
+from app.modules.imports.fra import parse_fra_csv_text
+from app.modules.imports.fra.indicators import _consolidate_catalog_documents, _normalize_documents
+from app.modules.imports.fra.mongo import (
     _prepare_indicator_document,
     insert_indicator_fra_json,
 )
@@ -200,7 +200,7 @@ def test_mongo_upsert_uses_atomic_answer_replacement_pipeline() -> None:
         ],
     }
     collection = MagicMock()
-    with patch("app.import_to_db.fra.mongo.get_mongo_collection", return_value=collection):
+    with patch("app.modules.imports.fra.mongo.get_mongo_collection", return_value=collection):
         insert_indicator_fra_json(payload)
 
     update = collection.update_one.call_args.args[1]
@@ -241,7 +241,7 @@ def test_mongo_upsert_keeps_two_editions_of_the_same_indicator_separate() -> Non
         ],
     }
     with patch(
-        "app.import_to_db.fra.mongo.get_mongo_collection",
+        "app.modules.imports.fra.mongo.get_mongo_collection",
         side_effect=lambda name: requested_collections.append(name) or collection,
     ):
         insert_indicator_fra_json({**payload, "survey_year": 2019})
@@ -284,7 +284,7 @@ def test_mongo_groups_same_question_files_into_one_atomic_operation() -> None:
         for country, code, percentage in (("Spain", "ES", 42), ("France", "FR", 38))
     ]
     collection = MagicMock()
-    with patch("app.import_to_db.fra.mongo.get_mongo_collection", return_value=collection):
+    with patch("app.modules.imports.fra.mongo.get_mongo_collection", return_value=collection):
         assert insert_indicator_fra_json(documents) == 2
 
     collection.update_one.assert_called_once()

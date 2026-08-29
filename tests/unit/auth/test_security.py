@@ -8,13 +8,13 @@ from pydantic import ValidationError
 
 from app.api import create_api_app
 from app.api.security import _load_api_keys, require_admin_api_key, require_api_key
-from app.auth.app import create_auth_app
-from app.config import get_app_config
-from app.dash_app import _safe_next
-from app.http_security import client_ip, configure_flask_security, rate_limit_key
-from app.logging_config import redact_sensitive_text
-from app.users import service as user_service
-from app.users.schemas import UserRead, UserRegister, UserRole, UserType
+from app.core.auth.app import create_auth_app
+from app.core.config import get_app_config
+from app.core.http_security import client_ip, configure_flask_security, rate_limit_key
+from app.core.logging import redact_sensitive_text
+from app.modules.account.users import service as user_service
+from app.modules.account.users.schemas import UserRead, UserRegister, UserRole, UserType
+from app.web.application import _safe_next
 
 
 def test_flask_security_sets_headers_cookies_and_auth_request_limit() -> None:
@@ -139,8 +139,8 @@ def test_auth_api_creates_an_immediately_available_account(
         user_type=UserType.COMUN,
         session_version=0,
     )
-    monkeypatch.setattr("app.auth.app.create_user", lambda _payload: user)
-    monkeypatch.setattr("app.auth.app.get_user", lambda _user_id: user)
+    monkeypatch.setattr("app.core.auth.app.create_user", lambda _payload: user)
+    monkeypatch.setattr("app.core.auth.app.get_user", lambda _user_id: user)
     client = create_auth_app().test_client()
     response = client.post(
         "/auth/register",
@@ -263,7 +263,7 @@ def test_registration_failure_does_not_disclose_existing_email(
     monkeypatch.setenv("APP_ENV", "local")
     monkeypatch.setenv("LOCAL_MODE", "true")
     monkeypatch.setattr(
-        "app.auth.app.create_user",
+        "app.core.auth.app.create_user",
         lambda _payload: (_ for _ in ()).throw(ValueError("email_exists")),
     )
     app = create_auth_app()

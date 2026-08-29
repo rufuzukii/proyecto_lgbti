@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-ASSETS = ROOT / "src" / "app" / "dash" / "assets"
+ASSETS = ROOT / "src" / "app" / "web" / "assets"
 
 
 def test_common_page_container_has_fluid_shared_dimensions() -> None:
@@ -19,18 +19,18 @@ def test_common_page_container_has_fluid_shared_dimensions() -> None:
 
 def test_primary_pages_share_the_container_and_about_is_not_capped_at_1100() -> None:
     source_files = (
-        "dash/layouts/home.py",
-        "dash/layouts/about.py",
-        "dash/layouts/user_page.py",
-        "dash/pages/statistics.py",
-        "dash/pages/spain.py",
-        "dash/pages/didactica.py",
-        "dash/pages/privacy.py",
-        "dash/pages/reports.py",
-        "dash/pages/upload.py",
-        "dash/pages/admin/users.py",
-        "dash/pages/admin/imports.py",
-        "trends/layout.py",
+        "modules/home/page.py",
+        "web/about.py",
+        "modules/account/profile_page.py",
+        "modules/statistics/page.py",
+        "modules/spain/page.py",
+        "modules/didactics/page.py",
+        "modules/account/privacy_page.py",
+        "modules/reports/page.py",
+        "modules/administration/upload_page.py",
+        "modules/administration/users_page.py",
+        "modules/administration/imports_page.py",
+        "modules/trends/layout.py",
     )
     for relative in source_files:
         source = (ROOT / "src" / "app" / relative).read_text(encoding="utf-8")

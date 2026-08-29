@@ -2,14 +2,14 @@ from unittest.mock import patch
 
 import pytest
 
-from app.analytics.country_status_admin_service import (
+from app.modules.account.users.schemas import UserRole
+from app.modules.home.country_status_admin_service import (
     CountryStatusAuthorizationError,
     CountryStatusValidationError,
     delete_country_lgbti_status,
     save_country_lgbti_status,
     validate_country_lgbti_status_payload,
 )
-from app.users.schemas import UserRole
 
 
 class User:
@@ -64,13 +64,13 @@ def test_non_admin_cannot_save_country_status() -> None:
 def test_admin_can_create_country_status_record() -> None:
     with (
         patch(
-            "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
+            "app.modules.home.country_status_admin_service.get_country_lgbti_status_record",
             return_value=None,
         ),
         patch(
-            "app.analytics.country_status_admin_service.upsert_country_lgbti_status_record"
+            "app.modules.home.country_status_admin_service.upsert_country_lgbti_status_record"
         ) as upsert,
-        patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"),
+        patch("app.modules.home.country_status_admin_service.invalidate_analytics_cache"),
     ):
         saved = save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="create")
 
@@ -81,7 +81,7 @@ def test_admin_can_create_country_status_record() -> None:
 def test_create_rejects_duplicate_country_year() -> None:
     with (
         patch(
-            "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
+            "app.modules.home.country_status_admin_service.get_country_lgbti_status_record",
             return_value={"country_code": "ES", "year": 2026},
         ),
         pytest.raises(CountryStatusValidationError) as exc_info,
@@ -94,13 +94,13 @@ def test_create_rejects_duplicate_country_year() -> None:
 def test_admin_can_edit_existing_country_status_record() -> None:
     with (
         patch(
-            "app.analytics.country_status_admin_service.get_country_lgbti_status_record",
+            "app.modules.home.country_status_admin_service.get_country_lgbti_status_record",
             return_value={"country_code": "ES", "year": 2026},
         ),
         patch(
-            "app.analytics.country_status_admin_service.upsert_country_lgbti_status_record"
+            "app.modules.home.country_status_admin_service.upsert_country_lgbti_status_record"
         ) as upsert,
-        patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"),
+        patch("app.modules.home.country_status_admin_service.invalidate_analytics_cache"),
     ):
         save_country_lgbti_status(_payload(), user=User(UserRole.ADMIN), mode="edit")
 
@@ -126,9 +126,9 @@ def test_delete_requires_admin_and_confirmation() -> None:
 def test_admin_delete_deactivates_record() -> None:
     with (
         patch(
-            "app.analytics.country_status_admin_service.deactivate_country_lgbti_status_record"
+            "app.modules.home.country_status_admin_service.deactivate_country_lgbti_status_record"
         ) as deactivate,
-        patch("app.analytics.country_status_admin_service.invalidate_analytics_cache"),
+        patch("app.modules.home.country_status_admin_service.invalidate_analytics_cache"),
     ):
         delete_country_lgbti_status("ES", 2026, user=User(UserRole.ADMIN), confirmed=True)
 

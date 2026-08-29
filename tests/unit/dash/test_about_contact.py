@@ -4,9 +4,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from dash.development.base_component import Component
 
-from app.contact import CONTACT_EMAIL
-from app.dash.layouts import about
-from app.dash.routes import localized_route_context
+from app.core.contact import CONTACT_EMAIL
+from app.web import about
+from app.web.routes import localized_route_context
 
 
 def _walk(component):

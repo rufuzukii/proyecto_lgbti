@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from app.auth.permissions import Permission, user_has_permission
-from app.users.schemas import UserRole, UserType
+from app.core.auth.permissions import Permission, user_has_permission
+from app.modules.account.users.schemas import UserRole, UserType
 
 
 def _user(

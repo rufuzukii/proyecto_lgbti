@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from app.edu import word_search_service
-from app.edu.glossary_service import get_glossary_term, list_glossary_terms
-from app.edu.models import GlossarySource, GlossaryTerm
-from app.edu.word_search_service import create_word_search_game
+from app.modules.didactics import word_search_service
+from app.modules.didactics.glossary_service import get_glossary_term, list_glossary_terms
+from app.modules.didactics.models import GlossarySource, GlossaryTerm
+from app.modules.didactics.word_search_service import create_word_search_game
 
 
 def test_glossary_selection_generation_and_detection_use_one_canonical_catalog() -> None:

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.analytics import repository
-from app.analytics.statistics_models import ExperienceLegalRadarQuery
-from app.analytics.statistics_service import (
+from app.modules.statistics.models import ExperienceLegalRadarQuery
+from app.modules.statistics.service import (
     RADAR_MAPPING_VERSION,
     get_experience_legal_radar,
 )
+from app.shared.data import repository
 
 
 def _fra_document(code: str, answer: str, percentage: float) -> dict[str, Any]:
@@ -102,11 +102,11 @@ def test_radar_service_batches_queries_and_applies_only_explicit_inversions(
             ],
         }
 
-    monkeypatch.setattr("app.analytics.statistics_service.get_fra_indicator_documents", load_fra)
-    monkeypatch.setattr("app.analytics.statistics_service.get_ilga_document_by_year", load_ilga)
-    monkeypatch.setattr("app.analytics.statistics_service._server_cache_get", lambda _key: None)
+    monkeypatch.setattr("app.modules.statistics.service.get_fra_indicator_documents", load_fra)
+    monkeypatch.setattr("app.modules.statistics.service.get_ilga_document_by_year", load_ilga)
+    monkeypatch.setattr("app.modules.statistics.service._server_cache_get", lambda _key: None)
     monkeypatch.setattr(
-        "app.analytics.statistics_service._server_cache_set", lambda _key, _value: None
+        "app.modules.statistics.service._server_cache_set", lambda _key, _value: None
     )
 
     result = get_experience_legal_radar(ExperienceLegalRadarQuery(fra_year=2024, ilga_year=2026))
@@ -126,11 +126,11 @@ def test_radar_service_batches_queries_and_applies_only_explicit_inversions(
 
 def test_radar_service_does_not_turn_missing_scores_into_zero(monkeypatch) -> None:
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_documents",
+        "app.modules.statistics.service.get_fra_indicator_documents",
         lambda _codes, _year: [_fra_document("D1_1", "Yes", 20)],
     )
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_ilga_document_by_year",
+        "app.modules.statistics.service.get_ilga_document_by_year",
         lambda _year: {
             "year": 2026,
             "countries": [
@@ -143,9 +143,9 @@ def test_radar_service_does_not_turn_missing_scores_into_zero(monkeypatch) -> No
             ],
         },
     )
-    monkeypatch.setattr("app.analytics.statistics_service._server_cache_get", lambda _key: None)
+    monkeypatch.setattr("app.modules.statistics.service._server_cache_get", lambda _key: None)
     monkeypatch.setattr(
-        "app.analytics.statistics_service._server_cache_set", lambda _key, _value: None
+        "app.modules.statistics.service._server_cache_set", lambda _key, _value: None
     )
 
     result = get_experience_legal_radar(ExperienceLegalRadarQuery())

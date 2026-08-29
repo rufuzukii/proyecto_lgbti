@@ -4,8 +4,8 @@ from pathlib import Path
 
 from dash import Dash
 
-import app.dash.pages.statistics as statistics_page
-from app.dash.components.ilga_methodology import build_ilga_normalization_note
+import app.modules.statistics.page as statistics_page
+from app.shared.components.ilga_methodology import build_ilga_normalization_note
 
 
 def _normalization() -> dict:
@@ -44,7 +44,7 @@ def test_statistics_no_longer_registers_ilga_selector_notes() -> None:
 
 
 def test_methodological_note_styles_cover_light_dark_and_mobile() -> None:
-    stylesheet = Path("src/app/dash/assets/ilga_methodology.css").read_text(encoding="utf-8")
+    stylesheet = Path("src/app/web/assets/ilga_methodology.css").read_text(encoding="utf-8")
 
     assert ".ilga-methodology-note" in stylesheet
     assert ':root[data-theme="dark"] .ilga-methodology-note' in stylesheet

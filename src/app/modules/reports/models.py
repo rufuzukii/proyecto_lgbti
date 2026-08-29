@@ -1,0 +1,245 @@
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, field
+from datetime import date
+from typing import Any
+
+import bleach
+import plotly.graph_objects as go
+
+from app.core.dates import utc_today_iso
+from app.shared.data.normalization import normalize_country_code
+
+DEFAULT_REPORT_SECTIONS: tuple[str, ...] = (
+    "executive",
+    "context",
+    "metrics",
+    "analysis",
+    "comparison",
+    "interpretation",
+    "recommendations",
+    "methodology",
+    "limitations",
+    "sources",
+)
+
+DEFAULT_REPORT_CHARTS: tuple[str, ...] = (
+    "ranking",
+    "average",
+    "countries",
+    "responses",
+)
+
+ALLOWED_REPORT_SECTIONS: tuple[str, ...] = (
+    *DEFAULT_REPORT_SECTIONS,
+    "workplace",
+    "demographics",
+)
+
+ALLOWED_REPORT_CHARTS: tuple[str, ...] = (
+    *DEFAULT_REPORT_CHARTS,
+    "temporal",
+    "radar",
+    "scatter",
+    "quadrants",
+    "ranking_gap",
+)
+
+
+def sanitize_report_text(value: Any, *, maximum: int = 160) -> str:
+    """Strip markup/control characters and bound user-provided report text."""
+    clean = bleach.clean(str(value or ""), tags=[], attributes={}, strip=True)
+    clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", clean)
+    return " ".join(clean.split())[:maximum].strip()
+
+
+def normalize_report_countries(values: Any) -> tuple[str, ...]:
+    if isinstance(values, str):
+        candidates = values.split(",")
+    elif isinstance(values, (list, tuple, set)):
+        candidates = list(values)
+    else:
+        candidates = []
+    countries: list[str] = []
+    for candidate in candidates:
+        code = normalize_country_code(candidate)
+        if code and len(code) <= 3 and code not in countries:
+            countries.append(code)
+    return tuple(countries)
+
+
+@dataclass(frozen=True)
+class ReportConfiguration:
+    source: str = "fra"
+    objective: str = "inclusion_context"
+    category: str = ""
+    indicator_id: str = ""
+    indicator_label: str = ""
+    answer: str = ""
+    criterion: str = ""
+    year: int | None = None
+    countries: tuple[str, ...] = ()
+    primary_country: str = ""
+    filter_a_name: str = "All"
+    filter_a_value: str = "All"
+    filter_b_name: str = "All"
+    filter_b_value: str = "All"
+    title: str = "Informe de diversidad e inclusión LGTBIQ+"
+    organization: str = ""
+    author: str = ""
+    language: str = "es"
+    detail_level: str = "standard"
+    sections: tuple[str, ...] = DEFAULT_REPORT_SECTIONS
+    charts: tuple[str, ...] = DEFAULT_REPORT_CHARTS
+    generated_on: str = field(default_factory=utc_today_iso)
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any] | None) -> ReportConfiguration:
+        payload = values or {}
+        requested_source = str(payload.get("source") or "").lower()
+        source = requested_source if requested_source in {"fra", "ilga", "combined"} else "fra"
+        language = "en" if str(payload.get("language") or "").lower() == "en" else "es"
+        detail_level = (
+            "detailed"
+            if str(payload.get("detail_level") or "").lower() == "detailed"
+            else "standard"
+        )
+        countries = normalize_report_countries(payload.get("countries"))
+        primary = normalize_country_code(payload.get("primary_country"))
+        if not primary and countries:
+            primary = countries[0]
+        if primary and primary not in countries:
+            countries = (primary, *countries)
+        sections = _allowed_values(payload.get("sections"), ALLOWED_REPORT_SECTIONS)
+        charts = _allowed_values(payload.get("charts"), ALLOWED_REPORT_CHARTS)
+        if not sections:
+            sections = DEFAULT_REPORT_SECTIONS
+        if not charts:
+            charts = (
+                ("ranking", "average", "countries", "temporal")
+                if source == "ilga"
+                else ("scatter", "ranking_gap")
+                if source == "combined"
+                else DEFAULT_REPORT_CHARTS
+            )
+        return cls(
+            source=source,
+            objective=sanitize_report_text(payload.get("objective"), maximum=80)
+            or "inclusion_context",
+            category=sanitize_report_text(payload.get("category"), maximum=180),
+            indicator_id=sanitize_report_text(payload.get("indicator_id"), maximum=120),
+            indicator_label=sanitize_report_text(payload.get("indicator_label"), maximum=240),
+            answer=sanitize_report_text(payload.get("answer"), maximum=120),
+            criterion=sanitize_report_text(payload.get("criterion"), maximum=240),
+            year=_safe_year(payload.get("year")),
+            countries=countries,
+            primary_country=primary,
+            filter_a_name=sanitize_report_text(payload.get("filter_a_name"), maximum=120) or "All",
+            filter_a_value=sanitize_report_text(payload.get("filter_a_value"), maximum=160)
+            or "All",
+            filter_b_name=sanitize_report_text(payload.get("filter_b_name"), maximum=120) or "All",
+            filter_b_value=sanitize_report_text(payload.get("filter_b_value"), maximum=160)
+            or "All",
+            title=sanitize_report_text(payload.get("title"), maximum=180)
+            or (
+                "LGBTIQ+ diversity and inclusion report"
+                if language == "en"
+                else "Informe de diversidad e inclusión LGTBIQ+"
+            ),
+            organization=sanitize_report_text(payload.get("organization"), maximum=120),
+            author=sanitize_report_text(payload.get("author"), maximum=120),
+            language=language,
+            detail_level=detail_level,
+            sections=sections,
+            charts=charts,
+            generated_on=_safe_date(payload.get("generated_on")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class ReportDataset:
+    result: dict[str, Any]
+    query_seconds: float
+
+
+@dataclass(frozen=True)
+class ReportMetric:
+    key: str
+    label: str
+    display_value: str
+    numeric_value: float | None = None
+    unit: str = ""
+
+
+@dataclass(frozen=True)
+class ReportRecommendation:
+    text: str
+    derived_from_metrics: bool
+
+
+@dataclass
+class ReportChart:
+    key: str
+    title: str
+    figure: go.Figure
+    source: str
+    what_shows: str = ""
+    how_to_read: str = ""
+    observation: str = ""
+
+
+@dataclass
+class ReportContent:
+    configuration: ReportConfiguration
+    source_name: str
+    indicator: str
+    country_names: list[str]
+    metrics: list[ReportMetric]
+    executive_summary: list[str]
+    methodology: list[str]
+    workplace_analysis: list[str]
+    demographic_analysis: list[str]
+    conclusions: list[str]
+    recommendations: list[ReportRecommendation]
+    limitations: list[str]
+    sources: list[str]
+    charts: list[ReportChart]
+    table_rows: list[dict[str, Any]]
+    section_narratives: dict[str, str] = field(default_factory=dict)
+    timings: dict[str, float] = field(default_factory=dict)
+    focus_label: str = ""
+    objective_label: str = ""
+
+
+def _allowed_values(
+    value: Any,
+    allowed: tuple[str, ...],
+) -> tuple[str, ...]:
+    values = value.split(",") if isinstance(value, str) else list(value or [])
+    return tuple(item for item in allowed if item in {str(candidate) for candidate in values})
+
+
+def _safe_year(value: Any) -> int | None:
+    try:
+        year = int(value)
+    except TypeError, ValueError:
+        return None
+    return year if 1900 <= year <= 2200 else None
+
+
+def _safe_date(value: Any) -> str:
+    try:
+        return date.fromisoformat(str(value)).isoformat()
+    except TypeError, ValueError:
+        return utc_today_iso()
+
+
+def _safe_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "on", "sí", "si"}

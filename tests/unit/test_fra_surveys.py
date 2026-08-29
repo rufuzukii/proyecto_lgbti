@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.analytics import repository
-from app.fra_surveys import (
+from app.shared.data import repository
+from app.shared.data.fra_surveys import (
     DEFAULT_FRA_SURVEY_ID,
     FRA_SURVEYS,
     fra_collection_for_year,

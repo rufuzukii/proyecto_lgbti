@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from app.analytics.fra_metadata import (
+from app.modules.statistics.figures import (
+    FRA_NO_DATA_COLOR,
+    FRA_OUTSIDE_SCOPE_COLOR,
+    build_europe_choropleth,
+    build_response_country_comparison_chart,
+)
+from app.modules.statistics.service import build_fra_control_payload
+from app.shared.data.fra_metadata import (
     FraCountryState,
     FraResponseType,
     classify_fra_country_state,
@@ -10,14 +17,7 @@ from app.analytics.fra_metadata import (
     fra_survey_participant_codes,
     order_fra_responses,
 )
-from app.analytics.geography_service import europe_country_catalog, prepare_europe_map_data
-from app.analytics.statistics_charts import (
-    FRA_NO_DATA_COLOR,
-    FRA_OUTSIDE_SCOPE_COLOR,
-    build_europe_choropleth,
-    build_response_country_comparison_chart,
-)
-from app.analytics.statistics_service import build_fra_control_payload
+from app.shared.data.geography_service import europe_country_catalog, prepare_europe_map_data
 
 RANKED_RESPONSES = ["Not Selected", "3rd", "1st", "2nd"]
 

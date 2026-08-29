@@ -1,9 +1,9 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
-REPORTS_CSS = ROOT / "src" / "app" / "dash" / "assets" / "reports.css"
-AUTH_CSS = ROOT / "src" / "app" / "dash" / "assets" / "auth.css"
-GLOBAL_CSS = ROOT / "src" / "app" / "dash" / "assets" / "styles.css"
+REPORTS_CSS = ROOT / "src" / "app" / "web" / "assets" / "reports.css"
+AUTH_CSS = ROOT / "src" / "app" / "web" / "assets" / "auth.css"
+GLOBAL_CSS = ROOT / "src" / "app" / "web" / "assets" / "styles.css"
 
 
 def _reports_css() -> str:
@@ -38,6 +38,20 @@ def test_reports_dark_theme_covers_dash_controls_and_preview_content() -> None:
     assert "--ag-background-color: var(--reports-control-bg);" in css
     assert ".reports-preview-chart .js-plotly-plot text" in css
     assert "fill: var(--reports-text) !important;" in css
+
+
+def test_report_chart_narratives_keep_black_text_in_dark_mode() -> None:
+    css = _reports_css()
+    rule = css.split(
+        'html[data-theme="dark"] textarea.reports-chart-narrative,', 1
+    )[1].split("}", 1)[0]
+
+    assert 'body[data-theme="dark"] textarea.reports-chart-narrative' in rule
+    assert 'html[data-theme="dark"] textarea.reports-section-narrative' in rule
+    assert 'body[data-theme="dark"] textarea.reports-section-narrative' in rule
+    assert "background: #ffffff !important;" in rule
+    assert "color: #000000 !important;" in rule
+    assert "caret-color: #000000;" in rule
 
 
 def test_profile_personalisation_and_login_notice_are_responsive_and_dark_compatible() -> None:

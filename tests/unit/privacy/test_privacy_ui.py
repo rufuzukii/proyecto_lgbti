@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.dash.i18n import UI_TEXT
-from app.dash.layouts import user_page
-from app.dash.pages import privacy
-from app.dash.pages.session import register
-from app.privacy.models import PersonalDataInventory
-from app.users.schemas import UserRole, UserType
+from app.modules.account import privacy_page as privacy
+from app.modules.account import profile_page as user_page
+from app.modules.account import register_page as register
+from app.modules.account.privacy.models import PersonalDataInventory
+from app.modules.account.users.schemas import UserRole, UserType
+from app.web.i18n import UI_TEXT
 
-ASSETS = Path(__file__).parents[3] / "src" / "app" / "dash" / "assets"
+ASSETS = Path(__file__).parents[3] / "src" / "app" / "web" / "assets"
 
 
 def test_registration_contains_bilingual_privacy_information(monkeypatch) -> None:

@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 from dash import Dash
 
-import app.dash.pages.statistics as statistics_page
-from app.analytics.statistics_service import build_fra_control_payload
+import app.modules.statistics.page as statistics_page
+from app.modules.statistics.service import build_fra_control_payload
 
 
 def _callback(app: Dash, name: str):

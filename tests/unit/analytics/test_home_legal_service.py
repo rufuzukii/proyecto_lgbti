@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import app.analytics.home_legal_service as service
+import app.modules.home.legal_service as service
 
 
 class _MemoryCache:

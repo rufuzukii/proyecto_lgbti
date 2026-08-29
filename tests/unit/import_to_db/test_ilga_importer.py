@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.import_to_db.ilga import IlgaValidationError, parse_ilga_csv_text, parse_ilga_json_text
-from app.import_to_db.ilga.mongo import insert_indicator_ilga_json
+from app.modules.imports.ilga import IlgaValidationError, parse_ilga_csv_text, parse_ilga_json_text
+from app.modules.imports.ilga.mongo import insert_indicator_ilga_json
 
 
 def test_ilga_csv_creates_one_document_grouped_by_year() -> None:
@@ -50,7 +50,7 @@ def test_ilga_mongo_bulk_inserts_without_upsert() -> None:
     collection = MagicMock()
     collection.find.return_value = []
     collection.bulk_write.return_value.inserted_count = 1
-    with patch("app.import_to_db.ilga.mongo.get_mongo_collection", return_value=collection):
+    with patch("app.modules.imports.ilga.mongo.get_mongo_collection", return_value=collection):
         inserted = insert_indicator_ilga_json(payload)
 
     assert inserted == 1
@@ -109,7 +109,7 @@ def test_ilga_mongo_accepts_legacy_global_json_shape() -> None:
     collection = MagicMock()
     collection.find.return_value = []
     collection.bulk_write.return_value.inserted_count = 1
-    with patch("app.import_to_db.ilga.mongo.get_mongo_collection", return_value=collection):
+    with patch("app.modules.imports.ilga.mongo.get_mongo_collection", return_value=collection):
         insert_indicator_ilga_json(payload)
 
     document = collection.bulk_write.call_args.args[0][0]._doc
@@ -214,7 +214,7 @@ def test_repeated_ilga_import_is_skipped_without_writes() -> None:
     first_collection.find.return_value = []
     first_collection.bulk_write.return_value.inserted_count = 1
     with patch(
-        "app.import_to_db.ilga.mongo.get_mongo_collection",
+        "app.modules.imports.ilga.mongo.get_mongo_collection",
         return_value=first_collection,
     ):
         assert insert_indicator_ilga_json(payload) == 1
@@ -223,7 +223,7 @@ def test_repeated_ilga_import_is_skipped_without_writes() -> None:
     second_collection = MagicMock()
     second_collection.find.return_value = [stored_document]
     with patch(
-        "app.import_to_db.ilga.mongo.get_mongo_collection",
+        "app.modules.imports.ilga.mongo.get_mongo_collection",
         return_value=second_collection,
     ):
         assert insert_indicator_ilga_json(payload) == 0

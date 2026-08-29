@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.analytics.statistics.ranking import paginate_ranking
+from app.modules.statistics.ranking import paginate_ranking
 
 
 def _rows(count: int) -> list[dict[str, object]]:

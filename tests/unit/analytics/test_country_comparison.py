@@ -5,7 +5,7 @@ from typing import Any
 
 from dash import Dash, html
 
-from app.analytics.statistics_charts import (
+from app.modules.statistics.figures import (
     COUNTRY_COLORS,
     build_combined_scatter,
     build_comparative_ranking_chart,
@@ -14,9 +14,9 @@ from app.analytics.statistics_charts import (
     build_response_country_comparison_chart,
     country_color,
 )
-from app.analytics.statistics_models import FraStatisticsQuery, IlgaStatisticsQuery
-from app.analytics.statistics_service import get_fra_statistics, get_ilga_statistics
-from app.dash.pages.statistics import _table_rows, register_statistics_callbacks
+from app.modules.statistics.models import FraStatisticsQuery, IlgaStatisticsQuery
+from app.modules.statistics.page import _table_rows, register_statistics_callbacks
+from app.modules.statistics.service import get_fra_statistics, get_ilga_statistics
 
 
 def _trace(figure: Any, index: int = 0) -> Any:
@@ -311,7 +311,7 @@ def test_fra_result_keeps_country_without_selected_answer_as_missing(monkeypatch
         ],
     }
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_fra_indicator_answers",
+        "app.modules.statistics.service.get_fra_indicator_answers",
         lambda *_args, **_kwargs: document,
     )
 
@@ -360,7 +360,7 @@ def test_ilga_result_keeps_country_without_selected_criterion_as_missing(monkeyp
         },
     ]
     monkeypatch.setattr(
-        "app.analytics.statistics_service.get_ilga_analysis_rows",
+        "app.modules.statistics.service.get_ilga_analysis_rows",
         lambda _category, _criterion: rows,
     )
 

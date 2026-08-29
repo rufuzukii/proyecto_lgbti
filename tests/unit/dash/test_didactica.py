@@ -7,12 +7,13 @@ import pytest
 from dash import no_update
 from werkzeug.exceptions import Forbidden
 
-import app.dash.pages.didactica as didactica_page
-import app.dash_app as dash_app_module
-from app.auth.permissions import can_access_docente_material
-from app.dash.components.didactica import glossary_card
-from app.edu.game_service import new_game_state
-from app.edu.glossary_service import (
+import app.modules.didactics.page as didactica_page
+import app.web.application as dash_app_module
+from app.core.auth.permissions import can_access_docente_material
+from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.didactics.components import glossary_card
+from app.modules.didactics.game_service import new_game_state
+from app.modules.didactics.glossary_service import (
     FUNDEU_SOURCE_URL,
     PROHIBITED_TERM_KEYS,
     UNAM_SOURCE_URL,
@@ -22,9 +23,11 @@ from app.edu.glossary_service import (
     search_glossary,
     validate_glossary_catalog,
 )
-from app.edu.models import GlossarySource, GlossaryTerm
-from app.edu.teacher_service import generate_teacher_resource_pdf, list_teacher_resources
-from app.users.schemas import UserRole, UserType
+from app.modules.didactics.models import GlossarySource, GlossaryTerm
+from app.modules.didactics.teacher_service import (
+    generate_teacher_resource_pdf,
+    list_teacher_resources,
+)
 
 
 def _user(*, authenticated: bool = True, role=UserRole.COMMON, user_type=None):
@@ -111,7 +114,7 @@ def test_public_modules_have_stable_content_and_functional_controls(monkeypatch)
     monkeypatch.setattr(didactica_page, "current_user", _user(authenticated=False))
 
     terms = list_glossary_terms()
-    assert len(terms) == 62
+    assert len(terms) == 63
     assert len({term.id for term in terms}) == len(terms)
     assert get_glossary_term("transsexual") is None
     assert {"trans", "trans_man", "trans_woman"} <= {term.id for term in terms}
@@ -323,8 +326,8 @@ def test_teacher_routes_redirect_unauthorized_profiles_and_keep_login_destinatio
 ) -> None:
     display_page = dash_app.callback_map["page-content.children"]["callback"].__wrapped__
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
-    monkeypatch.setattr("app.dash.pages.session.login.build_navbar", lambda **_kwargs: "")
-    monkeypatch.setattr("app.dash.pages.session.login.get_csrf_token", lambda: "csrf")
+    monkeypatch.setattr("app.modules.account.login_page.build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr("app.modules.account.login_page.get_csrf_token", lambda: "csrf")
 
     teacher = _user(user_type=UserType.DOCENTE)
     monkeypatch.setattr(dash_app_module, "current_user", teacher)
@@ -349,8 +352,8 @@ def test_teacher_routes_redirect_unauthorized_profiles_and_keep_login_destinatio
 
 def test_games_route_is_public(dash_app, monkeypatch) -> None:
     display_page = dash_app.callback_map["page-content.children"]["callback"].__wrapped__
-    monkeypatch.setattr("app.dash.pages.session.login.build_navbar", lambda **_kwargs: "")
-    monkeypatch.setattr("app.dash.pages.session.login.get_csrf_token", lambda: "csrf")
+    monkeypatch.setattr("app.modules.account.login_page.build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr("app.modules.account.login_page.get_csrf_token", lambda: "csrf")
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
     anonymous = _user(authenticated=False)
     monkeypatch.setattr(dash_app_module, "current_user", anonymous)
@@ -514,7 +517,7 @@ def test_public_activity_route_is_playable_without_authentication(
 
 
 def test_teacher_space_css_uses_theme_tokens_and_one_mobile_column() -> None:
-    stylesheet = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
+    stylesheet = Path("src/app/web/assets/didactica.css").read_text(encoding="utf-8")
     assert ".teacher-activity-editor" in stylesheet
     assert ".teacher-game-type-grid" in stylesheet
     assert "var(--panel-bg)" in stylesheet
@@ -577,7 +580,7 @@ def test_glossary_catalog_preserves_legacy_sources_and_institutional_provenance(
     terms = list_glossary_terms()
     unam = [term for term in terms if any(source.name == "UNAM" for source in term.sources)]
     fundeu = [term for term in terms if any(source.name == "FundéuRAE" for source in term.sources)]
-    assert len(unam) == 16
+    assert len(unam) == 17
     assert len(fundeu) == 3
     assert {
         UNAM_SOURCE_URL,
@@ -657,7 +660,7 @@ def test_guess_game_uses_only_the_glossary_catalog() -> None:
 
 
 def test_dictionary_css_keeps_responsive_layout_and_theme_tokens() -> None:
-    stylesheet = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
+    stylesheet = Path("src/app/web/assets/didactica.css").read_text(encoding="utf-8")
     assert "@media (max-width: 680px)" in stylesheet
     assert ".didactica-glossary-grid" in stylesheet
     assert ".didactica-glossary-sources" in stylesheet

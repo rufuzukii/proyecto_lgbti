@@ -1,4 +1,4 @@
-from app.analytics.legal_criteria import (
+from app.shared.data.legal_criteria import (
     ILGA_CRITERION_SOURCE_ALIASES,
     get_criterion_id,
     get_criterion_metadata,

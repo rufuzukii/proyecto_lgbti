@@ -1,5 +1,5 @@
-from app.dash.i18n import text
-from app.dash.layouts.home import _home_legal_country_options, _ilga_copy, _ilga_metrics
+from app.modules.home.page import _home_legal_country_options, _ilga_copy, _ilga_metrics
+from app.web.i18n import text
 
 
 def _children(component):

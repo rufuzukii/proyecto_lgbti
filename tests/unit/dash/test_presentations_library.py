@@ -6,14 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.dash.pages.didactica as didactica_page
-import app.dash_app as dash_app_module
-from app.edu.presentation_service import (
+import app.modules.didactics.page as didactica_page
+import app.web.application as dash_app_module
+from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.didactics.presentation_service import (
     DidacticPresentation,
     DidacticPresentationStorageError,
 )
-from app.edu.translations import tr
-from app.users.schemas import UserRole, UserType
+from app.modules.didactics.translations import tr
 
 
 def _user(
@@ -162,7 +162,7 @@ def test_presentations_texts_and_styles_are_bilingual_responsive_and_theme_aware
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
     layout = didactica_page.build_presentations_layout()
     body = str(layout)
-    css = Path("src/app/dash/assets/didactica.css").read_text(encoding="utf-8")
+    css = Path("src/app/web/assets/didactica.css").read_text(encoding="utf-8")
 
     assert tr("presentations_desc", "es") in body
     assert tr("presentations_desc", "en") in body

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from app.dash.components.dropdown_options import (
+from app.shared.components.dropdown_options import (
     build_dropdown_options,
     option_value_or_none,
 )

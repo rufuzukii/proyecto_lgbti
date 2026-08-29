@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from app.analytics.statistics_exports import export_summary_table
-from app.reports.builder import HRReportBuilder
-from app.reports.models import ReportConfiguration, ReportDataset
+from app.modules.reports.builder import HRReportBuilder
+from app.modules.reports.models import ReportConfiguration, ReportDataset
+from app.modules.statistics.exports import export_summary_table
 
 
 def test_report_metrics_flow_into_the_exported_summary_table() -> None:

@@ -1,6 +1,6 @@
 from typing import Any
 
-from app.analytics.figures import build_fra_choropleth, build_ilga_choropleth
+from app.modules.home.figures import build_fra_choropleth, build_ilga_choropleth
 
 
 def _trace(figure: Any, index: int = 0) -> Any:

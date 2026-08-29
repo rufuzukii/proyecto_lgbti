@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.analytics import repository
+from app.shared.data import repository
 
 
 class _Collection:

@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 from typing import Any
 
-from app.dash.layouts import user_page
-from app.users.schemas import UserRole, UserType
+from app.modules.account import profile_page as user_page
+from app.modules.account.users.schemas import UserRole, UserType
 
 
 def _layout(monkeypatch, user_type: UserType, role: UserRole = UserRole.COMMON):

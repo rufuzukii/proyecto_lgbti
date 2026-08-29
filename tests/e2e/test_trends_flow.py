@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dash import Dash
 
-import app.trends.callbacks as trend_callbacks
-from app.trends.callbacks import register_trend_callbacks
-from app.trends.forecasting_service import generate_forecast
-from app.trends.models import HistoricalPoint, TrendScope
+import app.modules.trends.callbacks as trend_callbacks
+from app.modules.trends.callbacks import register_trend_callbacks
+from app.modules.trends.forecasting_service import generate_forecast
+from app.modules.trends.models import HistoricalPoint, TrendScope
 
 
 def _callback(app: Dash, name: str):
