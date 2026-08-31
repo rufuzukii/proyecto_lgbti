@@ -1,6 +1,14 @@
+from typing import Any, cast
+
 from app.core.errors import DatabaseUnavailableError
 from app.web.application import create_dash_app
-from app.web.error_page import render_database_unavailable_response, render_error_response
+from app.web.error_page import (
+    build_database_unavailable_layout,
+    build_error_layout,
+    render_database_unavailable_response,
+    render_error_response,
+)
+from app.web.loading_modal import build_loading_modal
 
 
 def test_database_unavailable_response_returns_503() -> None:
@@ -63,3 +71,49 @@ def test_error_pages_do_not_expose_internal_details() -> None:
         assert "postgresql://" not in body
         assert "Traceback" not in body
         assert 'href="/es"' in body
+
+
+def test_error_layout_supports_english_without_navigation(monkeypatch) -> None:
+    layout = build_error_layout("insufficient_data", include_navigation=False, language="en")
+    body = str(layout.to_plotly_json())
+
+    assert len(cast(Any, layout).children) == 1
+    assert "Insufficient data" in body
+    assert "There is not enough data" in body
+    assert "/en" in body
+    monkeypatch.setattr("app.web.error_page.build_navbar", lambda **_kwargs: "navigation")
+    assert build_database_unavailable_layout().children
+
+
+def test_static_error_response_localizes_english_and_sets_retry_only_for_503() -> None:
+    english_body, status, headers = render_error_response("403", language="en")
+    _service_body, service_status, service_headers = render_error_response("503")
+
+    assert status == 403
+    assert '<html lang="en">' in english_body
+    assert "Back to home" in english_body
+    assert "Retry-After" not in headers
+    assert service_status == 503
+    assert service_headers["Retry-After"] == "30"
+
+
+def test_loading_modal_exposes_bilingual_accessibility_contract() -> None:
+    visible = build_loading_modal(
+        element_id="loading-test",
+        title=("Cargando", "Loading"),
+        description=("Espera", "Please wait"),
+        hidden=False,
+    )
+    hidden = build_loading_modal(
+        element_id="loading-hidden",
+        title=("Cargando", "Loading"),
+        description=("Espera", "Please wait"),
+    )
+
+    assert cast(Any, visible).className == "upload-loading-overlay"
+    assert cast(Any, hidden).className.endswith("is-hidden")
+    dialog = cast(Any, visible).children
+    props = dialog.to_plotly_json()["props"]
+    assert props["role"] == "dialog"
+    assert props["aria-modal"] == "true"
+    assert props["aria-live"] == "assertive"

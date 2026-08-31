@@ -27,11 +27,9 @@ def _walk(component: Any):
 
 def test_application_owned_quoted_copy_uses_guillemets() -> None:
     statistics = (MODULES / "statistics" / "page.py").read_text(encoding="utf-8")
-    reports = (MODULES / "reports" / "page.py").read_text(encoding="utf-8")
     didactica = (MODULES / "didactics" / "page.py").read_text(encoding="utf-8")
 
     assert "«{answer}»" in statistics
-    assert "«{content.indicator}»" in reports
     assert "«{correct_term}»" in didactica
     assert '"{answer}" in "{indicator}"' not in statistics
 

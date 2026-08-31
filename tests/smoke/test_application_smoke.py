@@ -1,10 +1,5 @@
 from __future__ import annotations
 
-import os
-from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
-from urllib.request import Request, urlopen
-
 import pytest
 
 from app.modules.account.users.schemas import UserRole, UserType
@@ -20,6 +15,7 @@ PUBLIC_ROUTES = (
     "/es/didactica",
     "/es/informe",
     "/es/acerca-de",
+    "/health",
 )
 
 
@@ -96,17 +92,3 @@ def test_dash_layout_and_callback_registry_smoke(smoke_app) -> None:
     assert len(dependencies) == len(app.callback_map)
     outputs = [dependency["output"] for dependency in dependencies]
     assert len(outputs) == len(set(outputs))
-
-
-@pytest.mark.parametrize("route", (*PUBLIC_ROUTES, "/health"))
-def test_configured_render_url_smoke(route: str) -> None:
-    base_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
-    if not base_url:
-        pytest.skip("RENDER_EXTERNAL_URL is not configured")
-
-    request = Request(urljoin(f"{base_url.rstrip('/')}/", route.lstrip("/")), method="GET")
-    try:
-        with urlopen(request, timeout=15) as response:
-            assert 200 <= response.status < 400
-    except (HTTPError, URLError) as exc:
-        pytest.fail(f"Render smoke failed for {route}: {type(exc).__name__}")

@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+import pytest
 from pymongo import ReturnDocument
 
 from app.modules.account.users import account_security
@@ -135,3 +136,99 @@ def test_session_version_is_persistent(monkeypatch) -> None:
     loaded = account_security.get_account_security("user-1")
     assert session_version == 1
     assert loaded.session_version == 1
+
+
+def test_missing_security_document_uses_explicit_legacy_default(monkeypatch) -> None:
+    _collections(monkeypatch)
+
+    state = account_security.get_account_security("legacy-user")
+
+    assert state == account_security.AccountSecurityState(
+        "legacy-user", True, 0, legacy_default=True
+    )
+    with pytest.raises(ValueError, match="user_id_required"):
+        account_security.get_account_security("")
+    with pytest.raises(ValueError, match="user_id_required"):
+        account_security.initialize_new_account("")
+
+
+def test_many_security_states_deduplicate_ids_and_fill_legacy_defaults(monkeypatch) -> None:
+    collections = _collections(monkeypatch)
+    security = collections.setdefault(account_security.ACCOUNT_COLLECTION, _MemoryCollection())
+    security.documents.append({"user_id": "known", "active": False, "session_version": -4})
+
+    states = account_security.get_account_security_many(["known", "", "missing", "known"])
+
+    assert list(states) == ["known", "missing"]
+    assert states["known"].active is False
+    assert states["known"].session_version == 0
+    assert states["missing"].legacy_default is True
+    assert account_security.get_account_security_many([]) == {}
+
+
+@pytest.mark.parametrize(
+    ("operation", "message"),
+    [
+        (lambda: account_security.initialize_new_account("user"), "account_security_unavailable"),
+        (lambda: account_security.get_account_security("user"), "account_security_unavailable"),
+        (lambda: account_security.get_account_security_many(["user"]), "account_security_unavailable"),
+        (lambda: account_security.increment_session_version("user"), "account_security_unavailable"),
+    ],
+)
+def test_security_storage_errors_are_mapped(monkeypatch, operation, message: str) -> None:
+    class BrokenCollection:
+        def __getattr__(self, _name):
+            def fail(*_args, **_kwargs):
+                raise RuntimeError("mongo offline")
+
+            return fail
+
+    monkeypatch.setattr(account_security, "get_mongo_collection", lambda _name: BrokenCollection())
+
+    with pytest.raises(account_security.AccountSecurityStorageError, match=message):
+        operation()
+
+
+def test_migration_maps_database_errors(monkeypatch) -> None:
+    class BrokenCollection:
+        def update_many(self, *_args, **_kwargs):
+            raise RuntimeError("mongo offline")
+
+    monkeypatch.setattr(account_security, "get_mongo_collection", lambda _name: BrokenCollection())
+    with pytest.raises(
+        account_security.AccountSecurityStorageError,
+        match="account_security_migration_failed",
+    ):
+        account_security.migrate_account_security_schema()
+
+
+def test_security_audit_records_retention_and_maps_failures(monkeypatch) -> None:
+    inserted: list[dict[str, Any]] = []
+
+    class AuditCollection:
+        def insert_one(self, document):
+            inserted.append(document)
+
+    monkeypatch.setattr(account_security, "get_mongo_collection", lambda _name: AuditCollection())
+    monkeypatch.setattr(
+        account_security,
+        "get_privacy_policy_config",
+        lambda: type("Policy", (), {"audit_retention_days": 30})(),
+    )
+
+    account_security.record_security_event("user-1", "password_changed")
+
+    assert inserted[0]["user_id"] == "user-1"
+    assert inserted[0]["action"] == "password_changed"
+    assert (inserted[0]["expires_at"] - inserted[0]["created_at"]).days == 30
+
+    class BrokenAudit:
+        def insert_one(self, _document):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(account_security, "get_mongo_collection", lambda _name: BrokenAudit())
+    with pytest.raises(
+        account_security.AccountSecurityStorageError,
+        match="security_audit_unavailable",
+    ):
+        account_security.record_security_event("user-1", "password_changed")

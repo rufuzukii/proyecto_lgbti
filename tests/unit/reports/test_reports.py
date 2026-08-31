@@ -243,6 +243,7 @@ def test_custom_mode_hides_disabled_sections_and_adds_active_segmentation() -> N
     preview = reports_page._preview_content(content)
     rendered_text = " ".join(_collect_text(preview))
 
+    assert f"«{content.indicator}»" in rendered_text
     assert content.demographic_analysis
     assert "25-39" in rendered_text
     assert "Fuentes" in rendered_text
@@ -284,7 +285,7 @@ def test_preview_exposes_generated_report_prose_as_editable_textareas() -> None:
         for component in reports_page._preview_content(content)
         for item in _walk(component)
         if isinstance(item, dcc.Textarea)
-        and item.id["type"] == "report-section-narrative"
+        and cast(Any, item).id["type"] == "report-section-narrative"
     ]
 
     assert {item.id["section"] for item in section_textareas} == {

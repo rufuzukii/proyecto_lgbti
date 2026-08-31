@@ -1237,7 +1237,7 @@ def _preview_content(content) -> list[Component]:
                     className="reports-preview-focus",
                 ),
                 html.P(
-                    f"{content.indicator} - {content.configuration.year or ''}",
+                    f"«{content.indicator}» - {content.configuration.year or ''}",
                     className="reports-preview-subtitle",
                 ),
             ]
