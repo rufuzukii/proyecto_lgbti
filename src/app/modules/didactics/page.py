@@ -1197,7 +1197,7 @@ def register_didactica_callbacks(app: Dash) -> None:
                 else:
                     feedback = (
                         f'{tr("incorrect", language)}. '
-                        f'{tr("correct_answer_was", language)}: «{correct_term}».'
+                        f'{tr("correct_answer_was", language)}: "{correct_term}".'
                     )
                 feedback_class = (
                     "didactica-feedback is-success" if correct else "didactica-feedback is-error"
@@ -1899,4 +1899,4 @@ def _game_hint(game_id: str, identifier: str, language: str) -> str:
     term = get_glossary_term(identifier)
     if term is None:
         raise ValueError("unknown_glossary_term")
-    return f'{tr("hint_text", language)} «{term.term[0].upper()}».'
+    return f'{tr("hint_text", language)} "{term.term[0].upper()}".'

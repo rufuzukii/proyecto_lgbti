@@ -317,7 +317,7 @@ def test_guess_game_incorrect_feedback_names_only_the_correct_term(
     result = callback(1, None, None, "es", wrong_id, state)
 
     assert result[3] == (
-        f"Respuesta incorrecta. La respuesta correcta era: «{correct_term.term}»."
+        f'Respuesta incorrecta. La respuesta correcta era: "{correct_term.term}".'
     )
 
 

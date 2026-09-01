@@ -45,14 +45,26 @@
     return THEMES.includes(theme);
   }
 
+  function storedValue(key) {
+    try {
+      return window.localStorage.getItem(key);
+    } catch (_error) {
+      return null;
+    }
+  }
+
   function currentLanguage() {
-    const saved = window.localStorage.getItem(LANGUAGE_KEY);
+    const saved = storedValue(LANGUAGE_KEY);
     return isSupportedLanguage(saved) ? saved : "es";
   }
 
   function currentTheme() {
-    const saved = window.localStorage.getItem(THEME_KEY);
-    return isSupportedTheme(saved) ? saved : "light";
+    const saved = storedValue(THEME_KEY);
+    if (isSupportedTheme(saved)) {
+      return saved;
+    }
+    const applied = document.documentElement.dataset.theme;
+    return isSupportedTheme(applied) ? applied : "light";
   }
 
   function labelFor(language) {

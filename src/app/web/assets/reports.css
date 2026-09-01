@@ -8,10 +8,15 @@
     --reports-control-focus: var(--color-focus);
     --reports-primary: var(--color-primary-dark);
     color: var(--reports-text);
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
 }
 
 .reports-workflow {
     display: grid;
+    max-width: 100%;
+    min-width: 0;
     width: 100%;
     margin: 0 auto;
     gap: 1.5rem;
@@ -19,6 +24,7 @@
 
 .reports-workflow > * {
     box-sizing: border-box;
+    max-width: 100%;
     min-width: 0;
     width: 100%;
 }
@@ -30,6 +36,9 @@
     border-radius: 20px;
     background: var(--reports-panel-bg);
     box-shadow: 0 10px 30px rgba(23, 32, 51, 0.06);
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .reports-card {
@@ -60,6 +69,8 @@
     display: grid;
     gap: 0.42rem;
     margin-bottom: 1rem;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .reports-card-configuration .reports-field:last-child {
@@ -156,8 +167,10 @@
 
 .reports-plan-list {
     display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
     gap: 0.45rem 1rem;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .reports-plan-list dt {
@@ -167,6 +180,8 @@
 
 .reports-plan-list dd {
     margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .reports-chart-editor {
@@ -177,6 +192,9 @@
     border: 1px solid var(--reports-border);
     border-radius: 10px;
     background: var(--reports-surface-soft);
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
 }
 
 .reports-chart-editor-note {
@@ -188,6 +206,8 @@
 .reports-chart-editor-field {
     display: grid;
     gap: 0.35rem;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .reports-chart-editor-field > span {
@@ -198,6 +218,8 @@
 .reports-chart-narrative,
 .reports-section-narrative {
     box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
     width: 100%;
     min-height: 6.5rem;
     resize: vertical;
@@ -227,6 +249,8 @@
 
 .reports-field input[type="text"] {
     box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
     width: 100%;
     min-height: 42px;
     padding: 0.65rem 0.75rem;
@@ -347,7 +371,10 @@
 }
 
 .reports-preview-shell {
+    max-width: 100%;
+    min-width: 0;
     padding: clamp(1rem, 3vw, 2rem);
+    width: 100%;
 }
 
 .reports-preview-empty {
@@ -357,8 +384,29 @@
 }
 
 .reports-preview-document {
+    box-sizing: border-box;
     max-width: 980px;
     margin: 0 auto;
+    min-width: 0;
+    width: 100%;
+}
+
+.reports-preview-document > * {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.reports-preview-document h2,
+.reports-preview-document h3,
+.reports-preview-document h4,
+.reports-preview-document p,
+.reports-preview-document label,
+.reports-preview-document span,
+.reports-preview-document strong {
+    overflow-wrap: anywhere;
+    white-space: normal;
+    word-break: normal;
 }
 
 .reports-preview-document > header {
@@ -376,6 +424,9 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.75rem;
     margin: 1.25rem 0;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
 }
 
 .reports-preview-metric {
@@ -385,6 +436,8 @@
     border: 1px solid var(--reports-border);
     border-radius: 12px;
     background: var(--reports-surface-soft);
+    max-width: 100%;
+    min-width: 0;
 }
 
 .reports-preview-metric span {
@@ -399,10 +452,17 @@
 
 .reports-preview-section,
 .reports-preview-chart {
+    box-sizing: border-box;
     margin: 1.2rem 0;
+    max-width: 100%;
+    min-width: 0;
     padding: 1rem;
     border: 1px solid var(--reports-border);
     border-radius: 14px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    width: 100%;
+    word-break: normal;
 }
 
 .reports-section-editor-title {
@@ -416,7 +476,38 @@
 .reports-preview-chart .js-plotly-plot,
 .reports-preview-chart .plot-container,
 .reports-preview-chart .svg-container {
+    max-width: 100% !important;
+    min-width: 0 !important;
     width: 100% !important;
+}
+
+.reports-preview-graph,
+.reports-preview-graph .dash-graph {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+}
+
+.reports-preview-table-scroll {
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    width: 100%;
+}
+
+.reports-preview-grid,
+.reports-preview-grid .ag-root-wrapper {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+}
+
+.reports-preview-grid .ag-cell-value,
+.reports-preview-grid .ag-header-cell-text {
+    overflow-wrap: anywhere;
+    white-space: normal;
+    word-break: normal;
 }
 
 .reports-access-denied {
@@ -637,8 +728,8 @@ body[data-theme="dark"] .reports-preview-chart .js-plotly-plot .zerolinelayer pa
 
 @media (max-width: 520px) {
     .reports-shell {
-        width: min(100% - 1rem, 1180px);
         padding-top: 1rem;
+        width: 100%;
     }
 
     .reports-preview-metrics {
@@ -647,6 +738,10 @@ body[data-theme="dark"] .reports-preview-chart .js-plotly-plot .zerolinelayer pa
 
     .reports-filters-grid {
         grid-template-columns: 1fr;
+    }
+
+    .reports-plan-list {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .reports-actions > * {

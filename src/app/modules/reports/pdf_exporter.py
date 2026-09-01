@@ -30,6 +30,8 @@ INK = colors.HexColor("#172033")
 MUTED = colors.HexColor("#5F6B7A")
 PALE_BLUE = colors.HexColor("#EEF4FF")
 PALE_GREY = colors.HexColor("#F5F7FA")
+REPORT_MARGIN = 17 * mm
+PRINTABLE_WIDTH = A4[0] - (2 * REPORT_MARGIN)
 
 
 class _MultilineTextField(Flowable):
@@ -80,8 +82,8 @@ class PDFExporter:
         document = SimpleDocTemplate(
             buffer,
             pagesize=A4,
-            rightMargin=17 * mm,
-            leftMargin=17 * mm,
+            rightMargin=REPORT_MARGIN,
+            leftMargin=REPORT_MARGIN,
             topMargin=18 * mm,
             bottomMargin=18 * mm,
             title=report.configuration.title,
@@ -133,6 +135,20 @@ class PDFExporter:
         ]
 
         section_number = 0
+        if _enabled(report, "executive"):
+            section_number += 1
+            story.extend(
+                _text_section(
+                    f"{section_number}. {_t(language, 'Resumen ejecutivo', 'Executive summary')}",
+                    _edited_section_paragraphs(
+                        report,
+                        "executive",
+                        report.executive_summary,
+                    ),
+                    styles,
+                )
+            )
+
         if _enabled(report, "metrics") and report.metrics:
             section_number += 1
             story.extend(
@@ -161,26 +177,13 @@ class PDFExporter:
                 )
             )
 
-        if _enabled(report, "executive"):
-            section_number += 1
-            story.extend(
-                _text_section(
-                    f"{section_number}. {_t(language, 'Resumen ejecutivo', 'Executive summary')}",
-                    _edited_section_paragraphs(
-                        report,
-                        "executive",
-                        report.executive_summary,
-                    ),
-                    styles,
-                )
-            )
         if _enabled(report, "context"):
             section_number += 1
             default_context = [
                 _t(
                     language,
-                    f'Se analiza «{report.indicator}» para {report.configuration.year or "el periodo disponible"} como contexto externo para apoyar políticas de diversidad e inclusión.',
-                    f"The report analyses «{report.indicator}» for {report.configuration.year or 'the available period'} as external context supporting diversity and inclusion policies.",
+                    f'Se analiza "{report.indicator}" para {report.configuration.year or "el periodo disponible"} como contexto externo para apoyar políticas de diversidad e inclusión.',
+                    f'The report analyses "{report.indicator}" for {report.configuration.year or "the available period"} as external context supporting diversity and inclusion policies.',
                 )
             ]
             story.extend(
@@ -368,6 +371,7 @@ def _styles() -> dict[str, ParagraphStyle]:
             fontSize=17,
             leading=22,
             textColor=INK,
+            keepWithNext=True,
             spaceBefore=8,
             spaceAfter=7,
         ),
@@ -464,7 +468,10 @@ def _cover_metadata(
                 _paragraph(report.configuration.author, styles["table"]),
             ]
         )
-    table = Table(rows, colWidths=[48 * mm, 122 * mm])
+    table = Table(
+        rows,
+        colWidths=[PRINTABLE_WIDTH * 0.28, PRINTABLE_WIDTH * 0.72],
+    )
     table.setStyle(
         TableStyle(
             [
@@ -486,31 +493,27 @@ def _metric_table(
     report: ReportContent,
     styles: dict[str, ParagraphStyle],
 ) -> Table:
-    cells: list[Flowable] = [
-        Table(
-            [
-                [_paragraph(metric.label, styles["table"])],
-                [
-                    Paragraph(
-                        f"<b>{_escape(metric.display_value)}</b>",
-                        ParagraphStyle(
-                            f"Metric{index}",
-                            parent=styles["table"],
-                            fontSize=12,
-                            leading=15,
-                            textColor=BRAND_BLUE,
-                        ),
-                    )
-                ],
-            ],
-            colWidths=[54 * mm],
-        )
+    cells: list[list[Flowable]] = [
+        [
+            _paragraph(metric.label, styles["table"]),
+            Spacer(1, 2 * mm),
+            Paragraph(
+                f"<b>{_escape(metric.display_value)}</b>",
+                ParagraphStyle(
+                    f"Metric{index}",
+                    parent=styles["table"],
+                    fontSize=12,
+                    leading=15,
+                    textColor=BRAND_BLUE,
+                ),
+            ),
+        ]
         for index, metric in enumerate(report.metrics[:6])
     ]
     rows = [cells[index : index + 3] for index in range(0, len(cells), 3)]
     while rows and len(rows[-1]) < 3:
-        rows[-1].append(Paragraph("", styles["table"]))
-    table = Table(rows, colWidths=[58 * mm] * 3)
+        rows[-1].append([Paragraph("", styles["table"])])
+    table = Table(rows, colWidths=[PRINTABLE_WIDTH / 3] * 3)
     table.setStyle(
         TableStyle(
             [
@@ -551,7 +554,13 @@ def _comparison_table(
         )
     table = Table(
         rows,
-        colWidths=[56 * mm, 26 * mm, 24 * mm, 38 * mm, 25 * mm],
+        colWidths=[
+            PRINTABLE_WIDTH * 0.33,
+            PRINTABLE_WIDTH * 0.15,
+            PRINTABLE_WIDTH * 0.14,
+            PRINTABLE_WIDTH * 0.23,
+            PRINTABLE_WIDTH * 0.15,
+        ],
         repeatRows=1,
     )
     table.setStyle(
@@ -575,8 +584,8 @@ def _comparison_table(
 
 def _chart_image(path: Path) -> Image:
     image = Image(str(path))
-    max_width = 176 * mm
-    max_height = 185 * mm
+    max_width = PRINTABLE_WIDTH
+    max_height = 150 * mm
     width = float(image.imageWidth or 1)
     height = float(image.imageHeight or 1)
     scale = min(max_width / width, max_height / height)
@@ -598,9 +607,9 @@ def _chart_section(
         image_path = chart_images.get(chart.key)
         if image_path is None or not image_path.exists():
             continue
-        elements: list[Flowable] = []
+        chart_header: list[Flowable] = []
         if index == 1:
-            elements.extend(
+            chart_header.extend(
                 [
                     Paragraph(
                         _escape(
@@ -612,7 +621,7 @@ def _chart_section(
                     Spacer(1, 2 * mm),
                 ]
             )
-        elements.extend(
+        chart_header.extend(
             [
                 Paragraph(
                     _escape(f"{section_number}.{index}. {chart.title}"),
@@ -622,6 +631,7 @@ def _chart_section(
                 _chart_image(image_path),
             ]
         )
+        story.append(KeepTogether(chart_header))
         safe_chart_key = re.sub(r"[^a-zA-Z0-9_-]+", "_", chart.key).strip("_")
         fields = (
             (
@@ -641,19 +651,20 @@ def _chart_section(
             ),
         )
         for field, label, value in fields:
-            elements.extend(
-                [
-                    Paragraph(f"<b>{_escape(label)}:</b>", styles["body"]),
-                    _MultilineTextField(
-                        f"chart_{safe_chart_key}_{field}",
-                        value,
-                        f"{chart.title}: {label}",
-                    ),
-                    Spacer(1, 2 * mm),
-                ]
+            story.append(
+                KeepTogether(
+                    [
+                        Paragraph(f"<b>{_escape(label)}:</b>", styles["body"]),
+                        _MultilineTextField(
+                            f"chart_{safe_chart_key}_{field}",
+                            value,
+                            f"{chart.title}: {label}",
+                        ),
+                        Spacer(1, 2 * mm),
+                    ]
+                )
             )
-        elements.append(Spacer(1, 5 * mm))
-        story.append(KeepTogether(elements))
+        story.append(Spacer(1, 5 * mm))
     return story
 
 

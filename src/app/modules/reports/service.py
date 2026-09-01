@@ -188,12 +188,12 @@ def default_section_narrative(content: ReportContent, section: str) -> str:
     if section == "context":
         if language == "en":
             return (
-                f'The report analyses «{content.indicator}» for '
+                f'The report analyses "{content.indicator}" for '
                 f"{content.configuration.year or 'the available period'} as external "
                 "context supporting diversity and inclusion policies."
             )
         return (
-            f'Se analiza «{content.indicator}» para '
+            f'Se analiza "{content.indicator}" para '
             f'{content.configuration.year or "el periodo disponible"} como contexto '
             "externo para apoyar políticas de diversidad e inclusión."
         )

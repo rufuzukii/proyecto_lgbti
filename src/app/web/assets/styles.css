@@ -2,7 +2,8 @@
   box-sizing: border-box;
 }
 
-:root {
+:root,
+:root[data-theme="light"] {
   color-scheme: light;
   --font-sans: "Segoe UI", "Inter", Arial, sans-serif;
   --color-bg: #fff7fa;
@@ -54,8 +55,7 @@
   --readable-line-width: 80ch;
 }
 
-:root[data-theme="dark"],
-body[data-theme="dark"] {
+:root[data-theme="dark"] {
   color-scheme: dark;
   --color-bg: #0a0e17;
   --color-surface: #111827;
@@ -104,13 +104,20 @@ body {
   grid-template-rows: minmax(0, 1fr);
 }
 
-html[data-theme="dark"],
-body[data-theme="dark"],
-html[data-theme="dark"] #react-entry-point,
-html[data-theme="dark"] #_dash-app-content,
-html[data-theme="dark"] #_dash-app-content > div,
-html[data-theme="dark"] .app-shell,
-html[data-theme="dark"] #page-content {
+:root[data-theme="light"],
+:root[data-theme="dark"],
+:root[data-theme="light"] body,
+:root[data-theme="dark"] body,
+:root[data-theme="light"] #react-entry-point,
+:root[data-theme="dark"] #react-entry-point,
+:root[data-theme="light"] #_dash-app-content,
+:root[data-theme="dark"] #_dash-app-content,
+:root[data-theme="light"] #_dash-app-content > div,
+:root[data-theme="dark"] #_dash-app-content > div,
+:root[data-theme="light"] .app-shell,
+:root[data-theme="dark"] .app-shell,
+:root[data-theme="light"] #page-content,
+:root[data-theme="dark"] #page-content {
   background-color: var(--color-bg);
   background-image: none;
 }

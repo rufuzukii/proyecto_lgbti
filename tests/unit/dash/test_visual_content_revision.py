@@ -12,6 +12,9 @@ from app.web.i18n import UI_TEXT
 ROOT = Path(__file__).resolve().parents[3]
 ASSETS = ROOT / "src" / "app" / "web" / "assets"
 MODULES = ROOT / "src" / "app" / "modules"
+EXTERNAL_LITERAL_SUPPORT = {
+    ROOT / "src" / "app" / "shared" / "data" / "felgtbi" / "semantics.py",
+}
 
 
 def _walk(component: Any):
@@ -25,13 +28,31 @@ def _walk(component: Any):
             yield from _walk(children)
 
 
-def test_application_owned_quoted_copy_uses_guillemets() -> None:
+def test_application_owned_quoted_copy_uses_double_quotes() -> None:
     statistics = (MODULES / "statistics" / "page.py").read_text(encoding="utf-8")
     didactica = (MODULES / "didactics" / "page.py").read_text(encoding="utf-8")
 
-    assert "«{answer}»" in statistics
-    assert "«{correct_term}»" in didactica
-    assert '"{answer}" in "{indicator}"' not in statistics
+    assert '"{answer}"' in statistics
+    assert '"{correct_term}"' in didactica
+
+
+def test_application_owned_runtime_text_contains_no_guillemets() -> None:
+    forbidden = (chr(0x00AB), chr(0x00BB))
+    runtime_files = [
+        path
+        for path in (ROOT / "src").rglob("*")
+        if path.is_file()
+        and path.suffix in {".css", ".html", ".js", ".json", ".py"}
+        and path not in EXTERNAL_LITERAL_SUPPORT
+    ]
+
+    offenders = [
+        str(path.relative_to(ROOT))
+        for path in runtime_files
+        if any(mark in path.read_text(encoding="utf-8") for mark in forbidden)
+    ]
+
+    assert offenders == []
 
 
 def test_footer_attributions_are_uniform_and_use_the_requested_copy() -> None:

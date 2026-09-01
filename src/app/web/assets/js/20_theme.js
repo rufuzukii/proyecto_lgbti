@@ -6,6 +6,7 @@
   function applyTheme(theme) {
     const selected = state.isSupportedTheme(theme) ? theme : "light";
     document.documentElement.dataset.theme = selected;
+    document.documentElement.style.colorScheme = selected;
     if (document.body) {
       document.body.dataset.theme = selected;
     }
@@ -21,8 +22,13 @@
   }
 
   function setTheme(theme) {
-    window.localStorage.setItem(config.THEME_KEY, theme);
-    applyTheme(theme);
+    const selected = state.isSupportedTheme(theme) ? theme : "light";
+    try {
+      window.localStorage.setItem(config.THEME_KEY, selected);
+    } catch (_error) {
+      /* The explicit selection still applies for this session. */
+    }
+    applyTheme(selected);
   }
 
   function applyToggleLabels(theme, language) {

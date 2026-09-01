@@ -12,7 +12,7 @@ from app.modules.trends.callbacks import register_trend_callbacks
 from app.modules.trends.charts import build_trend_figure
 from app.modules.trends.forecasting_service import generate_forecast
 from app.modules.trends.models import ForecastModelName, HistoricalPoint, TrendScope
-from app.web.i18n import ui_text
+from app.web.i18n import country_labels, ui_text
 
 
 def _walk(component):
@@ -116,15 +116,51 @@ def test_country_callback_uses_database_catalog_and_preserves_iso_value(monkeypa
     monkeypatch.setattr(
         trend_callbacks,
         "get_trend_scope",
-        lambda: TrendScope(countries=(("FR", "France"), ("ES", "Spain")), years=(2024,)),
+        lambda: TrendScope(
+            countries=(
+                ("CZ", "Czechia"),
+                ("DE", "Germany"),
+                ("ES", "Spain"),
+                ("FR", "France"),
+                ("GB", "United Kingdom"),
+                ("NL", "Netherlands"),
+            ),
+            years=(2024,),
+        ),
     )
 
-    options, selected, disabled, placeholder = callback("es", None)
+    spanish_options, selected, disabled, placeholder = callback("es", None)
+    english_options, english_selected, *_ = callback("en", "ES")
+    spanish = {option["value"]: option["label"] for option in spanish_options}
+    english = {option["value"]: option["label"] for option in english_options}
 
-    assert {option["value"] for option in options} == {"ES", "FR"}
+    assert spanish == {
+        "CZ": "Chequia",
+        "DE": "Alemania",
+        "ES": "España",
+        "FR": "Francia",
+        "GB": "Reino Unido",
+        "NL": "Países Bajos",
+    }
+    assert english == {
+        "CZ": "Czechia",
+        "DE": "Germany",
+        "ES": "Spain",
+        "FR": "France",
+        "GB": "United Kingdom",
+        "NL": "Netherlands",
+    }
+    assert set(spanish) == set(english)
     assert selected is None
+    assert english_selected == "ES"
     assert disabled is False
     assert placeholder == ui_text("trends_select_country", "es")
+
+
+def test_country_catalog_resolves_iso_aliases_without_changing_display_fallbacks() -> None:
+    assert country_labels("ESP", "Spain") == ("España", "Spain")
+    assert country_labels("DEU", "Germany") == ("Alemania", "Germany")
+    assert country_labels("UK", "United Kingdom") == ("Reino Unido", "United Kingdom")
 
 
 def test_country_control_loads_real_range_and_quality_based_horizons(monkeypatch) -> None:
@@ -291,3 +327,19 @@ def test_css_supports_dark_mode_responsive_cards_and_local_table_scroll() -> Non
     assert ".trend-explanation-grid" in css
     assert ".trend-glossary-list" in css
     assert ".trend-selected-method" in css
+    range_input_rule = css.split(
+        ".trend-range-field .dash-range-slider-input {", 1
+    )[1].split("}", 1)[0]
+    assert "width: 100%;" in range_input_rule
+    assert "max-width: 100%;" in range_input_rule
+    assert "min-width: 0;" in range_input_rule
+
+
+def test_range_control_uses_responsive_class_without_inline_width() -> None:
+    controls = trend_layout._controls()
+    range_control = next(
+        item for item in _walk(controls) if getattr(item, "id", None) == "trend-year-range"
+    )
+
+    assert range_control.className == "trend-range-control"
+    assert getattr(range_control, "style", None) is None

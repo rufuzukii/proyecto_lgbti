@@ -3156,8 +3156,8 @@ def _combined_compatibility_messages(
             )
         else:
             copy = (
-                f'Los cuadrantes no se muestran para «{answer}» en «{indicator}» porque esta respuesta no puede interpretarse de forma segura como un dato Sí/No o cuantitativo con una dirección clara.',
-                f'The quadrants are not shown for «{answer}» in «{indicator}» because this answer cannot be interpreted safely as yes/no or quantitative data with a clear direction.',
+                f'Los cuadrantes no se muestran para "{answer}" en "{indicator}" porque esta respuesta no puede interpretarse de forma segura como un dato Sí/No o cuantitativo con una dirección clara.',
+                f'The quadrants are not shown for "{answer}" in "{indicator}" because this answer cannot be interpreted safely as yes/no or quantitative data with a clear direction.',
             )
         messages.append(html.P(text(*copy, language=language)))
     if not supported.get("ranking_gap"):
@@ -3201,7 +3201,7 @@ def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component
             "unknown": "The meaning of a high percentage cannot be determined reliably from the wording, so no favourable/adverse conclusion is automated.",
         }[direction]
         hypothesis = (
-            f'This block compares the percentage for «{answer}» in «{indicator}» '
+            f'This block compares the percentage for "{answer}" in "{indicator}" '
             "with each country's overall ILGA-Europe legal-protection score."
         )
         reading = (
@@ -3231,7 +3231,7 @@ def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component
             "unknown": "No puede determinarse con fiabilidad qué significa un porcentaje alto a partir del enunciado, por lo que no se automatiza una conclusión favorable o desfavorable.",
         }[direction]
         hypothesis = (
-            f'Este bloque compara el porcentaje de la respuesta «{answer}» en «{indicator}» '
+            f'Este bloque compara el porcentaje de la respuesta "{answer}" en "{indicator}" '
             "con la puntuación legal global ILGA-Europe de cada país."
         )
         reading = (

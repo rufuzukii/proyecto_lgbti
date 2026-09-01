@@ -5,6 +5,8 @@ from typing import Any
 from dash import html
 from dash.development.base_component import Component
 
+from app.shared.data.normalization import normalize_country_code
+
 SUPPORTED_LANGUAGES = {"es", "en"}
 COUNTRY_NAMES: dict[str, tuple[str, str]] = {
     "AD": ("Andorra", "Andorra"),
@@ -18,7 +20,7 @@ COUNTRY_NAMES: dict[str, tuple[str, str]] = {
     "BY": ("Bielorrusia", "Belarus"),
     "CH": ("Suiza", "Switzerland"),
     "CY": ("Chipre", "Cyprus"),
-    "CZ": ("República Checa", "Czechia"),
+    "CZ": ("Chequia", "Czechia"),
     "DE": ("Alemania", "Germany"),
     "DK": ("Dinamarca", "Denmark"),
     "EE": ("Estonia", "Estonia"),
@@ -909,9 +911,10 @@ def ui_text_component(
 
 
 def country_labels(country_code: str, fallback: str = "") -> tuple[str, str]:
-    code = str(country_code or "").strip().upper()
-    labels = COUNTRY_NAMES.get(code)
+    raw_code = str(country_code or "").strip().upper()
+    canonical_code = normalize_country_code(raw_code, fallback)
+    labels = COUNTRY_NAMES.get(canonical_code)
     if labels:
         return labels
-    clean_fallback = str(fallback or code).strip()
+    clean_fallback = str(fallback or raw_code).strip()
     return clean_fallback, clean_fallback

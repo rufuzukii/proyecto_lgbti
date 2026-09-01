@@ -2713,7 +2713,7 @@ def build_combined_scatter(
     response_label = answer or _chart_text(language, "Respuesta seleccionada", "Selected answer")
     y_title = (
         f"{_chart_text(language, 'Personas que respondieron', 'People answering')} "
-        f'«{response_label}» (%)'
+        f'"{response_label}" (%)'
     )
     customdata = [
         [
@@ -2951,7 +2951,7 @@ def build_combined_quadrant_chart(
             ),
             "range": [0, 100],
         },
-        yaxis={"title": f'FRA «{response_label}» (%)', "range": [0, 100]},
+        yaxis={"title": f'FRA "{response_label}" (%)', "range": [0, 100]},
         annotations=annotations,
     )
     _apply_base_layout(figure, margin={"l": 70, "r": 25, "t": 35, "b": 70})
@@ -3020,7 +3020,7 @@ def build_ranking_position_gap_chart(
         f"{_chart_text(language, 'Diferencia', 'Difference')}: %{{customdata[3]}} "
         f"{_chart_text(language, 'posiciones', 'positions')}<br>"
         f"{_chart_text(language, 'Puntuación legal', 'Legal score')}: %{{customdata[4]:.1f}}<br>"
-        f'FRA «{answer_label}»: %{{customdata[5]:.1f}}%<extra></extra>'
+        f'FRA "{answer_label}": %{{customdata[5]:.1f}}%<extra></extra>'
     )
     for key, label_es, label_en, colour, symbol in (
         ("ilga_rank", "Posición legal", "Legal position", "#7c3aed", "diamond"),

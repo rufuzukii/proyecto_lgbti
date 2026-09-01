@@ -1477,7 +1477,7 @@ def test_fra_response_comparison_groups_country_variants_by_normalized_iso() -> 
         language="es",
     )
 
-    assert {country for trace in _traces(figure) for country in trace.y} == {"Rep\u00fablica Checa"}
+    assert {country for trace in _traces(figure) for country in trace.y} == {"Chequia"}
     assert {trace.customdata[0][0] for trace in _traces(figure)} == {"CZ"}
 
 

@@ -31,9 +31,11 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 1.5rem;
   padding: 1.15rem;
+  width: 100%;
 }
 
 .trend-field {
+  max-width: 100%;
   min-width: 0;
 }
 
@@ -54,10 +56,12 @@
 }
 
 .trend-field .dash-dropdown-wrapper,
+.trend-field .dash-dropdown,
 .trend-field .Select,
 .trend-field .Select-control {
   max-width: 100%;
   min-width: 0;
+  width: 100%;
 }
 
 .trend-field .dash-dropdown:disabled {
@@ -69,11 +73,16 @@
 }
 
 .trend-range-field {
+  max-width: 100%;
+  min-width: 0;
   padding: 0 0.35rem;
 }
 
+.trend-range-control,
 .trend-range-field .dash-slider-container {
+  max-width: 100%;
   min-width: 0;
+  width: 100%;
 }
 
 .trend-range-field .dash-range-slider-input {
@@ -81,9 +90,13 @@
   border: 1px solid var(--trend-border);
   border-radius: 0.45rem;
   color: var(--color-text);
+  display: block;
+  max-width: 100%;
   min-height: 2rem;
+  min-width: 0;
   padding: 0.25rem 0.4rem;
   transition: border-color var(--transition), box-shadow var(--transition), background-color var(--transition);
+  width: 100%;
 }
 
 .trend-range-field .dash-range-slider-min-input,
@@ -112,9 +125,11 @@
 }
 
 .trend-range-field .dash-slider-wrapper {
+  max-width: 100%;
   min-width: 0;
   overflow: visible;
   padding-inline: 0.35rem;
+  width: 100%;
 }
 
 .trend-range-field .dash-slider-track {

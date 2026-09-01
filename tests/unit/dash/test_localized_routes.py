@@ -112,6 +112,11 @@ def test_navbar_paths_follow_the_active_route_context(monkeypatch) -> None:
 
 def test_http_redirects_preserve_query_and_404_infers_language(monkeypatch) -> None:
     monkeypatch.setattr(dash_app_module, "initialize_mongo_indexes", lambda: None)
+    monkeypatch.setattr(
+        dash_app_module,
+        "assert_analytics_databases_available",
+        lambda: None,
+    )
     app = dash_app_module.create_dash_app()
     client = app.server.test_client()
 

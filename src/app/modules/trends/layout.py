@@ -105,6 +105,7 @@ def _controls() -> Component:
                 "trends_historical_range",
                 dcc.RangeSlider(
                     id="trend-year-range",
+                    className="trend-range-control",
                     min=2011,
                     max=2012,
                     value=[2011, 2012],

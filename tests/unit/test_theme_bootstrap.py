@@ -40,18 +40,54 @@ def test_dark_toggle_position_uses_persistent_document_theme() -> None:
 
 def test_dark_global_background_is_flat_across_dash_roots() -> None:
     styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
-    dark_variables = styles.split(':root[data-theme="dark"],', 1)[1].split("}", 1)[0]
-    dark_roots = styles.split('html[data-theme="dark"],', 1)[1].split("}", 1)[0]
+    dark_variables = styles.split(':root[data-theme="dark"] {', 1)[1].split("}", 1)[0]
+    theme_roots = styles.split(':root[data-theme="light"],', 1)[1].split("}", 1)[0]
 
     assert "--app-background: var(--color-bg);" in dark_variables
     assert "linear-gradient(135deg, #0a0e17 0%, #111827 52%, #1b1420 100%)" not in styles
     assert "--body-gradient" not in styles
-    assert 'html[data-theme="dark"] #react-entry-point' in dark_roots
-    assert 'html[data-theme="dark"] #_dash-app-content' in dark_roots
-    assert 'html[data-theme="dark"] .app-shell' in dark_roots
-    assert 'html[data-theme="dark"] #page-content' in dark_roots
-    assert "background-color: var(--color-bg);" in dark_roots
-    assert "background-image: none;" in dark_roots
+    assert ':root[data-theme="dark"] #react-entry-point' in theme_roots
+    assert ':root[data-theme="dark"] #_dash-app-content' in theme_roots
+    assert ':root[data-theme="dark"] .app-shell' in theme_roots
+    assert ':root[data-theme="dark"] #page-content' in theme_roots
+    assert "background-color: var(--color-bg);" in theme_roots
+    assert "background-image: none;" in theme_roots
+
+
+def test_light_theme_is_explicit_and_flat_across_dash_roots() -> None:
+    styles = (ASSETS / "styles.css").read_text(encoding="utf-8")
+    light_variables = styles.split(':root[data-theme="light"] {', 1)[1].split("}", 1)[0]
+    theme_roots = styles.split(':root[data-theme="light"],', 1)[1].split("}", 1)[0]
+
+    assert "--color-bg: #fff7fa;" in light_variables
+    assert "--app-background: var(--color-bg);" in light_variables
+    assert ':root[data-theme="light"] body' in theme_roots
+    assert ':root[data-theme="light"] #react-entry-point' in theme_roots
+    assert ':root[data-theme="light"] #_dash-app-content' in theme_roots
+    assert ':root[data-theme="light"] .app-shell' in theme_roots
+    assert ':root[data-theme="light"] #page-content' in theme_roots
+    assert "background-color: var(--color-bg);" in theme_roots
+
+
+def test_explicit_theme_never_depends_on_operating_system_preference() -> None:
+    styles = "\n".join(
+        path.read_text(encoding="utf-8") for path in ASSETS.rglob("*.css")
+    )
+    scripts = "\n".join(
+        path.read_text(encoding="utf-8") for path in ASSETS.rglob("*.js")
+    )
+    state = (ASSETS / "js" / "00_state.js").read_text(encoding="utf-8")
+    theme = (ASSETS / "js" / "20_theme.js").read_text(encoding="utf-8")
+
+    assert "prefers-color-scheme" not in styles
+    assert 'matchMedia("(prefers-color-scheme' not in scripts
+    assert "if (isSupportedTheme(saved))" in state
+    assert "document.documentElement.dataset.theme" in state
+    assert 'return isSupportedTheme(applied) ? applied : "light";' in state
+    assert "return null;" in state
+    assert "document.documentElement.dataset.theme = selected;" in theme
+    assert "document.documentElement.style.colorScheme = selected;" in theme
+    assert "window.localStorage.setItem(config.THEME_KEY, selected);" in theme
 
 
 def test_structural_page_gradients_are_removed() -> None:

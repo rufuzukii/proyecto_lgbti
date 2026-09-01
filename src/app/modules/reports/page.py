@@ -14,7 +14,6 @@ from app.core.auth.rate_limit import create_rate_limiter
 from app.core.dates import utc_today_iso
 from app.core.http_security import rate_limit_key
 from app.modules.reports.hr_reporting import (
-    HR_REPORT_OBJECTIVES,
     HR_REPORT_SECTIONS,
     hr_report_charts,
     hr_report_objective,
@@ -451,7 +450,6 @@ def register_reports_callbacks(app: Dash) -> None:
     @app.callback(
         Output("report-plan-summary", "children"),
         Input("report-source-select", "value"),
-        Input("report-objective-select", "value"),
         Input("report-year-select", "value"),
         Input("report-primary-country", "value"),
         Input("report-comparison-countries", "value"),
@@ -466,7 +464,6 @@ def register_reports_callbacks(app: Dash) -> None:
     )
     def update_report_plan_summary(
         source: str | None,
-        objective_id: str | None,
         year: int | None,
         primary_country: str | None,
         comparison_countries: list[str] | None,
@@ -480,7 +477,6 @@ def register_reports_callbacks(app: Dash) -> None:
         filter_b_value: str | None,
     ):
         clean_language = "en" if language == "en" else "es"
-        objective = hr_report_objective(objective_id)
         source_label = {
             "fra": _t(clean_language, "Datos sociales", "Social data"),
             "ilga": _t(clean_language, "Datos legales", "Legal data"),
@@ -533,8 +529,6 @@ def register_reports_callbacks(app: Dash) -> None:
             )
         summary_items.extend(
             [
-                html.Dt(_t(clean_language, "Objetivo", "Objective")),
-                html.Dd(objective.label_en if clean_language == "en" else objective.label_es),
                 html.Dt(_t(clean_language, "Secciones incluidas", "Included sections")),
                 html.Dd(sections),
             ]
@@ -553,7 +547,6 @@ def register_reports_callbacks(app: Dash) -> None:
         State("report-organization-input", "value"),
         State("report-author-input", "value"),
         State("report-source-select", "value"),
-        State("report-objective-select", "value"),
         State("report-category-select", "value"),
         State("report-indicator-select", "value"),
         State("report-year-select", "value"),
@@ -583,7 +576,6 @@ def register_reports_callbacks(app: Dash) -> None:
         organization: str | None,
         author: str | None,
         source: str | None,
-        objective: str | None,
         category: str | None,
         indicator: str | None,
         year: int | None,
@@ -645,7 +637,6 @@ def register_reports_callbacks(app: Dash) -> None:
                 organization=organization,
                 author=author,
                 source=source,
-                objective=objective,
                 category=category,
                 indicator=indicator,
                 year=year,
@@ -689,7 +680,6 @@ def register_reports_callbacks(app: Dash) -> None:
     @app.callback(
         Output("report-download-button", "disabled", allow_duplicate=True),
         Input("report-source-select", "value"),
-        Input("report-objective-select", "value"),
         Input("report-year-select", "value"),
         Input("report-category-select", "value"),
         Input("report-indicator-select", "value"),
@@ -886,22 +876,6 @@ def _configuration_panel(
                     html.P(text("Análisis combinado: relaciona experiencias sociales y protección legal sin asumir causalidad.", "Combined analysis: links social experiences and legal protection without assuming causality.")),
                 ],
                 className="reports-source-help",
-            ),
-            _field(
-                "Objetivo del informe",
-                "Report objective",
-                dcc.Dropdown(
-                    id="report-objective-select",
-                    options=[
-                        {
-                            "label": text(objective.label_es, objective.label_en),
-                            "value": objective.id,
-                        }
-                        for objective in HR_REPORT_OBJECTIVES
-                    ],
-                    value=hr_report_objective(config.objective).id,
-                    clearable=False,
-                ),
             ),
             _field(
                 "Título",
@@ -1156,6 +1130,7 @@ def _preview_content(content) -> list[Component]:
                     figure=chart.figure,
                     config=chart_graph_config(),
                     responsive=True,
+                    className="reports-preview-graph",
                 ),
                 html.Div(
                     [
@@ -1217,7 +1192,15 @@ def _preview_content(content) -> list[Component]:
             },
         ],
         rowData=content.table_rows,
-        defaultColDef={"sortable": True, "filter": True, "resizable": True},
+        defaultColDef={
+            "sortable": True,
+            "filter": True,
+            "resizable": True,
+            "wrapText": True,
+            "autoHeight": True,
+            "minWidth": 110,
+            "flex": 1,
+        },
         dashGridOptions={
             "pagination": True,
             "paginationPageSize": 10,
@@ -1225,7 +1208,7 @@ def _preview_content(content) -> list[Component]:
             "domLayout": "autoHeight",
         },
         className="ag-theme-quartz reports-preview-grid",
-        style={"width": "100%"},
+        style={"width": "100%", "maxWidth": "100%"},
     )
     components: list[Component] = [
         html.Header(
@@ -1237,15 +1220,12 @@ def _preview_content(content) -> list[Component]:
                     className="reports-preview-focus",
                 ),
                 html.P(
-                    f"«{content.indicator}» - {content.configuration.year or ''}",
+                    f'"{content.indicator}" - {content.configuration.year or ""}',
                     className="reports-preview-subtitle",
                 ),
             ]
         ),
     ]
-    if "metrics" in enabled and content.metrics:
-        components.append(metrics)
-    components.extend(charts)
     if "executive" in enabled:
         components.append(
             _preview_editable_section(
@@ -1254,6 +1234,9 @@ def _preview_content(content) -> list[Component]:
                 default_section_narrative(content, "executive"),
             )
         )
+    if "metrics" in enabled and content.metrics:
+        components.append(metrics)
+    components.extend(charts)
     if "context" in enabled:
         components.append(
             _preview_editable_section(
@@ -1283,7 +1266,7 @@ def _preview_content(content) -> list[Component]:
             html.Div(
                 [
                     html.H3("Comparación" if language == "es" else "Comparison"),
-                    table,
+                    html.Div(table, className="reports-preview-table-scroll"),
                 ],
                 className="reports-preview-section",
             )

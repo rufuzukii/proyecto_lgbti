@@ -243,7 +243,7 @@ def test_custom_mode_hides_disabled_sections_and_adds_active_segmentation() -> N
     preview = reports_page._preview_content(content)
     rendered_text = " ".join(_collect_text(preview))
 
-    assert f"«{content.indicator}»" in rendered_text
+    assert f'"{content.indicator}"' in rendered_text
     assert content.demographic_analysis
     assert "25-39" in rendered_text
     assert "Fuentes" in rendered_text
@@ -300,6 +300,77 @@ def test_preview_exposes_generated_report_prose_as_editable_textareas() -> None:
     assert section_values["recommendations"] == "\n".join(
         item.text for item in content.recommendations
     )
+
+
+def test_preview_starts_with_executive_summary_and_uses_responsive_components() -> None:
+    content = HRReportBuilder().build(
+        _configuration(),
+        ReportDataset(_fra_result(), query_seconds=0.01),
+    )
+
+    preview = reports_page._preview_content(content)
+    top_level_text = [" ".join(_collect_text(component)) for component in preview]
+    executive_index = next(
+        index for index, value in enumerate(top_level_text) if "Resumen ejecutivo" in value
+    )
+    metrics_index = next(
+        index
+        for index, component in enumerate(preview)
+        if getattr(component, "className", None) == "reports-preview-metrics"
+    )
+    chart_index = next(
+        index
+        for index, component in enumerate(preview)
+        if getattr(component, "className", None) == "reports-preview-chart"
+    )
+    components = [item for component in preview for item in _walk(component)]
+    graphs = [item for item in components if isinstance(item, dcc.Graph)]
+    grids = [item for item in components if item.__class__.__name__ == "AgGrid"]
+    table_wrappers = [
+        item
+        for item in components
+        if getattr(item, "className", None) == "reports-preview-table-scroll"
+    ]
+
+    assert executive_index < metrics_index < chart_index
+    assert "Objetivo del informe" not in " ".join(top_level_text)
+    assert graphs
+    graph_props = [graph.to_plotly_json()["props"] for graph in graphs]
+    assert all(props["responsive"] is True for props in graph_props)
+    assert all(props["className"] == "reports-preview-graph" for props in graph_props)
+    assert table_wrappers
+    assert grids
+    grid_props = grids[0].to_plotly_json()["props"]
+    assert grid_props["style"] == {"width": "100%", "maxWidth": "100%"}
+    assert grid_props["defaultColDef"]["wrapText"] is True
+    assert grid_props["defaultColDef"]["flex"] == 1
+
+
+def test_report_preview_styles_contain_overflow_at_the_source() -> None:
+    stylesheet = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "app"
+        / "web"
+        / "assets"
+        / "reports.css"
+    ).read_text(encoding="utf-8")
+
+    document_rule = stylesheet.split(".reports-preview-document {", 1)[1].split("}", 1)[0]
+    section_rule = stylesheet.split(".reports-preview-section,", 1)[1].split("}", 1)[0]
+    textarea_rule = stylesheet.split(".reports-chart-narrative,", 1)[1].split("}", 1)[0]
+    table_rule = stylesheet.split(".reports-preview-table-scroll {", 1)[1].split("}", 1)[0]
+
+    assert "width: 100%;" in document_rule
+    assert "max-width: 980px;" in document_rule
+    assert "min-width: 0;" in document_rule
+    assert "max-width: 100%;" in section_rule
+    assert "min-width: 0;" in section_rule
+    assert "overflow-wrap: anywhere;" in section_rule
+    assert "width: 100%;" in textarea_rule
+    assert "max-width: 100%;" in textarea_rule
+    assert "resize: vertical;" in textarea_rule
+    assert "overflow-x: auto;" in table_rule
 
 
 def test_chart_narrative_pattern_preserves_multiline_edits_and_empty_values() -> None:
@@ -439,6 +510,7 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert len(document) >= 3
     assert "Informe de diversidad" in extracted
     assert "Resumen ejecutivo" in extracted
+    assert "Objetivo del informe" not in extracted
     assert "Posibles líneas de actuación" in extracted
     assert "Resumen ejecutivo revisado" in extracted
     assert "Contexto revisado por la persona usuaria" in extracted
@@ -447,6 +519,7 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert "EU LGBTIQ Survey III, 2023" in extracted
     assert "España" in extracted
     assert "RainbowLens Datahub" in extracted
+    assert extracted.index("Resumen ejecutivo") < extracted.index("Métricas principales")
     metadata = document.metadata
     assert metadata is not None
     assert metadata["creator"] == "RainbowLens Datahub"
@@ -466,6 +539,20 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert widget_values["chart_ranking_observation"] == "Observación final"
     assert all(widget.field_type_string == "Text" for widget in widgets)
     assert all(widget.field_flags & 4096 for widget in widgets)
+    page_width = document[0].rect.width
+    printable_left = 17 * 72 / 25.4
+    printable_right = page_width - printable_left
+    assert all(widget.rect.x0 >= printable_left - 1 for widget in widgets)
+    assert all(widget.rect.x1 <= printable_right + 1 for widget in widgets)
+    image_rects = [
+        rect
+        for page in document
+        for image in page.get_images(full=True)
+        for rect in page.get_image_rects(image[0])
+    ]
+    assert image_rects
+    assert all(rect.x0 >= printable_left - 1 for rect in image_rects)
+    assert all(rect.x1 <= printable_right + 1 for rect in image_rects)
 
 
 def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
@@ -624,7 +711,7 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     }.issubset(ids)
     assert "report-criterion-select" not in ids
     assert "report-criterion-field" not in ids
-    assert "report-objective-select" in ids
+    assert "report-objective-select" not in ids
     assert not {
         "report-mode-select",
         "report-sections-select",
@@ -773,7 +860,6 @@ def test_preview_is_blocked_when_social_indicator_is_missing() -> None:
         None,
         None,
         "fra",
-        "inclusion_context",
         "Employment",
         None,
         2023,
@@ -783,9 +869,9 @@ def test_preview_is_blocked_when_social_indicator_is_missing() -> None:
         None,
         "All",
         "All",
-            "All",
-            "All",
-            "2026-08-21",
+        "All",
+        "All",
+        "2026-08-21",
         {},
     )
 

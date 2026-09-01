@@ -215,7 +215,7 @@
   {
     "id": "endosex",
     "term": "Endosex",
-    "definition": "Persona que se ajusta a la norma genital dimórfica: la clasificación de los cuerpos en dos formas biológicas basada en la reproducción. Es el término opuesto a «intersex».",
+    "definition": "Persona que se ajusta a la norma genital dimórfica: la clasificación de los cuerpos en dos formas biológicas basada en la reproducción. Es el término opuesto a \"intersex\".",
     "category": "sex_characteristics_intersex",
     "sources": [
       {
@@ -265,7 +265,7 @@
   {
     "id": "gay",
     "term": "Gay",
-    "definition": "Hombre que siente atracción afectiva, romántica o sexual hacia otros hombres. «Gay» se utiliza como identidad y también aparece en algunos contextos como una denominación más amplia.",
+    "definition": "Hombre que siente atracción afectiva, romántica o sexual hacia otros hombres. \"Gay\" se utiliza como identidad y también aparece en algunos contextos como una denominación más amplia.",
     "category": "sexual_orientation",
     "sources": [
       {
@@ -449,7 +449,7 @@
   {
     "id": "homosexual",
     "term": "Homosexual",
-    "definition": "Persona que siente atracción afectiva, romántica o sexual hacia personas de su mismo género. «Gay» y «lesbiana» pueden emplearse como identidades más específicas según la persona.",
+    "definition": "Persona que siente atracción afectiva, romántica o sexual hacia personas de su mismo género. \"Gay\" y \"lesbiana\" pueden emplearse como identidades más específicas según la persona.",
     "category": "sexual_orientation",
     "sources": [
       {
@@ -584,7 +584,7 @@
   {
     "id": "lgbtiq",
     "term": "LGTBIQ+",
-    "definition": "Acrónimo que reúne lesbianas, gais, bisexuales, personas trans, intersex y queer. El signo «+» reconoce otras orientaciones, identidades, expresiones y características sexuales que no quedan enumeradas y recuerda que el acrónimo no agota toda la diversidad.",
+    "definition": "Acrónimo que reúne lesbianas, gais, bisexuales, personas trans, intersex y queer. El signo \"+\" reconoce otras orientaciones, identidades, expresiones y características sexuales que no quedan enumeradas y recuerda que el acrónimo no agota toda la diversidad.",
     "category": "diversity_inclusion",
     "sources": [
       {
@@ -962,7 +962,7 @@
     "id": "conversion_practices",
     "term": "Prácticas de conversión",
     "term_en": "Conversion practices",
-    "definition": "Prácticas o esfuerzos que pretenden cambiar, reprimir o suprimir la orientación sexual, la identidad de género o la expresión de género de una persona. El concepto es más amplio que la expresión «terapia de conversión».",
+    "definition": "Prácticas o esfuerzos que pretenden cambiar, reprimir o suprimir la orientación sexual, la identidad de género o la expresión de género de una persona. El concepto es más amplio que la expresión \"terapia de conversión\".",
     "definition_en": "Practices or efforts intended to change, repress or suppress a person's sexual orientation, gender identity or gender expression. The concept is broader than the expression “conversion therapy”.",
     "category": "rights_legal_protection",
     "attribution": "based_on",
