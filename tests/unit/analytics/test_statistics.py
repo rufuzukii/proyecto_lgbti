@@ -1248,7 +1248,14 @@ def test_fra_response_comparison_builds_stacked_chart_for_three_answers() -> Non
     assert summary["countries"] == 2
     assert summary["responses"] == 3
     assert len(summary["distribution"]) == 3
-    assert any(annotation.text == "Seleccionado" for annotation in _layout(figure).annotations)
+    selected_annotation = next(
+        annotation
+        for annotation in _layout(figure).annotations
+        if annotation.text == "Seleccionado"
+    )
+    assert selected_annotation.font.color == "#f8fafc"
+    assert selected_annotation.bgcolor == "#111827"
+    assert selected_annotation.bordercolor == "#f8fafc"
 
 
 def test_fra_response_comparison_rejects_out_of_range_values_without_zero_bars(

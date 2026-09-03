@@ -20,7 +20,18 @@ def test_home_ilga_choropleth_uses_iso3_locations() -> None:
 
     assert trace.locationmode == "ISO-3"
     assert list(trace.locations) == ["ESP", "PRT"]
-    assert list(trace.text) == ["Spain", "Portugal"]
+    assert list(trace.text) == ["España", "Portugal"]
+
+    english = build_ilga_choropleth(
+        {
+            "countries": [
+                {"country": "España", "country_code": "ES", "ranking": 77.0},
+                {"country": "Portugal", "country_code": "PT", "ranking": 68.0},
+            ]
+        },
+        language="en",
+    )
+    assert list(_trace(english).text) == ["Spain", "Portugal"]
     assert trace.customdata[0][0] == "ES"
     assert trace.colorbar.x == -0.015
     assert trace.colorbar.xanchor == "right"

@@ -127,6 +127,29 @@ def _ilga_result() -> dict[str, Any]:
     }
 
 
+def _many_country_result(count: int = 12) -> dict[str, Any]:
+    countries = [
+        ("ES", "Spain"),
+        ("FR", "France"),
+        ("DE", "Germany"),
+        ("NL", "Netherlands"),
+        ("GB", "United Kingdom"),
+        ("CZ", "Czechia"),
+        ("PT", "Portugal"),
+        ("IT", "Italy"),
+        ("BE", "Belgium"),
+        ("AT", "Austria"),
+        ("SE", "Sweden"),
+        ("FI", "Finland"),
+    ][:count]
+    result = _fra_result()
+    result["ranking"] = [
+        {"iso": code, "country": name, "value": float(100 - index)}
+        for index, (code, name) in enumerate(countries)
+    ]
+    return result
+
+
 def test_report_configuration_sanitizes_user_text_and_keeps_only_identifiers() -> None:
     config = ReportConfiguration.from_mapping(
         {
@@ -210,6 +233,163 @@ def test_builder_supports_ilga_and_english_temporal_report() -> None:
     assert all(not item.derived_from_metrics for item in content.recommendations)
 
 
+def test_social_and_legal_reports_start_with_the_reused_european_map() -> None:
+    social = HRReportBuilder().build(
+        _configuration(), ReportDataset(_fra_result(), query_seconds=0.01)
+    )
+    legal = HRReportBuilder().build(
+        ReportConfiguration.from_mapping(
+            {"source": "ilga", "year": 2026, "language": "es"}
+        ),
+        ReportDataset(_ilga_result(), query_seconds=0.01),
+    )
+
+    assert social.charts[0].key == "map_fra"
+    assert cast(Any, social.charts[0].figure.data[0]).type == "choropleth"
+    assert legal.charts[0].key == "map_ilga"
+    assert cast(Any, legal.charts[0].figure.data[0]).type == "choropleth"
+
+
+def test_unselected_ranking_reuses_all_statistics_pages_without_losing_countries() -> None:
+    content = HRReportBuilder().build(
+        _configuration(countries=[], primary_country="", charts=["ranking"]),
+        ReportDataset(_many_country_result(), query_seconds=0.01),
+    )
+    ranking = next(chart for chart in content.charts if chart.key == "ranking")
+    page_countries = [
+        str(country)
+        for figure in ranking.figures
+        for country in cast(Any, figure.data[0]).y
+    ]
+
+    assert len(ranking.figures) == 3
+    assert ranking.page_ranges == [(1, 5), (6, 10), (11, 12)]
+    assert [len(cast(Any, figure.data[0]).y) for figure in ranking.figures] == [5, 5, 2]
+    assert len(page_countries) == len(set(page_countries)) == 12
+    assert len(content.table_rows) == 12
+
+
+def test_other_multi_country_figures_reuse_the_same_static_page_groups() -> None:
+    result = _many_country_result()
+    result["detail_data"] = [
+        {
+            "country": row["country"],
+            "iso": row["iso"],
+            "answer": answer,
+            "percentage": row["value"] if answer == "Yes" else 100 - row["value"],
+        }
+        for row in result["ranking"]
+        for answer in ("Yes", "No")
+    ]
+    content = HRReportBuilder().build(
+        _configuration(
+            countries=[],
+            primary_country="",
+            charts=["countries", "responses"],
+        ),
+        ReportDataset(result, query_seconds=0.01),
+    )
+
+    figures = {chart.key: chart for chart in content.charts}
+    assert len(figures["countries"].figures) == 3
+    assert len(figures["responses"].figures) == 3
+    assert figures["countries"].page_ranges == [(1, 5), (6, 10), (11, 12)]
+    response_page_countries = [
+        {
+            str(country)
+            for trace in figure.data
+            for country in (getattr(trace, "y", None) or [])
+        }
+        for figure in figures["responses"].figures
+    ]
+    assert [len(countries) for countries in response_page_countries] == [5, 5, 2]
+    assert all(not figure.layout.annotations for figure in figures["responses"].figures)
+    assert not (
+        response_page_countries[0]
+        & response_page_countries[1]
+        | response_page_countries[0]
+        & response_page_countries[2]
+        | response_page_countries[1]
+        & response_page_countries[2]
+    )
+
+
+def test_response_details_only_contains_explicitly_selected_countries() -> None:
+    result = _many_country_result()
+    result["detail_data"] = [
+        {
+            "country": row["country"],
+            "iso": row["iso"],
+            "answer": answer,
+            "percentage": row["value"] if answer == "Yes" else 100 - row["value"],
+        }
+        for row in result["ranking"]
+        for answer in ("Yes", "No")
+    ]
+    content = HRReportBuilder().build(
+        _configuration(
+            countries=["ES", "DE"],
+            primary_country="ES",
+            charts=["responses"],
+        ),
+        ReportDataset(result, query_seconds=0.01),
+    )
+
+    responses = next(chart for chart in content.charts if chart.key == "responses")
+    rendered_countries = {
+        str(country)
+        for trace in responses.figure.data
+        for country in (getattr(trace, "y", None) or [])
+    }
+
+    assert len(responses.figures) == 1
+    assert rendered_countries == {"España", "Alemania"}
+    assert len(responses.figure.layout.annotations) == 2
+    assert {
+        annotation.text for annotation in responses.figure.layout.annotations
+    } == {"Seleccionado"}
+
+
+def test_selected_ranking_only_contains_explicit_countries() -> None:
+    selected = ["ES", "FR", "DE"]
+    content = HRReportBuilder().build(
+        _configuration(countries=selected, primary_country="ES", charts=["ranking"]),
+        ReportDataset(_many_country_result(), query_seconds=0.01),
+    )
+    ranking = next(chart for chart in content.charts if chart.key == "ranking")
+    countries = set(cast(Any, ranking.figure.data[0]).y)
+
+    assert len(ranking.figures) == 1
+    assert countries == {"España", "Francia", "Alemania"}
+    assert {row["country"] for row in content.table_rows} == countries
+
+
+def test_ranking_pages_preserve_global_tied_positions() -> None:
+    result = _many_country_result(6)
+    values = [100.0, 90.0, 80.0, 70.0, 60.0, 60.0]
+    for row, value in zip(result["ranking"], values, strict=True):
+        row["value"] = value
+    content = HRReportBuilder().build(
+        _configuration(countries=[], primary_country="", charts=["ranking"]),
+        ReportDataset(result, query_seconds=0.01),
+    )
+    ranking = next(chart for chart in content.charts if chart.key == "ranking")
+    positions = [
+        str(item[1])
+        for figure in ranking.figures
+        for item in cast(Any, figure.data[0]).customdata
+    ]
+
+    assert sorted(positions) == [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "5",
+    ]
+
+
 def test_builder_handles_europe_scope_and_selected_country_without_data() -> None:
     europe = HRReportBuilder().build(
         _configuration(countries=[], primary_country=""),
@@ -248,7 +428,7 @@ def test_custom_mode_hides_disabled_sections_and_adds_active_segmentation() -> N
     assert "25-39" in rendered_text
     assert "Fuentes" in rendered_text
     assert "Recomendaciones" not in rendered_text
-    assert len(content.charts) == 1
+    assert [chart.key for chart in content.charts] == ["map_fra", "ranking"]
     assert content.charts[0].observation == ""
 
     textareas: list[Any] = [
@@ -263,7 +443,7 @@ def test_custom_mode_hides_disabled_sections_and_adds_active_segmentation() -> N
     section_textareas = [
         item for item in textareas if item.id["type"] == "report-section-narrative"
     ]
-    assert len(chart_textareas) == 3
+    assert len(chart_textareas) == len(content.charts) * 3
     assert {item.id["field"] for item in chart_textareas} == {
         "what_shows",
         "how_to_read",
@@ -318,10 +498,16 @@ def test_preview_starts_with_executive_summary_and_uses_responsive_components() 
         for index, component in enumerate(preview)
         if getattr(component, "className", None) == "reports-preview-metrics"
     )
-    chart_index = next(
+    map_index = next(
         index
         for index, component in enumerate(preview)
         if getattr(component, "className", None) == "reports-preview-chart"
+    )
+    ranking_index = next(
+        index
+        for index, component in enumerate(preview)
+        if getattr(component, "className", None) == "reports-preview-chart"
+        and "Ranking comparativo" in " ".join(_collect_text(component))
     )
     components = [item for component in preview for item in _walk(component)]
     graphs = [item for item in components if isinstance(item, dcc.Graph)]
@@ -332,7 +518,7 @@ def test_preview_starts_with_executive_summary_and_uses_responsive_components() 
         if getattr(item, "className", None) == "reports-preview-table-scroll"
     ]
 
-    assert executive_index < metrics_index < chart_index
+    assert executive_index < map_index < metrics_index < ranking_index
     assert "Objetivo del informe" not in " ".join(top_level_text)
     assert graphs
     graph_props = [graph.to_plotly_json()["props"] for graph in graphs]
@@ -359,6 +545,9 @@ def test_report_preview_styles_contain_overflow_at_the_source() -> None:
     document_rule = stylesheet.split(".reports-preview-document {", 1)[1].split("}", 1)[0]
     section_rule = stylesheet.split(".reports-preview-section,", 1)[1].split("}", 1)[0]
     textarea_rule = stylesheet.split(".reports-chart-narrative,", 1)[1].split("}", 1)[0]
+    editor_rule = stylesheet.split(".reports-chart-editor {", 1)[1].split("}", 1)[0]
+    field_rule = stylesheet.split(".reports-chart-editor-field {", 1)[1].split("}", 1)[0]
+    section_editor_rule = stylesheet.split(".reports-section-editor {", 1)[1].split("}", 1)[0]
     table_rule = stylesheet.split(".reports-preview-table-scroll {", 1)[1].split("}", 1)[0]
 
     assert "width: 100%;" in document_rule
@@ -370,7 +559,25 @@ def test_report_preview_styles_contain_overflow_at_the_source() -> None:
     assert "width: 100%;" in textarea_rule
     assert "max-width: 100%;" in textarea_rule
     assert "resize: vertical;" in textarea_rule
+    assert "box-sizing: border-box;" in editor_rule
+    assert "box-sizing: border-box;" in field_rule
+    assert "width: 100%;" in field_rule
+    assert "display: grid;" in section_editor_rule
+    assert "width: 100%;" in section_editor_rule
     assert "overflow-x: auto;" in table_rule
+
+
+def test_editable_chart_field_has_aligned_wrapper_label_and_textarea_contract() -> None:
+    field = reports_page._chart_narrative_field(
+        "ranking", "what_shows", cast(Any, "Qué muestra"), "Texto\nmultilínea"
+    )
+    props = field.to_plotly_json()["props"]
+    label, textarea = props["children"]
+
+    assert props["className"] == "reports-chart-editor-field"
+    assert label.to_plotly_json()["type"] == "Span"
+    assert textarea.className == "reports-chart-narrative"
+    assert textarea.value == "Texto\nmultilínea"
 
 
 def test_chart_narrative_pattern_preserves_multiline_edits_and_empty_values() -> None:
@@ -723,12 +930,14 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     assert "figure" not in store_data
     source_control = _component_by_id(layout, "report-source-select")
     indicator_control = _component_by_id(layout, "report-indicator-select")
+    comparison_control = _component_by_id(layout, "report-comparison-countries")
     assert "report-spanish-context" not in ids
     assert "report-template-select" not in ids
     assert "template_id" not in store_data
     assert [option["value"] for option in source_control.options] == [
         "fra", "ilga", "combined"
     ]
+    assert comparison_control.value == ["FR"]
     source_labels = " ".join(str(option["label"].to_plotly_json()) for option in source_control.options)
     assert "Datos sociales" in source_labels
     assert "Datos legales" in source_labels
@@ -765,6 +974,42 @@ def test_reports_callbacks_register_preview_and_download() -> None:
     assert "report-config-store.data" in keys
     assert "report-criterion-select" not in str(app.callback_map)
     assert "report-template-select" not in str(app.callback_map)
+
+
+def test_report_plan_summary_shows_indicator_name_instead_of_internal_code() -> None:
+    app = Dash("report-indicator-summary", suppress_callback_exceptions=True)
+    reports_page.register_reports_callbacks(app)
+    callback = next(
+        item["callback"].__wrapped__
+        for item in app.callback_map.values()
+        if getattr(item.get("callback"), "__wrapped__", None)
+        and item["callback"].__wrapped__.__name__ == "update_report_plan_summary"
+    )
+
+    summary = callback(
+        "fra",
+        2023,
+        "ES",
+        [],
+        "Yes",
+        "es",
+        "Health and mental health",
+        "H6_C",
+        [
+            {
+                "label": "Cancer prevention medical checks: last colonoscopy",
+                "value": "H6_C",
+            }
+        ],
+        "All",
+        "All",
+        "All",
+        "All",
+    )
+    rendered_text = " ".join(_collect_text(summary))
+
+    assert "Cancer prevention medical checks: last colonoscopy" in rendered_text
+    assert "H6_C" not in rendered_text
 
 
 def test_social_indicator_validation_and_filter_scope_are_explicit() -> None:
@@ -903,7 +1148,11 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     render_config = (root / "render.yaml").read_text(encoding="utf-8")
     requirements = (root / "requirements.txt").read_text(encoding="utf-8")
 
-    assert "plotly_get_chrome -y" in render_config
+    assert "mkdir -p .render/chrome" in render_config
+    assert "plotly_get_chrome -y --path .render/chrome" in render_config
+    assert 'test -x "$BROWSER_PATH"' in render_config
+    assert "BROWSER_PATH" in render_config
+    assert "/opt/render/project/src/.render/chrome/chrome-linux64/chrome" in render_config
     assert "kaleido==1.3.0" in requirements
     assert "reportlab==4.5.1" in requirements
     assert "healthCheckPath: /health" in render_config

@@ -222,6 +222,26 @@ def test_render_callback_returns_complete_result_and_methodology(monkeypatch) ->
     assert ui_text("trends_glossary_title", "es") in text
 
 
+def test_detailed_methodology_localizes_country_names_in_spanish_and_english() -> None:
+    cases = (
+        ("ES", "Spain", "España", "Spain"),
+        ("DE", "Germany", "Alemania", "Germany"),
+        ("NL", "Netherlands", "Países Bajos", "Netherlands"),
+        ("GB", "United Kingdom", "Reino Unido", "United Kingdom"),
+        ("CZ", "Czechia", "Chequia", "Czechia"),
+    )
+    for code, stored_name, spanish_name, english_name in cases:
+        result = replace(_result(), country_code=code, country_name=stored_name)
+
+        spanish = str(trend_callbacks._methodology(result, "es").to_plotly_json())
+        english = str(trend_callbacks._methodology(result, "en").to_plotly_json())
+
+        assert spanish_name in spanish
+        assert english_name in english
+        if spanish_name != stored_name:
+            assert stored_name not in spanish
+
+
 def test_selected_method_uses_plain_and_statistical_names_for_every_model() -> None:
     expected = {
         ForecastModelName.LINEAR: ("Tendencia lineal", "Regresión lineal"),

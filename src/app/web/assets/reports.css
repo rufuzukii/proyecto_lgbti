@@ -185,6 +185,7 @@
 }
 
 .reports-chart-editor {
+    box-sizing: border-box;
     display: grid;
     gap: 0.9rem;
     margin-top: 0.8rem;
@@ -204,13 +205,20 @@
 }
 
 .reports-chart-editor-field {
+    box-sizing: border-box;
     display: grid;
     gap: 0.35rem;
     max-width: 100%;
     min-width: 0;
+    width: 100%;
 }
 
 .reports-chart-editor-field > span {
+    box-sizing: border-box;
+    display: block;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
     color: var(--reports-text);
     font-weight: 800;
 }
@@ -371,6 +379,7 @@
 }
 
 .reports-preview-shell {
+    box-sizing: border-box;
     max-width: 100%;
     min-width: 0;
     padding: clamp(1rem, 3vw, 2rem);
@@ -466,11 +475,43 @@
 }
 
 .reports-section-editor-title {
+    box-sizing: border-box;
     display: block;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
     margin-bottom: 0.7rem;
     color: var(--reports-text);
     font-size: 1.17em;
     font-weight: 800;
+}
+
+.reports-section-editor {
+    box-sizing: border-box;
+    display: grid;
+    gap: 0.7rem;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+}
+
+.reports-section-editor .reports-section-editor-title {
+    margin-bottom: 0;
+}
+
+.reports-preview-chart-page {
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+}
+
+.reports-preview-chart-page-title {
+    box-sizing: border-box;
+    margin: 0.75rem 0 0.35rem;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
 }
 
 .reports-preview-chart .js-plotly-plot,

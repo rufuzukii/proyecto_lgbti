@@ -104,12 +104,21 @@ def generate_report_pdf(
         with tempfile.TemporaryDirectory(prefix="rainbowlens-datahub-report-") as temp_dir:
             root = Path(temp_dir).resolve()
             chart_paths = {
-                chart.key: root / f"{index:02d}-{chart.key}.png"
+                chart.key: [
+                    root / f"{index:02d}-{chart.key}-{page:02d}.png"
+                    for page, _figure in enumerate(chart.figures, start=1)
+                ]
                 for index, chart in enumerate(content.charts, start=1)
             }
+            figures = [
+                figure for chart in content.charts for figure in chart.figures
+            ]
+            paths = [
+                path for chart in content.charts for path in chart_paths[chart.key]
+            ]
             export_figures_for_report(
-                [chart.figure for chart in content.charts],
-                [chart_paths[chart.key] for chart in content.charts],
+                figures,
+                paths,
             )
             image_seconds = time.perf_counter() - image_started
             pdf_started = time.perf_counter()
@@ -128,6 +137,7 @@ def generate_report_pdf(
                 "year": configuration.year,
                 "country_count": len(configuration.countries),
                 "chart_count": len(content.charts),
+                "image_count": len(figures),
                 **timings,
             },
         )

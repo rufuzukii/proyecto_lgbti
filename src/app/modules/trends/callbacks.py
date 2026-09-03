@@ -641,8 +641,11 @@ def _collection_text(result: ForecastResult, language: str) -> str:
     summary = result.summary
     if summary is None:
         return ""
+    country = country_labels(result.country_code, result.country_name)[
+        1 if language == "en" else 0
+    ]
     return ui_text("trends_data_collection_detail", language).format(
-        country=result.country_name,
+        country=country,
         start=summary.start_year,
         end=summary.end_year,
         observations=summary.observations,

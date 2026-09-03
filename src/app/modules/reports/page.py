@@ -457,6 +457,7 @@ def register_reports_callbacks(app: Dash) -> None:
         Input("report-language-select", "value"),
         Input("report-category-select", "value"),
         Input("report-indicator-select", "value"),
+        Input("report-indicator-select", "options"),
         Input("report-filter-a-name", "value"),
         Input("report-filter-a-value", "value"),
         Input("report-filter-b-name", "value"),
@@ -471,12 +472,14 @@ def register_reports_callbacks(app: Dash) -> None:
         language: str | None,
         category: str | None,
         indicator: str | None,
+        indicator_options: list[dict[str, Any]] | None,
         filter_a_name: str | None,
         filter_a_value: str | None,
         filter_b_name: str | None,
         filter_b_value: str | None,
     ):
         clean_language = "en" if language == "en" else "es"
+        indicator_label = _selected_option_label(indicator_options, indicator) or indicator
         source_label = {
             "fra": _t(clean_language, "Datos sociales", "Social data"),
             "ilga": _t(clean_language, "Datos legales", "Legal data"),
@@ -509,7 +512,7 @@ def register_reports_callbacks(app: Dash) -> None:
             summary_items.extend(
                 [
                     html.Dt(_t(clean_language, "Indicador social", "Social indicator")),
-                    html.Dd(indicator or "—"),
+                    html.Dd(indicator_label or "—"),
                     html.Dt(_t(clean_language, "Respuesta", "Answer")),
                     html.Dd(answer or "—"),
                 ]
@@ -1034,7 +1037,11 @@ def _configuration_panel(
                 dcc.Dropdown(
                     id="report-comparison-countries",
                     options=country_options,
-                    value=list(config.countries),
+                    value=[
+                        country
+                        for country in config.countries
+                        if country != config.primary_country
+                    ],
                     multi=True,
                 ),
             ),
@@ -1126,12 +1133,26 @@ def _preview_content(content) -> list[Component]:
         html.Div(
             [
                 html.H3(chart.title),
-                dcc.Graph(
-                    figure=chart.figure,
-                    config=chart_graph_config(),
-                    responsive=True,
-                    className="reports-preview-graph",
-                ),
+                *[
+                    html.Div(
+                        [
+                            html.H4(
+                                f"{chart.title} ({page_index}/{len(chart.figures)})",
+                                className="reports-preview-chart-page-title",
+                            )
+                            if len(chart.figures) > 1
+                            else None,
+                            dcc.Graph(
+                                figure=figure,
+                                config=chart_graph_config(),
+                                responsive=True,
+                                className="reports-preview-graph",
+                            ),
+                        ],
+                        className="reports-preview-chart-page",
+                    )
+                    for page_index, figure in enumerate(chart.figures, start=1)
+                ],
                 html.Div(
                     [
                         html.P(
@@ -1167,6 +1188,7 @@ def _preview_content(content) -> list[Component]:
         )
         for chart in content.charts
     ]
+    map_chart_count = sum(chart.key.startswith("map_") for chart in content.charts)
     table = dag.AgGrid(
         columnDefs=[
             {"headerName": "Country" if language == "en" else "País", "field": "country"},
@@ -1234,9 +1256,10 @@ def _preview_content(content) -> list[Component]:
                 default_section_narrative(content, "executive"),
             )
         )
+    components.extend(charts[:map_chart_count])
     if "metrics" in enabled and content.metrics:
         components.append(metrics)
-    components.extend(charts)
+    components.extend(charts[map_chart_count:])
     if "context" in enabled:
         components.append(
             _preview_editable_section(
@@ -1423,6 +1446,19 @@ def _configuration_from_controls(**values: Any) -> ReportConfiguration:
             "countries": countries,
         }
     )
+
+
+def _selected_option_label(
+    options: list[dict[str, Any]] | None,
+    selected_value: Any,
+) -> str:
+    clean_value = str(selected_value or "").strip()
+    for option in options or []:
+        if str(option.get("value") or "").strip() != clean_value:
+            continue
+        label = option.get("label")
+        return str(label).strip() if isinstance(label, str) else ""
+    return ""
 
 
 def _current_user_id() -> str:

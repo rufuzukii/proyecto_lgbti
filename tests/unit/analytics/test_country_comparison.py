@@ -11,6 +11,7 @@ from app.modules.statistics.figures import (
     build_comparative_ranking_chart,
     build_eu_average_comparison_chart,
     build_experience_legal_radar,
+    build_fra_response_comparison_chart,
     build_response_country_comparison_chart,
     country_color,
 )
@@ -122,6 +123,29 @@ def test_response_comparison_groups_dynamic_answers_for_selected_countries() -> 
     assert list(_trace(figure).x) == ["Yes", "No", "Unknown"]
     assert list(_trace(figure).y) == [60.0, 30.0, 10.0]
     assert _trace(figure).orientation in (None, "v")
+
+
+def test_response_details_can_limit_rendering_without_changing_selection_semantics() -> None:
+    details = [
+        {"country": country, "iso": iso, "answer": answer, "percentage": value}
+        for country, iso, values in (
+            ("Spain", "ES", (60.0, 40.0)),
+            ("France", "FR", (55.0, 45.0)),
+            ("Germany", "DE", (50.0, 50.0)),
+        )
+        for answer, value in zip(("Yes", "No"), values, strict=True)
+    ]
+
+    figure = build_fra_response_comparison_chart(
+        details,
+        selected_countries=["ES", "DE"],
+        visible_countries=["ES", "DE"],
+    )
+
+    assert {country for trace in figure.data for country in trace.y} == {
+        "España",
+        "Alemania",
+    }
 
 
 def test_response_comparison_keeps_all_46_countries_without_map_selection(

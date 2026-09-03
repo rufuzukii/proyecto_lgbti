@@ -12,7 +12,7 @@ from app.shared.data.percentage_display import (
     format_percentage,
     prepare_percentage_display_values,
 )
-from app.web.i18n import ui_text
+from app.web.i18n import country_labels, ui_text
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,10 @@ ISO2_TO_ISO3 = {
 def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "es") -> go.Figure:
     countries = _countries(document)
     countries = [country for country in countries if _iso3_location(country)]
+    for country in countries:
+        country["country"] = country_labels(
+            country["country_code"], country["country"]
+        )[1 if language == "en" else 0]
     figure = go.Figure()
     if countries:
         for country in countries:

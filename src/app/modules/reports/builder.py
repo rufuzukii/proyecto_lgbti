@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import pandas as pd
 
+from app.modules.home.figures import build_ilga_choropleth
 from app.modules.reports.hr_reporting import hr_report_focus_label, hr_report_objective
 from app.modules.reports.models import (
     ReportChart,
@@ -26,6 +27,7 @@ from app.modules.statistics.figures import (
     build_combined_scatter,
     build_comparative_ranking_chart,
     build_eu_average_comparison_chart,
+    build_europe_choropleth,
     build_experience_legal_radar,
     build_fra_response_comparison_chart,
     build_ilga_response_details_chart,
@@ -33,8 +35,10 @@ from app.modules.statistics.figures import (
     build_response_country_comparison_chart,
     build_temporal_evolution_chart,
 )
+from app.modules.statistics.ranking import RankingPage, paginate_ranking
 from app.shared.data.normalization import normalize_country_code
 from app.shared.data.source_attribution import attribution_for_sources
+from app.web.i18n import country_labels
 
 
 def _first_comparable_radar_country(payload: dict[str, Any]) -> str | None:
@@ -60,7 +64,9 @@ class ReportBuilder:
     ) -> ReportContent:
         started = time.perf_counter()
         result = dataset.result
-        ranking = _ranking_frame(result.get("ranking") or [])
+        ranking = _ranking_frame(
+            result.get("ranking") or [], language=configuration.language
+        )
         source_name = str(result.get("source") or "")
         indicator = str(
             result.get("indicator")
@@ -162,7 +168,9 @@ class ReportBuilder:
 HRReportBuilder = ReportBuilder
 
 
-def _ranking_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
+def _ranking_frame(
+    rows: list[dict[str, Any]], *, language: str = "es"
+) -> pd.DataFrame:
     dataframe = pd.DataFrame(rows)
     if dataframe.empty or "value" not in dataframe:
         return pd.DataFrame(columns=["country", "iso", "value", "position"])
@@ -176,10 +184,14 @@ def _ranking_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
         )
     ]
     dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
+    dataframe["country"] = [
+        country_labels(str(iso), str(country or iso))[1 if language == "en" else 0]
+        for iso, country in zip(dataframe["iso"], dataframe["country"], strict=True)
+    ]
     dataframe = dataframe.dropna(subset=["value"]).sort_values(
         ["value", "country"], ascending=[False, True]
     )
-    dataframe["position"] = range(1, len(dataframe) + 1)
+    dataframe["position"] = dataframe["value"].rank(method="min", ascending=False).astype(int)
     return dataframe.reset_index(drop=True)
 
 
@@ -295,11 +307,56 @@ def _charts(
     source = str(result.get("source") or "")
     detail = list(result.get("detail_data") or result.get("data") or [])
     language = config.language
+    ranking_pages = _report_ranking_pages(rows, selected)
+    page_ranges_by_key = {
+        key: [(page.start, page.end) for page in ranking_pages]
+        for key in ("ranking", "countries", "responses", "temporal")
+    }
+    map_builders: list[tuple[str, str, Any]] = []
+    if config.source in {"fra", "combined"}:
+        map_builders.append(
+            (
+                "map_fra",
+                _t(language, "Mapa europeo FRA", "FRA European map"),
+                lambda: build_europe_choropleth(
+                    list(result.get("ranking") or []),
+                    source="fra",
+                    selected_isos=selected,
+                    language=language,
+                    filter_a_name=config.filter_a_name,
+                    filter_a_value=config.filter_a_value,
+                    filter_b_name=config.filter_b_name,
+                    filter_b_value=config.filter_b_value,
+                    response=config.answer or None,
+                    survey_year=_safe_int(result.get("year")),
+                ),
+            )
+        )
+    if config.source in {"ilga", "combined"}:
+        map_builders.append(
+            (
+                "map_ilga",
+                _t(language, "Mapa legal ILGA-Europe", "ILGA-Europe legal map"),
+                lambda: build_ilga_choropleth(
+                    _legal_map_document(config, result, rows), language=language
+                ),
+            )
+        )
     builders: list[tuple[str, str, Any]] = [
+        *map_builders,
         (
             "ranking",
             _t(language, "Ranking comparativo", "Comparative ranking"),
-            lambda: build_comparative_ranking_chart(rows, selected, language),
+            lambda: [
+                build_comparative_ranking_chart(
+                    page.rows,
+                    None,
+                    language,
+                    indicator=indicator,
+                    year=result.get("year"),
+                )
+                for page in ranking_pages
+            ],
         ),
         (
             "average",
@@ -313,22 +370,31 @@ def _charts(
                 (
                     "countries",
                     _t(language, "Comparación de respuestas", "Response comparison"),
-                    lambda: build_response_country_comparison_chart(
-                        detail,
-                        selected,
-                        language,
-                        indicator=indicator,
-                        year=result.get("year"),
-                    ),
+                    lambda: [
+                        build_response_country_comparison_chart(
+                            detail,
+                            _page_country_codes(page),
+                            language,
+                            indicator=indicator,
+                            year=result.get("year"),
+                        )
+                        for page in ranking_pages
+                    ],
                 ),
                 (
                     "responses",
                     _t(language, "Detalle de respuestas", "Response detail"),
-                    lambda: build_fra_response_comparison_chart(
-                        detail,
-                        selected_countries=selected,
-                        language=language,
-                    ),
+                    lambda: [
+                        build_fra_response_comparison_chart(
+                            detail,
+                            selected_countries=(
+                                _page_country_codes(page) if selected else []
+                            ),
+                            visible_countries=_page_country_codes(page),
+                            language=language,
+                        )
+                        for page in ranking_pages
+                    ],
                 ),
             ]
         )
@@ -338,23 +404,29 @@ def _charts(
                 (
                     "responses",
                     _t(language, "Criterios jurídicos", "Legal criteria"),
-                    lambda: build_ilga_response_details_chart(
-                        detail,
-                        selected,
-                        language=language,
-                        indicator=indicator,
-                        year=result.get("year"),
-                    ),
+                    lambda: [
+                        build_ilga_response_details_chart(
+                            detail,
+                            _page_country_codes(page),
+                            language=language,
+                            indicator=indicator,
+                            year=result.get("year"),
+                        )
+                        for page in ranking_pages
+                    ],
                 ),
                 (
                     "temporal",
                     _t(language, "Evolución temporal", "Temporal evolution"),
-                    lambda: build_temporal_evolution_chart(
-                        list(result.get("history") or []),
-                        selected,
-                        language,
-                        visible_countries=selected or None,
-                    ),
+                    lambda: [
+                        build_temporal_evolution_chart(
+                            list(result.get("history") or []),
+                            selected,
+                            language,
+                            visible_countries=_page_country_codes(page),
+                        )
+                        for page in ranking_pages
+                    ],
                 ),
             ]
         )
@@ -432,24 +504,45 @@ def _charts(
         (result.get("combined_analysis") or {}).get("supported_analyses") or {}
     )
     for key, title, factory in builders:
-        if key not in config.charts:
+        if not key.startswith("map_") and key not in config.charts:
             continue
         if key in {"quadrants", "ranking_gap"} and not combined_support.get(key, False):
             continue
-        figure = factory()
-        if not figure.data:
+        built = factory()
+        figures = list(built) if isinstance(built, list) else [built]
+        figures = [figure for figure in figures if figure.data]
+        if not figures:
             continue
-        prepare_figure_for_export(
-            figure,
-            chart_type=key,
-            chart_title=title,
-            indicator=indicator,
-            countries=country_names,
-            year=result.get("year"),
-            source=source,
-            filters=_filter_labels(config),
-            language=language,
+        figure_source = (
+            "ILGA-Europe" if key == "map_ilga" else "FRA" if key == "map_fra" else source
         )
+        figure_year = (
+            (result.get("combined_analysis") or {}).get("ilga_year")
+            if key == "map_ilga" and config.source == "combined"
+            else result.get("year")
+        )
+        figure_indicator = (
+            _t(language, "Ranking total", "Overall ranking")
+            if key == "map_ilga"
+            else indicator
+        )
+        for page_index, figure in enumerate(figures, start=1):
+            page_title = (
+                f"{title} ({page_index}/{len(figures)})"
+                if len(figures) > 1
+                else title
+            )
+            prepare_figure_for_export(
+                figure,
+                chart_type=key,
+                chart_title=page_title,
+                indicator=figure_indicator,
+                countries=country_names,
+                year=figure_year,
+                source=figure_source,
+                filters=_filter_labels(config),
+                language=language,
+            )
         what_shows, how_to_read, observation = _chart_explanation(
             key, config, result, indicator
         )
@@ -457,14 +550,70 @@ def _charts(
             ReportChart(
                 key,
                 title,
-                figure,
+                figures[0],
                 source,
+                additional_figures=figures[1:],
+                page_ranges=page_ranges_by_key.get(key, []),
                 what_shows=what_shows,
                 how_to_read=how_to_read,
                 observation=observation,
             )
         )
     return charts
+
+
+def _report_ranking_pages(
+    rows: list[dict[str, Any]], selected: list[str]
+) -> list[RankingPage]:
+    """Reuse Statistics pagination over one already-prepared ranking."""
+    first = paginate_ranking(rows, 0, selected_countries=selected)
+    return [
+        first,
+        *[
+            paginate_ranking(rows, page, selected_countries=selected)
+            for page in range(1, first.page_count)
+        ],
+    ]
+
+
+def _page_country_codes(page: RankingPage) -> list[str]:
+    return [
+        code
+        for row in page.rows
+        if (code := normalize_country_code(row.get("iso"), row.get("country")))
+    ]
+
+
+def _legal_map_document(
+    config: ReportConfiguration,
+    result: dict[str, Any],
+    ranking_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if config.source == "combined":
+        source_rows = [
+            {
+                "country": row.get("country"),
+                "iso": row.get("iso"),
+                "value": row.get("legal_score"),
+            }
+            for row in (result.get("combined_analysis") or {}).get("rows") or []
+        ]
+        year = (result.get("combined_analysis") or {}).get("ilga_year")
+    else:
+        source_rows = ranking_rows
+        year = result.get("year")
+    return {
+        "year": year,
+        "countries": [
+            {
+                "country": row.get("country"),
+                "country_code": row.get("iso"),
+                "ranking": value,
+            }
+            for row in source_rows
+            if (value := _number(row.get("value"))) is not None
+        ],
+    }
 
 
 def _executive_summary(
@@ -893,6 +1042,30 @@ def _chart_explanation(
 ) -> tuple[str, str, str]:
     language = config.language
     explanations = {
+        "map_fra": (
+            _t(
+                language,
+                "Sitúa el resultado social seleccionado en su contexto europeo.",
+                "Places the selected social result in its European context.",
+            ),
+            _t(
+                language,
+                "La escala y los colores representan porcentajes FRA; los estados sin datos conservan la semántica del mapa de Estadísticas.",
+                "The scale and colours represent FRA percentages; no-data states retain the Statistics map semantics.",
+            ),
+        ),
+        "map_ilga": (
+            _t(
+                language,
+                "Muestra las puntuaciones legales europeas de ILGA-Europe para el año indicado.",
+                "Shows ILGA-Europe legal scores across Europe for the stated year.",
+            ),
+            _t(
+                language,
+                "La escala de 0 a 100 conserva la semántica y los colores del Rainbow Map utilizado en Inicio.",
+                "The 0-100 scale retains the semantics and colours of the Rainbow Map used on Home.",
+            ),
+        ),
         "ranking": (
             _t(language, "Ordena los países según el valor del indicador seleccionado.", "Ranks countries by the selected indicator value."),
             _t(language, "Una posición alta solo significa un valor numérico mayor. No implica automáticamente una situación mejor.", "A high position only means a higher numeric value. It is not automatically better."),

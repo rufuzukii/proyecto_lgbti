@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import html as html_std
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
 
@@ -23,7 +23,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from app.modules.reports.models import ReportContent
+from app.modules.reports.models import ReportChart, ReportContent
 
 BRAND_BLUE = colors.HexColor("#2F6BDE")
 INK = colors.HexColor("#172033")
@@ -47,6 +47,12 @@ class _MultilineTextField(Flowable):
 
     def wrap(self, available_width: float, _available_height: float) -> tuple[float, float]:
         self.width = min(self.width, available_width)
+        characters_per_line = max(36, int(self.width / 4.7))
+        wrapped_lines = sum(
+            max(1, (len(line) + characters_per_line - 1) // characters_per_line)
+            for line in (self.value.splitlines() or [""])
+        )
+        self.height = min(34 * mm, max(14 * mm, (wrapped_lines + 1) * 4.2 * mm))
         return self.width, self.height
 
     def draw(self) -> None:
@@ -76,7 +82,7 @@ class PDFExporter:
     def export(
         self,
         report: ReportContent,
-        chart_images: Mapping[str, Path],
+        chart_images: Mapping[str, Path | Sequence[Path]],
     ) -> bytes:
         buffer = BytesIO()
         document = SimpleDocTemplate(
@@ -102,7 +108,7 @@ class PDFExporter:
     def _story(
         self,
         report: ReportContent,
-        chart_images: Mapping[str, Path],
+        chart_images: Mapping[str, Path | Sequence[Path]],
         styles: dict[str, ParagraphStyle],
     ) -> list[Flowable]:
         language = report.configuration.language
@@ -149,6 +155,21 @@ class PDFExporter:
                 )
             )
 
+        map_charts = [chart for chart in report.charts if chart.key.startswith("map_")]
+        other_charts = [chart for chart in report.charts if not chart.key.startswith("map_")]
+        if map_charts:
+            section_number += 1
+            story.extend(
+                _chart_section(
+                    report,
+                    chart_images,
+                    styles,
+                    section_number=section_number,
+                    charts=map_charts,
+                    section_title=_t(language, "Estadísticas", "Statistics"),
+                )
+            )
+
         if _enabled(report, "metrics") and report.metrics:
             section_number += 1
             story.extend(
@@ -166,7 +187,7 @@ class PDFExporter:
                 ]
             )
 
-        if report.charts:
+        if other_charts:
             section_number += 1
             story.extend(
                 _chart_section(
@@ -174,6 +195,7 @@ class PDFExporter:
                     chart_images,
                     styles,
                     section_number=section_number,
+                    charts=other_charts,
                 )
             )
 
@@ -219,7 +241,6 @@ class PDFExporter:
             section_number += 1
             story.extend(
                 [
-                    PageBreak(),
                     Paragraph(
                         _escape(
                             f"{section_number}. "
@@ -542,7 +563,7 @@ def _comparison_table(
         else ["País", "Valor", "Posición", "Diferencia UE", "Año"]
     )
     rows = [[_paragraph(value, styles["table"], bold=True) for value in headings]]
-    for row in report.table_rows[:30]:
+    for row in report.table_rows:
         rows.append(
             [
                 _paragraph(row.get("country"), styles["table"]),
@@ -596,16 +617,19 @@ def _chart_image(path: Path) -> Image:
 
 def _chart_section(
     report: ReportContent,
-    chart_images: Mapping[str, Path],
+    chart_images: Mapping[str, Path | Sequence[Path]],
     styles: dict[str, ParagraphStyle],
     *,
     section_number: int,
+    charts: Sequence[ReportChart] | None = None,
+    section_title: str | None = None,
 ) -> list[Flowable]:
     language = report.configuration.language
     story: list[Flowable] = []
-    for index, chart in enumerate(report.charts, start=1):
-        image_path = chart_images.get(chart.key)
-        if image_path is None or not image_path.exists():
+    selected_charts = list(charts) if charts is not None else report.charts
+    for index, chart in enumerate(selected_charts, start=1):
+        image_paths = _chart_image_paths(chart_images.get(chart.key))
+        if not image_paths:
             continue
         chart_header: list[Flowable] = []
         if index == 1:
@@ -614,24 +638,29 @@ def _chart_section(
                     Paragraph(
                         _escape(
                             f"{section_number}. "
-                            f"{_t(language, 'Evidencia gráfica', 'Visual evidence')}"
+                            f"{section_title or _t(language, 'Evidencia gráfica', 'Visual evidence')}"
                         ),
                         styles["h1"],
                     ),
                     Spacer(1, 2 * mm),
                 ]
             )
-        chart_header.extend(
-            [
+        for page_index, image_path in enumerate(image_paths, start=1):
+            page_suffix = (
+                f" ({page_index}/{len(image_paths)})" if len(image_paths) > 1 else ""
+            )
+            page_header = [
                 Paragraph(
-                    _escape(f"{section_number}.{index}. {chart.title}"),
+                    _escape(
+                        f"{section_number}.{index}. {chart.title}{page_suffix}"
+                    ),
                     styles["h2"],
                 ),
                 Spacer(1, 2 * mm),
                 _chart_image(image_path),
             ]
-        )
-        story.append(KeepTogether(chart_header))
+            story.append(KeepTogether([*chart_header, *page_header]))
+            chart_header = []
         safe_chart_key = re.sub(r"[^a-zA-Z0-9_-]+", "_", chart.key).strip("_")
         fields = (
             (
@@ -666,6 +695,13 @@ def _chart_section(
             )
         story.append(Spacer(1, 5 * mm))
     return story
+
+
+def _chart_image_paths(value: Path | Sequence[Path] | None) -> list[Path]:
+    if value is None:
+        return []
+    candidates = [value] if isinstance(value, Path) else list(value)
+    return [Path(path) for path in candidates if Path(path).exists()]
 
 
 def _text_section(

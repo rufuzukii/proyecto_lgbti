@@ -590,6 +590,7 @@ def build_fra_response_comparison_chart(
     *,
     available_countries: list[dict[str, Any]] | None = None,
     selected_countries: list[str] | None = None,
+    visible_countries: list[str] | None = None,
     selected_response: str | None = None,
     language: str = "es",
     prepared_data: pd.DataFrame | None = None,
@@ -605,6 +606,12 @@ def build_fra_response_comparison_chart(
     )
     if dataframe.empty:
         return empty_figure("No hay respuestas comparables para esta pregunta y filtros.")
+
+    visible_keys = _selected_country_keys(visible_countries)
+    if visible_keys:
+        dataframe = dataframe[dataframe["country_key"].isin(visible_keys)]
+    if dataframe.empty:
+        return empty_figure("No hay respuestas comparables para los países seleccionados.")
 
     mode = _response_comparison_mode(dataframe)
     selected_keys = _selected_country_keys(selected_countries)
@@ -1545,9 +1552,9 @@ def _add_selected_country_annotations(
             text=_chart_text(language, "Seleccionado", "Selected"),
             showarrow=False,
             xanchor="left",
-            font={"size": 11, "color": "#111827"},
-            bgcolor="rgba(255,255,255,0.86)",
-            bordercolor="#111827",
+            font={"size": 11, "color": "#f8fafc"},
+            bgcolor="#111827",
+            bordercolor="#f8fafc",
             borderwidth=1,
         )
 
@@ -1819,7 +1826,16 @@ def build_comparative_ranking_chart(
             )
         )
 
-    dataframe["position"] = dataframe["value"].rank(method="min", ascending=False)
+    supplied_positions = (
+        pd.to_numeric(dataframe["position"], errors="coerce")
+        if "position" in dataframe
+        else pd.Series(index=dataframe.index, dtype="float64")
+    )
+    dataframe["position"] = (
+        supplied_positions
+        if supplied_positions.notna().any()
+        else dataframe["value"].rank(method="min", ascending=False)
+    )
     dataframe = dataframe.sort_values(
         ["value", "country"],
         ascending=[True, False],

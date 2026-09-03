@@ -188,9 +188,16 @@ class ReportChart:
     title: str
     figure: go.Figure
     source: str
+    additional_figures: list[go.Figure] = field(default_factory=list)
+    page_ranges: list[tuple[int, int]] = field(default_factory=list)
     what_shows: str = ""
     how_to_read: str = ""
     observation: str = ""
+
+    @property
+    def figures(self) -> tuple[go.Figure, ...]:
+        """All static pages belonging to this conceptual visualization."""
+        return (self.figure, *self.additional_figures)
 
 
 @dataclass

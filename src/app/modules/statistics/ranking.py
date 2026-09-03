@@ -45,15 +45,18 @@ def paginate_ranking(
     if page_size <= 0:
         raise ValueError("page_size_must_be_positive")
 
+    # Positions belong to the complete ranking, not to an individual page or
+    # to the current selection.  Attach them before filtering so pagination
+    # cannot reset positions or split ties incorrectly.
+    ordered = _with_global_positions(sorted(rows, key=_ranking_sort_key))
     selected = _selected_country_keys(selected_countries)
-    candidates = [row for row in rows if not selected or _row_country_key(row) in selected]
-    ordered = sorted(candidates, key=_ranking_sort_key)
-    total_items = len(ordered)
+    candidates = [row for row in ordered if not selected or _row_country_key(row) in selected]
+    total_items = len(candidates)
     page_count = max(1, math.ceil(total_items / page_size))
     requested_page = max(0, int(page or 0))
     current_page = min(requested_page, page_count - 1)
     offset = current_page * page_size
-    page_rows = ordered[offset : offset + page_size]
+    page_rows = candidates[offset : offset + page_size]
     start = offset + 1 if page_rows else 0
     end = offset + len(page_rows)
     return RankingPage(
@@ -64,6 +67,27 @@ def paginate_ranking(
         start=start,
         end=end,
     )
+
+
+def _with_global_positions(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    positioned: list[dict[str, Any]] = []
+    previous_value: float | None = None
+    previous_position: int | None = None
+    for index, source_row in enumerate(rows, start=1):
+        row = dict(source_row)
+        value = _numeric_value(row.get("value"))
+        if value is None:
+            position = None
+        elif previous_position is not None and value == previous_value:
+            position = previous_position
+        else:
+            position = index
+        row["position"] = position
+        positioned.append(row)
+        if value is not None:
+            previous_value = value
+            previous_position = position
+    return positioned
 
 
 def _ranking_sort_key(row: dict[str, Any]) -> tuple[int, float, str]:
