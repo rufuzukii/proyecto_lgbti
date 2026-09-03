@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import csv
-import gc
 import html
 import io
 import logging
-import math
 import re
 import textwrap
 import time
@@ -30,11 +28,11 @@ EXPORT_HEIGHT = 900
 EXPORT_SCALE = 2
 EXPORT_FILENAME_MAX_LENGTH = 160
 EXPORT_SUBTITLE_LINE_LENGTH = 110
-REPORT_EXPORT_WIDTH = 1400
-REPORT_EXPORT_HEIGHT = 780
-REPORT_EXPORT_SCALE = 1.25
+REPORT_EXPORT_WIDTH = 1200
+REPORT_EXPORT_HEIGHT = 800
+REPORT_EXPORT_SCALE = 1
 
-REPORT_EXPORT_BATCH_SIZE = 2
+REPORT_EXPORT_BATCH_SIZE = 1
 SUMMARY_TABLE_EXPORT_FIELDS = (
     "country",
     "country_code",
@@ -291,44 +289,40 @@ def export_figures_for_report(
     scale: float = REPORT_EXPORT_SCALE,
 ) -> list[Path]:
     """Render report figures in bounded batches to cap Chrome memory usage."""
-    source_figures = list(figures)
+    source_figures = iter(figures)
     targets = [Path(path) for path in paths]
-    if len(source_figures) != len(targets):
-        raise ValueError("Each report figure requires exactly one output path.")
-    if not source_figures:
+    if not targets:
+        if next(source_figures, None) is not None:
+            raise ValueError("Each report figure requires exactly one output path.")
         return []
     _require_chart_export_browser()
     for target in targets:
         target.parent.mkdir(parents=True, exist_ok=True)
 
-    batch_count = math.ceil(len(source_figures) / REPORT_EXPORT_BATCH_SIZE)
+    batch_count = len(targets)
     logger.info(
         "chart_export_started chart_count=%s batch_size=%s batch_count=%s",
-        len(source_figures),
+        len(targets),
         REPORT_EXPORT_BATCH_SIZE,
         batch_count,
     )
     export_started = time.perf_counter()
-    for batch_index, offset in enumerate(
-        range(0, len(source_figures), REPORT_EXPORT_BATCH_SIZE),
-        start=1,
-    ):
+    for batch_index, target in enumerate(targets, start=1):
         batch_started = time.perf_counter()
-        batch_targets = targets[offset : offset + REPORT_EXPORT_BATCH_SIZE]
-        batch_files: list[str | Path] = list(batch_targets)
-        prepared = [
-            _prepare_report_figure(figure)
-            for figure in source_figures[offset : offset + REPORT_EXPORT_BATCH_SIZE]
-        ]
+        try:
+            figure = next(source_figures)
+        except StopIteration as exc:
+            raise ValueError("Each report figure requires exactly one output path.") from exc
+        prepared = _prepare_report_payload(figure)
         try:
             pio.write_images(
-                prepared,
-                batch_files,
+                [prepared],
+                [target],
                 format=EXPORT_FORMAT,
                 width=width,
                 height=height,
                 scale=scale,
-                validate=True,
+                validate=False,
             )
         except Exception as exc:
             logger.exception(
@@ -336,30 +330,30 @@ def export_figures_for_report(
                 _chart_export_error_event(exc),
                 batch_index,
                 batch_count,
-                len(prepared),
+                1,
             )
             raise ChartExportError("The report charts could not be generated.") from exc
         finally:
-            # Drop the Plotly copies before the next Chrome process starts.
             prepared.clear()
-            gc.collect()
 
-        if not all(_is_png_file(target) for target in batch_targets):
+        if not _is_png_file(target):
             logger.error(
-                "chart_export_failed reason=invalid_or_missing_png "
-                "batch_number=%s batch_count=%s",
+                "chart_export_failed reason=invalid_or_missing_png batch_number=%s batch_count=%s",
                 batch_index,
                 batch_count,
             )
             raise ChartExportError("The report charts could not be generated.")
         logger.info(
             "chart_export_batch_completed batch_number=%s batch_count=%s "
-            "image_count=%s elapsed_seconds=%.3f",
+            "image_count=%s height=%s elapsed_seconds=%.3f",
             batch_index,
             batch_count,
-            len(batch_targets),
+            1,
+            height,
             time.perf_counter() - batch_started,
         )
+    if next(source_figures, None) is not None:
+        raise ValueError("Each report figure requires exactly one output path.")
     logger.info(
         "chart_export_completed chart_count=%s batch_count=%s elapsed_seconds=%.3f",
         len(targets),
@@ -457,6 +451,19 @@ def _prepare_report_figure(figure: go.Figure) -> go.Figure:
             title_text=title_text.replace("·", " - ").replace("–", "-").replace("—", "-")
         )
     return prepared
+
+
+def _prepare_report_payload(figure: go.Figure) -> dict[str, Any]:
+    prepared = _prepare_report_figure(figure)
+    payload = prepared.to_dict()
+    payload.get("layout", {}).pop("meta", None)
+    for trace in payload.get("data", []):
+        trace.pop("customdata", None)
+        trace.pop("hovertemplate", None)
+        trace.pop("hoverlabel", None)
+        trace.pop("meta", None)
+        trace["hoverinfo"] = "skip"
+    return payload
 
 
 def _source_label(source: str, language: str, year: int | str | None = None) -> str:

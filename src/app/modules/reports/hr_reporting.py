@@ -88,21 +88,11 @@ def hr_report_objective(value: str | None) -> HrReportObjective:
 
 
 def hr_report_charts(source: str, objective: str | None) -> tuple[str, ...]:
-    selected = hr_report_objective(objective).id
     if source == "combined":
-        mapping = {
-            "legal_context": ("scatter", "quadrants", "ranking_gap"),
-            "country_comparison": ("scatter", "ranking_gap"),
-            "action_areas": ("scatter", "quadrants", "ranking_gap"),
-        }
-        return mapping.get(selected, ("scatter", "ranking_gap"))
+        return ("scatter", "ranking_gap")
     if source == "ilga":
-        return ("ranking", "average", "countries", "temporal")
-    mapping = {
-        "country_comparison": ("ranking", "average", "countries"),
-        "visibility_safety": ("average", "countries", "responses"),
-    }
-    return mapping.get(selected, ("ranking", "average", "countries", "responses"))
+        return ("ranking", "temporal")
+    return ("ranking", "responses")
 
 
 def hr_report_focus_label(language: str) -> str:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from app.modules.reports.builder import ReportBuilder
 from app.modules.reports.models import ReportConfiguration, ReportContent, ReportDataset
 from app.modules.reports.pdf_exporter import PDFExporter
+from app.modules.reports.resource_usage import ReportMemorySampler
 from app.modules.statistics.exports import (
     ChartExportError,
     build_export_filename,
@@ -23,6 +25,7 @@ from app.modules.statistics.service import (
 )
 
 logger = logging.getLogger(__name__)
+report_generation_lock = threading.Lock()
 
 
 class ReportGenerationError(RuntimeError):
@@ -35,6 +38,9 @@ class GeneratedReport:
     pdf_bytes: bytes
     filename: str
     timings: dict[str, float]
+    image_count: int
+    page_count: int
+    memory_peak_mb: float | None
 
 
 def load_report_dataset(configuration: ReportConfiguration) -> ReportDataset:
@@ -89,6 +95,11 @@ def build_report(configuration: ReportConfiguration) -> ReportContent:
     return ReportBuilder().build(configuration, dataset)
 
 
+def build_report_preview(configuration: ReportConfiguration) -> ReportContent:
+    dataset = load_report_dataset(configuration)
+    return ReportBuilder().build(configuration, dataset, include_figures=False)
+
+
 def generate_report_pdf(
     configuration: ReportConfiguration,
     *,
@@ -96,11 +107,60 @@ def generate_report_pdf(
     section_narratives: dict[str, str] | None = None,
 ) -> GeneratedReport:
     """Build all report artifacts and guarantee temporary-file cleanup."""
+    wait_started = time.perf_counter()
+    logger.info(
+        "report_generation_started source=%s year=%s country_count=%s",
+        configuration.source,
+        configuration.year,
+        len(configuration.countries),
+    )
+    with report_generation_lock:
+        wait_seconds = time.perf_counter() - wait_started
+        return _generate_report_pdf(
+            configuration,
+            chart_narratives=chart_narratives,
+            section_narratives=section_narratives,
+            wait_seconds=wait_seconds,
+        )
+
+
+def _generate_report_pdf(
+    configuration: ReportConfiguration,
+    *,
+    chart_narratives: dict[str, dict[str, str]] | None,
+    section_narratives: dict[str, str] | None,
+    wait_seconds: float,
+) -> GeneratedReport:
     total_started = time.perf_counter()
+    memory_sampler = ReportMemorySampler()
+    memory_sampler.start()
     try:
-        content = build_report(configuration)
+        dataset = load_report_dataset(configuration)
+        data_memory = memory_sampler.sample()
+        logger.info(
+            "report_data_loaded source=%s query_ms=%.2f memory_mb=%s python_mb=%s "
+            "memory_limit_mb=%s memory_source=%s",
+            configuration.source,
+            dataset.query_seconds * 1000,
+            _memory_value(data_memory.total_mb),
+            _memory_value(data_memory.python_mb),
+            _memory_value(data_memory.limit_mb),
+            data_memory.source,
+        )
+        content = ReportBuilder().build(configuration, dataset)
         apply_chart_narratives(content, chart_narratives or {})
         apply_section_narratives(content, section_narratives or {})
+        image_count = sum(len(chart.figures) for chart in content.charts)
+        figure_memory = memory_sampler.sample()
+        logger.info(
+            "report_figures_built count=%s preparation_ms=%.2f figure_ms=%.2f "
+            "memory_mb=%s python_mb=%s",
+            image_count,
+            content.timings["preparation_seconds"] * 1000,
+            content.timings["figure_build_seconds"] * 1000,
+            _memory_value(figure_memory.total_mb),
+            _memory_value(figure_memory.python_mb),
+        )
         image_started = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="rainbowlens-datahub-report-") as temp_dir:
             root = Path(temp_dir).resolve()
@@ -111,15 +171,10 @@ def generate_report_pdf(
                 ]
                 for index, chart in enumerate(content.charts, start=1)
             }
-            figures = [
-                figure for chart in content.charts for figure in chart.figures
-            ]
-            paths = [
-                path for chart in content.charts for path in chart_paths[chart.key]
-            ]
+            paths = [path for chart in content.charts for path in chart_paths[chart.key]]
             try:
                 export_figures_for_report(
-                    figures,
+                    _release_report_figures(content),
                     paths,
                 )
             except ChartExportError as exc:
@@ -129,14 +184,24 @@ def generate_report_pdf(
                         "source": configuration.source,
                         "year": configuration.year,
                         "country_count": len(configuration.countries),
-                        "image_count": len(figures),
+                        "image_count": image_count,
                     },
                 )
                 raise ReportGenerationError("The report could not be generated.") from exc
             image_seconds = time.perf_counter() - image_started
+            export_memory = memory_sampler.sample()
+            logger.info(
+                "report_chart_export_completed count=%s total_ms=%.2f "
+                "memory_mb=%s peak_memory_mb=%s",
+                image_count,
+                image_seconds * 1000,
+                _memory_value(export_memory.total_mb),
+                _memory_value(memory_sampler.peak_mb),
+            )
             pdf_started = time.perf_counter()
             try:
-                pdf_bytes = PDFExporter().export(content, chart_paths)
+                pdf_exporter = PDFExporter()
+                pdf_bytes = pdf_exporter.export(content, chart_paths)
             except Exception as exc:
                 logger.exception(
                     "pdf_generation_failed",
@@ -148,28 +213,42 @@ def generate_report_pdf(
                 )
                 raise ReportGenerationError("The report could not be generated.") from exc
             pdf_seconds = time.perf_counter() - pdf_started
+            page_count = pdf_exporter.page_count
+            pdf_memory = memory_sampler.sample()
+            logger.info(
+                "report_pdf_generated pages=%s bytes=%s total_ms=%.2f memory_mb=%s",
+                page_count,
+                len(pdf_bytes),
+                pdf_seconds * 1000,
+                _memory_value(pdf_memory.total_mb),
+            )
+        memory_sampler.stop()
+        memory_peak_mb = memory_sampler.peak_mb
         timings = {
             **content.timings,
+            "queue_seconds": round(wait_seconds, 4),
             "chart_export_seconds": round(image_seconds, 4),
             "pdf_seconds": round(pdf_seconds, 4),
-            "total_seconds": round(time.perf_counter() - total_started, 4),
+            "total_seconds": round(wait_seconds + time.perf_counter() - total_started, 4),
         }
         logger.info(
-            "report_generated",
-            extra={
-                "source": configuration.source,
-                "year": configuration.year,
-                "country_count": len(configuration.countries),
-                "chart_count": len(content.charts),
-                "image_count": len(figures),
-                **timings,
-            },
+            "report_generation_completed source=%s charts=%s images=%s pages=%s "
+            "total_ms=%.2f peak_memory_mb=%s",
+            configuration.source,
+            len(content.charts),
+            image_count,
+            page_count,
+            timings["total_seconds"] * 1000,
+            _memory_value(memory_peak_mb),
         )
         return GeneratedReport(
             content=content,
             pdf_bytes=pdf_bytes,
             filename=_report_filename(configuration, content),
             timings=timings,
+            image_count=image_count,
+            page_count=page_count,
+            memory_peak_mb=memory_peak_mb,
         )
     except ReportGenerationError:
         raise
@@ -183,6 +262,8 @@ def generate_report_pdf(
             },
         )
         raise ReportGenerationError("The report could not be generated.") from exc
+    finally:
+        memory_sampler.stop()
 
 
 def apply_chart_narratives(
@@ -228,7 +309,7 @@ def default_section_narrative(content: ReportContent, section: str) -> str:
             )
         return (
             f'Se analiza "{content.indicator}" para '
-            f'{content.configuration.year or "el periodo disponible"} como contexto '
+            f"{content.configuration.year or 'el periodo disponible'} como contexto "
             "externo para apoyar políticas de diversidad e inclusión."
         )
     if section == "recommendations":
@@ -241,6 +322,20 @@ def sanitize_report_narrative(value: object, *, max_length: int = 2_000) -> str:
     text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
     return text[:max_length]
+
+
+def _memory_value(value: float | None) -> str:
+    return f"{value:.1f}" if value is not None else "unavailable"
+
+
+def _release_report_figures(content: ReportContent):
+    for chart in content.charts:
+        figure = chart.figure
+        chart.figure = None
+        if figure is not None:
+            yield figure
+        while chart.additional_figures:
+            yield chart.additional_figures.pop(0)
 
 
 def _report_filename(

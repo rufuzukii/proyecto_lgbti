@@ -79,6 +79,9 @@ class _MultilineTextField(Flowable):
 class PDFExporter:
     """Render a ReportContent model to a self-contained PDF byte stream."""
 
+    def __init__(self) -> None:
+        self.page_count = 0
+
     def export(
         self,
         report: ReportContent,
@@ -103,6 +106,7 @@ class PDFExporter:
             onFirstPage=lambda canvas, doc: _page_decorations(canvas, doc, cover=True),
             onLaterPages=lambda canvas, doc: _page_decorations(canvas, doc, cover=False),
         )
+        self.page_count = document.page
         return buffer.getvalue()
 
     def _story(
@@ -448,7 +452,9 @@ def _cover_metadata(
             _paragraph(report.configuration.generated_on, styles["table"]),
         ],
         [
-            _paragraph(_t(language, "Tipo de información", "Information type"), styles["table"], bold=True),
+            _paragraph(
+                _t(language, "Tipo de información", "Information type"), styles["table"], bold=True
+            ),
             _paragraph(
                 {
                     "fra": _t(language, "Datos sociales", "Social data"),
@@ -646,14 +652,10 @@ def _chart_section(
                 ]
             )
         for page_index, image_path in enumerate(image_paths, start=1):
-            page_suffix = (
-                f" ({page_index}/{len(image_paths)})" if len(image_paths) > 1 else ""
-            )
+            page_suffix = f" ({page_index}/{len(image_paths)})" if len(image_paths) > 1 else ""
             page_header = [
                 Paragraph(
-                    _escape(
-                        f"{section_number}.{index}. {chart.title}{page_suffix}"
-                    ),
+                    _escape(f"{section_number}.{index}. {chart.title}{page_suffix}"),
                     styles["h2"],
                 ),
                 Spacer(1, 2 * mm),
@@ -728,11 +730,7 @@ def _edited_section_paragraphs(
     if section not in report.section_narratives:
         return default
     value = report.section_narratives[section]
-    return [
-        paragraph.strip()
-        for paragraph in re.split(r"\n\s*\n", value)
-        if paragraph.strip()
-    ]
+    return [paragraph.strip() for paragraph in re.split(r"\n\s*\n", value) if paragraph.strip()]
 
 
 def _nonempty_lines(value: str) -> list[str]:

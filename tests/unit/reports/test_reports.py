@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -12,6 +15,7 @@ from PIL import Image
 
 from app.core.auth.permissions import Permission, user_has_permission
 from app.modules.account.users.schemas import UserRole
+from app.modules.reports import builder as report_builder
 from app.modules.reports import page as reports_page
 from app.modules.reports import service as report_service
 from app.modules.reports.builder import HRReportBuilder
@@ -186,7 +190,7 @@ def test_empty_content_selection_uses_professional_defaults() -> None:
 
     assert "recommendations" in config.sections
     assert "ranking" in config.charts
-    assert len(config.charts) == 4
+    assert config.charts == ("ranking", "responses")
 
 
 def test_builder_calculates_metrics_rules_and_reuses_shared_plotly_figures() -> None:
@@ -202,7 +206,7 @@ def test_builder_calculates_metrics_rules_and_reuses_shared_plotly_figures() -> 
     assert metrics["relative_difference"].numeric_value == 14.285714285714285
     assert metrics["rank"].display_value == "1/3"
     assert any(item.derived_from_metrics for item in content.recommendations)
-    assert 4 <= len(content.charts) <= 8
+    assert len(content.charts) == 3
     assert all(isinstance(chart.figure, go.Figure) for chart in content.charts)
     assert content.table_rows[0]["country"] == "España"
     assert "puntos porcentuales" in content.executive_summary[0]
@@ -240,38 +244,38 @@ def test_social_and_legal_reports_start_with_the_reused_european_map() -> None:
         _configuration(), ReportDataset(_fra_result(), query_seconds=0.01)
     )
     legal = HRReportBuilder().build(
-        ReportConfiguration.from_mapping(
-            {"source": "ilga", "year": 2026, "language": "es"}
-        ),
+        ReportConfiguration.from_mapping({"source": "ilga", "year": 2026, "language": "es"}),
         ReportDataset(_ilga_result(), query_seconds=0.01),
     )
 
     assert social.charts[0].key == "map_fra"
-    assert cast(Any, social.charts[0].figure.data[0]).type == "choropleth"
+    social_map = social.charts[0].figure
+    assert social_map is not None
+    assert cast(Any, social_map.data[0]).type == "choropleth"
     assert legal.charts[0].key == "map_ilga"
-    assert cast(Any, legal.charts[0].figure.data[0]).type == "choropleth"
+    legal_map = legal.charts[0].figure
+    assert legal_map is not None
+    assert cast(Any, legal_map.data[0]).type == "choropleth"
 
 
-def test_unselected_ranking_reuses_all_statistics_pages_without_losing_countries() -> None:
+def test_unselected_ranking_uses_one_pdf_figure_without_losing_countries() -> None:
     content = HRReportBuilder().build(
         _configuration(countries=[], primary_country="", charts=["ranking"]),
         ReportDataset(_many_country_result(), query_seconds=0.01),
     )
     ranking = next(chart for chart in content.charts if chart.key == "ranking")
     page_countries = [
-        str(country)
-        for figure in ranking.figures
-        for country in cast(Any, figure.data[0]).y
+        str(country) for figure in ranking.figures for country in cast(Any, figure.data[0]).y
     ]
 
-    assert len(ranking.figures) == 3
-    assert ranking.page_ranges == [(1, 5), (6, 10), (11, 12)]
-    assert [len(cast(Any, figure.data[0]).y) for figure in ranking.figures] == [5, 5, 2]
+    assert len(ranking.figures) == 1
+    assert ranking.page_ranges == [(1, 12)]
+    assert [len(cast(Any, figure.data[0]).y) for figure in ranking.figures] == [12]
     assert len(page_countries) == len(set(page_countries)) == 12
     assert len(content.table_rows) == 12
 
 
-def test_other_multi_country_figures_reuse_the_same_static_page_groups() -> None:
+def test_other_multi_country_figures_use_one_static_pdf_scope() -> None:
     result = _many_country_result()
     result["detail_data"] = [
         {
@@ -293,27 +297,15 @@ def test_other_multi_country_figures_reuse_the_same_static_page_groups() -> None
     )
 
     figures = {chart.key: chart for chart in content.charts}
-    assert len(figures["countries"].figures) == 3
-    assert len(figures["responses"].figures) == 3
-    assert figures["countries"].page_ranges == [(1, 5), (6, 10), (11, 12)]
+    assert len(figures["countries"].figures) == 1
+    assert len(figures["responses"].figures) == 1
+    assert figures["countries"].page_ranges == [(1, 12)]
     response_page_countries = [
-        {
-            str(country)
-            for trace in figure.data
-            for country in (getattr(trace, "y", None) or [])
-        }
+        {str(country) for trace in figure.data for country in (getattr(trace, "y", None) or [])}
         for figure in figures["responses"].figures
     ]
-    assert [len(countries) for countries in response_page_countries] == [5, 5, 2]
+    assert [len(countries) for countries in response_page_countries] == [12]
     assert all(not figure.layout.annotations for figure in figures["responses"].figures)
-    assert not (
-        response_page_countries[0]
-        & response_page_countries[1]
-        | response_page_countries[0]
-        & response_page_countries[2]
-        | response_page_countries[1]
-        & response_page_countries[2]
-    )
 
 
 def test_response_details_only_contains_explicitly_selected_countries() -> None:
@@ -338,18 +330,20 @@ def test_response_details_only_contains_explicitly_selected_countries() -> None:
     )
 
     responses = next(chart for chart in content.charts if chart.key == "responses")
+    response_figure = responses.figure
+    assert response_figure is not None
     rendered_countries = {
         str(country)
-        for trace in responses.figure.data
+        for trace in response_figure.data
         for country in (getattr(trace, "y", None) or [])
     }
 
     assert len(responses.figures) == 1
     assert rendered_countries == {"España", "Alemania"}
-    assert len(responses.figure.layout.annotations) == 2
-    assert {
-        annotation.text for annotation in responses.figure.layout.annotations
-    } == {"Seleccionado"}
+    assert len(response_figure.layout.annotations) == 2
+    assert {annotation.text for annotation in response_figure.layout.annotations} == {
+        "Seleccionado"
+    }
 
 
 def test_selected_ranking_only_contains_explicit_countries() -> None:
@@ -359,7 +353,9 @@ def test_selected_ranking_only_contains_explicit_countries() -> None:
         ReportDataset(_many_country_result(), query_seconds=0.01),
     )
     ranking = next(chart for chart in content.charts if chart.key == "ranking")
-    countries = set(cast(Any, ranking.figure.data[0]).y)
+    ranking_figure = ranking.figure
+    assert ranking_figure is not None
+    countries = set(cast(Any, ranking_figure.data[0]).y)
 
     assert len(ranking.figures) == 1
     assert countries == {"España", "Francia", "Alemania"}
@@ -377,9 +373,7 @@ def test_ranking_pages_preserve_global_tied_positions() -> None:
     )
     ranking = next(chart for chart in content.charts if chart.key == "ranking")
     positions = [
-        str(item[1])
-        for figure in ranking.figures
-        for item in cast(Any, figure.data[0]).customdata
+        str(item[1]) for figure in ranking.figures for item in cast(Any, figure.data[0]).customdata
     ]
 
     assert sorted(positions) == [
@@ -439,9 +433,7 @@ def test_custom_mode_hides_disabled_sections_and_adds_active_segmentation() -> N
         for item in _walk(component)
         if isinstance(item, dcc.Textarea)
     ]
-    chart_textareas = [
-        item for item in textareas if item.id["type"] == "report-chart-narrative"
-    ]
+    chart_textareas = [item for item in textareas if item.id["type"] == "report-chart-narrative"]
     section_textareas = [
         item for item in textareas if item.id["type"] == "report-section-narrative"
     ]
@@ -536,12 +528,7 @@ def test_preview_starts_with_executive_summary_and_uses_responsive_components() 
 
 def test_report_preview_styles_contain_overflow_at_the_source() -> None:
     stylesheet = (
-        Path(__file__).resolve().parents[3]
-        / "src"
-        / "app"
-        / "web"
-        / "assets"
-        / "reports.css"
+        Path(__file__).resolve().parents[3] / "src" / "app" / "web" / "assets" / "reports.css"
     ).read_text(encoding="utf-8")
 
     document_rule = stylesheet.split(".reports-preview-document {", 1)[1].split("}", 1)[0]
@@ -682,9 +669,11 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     chart_paths = {}
     for chart in content.charts:
         path = tmp_path / f"{chart.key}.png"
+        figure = chart.figure
+        assert figure is not None
         path.write_bytes(
             export_figure_for_report(
-                chart.figure,
+                figure,
                 width=1000,
                 height=560,
                 scale=1,
@@ -735,15 +724,11 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert metadata["producer"] == "RainbowLens Datahub"
     assert "ReportLab" not in " ".join(str(value) for value in metadata.values())
     widgets: list[Any] = [
-        cast(Any, widget)
-        for page in document
-        for widget in (list(page.widgets() or []))
+        cast(Any, widget) for page in document for widget in (list(page.widgets() or []))
     ]
     widget_values = {widget.field_name: widget.field_value for widget in widgets}
     assert len(widgets) == len(content.charts) * 3
-    assert widget_values["chart_ranking_what_shows"] == (
-        "Texto revisado\npor la persona usuaria"
-    )
+    assert widget_values["chart_ranking_what_shows"] == ("Texto revisado\npor la persona usuaria")
     assert widget_values["chart_ranking_how_to_read"] == ""
     assert widget_values["chart_ranking_observation"] == "Observación final"
     assert all(widget.field_type_string == "Text" for widget in widgets)
@@ -765,13 +750,13 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
 
 
 def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
-    content = HRReportBuilder().build(
-        _configuration(charts=["ranking"]),
-        ReportDataset(_fra_result(), query_seconds=0.01),
-    )
     observed_roots: list[Path] = []
 
-    monkeypatch.setattr(report_service, "build_report", lambda _config: content)
+    monkeypatch.setattr(
+        report_service,
+        "load_report_dataset",
+        lambda _config: ReportDataset(_fra_result(), query_seconds=0.01),
+    )
 
     def fake_export(_figures, paths):
         for path_value in paths:
@@ -797,6 +782,85 @@ def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
     second = report_service.generate_report_pdf(_configuration())
     assert second.pdf_bytes == b"%PDF-test"
     assert all(not root.exists() for root in observed_roots)
+
+
+def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None:
+    configuration = _configuration(countries=[], primary_country="")
+    calls = {"map": 0, "ranking": 0, "responses": 0}
+
+    def tracked_figure(name: str):
+        def build(*_args, **_kwargs):
+            calls[name] += 1
+            return go.Figure(go.Bar(x=["A"], y=[1]))
+
+        return build
+
+    monkeypatch.setattr(
+        report_service,
+        "load_report_dataset",
+        lambda _config: ReportDataset(_fra_result(), query_seconds=0.01),
+    )
+    monkeypatch.setattr(report_builder, "build_europe_choropleth", tracked_figure("map"))
+    monkeypatch.setattr(
+        report_builder,
+        "build_comparative_ranking_chart",
+        tracked_figure("ranking"),
+    )
+    monkeypatch.setattr(
+        report_builder,
+        "build_fra_response_comparison_chart",
+        tracked_figure("responses"),
+    )
+
+    preview = report_service.build_report_preview(configuration)
+
+    assert calls == {"map": 0, "ranking": 0, "responses": 0}
+    assert all(not chart.figures for chart in preview.charts)
+
+    def fake_export(figures, paths):
+        source_figures = list(figures)
+        targets = [Path(path) for path in paths]
+        assert len(source_figures) == len(targets)
+        for target in targets:
+            target.write_bytes(b"png")
+        return targets
+
+    monkeypatch.setattr(report_service, "export_figures_for_report", fake_export)
+    monkeypatch.setattr(
+        report_service.PDFExporter,
+        "export",
+        lambda _self, _content, _images: b"%PDF-test",
+    )
+
+    generated = report_service.generate_report_pdf(configuration)
+
+    assert calls == {"map": 1, "ranking": 1, "responses": 1}
+    assert generated.image_count == 3
+    assert all(not chart.figures for chart in generated.content.charts)
+
+
+def test_report_generation_lock_prevents_overlapping_exports(monkeypatch) -> None:
+    active = 0
+    maximum_active = 0
+    state_lock = threading.Lock()
+
+    def fake_generate(configuration, **_kwargs):
+        nonlocal active, maximum_active
+        with state_lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.04)
+        with state_lock:
+            active -= 1
+        return configuration
+
+    monkeypatch.setattr(report_service, "_generate_report_pdf", fake_generate)
+    configuration = _configuration()
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(report_service.generate_report_pdf, [configuration] * 2))
+
+    assert results == [configuration, configuration]
+    assert maximum_active == 1
 
 
 def test_report_permissions_are_server_side() -> None:
@@ -921,11 +985,14 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     assert "report-criterion-select" not in ids
     assert "report-criterion-field" not in ids
     assert "report-objective-select" not in ids
-    assert not {
-        "report-mode-select",
-        "report-sections-select",
-        "report-advanced-toggle",
-    } & ids
+    assert (
+        not {
+            "report-mode-select",
+            "report-sections-select",
+            "report-advanced-toggle",
+        }
+        & ids
+    )
     store_data = getattr(store, "data", None)
     assert isinstance(store_data, dict)
     assert "result" not in store_data
@@ -936,11 +1003,11 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     assert "report-spanish-context" not in ids
     assert "report-template-select" not in ids
     assert "template_id" not in store_data
-    assert [option["value"] for option in source_control.options] == [
-        "fra", "ilga", "combined"
-    ]
+    assert [option["value"] for option in source_control.options] == ["fra", "ilga", "combined"]
     assert comparison_control.value == ["FR"]
-    source_labels = " ".join(str(option["label"].to_plotly_json()) for option in source_control.options)
+    source_labels = " ".join(
+        str(option["label"].to_plotly_json()) for option in source_control.options
+    )
     assert "Datos sociales" in source_labels
     assert "Datos legales" in source_labels
     assert indicator_control is not None
@@ -950,20 +1017,15 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
         for component in components
         if getattr(component, "className", None) == "reports-actions reports-final-actions"
     )
-    assert {
-        getattr(component, "id", None) for component in _walk(final_actions)
-    } >= {"report-preview-button", "report-download-button"}
+    assert {getattr(component, "id", None) for component in _walk(final_actions)} >= {
+        "report-preview-button",
+        "report-download-button",
+    }
     ordered_ids = [getattr(component, "id", None) for component in components]
-    assert ordered_ids.index("report-plan-summary") < ordered_ids.index(
-        "report-preview-button"
-    )
-    assert ordered_ids.index("report-preview-button") < ordered_ids.index(
-        "report-preview-content"
-    )
-    assert ordered_ids.index("report-download-button") < ordered_ids.index(
-        "report-preview-content"
-    )
-    assert 'children\': \'FRA\'' not in source_labels
+    assert ordered_ids.index("report-plan-summary") < ordered_ids.index("report-preview-button")
+    assert ordered_ids.index("report-preview-button") < ordered_ids.index("report-preview-content")
+    assert ordered_ids.index("report-download-button") < ordered_ids.index("report-preview-content")
+    assert "children': 'FRA'" not in source_labels
 
 
 def test_reports_callbacks_register_preview_and_download() -> None:
@@ -1036,9 +1098,7 @@ def test_dependent_indicator_clears_invalid_values_and_stays_disabled_without_co
         reports_page,
         "_indicator_options",
         lambda source, category, _year: (
-            [{"label": "B1", "value": "B1"}]
-            if source == "fra" and category == "Category B"
-            else []
+            [{"label": "B1", "value": "B1"}] if source == "fra" and category == "Category B" else []
         ),
     )
 

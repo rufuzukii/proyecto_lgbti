@@ -27,8 +27,6 @@ DEFAULT_REPORT_SECTIONS: tuple[str, ...] = (
 
 DEFAULT_REPORT_CHARTS: tuple[str, ...] = (
     "ranking",
-    "average",
-    "countries",
     "responses",
 )
 
@@ -40,6 +38,8 @@ ALLOWED_REPORT_SECTIONS: tuple[str, ...] = (
 
 ALLOWED_REPORT_CHARTS: tuple[str, ...] = (
     *DEFAULT_REPORT_CHARTS,
+    "average",
+    "countries",
     "temporal",
     "radar",
     "scatter",
@@ -118,7 +118,7 @@ class ReportConfiguration:
             sections = DEFAULT_REPORT_SECTIONS
         if not charts:
             charts = (
-                ("ranking", "average", "countries", "temporal")
+                ("ranking", "temporal")
                 if source == "ilga"
                 else ("scatter", "ranking_gap")
                 if source == "combined"
@@ -186,7 +186,7 @@ class ReportRecommendation:
 class ReportChart:
     key: str
     title: str
-    figure: go.Figure
+    figure: go.Figure | None
     source: str
     additional_figures: list[go.Figure] = field(default_factory=list)
     page_ranges: list[tuple[int, int]] = field(default_factory=list)
@@ -197,7 +197,9 @@ class ReportChart:
     @property
     def figures(self) -> tuple[go.Figure, ...]:
         """All static pages belonging to this conceptual visualization."""
-        return (self.figure, *self.additional_figures)
+        return tuple(
+            figure for figure in (self.figure, *self.additional_figures) if figure is not None
+        )
 
 
 @dataclass

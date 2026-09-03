@@ -40,6 +40,8 @@ from app.shared.data.normalization import normalize_country_code
 from app.shared.data.source_attribution import attribution_for_sources
 from app.web.i18n import country_labels
 
+REPORT_RANKING_ROWS_PER_FIGURE = 32
+
 
 def _first_comparable_radar_country(payload: dict[str, Any]) -> str | None:
     dataframe = pd.DataFrame(payload.get("rows") or [])
@@ -61,12 +63,12 @@ class ReportBuilder:
         self,
         configuration: ReportConfiguration,
         dataset: ReportDataset,
+        *,
+        include_figures: bool = True,
     ) -> ReportContent:
         started = time.perf_counter()
         result = dataset.result
-        ranking = _ranking_frame(
-            result.get("ranking") or [], language=configuration.language
-        )
+        ranking = _ranking_frame(result.get("ranking") or [], language=configuration.language)
         source_name = str(result.get("source") or "")
         indicator = str(
             result.get("indicator")
@@ -93,14 +95,6 @@ class ReportBuilder:
             language=configuration.language,
         )
         metrics.extend(_combined_report_metrics(configuration, result))
-        charts = _charts(
-            configuration,
-            result,
-            ranking,
-            selected,
-            country_names,
-            indicator,
-        )
         summary = _executive_summary(
             configuration,
             indicator=indicator,
@@ -125,6 +119,18 @@ class ReportBuilder:
             result=result,
         )
         limitations = _limitations(configuration, indicator, result)
+        preparation_seconds = time.perf_counter() - started
+        figure_started = time.perf_counter()
+        charts = _charts(
+            configuration,
+            result,
+            ranking,
+            selected,
+            country_names,
+            indicator,
+            include_figures=include_figures,
+        )
+        figure_seconds = time.perf_counter() - figure_started
         content = ReportContent(
             configuration=configuration,
             source_name=source_name,
@@ -154,6 +160,8 @@ class ReportBuilder:
             table_rows=_table_rows(ranking, selected, result, indicator),
             timings={
                 "query_seconds": round(dataset.query_seconds, 4),
+                "preparation_seconds": round(preparation_seconds, 4),
+                "figure_build_seconds": round(figure_seconds, 4),
                 "build_seconds": round(time.perf_counter() - started, 4),
             },
             focus_label=hr_report_focus_label(configuration.language),
@@ -168,9 +176,7 @@ class ReportBuilder:
 HRReportBuilder = ReportBuilder
 
 
-def _ranking_frame(
-    rows: list[dict[str, Any]], *, language: str = "es"
-) -> pd.DataFrame:
+def _ranking_frame(rows: list[dict[str, Any]], *, language: str = "es") -> pd.DataFrame:
     dataframe = pd.DataFrame(rows)
     if dataframe.empty or "value" not in dataframe:
         return pd.DataFrame(columns=["country", "iso", "value", "position"])
@@ -302,6 +308,8 @@ def _charts(
     selected: list[str],
     country_names: list[str],
     indicator: str,
+    *,
+    include_figures: bool,
 ) -> list[ReportChart]:
     rows = cast(list[dict[str, Any]], ranking.to_dict("records"))
     source = str(result.get("source") or "")
@@ -387,9 +395,7 @@ def _charts(
                     lambda: [
                         build_fra_response_comparison_chart(
                             detail,
-                            selected_countries=(
-                                _page_country_codes(page) if selected else []
-                            ),
+                            selected_countries=(_page_country_codes(page) if selected else []),
                             visible_countries=_page_country_codes(page),
                             language=language,
                         )
@@ -440,7 +446,11 @@ def _charts(
             [
                 (
                     "scatter",
-                    _t(language, "Experiencia social y protección legal", "Social experience and legal protection"),
+                    _t(
+                        language,
+                        "Experiencia social y protección legal",
+                        "Social experience and legal protection",
+                    ),
                     lambda: build_combined_scatter(
                         combined_rows,
                         language,
@@ -455,7 +465,11 @@ def _charts(
                 ),
                 (
                     "quadrants",
-                    _t(language, "Cuadrantes de experiencia y protección", "Experience and protection quadrants"),
+                    _t(
+                        language,
+                        "Cuadrantes de experiencia y protección",
+                        "Experience and protection quadrants",
+                    ),
                     lambda: build_combined_quadrant_chart(
                         combined_rows,
                         language,
@@ -468,7 +482,11 @@ def _charts(
                 ),
                 (
                     "ranking_gap",
-                    _t(language, "Diferencia de posiciones entre rankings", "Difference in ranking positions"),
+                    _t(
+                        language,
+                        "Diferencia de posiciones entre rankings",
+                        "Difference in ranking positions",
+                    ),
                     lambda: build_ranking_position_gap_chart(
                         dict(combined.get("ranking_gap") or result.get("ranking_gap") or {}),
                         language,
@@ -478,7 +496,7 @@ def _charts(
             ]
         )
 
-    if config.source != "combined" and "radar" in config.charts:
+    if include_figures and config.source != "combined" and "radar" in config.charts:
         radar_payload = result.get("experience_legal_radar") or {}
         radar_country = selected[0] if selected else _first_comparable_radar_country(radar_payload)
         radar, compatible, _metadata, _interpretation = build_experience_legal_radar(
@@ -500,38 +518,45 @@ def _charts(
             )
 
     charts: list[ReportChart] = []
-    combined_support = dict(
-        (result.get("combined_analysis") or {}).get("supported_analyses") or {}
-    )
+    combined_support = dict((result.get("combined_analysis") or {}).get("supported_analyses") or {})
     for key, title, factory in builders:
         if not key.startswith("map_") and key not in config.charts:
             continue
         if key in {"quadrants", "ranking_gap"} and not combined_support.get(key, False):
+            continue
+        figure_source = (
+            "ILGA-Europe" if key == "map_ilga" else "FRA" if key == "map_fra" else source
+        )
+        what_shows, how_to_read, observation = _chart_explanation(key, config, result, indicator)
+        if not include_figures:
+            charts.append(
+                ReportChart(
+                    key,
+                    title,
+                    None,
+                    figure_source,
+                    page_ranges=page_ranges_by_key.get(key, []),
+                    what_shows=what_shows,
+                    how_to_read=how_to_read,
+                    observation=observation,
+                )
+            )
             continue
         built = factory()
         figures = list(built) if isinstance(built, list) else [built]
         figures = [figure for figure in figures if figure.data]
         if not figures:
             continue
-        figure_source = (
-            "ILGA-Europe" if key == "map_ilga" else "FRA" if key == "map_fra" else source
-        )
         figure_year = (
             (result.get("combined_analysis") or {}).get("ilga_year")
             if key == "map_ilga" and config.source == "combined"
             else result.get("year")
         )
         figure_indicator = (
-            _t(language, "Ranking total", "Overall ranking")
-            if key == "map_ilga"
-            else indicator
+            _t(language, "Ranking total", "Overall ranking") if key == "map_ilga" else indicator
         )
         for page_index, figure in enumerate(figures, start=1):
-            page_title = (
-                f"{title} ({page_index}/{len(figures)})"
-                if len(figures) > 1
-                else title
-            )
+            page_title = f"{title} ({page_index}/{len(figures)})" if len(figures) > 1 else title
             prepare_figure_for_export(
                 figure,
                 chart_type=key,
@@ -543,9 +568,6 @@ def _charts(
                 filters=_filter_labels(config),
                 language=language,
             )
-        what_shows, how_to_read, observation = _chart_explanation(
-            key, config, result, indicator
-        )
         charts.append(
             ReportChart(
                 key,
@@ -562,15 +584,22 @@ def _charts(
     return charts
 
 
-def _report_ranking_pages(
-    rows: list[dict[str, Any]], selected: list[str]
-) -> list[RankingPage]:
-    """Reuse Statistics pagination over one already-prepared ranking."""
-    first = paginate_ranking(rows, 0, selected_countries=selected)
+def _report_ranking_pages(rows: list[dict[str, Any]], selected: list[str]) -> list[RankingPage]:
+    first = paginate_ranking(
+        rows,
+        0,
+        selected_countries=selected,
+        page_size=REPORT_RANKING_ROWS_PER_FIGURE,
+    )
     return [
         first,
         *[
-            paginate_ranking(rows, page, selected_countries=selected)
+            paginate_ranking(
+                rows,
+                page,
+                selected_countries=selected,
+                page_size=REPORT_RANKING_ROWS_PER_FIGURE,
+            )
             for page in range(1, first.page_count)
         ],
     ]
@@ -594,7 +623,7 @@ def _legal_map_document(
             {
                 "country": row.get("country"),
                 "iso": row.get("iso"),
-                "value": row.get("legal_score"),
+                "value": row.get("ilga_value"),
             }
             for row in (result.get("combined_analysis") or {}).get("rows") or []
         ]
@@ -992,12 +1021,18 @@ def _combined_conclusions(
     if n < 5 or correlation is None:
         return []
     strengths_es = {
-        "very_weak": "muy débil", "weak": "débil", "moderate": "moderada",
-        "strong": "fuerte", "very_strong": "muy fuerte",
+        "very_weak": "muy débil",
+        "weak": "débil",
+        "moderate": "moderada",
+        "strong": "fuerte",
+        "very_strong": "muy fuerte",
     }
     strengths_en = {
-        "very_weak": "very weak", "weak": "weak", "moderate": "moderate",
-        "strong": "strong", "very_strong": "very strong",
+        "very_weak": "very weak",
+        "weak": "weak",
+        "moderate": "moderate",
+        "strong": "strong",
+        "very_strong": "very strong",
     }
     strength_key = str(metrics.get("strength") or "unavailable")
     strength = (strengths_en if config.language == "en" else strengths_es).get(
@@ -1067,43 +1102,115 @@ def _chart_explanation(
             ),
         ),
         "ranking": (
-            _t(language, "Ordena los países según el valor del indicador seleccionado.", "Ranks countries by the selected indicator value."),
-            _t(language, "Una posición alta solo significa un valor numérico mayor. No implica automáticamente una situación mejor.", "A high position only means a higher numeric value. It is not automatically better."),
+            _t(
+                language,
+                "Ordena los países según el valor del indicador seleccionado.",
+                "Ranks countries by the selected indicator value.",
+            ),
+            _t(
+                language,
+                "Una posición alta solo significa un valor numérico mayor. No implica automáticamente una situación mejor.",
+                "A high position only means a higher numeric value. It is not automatically better.",
+            ),
         ),
         "average": (
-            _t(language, "Compara los países elegidos con la media de los países que tienen un dato válido.", "Compares selected countries with the mean among countries with a valid value."),
-            _t(language, "La distancia se expresa en puntos porcentuales cuando el indicador procede de una encuesta.", "Distance is shown in percentage points for survey indicators."),
+            _t(
+                language,
+                "Compara los países elegidos con la media de los países que tienen un dato válido.",
+                "Compares selected countries with the mean among countries with a valid value.",
+            ),
+            _t(
+                language,
+                "La distancia se expresa en puntos porcentuales cuando el indicador procede de una encuesta.",
+                "Distance is shown in percentage points for survey indicators.",
+            ),
         ),
         "countries": (
-            _t(language, "Muestra cómo se reparte la respuesta seleccionada entre los países.", "Shows how the selected answer varies across countries."),
-            _t(language, "Lee siempre el resultado junto con la pregunta y la respuesta elegida.", "Always read the result together with the selected question and answer."),
+            _t(
+                language,
+                "Muestra cómo se reparte la respuesta seleccionada entre los países.",
+                "Shows how the selected answer varies across countries.",
+            ),
+            _t(
+                language,
+                "Lee siempre el resultado junto con la pregunta y la respuesta elegida.",
+                "Always read the result together with the selected question and answer.",
+            ),
         ),
         "responses": (
-            _t(language, "Detalla las respuestas de encuesta o los criterios legales disponibles.", "Details available survey answers or legal criteria."),
-            _t(language, "Los valores ausentes se mantienen como ausencia y no se convierten en cero.", "Missing values remain missing and are not converted to zero."),
+            _t(
+                language,
+                "Detalla las respuestas de encuesta o los criterios legales disponibles.",
+                "Details available survey answers or legal criteria.",
+            ),
+            _t(
+                language,
+                "Los valores ausentes se mantienen como ausencia y no se convierten en cero.",
+                "Missing values remain missing and are not converted to zero.",
+            ),
         ),
         "temporal": (
-            _t(language, "Muestra cómo cambia la puntuación legal a lo largo de los años disponibles.", "Shows how the legal score changes across available years."),
-            _t(language, "Compara años con cautela cuando la metodología o la escala hayan cambiado.", "Compare years cautiously when methodology or scale has changed."),
+            _t(
+                language,
+                "Muestra cómo cambia la puntuación legal a lo largo de los años disponibles.",
+                "Shows how the legal score changes across available years.",
+            ),
+            _t(
+                language,
+                "Compara años con cautela cuando la metodología o la escala hayan cambiado.",
+                "Compare years cautiously when methodology or scale has changed.",
+            ),
         ),
         "scatter": (
-            _t(language, "Cada punto representa un país y cruza su resultado social con su protección legal.", "Each point is a country, linking its social result and legal protection."),
-            _t(language, "Más a la derecha significa mayor puntuación legal. Más arriba significa mayor porcentaje para la respuesta elegida.", "Further right means a higher legal score. Further up means a higher percentage for the selected answer."),
+            _t(
+                language,
+                "Cada punto representa un país y cruza su resultado social con su protección legal.",
+                "Each point is a country, linking its social result and legal protection.",
+            ),
+            _t(
+                language,
+                "Más a la derecha significa mayor puntuación legal. Más arriba significa mayor porcentaje para la respuesta elegida.",
+                "Further right means a higher legal score. Further up means a higher percentage for the selected answer.",
+            ),
         ),
         "quadrants": (
-            _t(language, "Sitúa cada país respecto a la mediana legal y la mediana social del conjunto comparable.", "Places each country relative to the legal and social medians of the comparable set."),
-            _t(language, "Las zonas permiten detectar combinaciones distintas sin restar dos escalas que miden aspectos diferentes.", "The areas reveal different combinations without subtracting scales that measure different things."),
+            _t(
+                language,
+                "Sitúa cada país respecto a la mediana legal y la mediana social del conjunto comparable.",
+                "Places each country relative to the legal and social medians of the comparable set.",
+            ),
+            _t(
+                language,
+                "Las zonas permiten detectar combinaciones distintas sin restar dos escalas que miden aspectos diferentes.",
+                "The areas reveal different combinations without subtracting scales that measure different things.",
+            ),
         ),
         "ranking_gap": (
-            _t(language, "Compara la posición legal y la posición social de cada país.", "Compares each country's legal and social positions."),
-            _t(language, "Una separación grande muestra posiciones relativas distintas, pero no demuestra causalidad.", "A large gap shows different relative positions but does not establish causality."),
+            _t(
+                language,
+                "Compara la posición legal y la posición social de cada país.",
+                "Compares each country's legal and social positions.",
+            ),
+            _t(
+                language,
+                "Una separación grande muestra posiciones relativas distintas, pero no demuestra causalidad.",
+                "A large gap shows different relative positions but does not establish causality.",
+            ),
         ),
     }
     what_shows, how_to_read = explanations.get(
         key,
         (
-            _t(language, f"Presenta información sobre {indicator}.", f"Presents information about {indicator}."),
-            _t(language, "Interprétalo junto con la fuente y los filtros indicados.", "Read it together with the stated source and filters."),
+            _t(
+                language,
+                f"Presenta información sobre {indicator}.",
+                f"Presents information about {indicator}.",
+            ),
+            _t(
+                language,
+                "Interprétalo junto con la fuente y los filtros indicados.",
+                "Read it together with the stated source and filters.",
+            ),
         ),
     )
     combined_notes = (

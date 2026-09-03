@@ -180,7 +180,7 @@ def test_batch_export_validates_every_png(
     assert all(path.read_bytes() == PNG for path in paths)
 
 
-def test_large_export_uses_memory_bounded_batches(
+def test_large_export_is_strictly_sequential(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -202,8 +202,32 @@ def test_large_export_uses_memory_bounded_batches(
     )
 
     assert rendered == paths
-    assert batch_sizes == [2, 2, 1]
+    assert batch_sizes == [1, 1, 1, 1, 1]
     assert all(path.read_bytes() == PNG for path in paths)
+
+
+def test_report_payload_removes_interactive_only_data() -> None:
+    figure = go.Figure(
+        go.Bar(
+            x=["A"],
+            y=[1],
+            customdata=[["large hover value"]],
+            hovertemplate="%{customdata[0]}",
+            meta="interactive metadata",
+        )
+    )
+    figure.update_layout(meta={"export_filename": "chart.png"})
+
+    payload = exports._prepare_report_payload(figure)
+
+    assert payload["data"][0]["x"] == ["A"]
+    assert payload["data"][0]["y"] == [1]
+    assert payload["data"][0]["hoverinfo"] == "skip"
+    assert "customdata" not in payload["data"][0]
+    assert "hovertemplate" not in payload["data"][0]
+    assert "meta" not in payload["data"][0]
+    assert "meta" not in payload["layout"]
+    assert getattr(figure.data[0], "customdata", None) is not None
 
 
 def test_batch_export_rejects_missing_output(

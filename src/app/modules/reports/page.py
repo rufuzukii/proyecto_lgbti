@@ -21,7 +21,7 @@ from app.modules.reports.hr_reporting import (
 from app.modules.reports.models import ReportConfiguration
 from app.modules.reports.service import (
     ReportGenerationError,
-    build_report,
+    build_report_preview,
     default_section_narrative,
     generate_report_pdf,
 )
@@ -655,7 +655,7 @@ def register_reports_callbacks(app: Dash) -> None:
                 inherited_configuration=inherited_configuration,
             )
             config = _hr_report_configuration(config.to_dict())
-            content = build_report(config)
+            content = build_report_preview(config)
         except ReportGenerationError as exc:
             safe_language = "en" if language == "en" else "es"
             logger.warning("report_preview_failed", extra={"reason": str(exc)})
@@ -1153,6 +1153,15 @@ def _preview_content(content) -> list[Component]:
                     )
                     for page_index, figure in enumerate(chart.figures, start=1)
                 ],
+                html.P(
+                    text(
+                        "La visualización optimizada se incorporará al PDF.",
+                        "The optimised visualisation will be included in the PDF.",
+                    ),
+                    className="reports-preview-chart-placeholder",
+                )
+                if not chart.figures
+                else None,
                 html.Div(
                     [
                         html.P(

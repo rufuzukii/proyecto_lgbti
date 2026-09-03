@@ -8,7 +8,12 @@ from app.modules.reports.models import (
     ReportMetric,
     ReportRecommendation,
 )
-from app.modules.reports.service import build_report, generate_report_pdf, load_report_dataset
+from app.modules.reports.service import (
+    build_report,
+    build_report_preview,
+    generate_report_pdf,
+    load_report_dataset,
+)
 
 __all__ = [
     "ReportChart",
@@ -18,6 +23,7 @@ __all__ = [
     "ReportMetric",
     "ReportRecommendation",
     "build_report",
+    "build_report_preview",
     "generate_report_pdf",
     "load_report_dataset",
 ]
