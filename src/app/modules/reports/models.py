@@ -165,6 +165,9 @@ class ReportConfiguration:
 class ReportDataset:
     result: dict[str, Any]
     query_seconds: float
+    normalization_seconds: float = 0.0
+    analysis_seconds: float = 0.0
+    cache_hit: bool = False
 
 
 @dataclass(frozen=True)
@@ -186,7 +189,7 @@ class ReportRecommendation:
 class ReportChart:
     key: str
     title: str
-    figure: go.Figure | None
+    figure: go.Figure
     source: str
     additional_figures: list[go.Figure] = field(default_factory=list)
     page_ranges: list[tuple[int, int]] = field(default_factory=list)
@@ -197,9 +200,7 @@ class ReportChart:
     @property
     def figures(self) -> tuple[go.Figure, ...]:
         """All static pages belonging to this conceptual visualization."""
-        return tuple(
-            figure for figure in (self.figure, *self.additional_figures) if figure is not None
-        )
+        return (self.figure, *self.additional_figures)
 
 
 @dataclass
@@ -221,6 +222,7 @@ class ReportContent:
     table_rows: list[dict[str, Any]]
     section_narratives: dict[str, str] = field(default_factory=dict)
     timings: dict[str, float] = field(default_factory=dict)
+    data_cache_hit: bool = False
     focus_label: str = ""
     objective_label: str = ""
 

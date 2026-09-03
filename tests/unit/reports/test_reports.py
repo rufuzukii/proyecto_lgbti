@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import fitz
 import plotly.graph_objects as go
+import pytest
 from dash import Dash, dcc
 from PIL import Image
 
@@ -131,6 +132,44 @@ def _ilga_result() -> dict[str, Any]:
             {"country": "Francia", "iso": "FR", "year": 2026, "value": 69.0},
         ],
     }
+
+
+def _combined_result() -> dict[str, Any]:
+    result = _fra_result()
+    rows = [
+        {"country": "España", "iso": "ES", "fra_value": 64.0, "ilga_value": 78.0},
+        {"country": "Francia", "iso": "FR", "fra_value": 55.0, "ilga_value": 69.0},
+        {"country": "Alemania", "iso": "DE", "fra_value": 49.0, "ilga_value": 61.0},
+    ]
+    ranking_gap = {
+        "available": True,
+        "rows": [
+            {
+                **row,
+                "fra_rank": index,
+                "ilga_rank": index,
+                "absolute_rank_difference": 0,
+            }
+            for index, row in enumerate(rows, start=1)
+        ],
+    }
+    result.update(
+        {
+            "source": "FRA + ILGA-Europe",
+            "combined_analysis": {
+                "status": "ok",
+                "rows": rows,
+                "metrics": {},
+                "semantics": {"direction": "higher_is_better"},
+                "supported_analyses": {"ranking_gap": True},
+                "fra_year": 2024,
+                "ilga_year": 2026,
+                "ranking_gap": ranking_gap,
+            },
+            "ranking_gap": ranking_gap,
+        }
+    )
+    return result
 
 
 def _many_country_result(count: int = 12) -> dict[str, Any]:
@@ -256,6 +295,40 @@ def test_social_and_legal_reports_start_with_the_reused_european_map() -> None:
     legal_map = legal.charts[0].figure
     assert legal_map is not None
     assert cast(Any, legal_map.data[0]).type == "choropleth"
+
+
+def test_combined_preview_contains_both_maps_and_valid_plotly_figures() -> None:
+    configuration = ReportConfiguration.from_mapping(
+        {
+            "source": "combined",
+            "year": 2024,
+            "charts": ["scatter", "ranking_gap"],
+            "countries": [],
+            "language": "es",
+        }
+    )
+    content = HRReportBuilder().build(
+        configuration,
+        ReportDataset(_combined_result(), query_seconds=0.01),
+    )
+    graphs = [
+        item
+        for component in reports_page._preview_content(content)
+        for item in _walk(component)
+        if isinstance(item, dcc.Graph)
+    ]
+
+    assert [chart.key for chart in content.charts] == [
+        "map_fra",
+        "map_ilga",
+        "scatter",
+        "ranking_gap",
+    ]
+    assert all(
+        isinstance(figure, go.Figure) for chart in content.charts for figure in chart.figures
+    )
+    assert len(graphs) == sum(len(chart.figures) for chart in content.charts)
+    assert all(isinstance(getattr(graph, "figure", None), go.Figure) for graph in graphs)
 
 
 def test_unselected_ranking_uses_one_pdf_figure_without_losing_countries() -> None:
@@ -515,6 +588,7 @@ def test_preview_starts_with_executive_summary_and_uses_responsive_components() 
     assert executive_index < map_index < metrics_index < ranking_index
     assert "Objetivo del informe" not in " ".join(top_level_text)
     assert graphs
+    assert all(isinstance(getattr(graph, "figure", None), go.Figure) for graph in graphs)
     graph_props = [graph.to_plotly_json()["props"] for graph in graphs]
     assert all(props["responsive"] is True for props in graph_props)
     assert all(props["className"] == "reports-preview-graph" for props in graph_props)
@@ -617,6 +691,23 @@ def test_report_dataset_uses_one_query_for_all_countries(monkeypatch) -> None:
     assert calls[0].countries == []
     assert calls[0].question_code == "EMP_1"
     assert calls[0].answer == "Yes"
+
+
+def test_report_dataset_exposes_statistics_timings(monkeypatch) -> None:
+    result = _fra_result()
+    result["_statistics_timings"] = {
+        "query_ms": 12.0,
+        "normalization_ms": 8.0,
+        "analysis_ms": 5.0,
+        "cache_hit": True,
+    }
+    monkeypatch.setattr(report_service, "get_fra_statistics", lambda _query: result)
+
+    dataset = report_service.load_report_dataset(_configuration())
+
+    assert dataset.normalization_seconds == 0.008
+    assert dataset.analysis_seconds == 0.005
+    assert dataset.cache_hit is True
 
 
 def test_server_png_export_is_valid_and_document_resolution() -> None:
@@ -787,6 +878,7 @@ def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
 def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None:
     configuration = _configuration(countries=[], primary_country="")
     calls = {"map": 0, "ranking": 0, "responses": 0}
+    export_calls = 0
 
     def tracked_figure(name: str):
         def build(*_args, **_kwargs):
@@ -812,12 +904,9 @@ def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None
         tracked_figure("responses"),
     )
 
-    preview = report_service.build_report_preview(configuration)
-
-    assert calls == {"map": 0, "ranking": 0, "responses": 0}
-    assert all(not chart.figures for chart in preview.charts)
-
     def fake_export(figures, paths):
+        nonlocal export_calls
+        export_calls += 1
         source_figures = list(figures)
         targets = [Path(path) for path in paths]
         assert len(source_figures) == len(targets)
@@ -826,17 +915,47 @@ def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None
         return targets
 
     monkeypatch.setattr(report_service, "export_figures_for_report", fake_export)
-    monkeypatch.setattr(
-        report_service.PDFExporter,
-        "export",
-        lambda _self, _content, _images: b"%PDF-test",
-    )
 
-    generated = report_service.generate_report_pdf(configuration)
+    preview = report_service.build_report_preview(configuration)
 
     assert calls == {"map": 1, "ranking": 1, "responses": 1}
+    assert all(chart.figures for chart in preview.charts)
+    assert export_calls == 0
+
+    def fake_pdf(_self, content, _images):
+        ranking = next(chart for chart in content.charts if chart.key == "ranking")
+        assert ranking.what_shows == "Texto editado"
+        assert content.section_narratives["executive"] == "Resumen editado"
+        return b"%PDF-test"
+
+    monkeypatch.setattr(report_service.PDFExporter, "export", fake_pdf)
+
+    generated = report_service.generate_report_pdf(
+        configuration,
+        chart_narratives={"ranking": {"what_shows": "Texto editado"}},
+        section_narratives={"executive": "Resumen editado"},
+    )
+
+    assert calls == {"map": 2, "ranking": 2, "responses": 2}
+    assert export_calls == 1
     assert generated.image_count == 3
-    assert all(not chart.figures for chart in generated.content.charts)
+    assert all(chart.figures for chart in generated.content.charts)
+
+
+def test_preview_converts_chart_failures_to_controlled_errors(monkeypatch) -> None:
+    monkeypatch.setattr(
+        report_service,
+        "load_report_dataset",
+        lambda _config: ReportDataset(_fra_result(), query_seconds=0.01),
+    )
+
+    def fail_chart(*_args, **_kwargs):
+        raise RuntimeError("chart failed")
+
+    monkeypatch.setattr(report_builder, "build_europe_choropleth", fail_chart)
+
+    with pytest.raises(report_service.ReportGenerationError):
+        report_service.build_report_preview(_configuration())
 
 
 def test_report_generation_lock_prevents_overlapping_exports(monkeypatch) -> None:

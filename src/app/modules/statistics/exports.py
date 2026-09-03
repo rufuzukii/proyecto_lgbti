@@ -32,7 +32,7 @@ REPORT_EXPORT_WIDTH = 1200
 REPORT_EXPORT_HEIGHT = 800
 REPORT_EXPORT_SCALE = 1
 
-REPORT_EXPORT_BATCH_SIZE = 1
+REPORT_EXPORT_BATCH_SIZE = 6
 SUMMARY_TABLE_EXPORT_FIELDS = (
     "country",
     "country_code",
@@ -299,7 +299,7 @@ def export_figures_for_report(
     for target in targets:
         target.parent.mkdir(parents=True, exist_ok=True)
 
-    batch_count = len(targets)
+    batch_count = (len(targets) + REPORT_EXPORT_BATCH_SIZE - 1) // REPORT_EXPORT_BATCH_SIZE
     logger.info(
         "chart_export_started chart_count=%s batch_size=%s batch_count=%s",
         len(targets),
@@ -307,17 +307,24 @@ def export_figures_for_report(
         batch_count,
     )
     export_started = time.perf_counter()
-    for batch_index, target in enumerate(targets, start=1):
+    for batch_index, batch_start in enumerate(
+        range(0, len(targets), REPORT_EXPORT_BATCH_SIZE), start=1
+    ):
         batch_started = time.perf_counter()
-        try:
-            figure = next(source_figures)
-        except StopIteration as exc:
-            raise ValueError("Each report figure requires exactly one output path.") from exc
-        prepared = _prepare_report_payload(figure)
+        batch_targets: list[str | Path] = list(
+            targets[batch_start : batch_start + REPORT_EXPORT_BATCH_SIZE]
+        )
+        batch_figures: list[go.Figure] = []
+        for _ in batch_targets:
+            try:
+                batch_figures.append(next(source_figures))
+            except StopIteration as exc:
+                raise ValueError("Each report figure requires exactly one output path.") from exc
+        prepared = [_prepare_report_payload(figure) for figure in batch_figures]
         try:
             pio.write_images(
-                [prepared],
-                [target],
+                prepared,
+                batch_targets,
                 format=EXPORT_FORMAT,
                 width=width,
                 height=height,
@@ -330,25 +337,30 @@ def export_figures_for_report(
                 _chart_export_error_event(exc),
                 batch_index,
                 batch_count,
-                1,
+                len(batch_targets),
             )
             raise ChartExportError("The report charts could not be generated.") from exc
         finally:
+            for payload in prepared:
+                payload.clear()
             prepared.clear()
+            batch_figures.clear()
 
-        if not _is_png_file(target):
-            logger.error(
-                "chart_export_failed reason=invalid_or_missing_png batch_number=%s batch_count=%s",
-                batch_index,
-                batch_count,
-            )
-            raise ChartExportError("The report charts could not be generated.")
+        for target in batch_targets:
+            if not _is_png_file(Path(target)):
+                logger.error(
+                    "chart_export_failed reason=invalid_or_missing_png "
+                    "batch_number=%s batch_count=%s",
+                    batch_index,
+                    batch_count,
+                )
+                raise ChartExportError("The report charts could not be generated.")
         logger.info(
             "chart_export_batch_completed batch_number=%s batch_count=%s "
             "image_count=%s height=%s elapsed_seconds=%.3f",
             batch_index,
             batch_count,
-            1,
+            len(batch_targets),
             height,
             time.perf_counter() - batch_started,
         )

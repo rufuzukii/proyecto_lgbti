@@ -87,7 +87,20 @@ def load_report_dataset(configuration: ReportConfiguration) -> ReportDataset:
         raise ReportGenerationError(
             str(result.get("message") or "No data is available for this report.")
         )
-    return ReportDataset(result=result, query_seconds=duration)
+    timing_payloads = [dict(result.get("_statistics_timings") or {})]
+    if configuration.source == "combined":
+        timing_payloads.append(
+            dict((result.get("combined_analysis") or {}).get("_statistics_timings") or {})
+        )
+    return ReportDataset(
+        result=result,
+        query_seconds=duration,
+        normalization_seconds=sum(_timing_ms(item, "normalization_ms") for item in timing_payloads)
+        / 1000,
+        analysis_seconds=sum(_timing_ms(item, "analysis_ms") for item in timing_payloads) / 1000,
+        cache_hit=bool(timing_payloads)
+        and all(bool(item.get("cache_hit")) for item in timing_payloads),
+    )
 
 
 def build_report(configuration: ReportConfiguration) -> ReportContent:
@@ -96,8 +109,33 @@ def build_report(configuration: ReportConfiguration) -> ReportContent:
 
 
 def build_report_preview(configuration: ReportConfiguration) -> ReportContent:
-    dataset = load_report_dataset(configuration)
-    return ReportBuilder().build(configuration, dataset, include_figures=False)
+    try:
+        dataset = load_report_dataset(configuration)
+        content = ReportBuilder().build(configuration, dataset)
+    except ReportGenerationError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "report_preview_failed source=%s year=%s",
+            configuration.source,
+            configuration.year,
+        )
+        raise ReportGenerationError("The report preview could not be generated.") from exc
+    required_maps = {
+        "fra": {"map_fra"},
+        "ilga": {"map_ilga"},
+        "combined": {"map_fra", "map_ilga"},
+    }[configuration.source]
+    rendered_keys = {chart.key for chart in content.charts if chart.figures}
+    if not content.charts or not required_maps.issubset(rendered_keys):
+        logger.error(
+            "report_preview_incomplete source=%s charts_requested=%s chart_keys=%s",
+            configuration.source,
+            ",".join(configuration.charts),
+            ",".join(sorted(rendered_keys)),
+        )
+        raise ReportGenerationError("The report preview could not be generated.")
+    return content
 
 
 def generate_report_pdf(
@@ -138,10 +176,14 @@ def _generate_report_pdf(
         dataset = load_report_dataset(configuration)
         data_memory = memory_sampler.sample()
         logger.info(
-            "report_data_loaded source=%s query_ms=%.2f memory_mb=%s python_mb=%s "
-            "memory_limit_mb=%s memory_source=%s",
+            "report_data_loaded source=%s report_query_ms=%.2f "
+            "report_normalization_ms=%.2f report_analysis_ms=%.2f cache_hit=%s "
+            "memory_mb=%s python_mb=%s memory_limit_mb=%s memory_source=%s",
             configuration.source,
             dataset.query_seconds * 1000,
+            dataset.normalization_seconds * 1000,
+            dataset.analysis_seconds * 1000,
+            dataset.cache_hit,
             _memory_value(data_memory.total_mb),
             _memory_value(data_memory.python_mb),
             _memory_value(data_memory.limit_mb),
@@ -154,10 +196,11 @@ def _generate_report_pdf(
         figure_memory = memory_sampler.sample()
         logger.info(
             "report_figures_built count=%s preparation_ms=%.2f figure_ms=%.2f "
-            "memory_mb=%s python_mb=%s",
+            "chart_ms=%s memory_mb=%s python_mb=%s",
             image_count,
             content.timings["preparation_seconds"] * 1000,
             content.timings["figure_build_seconds"] * 1000,
+            _chart_timing_log(content),
             _memory_value(figure_memory.total_mb),
             _memory_value(figure_memory.python_mb),
         )
@@ -174,7 +217,7 @@ def _generate_report_pdf(
             paths = [path for chart in content.charts for path in chart_paths[chart.key]]
             try:
                 export_figures_for_report(
-                    _release_report_figures(content),
+                    _report_figures(content),
                     paths,
                 )
             except ChartExportError as exc:
@@ -328,14 +371,26 @@ def _memory_value(value: float | None) -> str:
     return f"{value:.1f}" if value is not None else "unavailable"
 
 
-def _release_report_figures(content: ReportContent):
+def _timing_ms(payload: dict[str, object], key: str) -> float:
+    value = payload.get(key)
+    if not isinstance(value, int | float | str):
+        return 0.0
+    try:
+        return max(0.0, float(value or 0.0))
+    except TypeError, ValueError:
+        return 0.0
+
+
+def _chart_timing_log(content: ReportContent) -> str:
+    return ",".join(
+        f"{chart.key}:{content.timings.get(f'figure_{chart.key}_seconds', 0.0) * 1000:.2f}"
+        for chart in content.charts
+    )
+
+
+def _report_figures(content: ReportContent):
     for chart in content.charts:
-        figure = chart.figure
-        chart.figure = None
-        if figure is not None:
-            yield figure
-        while chart.additional_figures:
-            yield chart.additional_figures.pop(0)
+        yield from chart.figures
 
 
 def _report_filename(

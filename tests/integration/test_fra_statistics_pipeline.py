@@ -254,7 +254,11 @@ def test_query_cache_geopandas_and_map_pipeline_reuses_database_result(monkeypat
         figure = build_europe_choropleth(second["ranking"], source="fra")
 
     # Assert
-    assert first == second
+    assert {key: value for key, value in first.items() if key != "_statistics_timings"} == {
+        key: value for key, value in second.items() if key != "_statistics_timings"
+    }
+    assert first["_statistics_timings"]["cache_hit"] is False
+    assert second["_statistics_timings"]["cache_hit"] is True
     assert collection.find_calls == calls_after_first_query
     assert len(geography.rows) == 49
     map_trace = cast(Any, figure.data[0])

@@ -619,12 +619,19 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     cache_key = _fra_statistics_cache_key(query)
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
+        result = deepcopy(cached)
+        result["_statistics_timings"] = {
+            "query_ms": 0.0,
+            "normalization_ms": 0.0,
+            "analysis_ms": 0.0,
+            "cache_hit": True,
+        }
         logger.info(
             "statistics_loaded source=fra indicator=%s total_ms=%.2f cache_hit=true",
             query.question_code,
             (time.perf_counter() - started_at) * 1000,
         )
-        return deepcopy(cached)
+        return result
 
     result = _server_cache_get_or_compute(
         cache_key,
@@ -646,6 +653,7 @@ def get_combined_statistics_analysis(
     fra_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return one cached FRA/ILGA analytical dataset for all combined visuals."""
+    started_at = time.perf_counter()
     query = normalize_fra_query(query)
     ilga_year = nearest_ilga_year(query.year, get_ilga_years())
     if ilga_year is None:
@@ -673,7 +681,14 @@ def get_combined_statistics_analysis(
     cache_key = f"fra-ilga-analysis-v4:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
-        return deepcopy(cached)
+        result = deepcopy(cached)
+        result["_statistics_timings"] = {
+            "query_ms": 0.0,
+            "normalization_ms": 0.0,
+            "analysis_ms": 0.0,
+            "cache_hit": True,
+        }
+        return result
 
     fra_payload = fra_result if isinstance(fra_result, dict) else get_fra_statistics(query)
     if fra_payload.get("status") != "ok":
@@ -684,11 +699,21 @@ def get_combined_statistics_analysis(
     )
     if legal_payload.get("status") != "ok":
         return _status("empty", "No hay datos ILGA-Europe comparables.")
+    analysis_started_at = time.perf_counter()
     analysis = build_combined_analysis(fra_payload, legal_payload)
+    analysis_ms = (time.perf_counter() - analysis_started_at) * 1000
+    legal_timings = dict(legal_payload.get("_statistics_timings") or {})
     result = {
         "status": "ok",
         "message": "",
         **analysis,
+        "_statistics_timings": {
+            "query_ms": _safe_timing_ms(legal_timings.get("query_ms")),
+            "normalization_ms": _safe_timing_ms(legal_timings.get("normalization_ms")),
+            "analysis_ms": _safe_timing_ms(legal_timings.get("analysis_ms")) + analysis_ms,
+            "cache_hit": False,
+            "total_ms": (time.perf_counter() - started_at) * 1000,
+        },
     }
     _server_cache_set(cache_key, deepcopy(result))
     return result
@@ -706,6 +731,7 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         query.filter_b_value,
     )
     dataframe = _fra_dataframe_for_code(clean_code, query.category, query.year)
+    frame_timings = dict(dataframe.attrs.get("_statistics_timings") or {})
     load_ms = (time.perf_counter() - pipeline_started_at) * 1000
 
     if dataframe.empty:
@@ -813,6 +839,13 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
         ),
     }
     processing_ms = (time.perf_counter() - processing_started_at) * 1000
+    result["_statistics_timings"] = {
+        "query_ms": _safe_timing_ms(frame_timings.get("query_ms")),
+        "normalization_ms": _safe_timing_ms(frame_timings.get("normalization_ms")),
+        "analysis_ms": processing_ms,
+        "cache_hit": False,
+        "frame_cache_hit": bool(frame_timings.get("cache_hit")),
+    }
     logger.info(
         "statistics_query_resolved indicator=%s documents=%d demographic=%s:%s "
         "identity=%s:%s total_ms=%.2f",
@@ -958,7 +991,13 @@ def _fra_dataframe_for_code(
             "statistics_frame_loaded indicator=%s query_ms=0 normalization_ms=0 cache_hit=true",
             code,
         )
-        return cached.copy(deep=True)
+        dataframe = cached.copy(deep=True)
+        dataframe.attrs["_statistics_timings"] = {
+            "query_ms": 0.0,
+            "normalization_ms": 0.0,
+            "cache_hit": True,
+        }
+        return dataframe
 
     query_started_at = time.perf_counter()
     document = (
@@ -970,6 +1009,11 @@ def _fra_dataframe_for_code(
     normalization_started_at = time.perf_counter()
     dataframe = fra_document_to_dataframe(document)
     normalization_ms = (time.perf_counter() - normalization_started_at) * 1000
+    dataframe.attrs["_statistics_timings"] = {
+        "query_ms": query_ms,
+        "normalization_ms": normalization_ms,
+        "cache_hit": False,
+    }
     logger.info(
         "statistics_frame_loaded indicator=%s rows=%d query_ms=%.2f "
         "normalization_ms=%.2f cache_hit=false",
@@ -1294,12 +1338,19 @@ def get_ilga_statistics(
     cache_key = _ilga_statistics_cache_key(query, include_history=include_history)
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
+        result = deepcopy(cached)
+        result["_statistics_timings"] = {
+            "query_ms": 0.0,
+            "normalization_ms": 0.0,
+            "analysis_ms": 0.0,
+            "cache_hit": True,
+        }
         logger.info(
             "statistics_loaded source=ilga category=%s total_ms=%.2f cache_hit=true",
             query.category,
             (time.perf_counter() - started_at) * 1000,
         )
-        return deepcopy(cached)
+        return result
 
     result = _build_ilga_statistics(query, include_history=include_history)
     if result.get("status") == "ok":
@@ -1406,6 +1457,12 @@ def _build_ilga_statistics(
         "history": history_records,
         "metrics": _metrics_from_values(ranking["value"].tolist()),
         "normalization": _ilga_result_normalization(current_year),
+        "_statistics_timings": {
+            "query_ms": query_ms,
+            "normalization_ms": normalization_ms,
+            "analysis_ms": grouping_ms,
+            "cache_hit": False,
+        },
         "methodology": ("ILGA-Europe Rainbow Map mide leyes, políticas y protecciones jurídicas. "),
     }
 
@@ -2064,6 +2121,15 @@ def _preferred_fra_answer(ordered_answers: list[str], available_answers: set[str
         if found:
             return found
     return next((answer for answer in ordered_answers if answer in available_answers), None)
+
+
+def _safe_timing_ms(value: object) -> float:
+    if not isinstance(value, int | float | str):
+        return 0.0
+    try:
+        return max(0.0, float(value or 0.0))
+    except TypeError, ValueError:
+        return 0.0
 
 
 def _status(status: str, message: str) -> dict[str, Any]:

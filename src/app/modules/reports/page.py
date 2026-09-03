@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any
 
 import dash_ag_grid as dag
@@ -634,6 +635,7 @@ def register_reports_callbacks(app: Dash) -> None:
                 True,
             )
         preview_rate_limiter.record_failure(limiter_key)
+        preview_started = time.perf_counter()
         try:
             config = _configuration_from_controls(
                 title=title,
@@ -656,6 +658,9 @@ def register_reports_callbacks(app: Dash) -> None:
             )
             config = _hr_report_configuration(config.to_dict())
             content = build_report_preview(config)
+            render_started = time.perf_counter()
+            rendered_preview = _preview_content(content)
+            render_seconds = time.perf_counter() - render_started
         except ReportGenerationError as exc:
             safe_language = "en" if language == "en" else "es"
             logger.warning("report_preview_failed", extra={"reason": str(exc)})
@@ -671,8 +676,37 @@ def register_reports_callbacks(app: Dash) -> None:
                 no_update,
                 True,
             )
+        preview_seconds = time.perf_counter() - preview_started
+        figure_types = [
+            type(figure).__name__ for chart in content.charts for figure in chart.figures
+        ]
+        logger.info(
+            "report_preview_completed source=%s charts_requested=%s charts_built=%s "
+            "charts_rendered=%s chart_keys=%s figure_type=%s report_query_ms=%.2f "
+            "report_normalization_ms=%.2f report_analysis_ms=%.2f cache_hit=%s "
+            "report_content_build_ms=%.2f report_figures_ms=%.2f chart_ms=%s "
+            "report_preview_render_ms=%.2f report_total_ms=%.2f",
+            config.source,
+            ",".join(config.charts),
+            len(content.charts),
+            sum(len(chart.figures) for chart in content.charts),
+            ",".join(chart.key for chart in content.charts),
+            ",".join(figure_types),
+            content.timings["query_seconds"] * 1000,
+            content.timings["normalization_seconds"] * 1000,
+            content.timings["analysis_seconds"] * 1000,
+            content.data_cache_hit,
+            content.timings["preparation_seconds"] * 1000,
+            content.timings["figure_build_seconds"] * 1000,
+            ",".join(
+                f"{chart.key}:{content.timings.get(f'figure_{chart.key}_seconds', 0.0) * 1000:.2f}"
+                for chart in content.charts
+            ),
+            render_seconds * 1000,
+            preview_seconds * 1000,
+        )
         return (
-            _preview_content(content),
+            rendered_preview,
             "reports-preview-document",
             _t(config.language, "Vista previa actualizada.", "Preview updated."),
             "reports-status reports-status-ok",
@@ -1153,15 +1187,6 @@ def _preview_content(content) -> list[Component]:
                     )
                     for page_index, figure in enumerate(chart.figures, start=1)
                 ],
-                html.P(
-                    text(
-                        "La visualización optimizada se incorporará al PDF.",
-                        "The optimised visualisation will be included in the PDF.",
-                    ),
-                    className="reports-preview-chart-placeholder",
-                )
-                if not chart.figures
-                else None,
                 html.Div(
                     [
                         html.P(

@@ -63,8 +63,6 @@ class ReportBuilder:
         self,
         configuration: ReportConfiguration,
         dataset: ReportDataset,
-        *,
-        include_figures: bool = True,
     ) -> ReportContent:
         started = time.perf_counter()
         result = dataset.result
@@ -121,14 +119,13 @@ class ReportBuilder:
         limitations = _limitations(configuration, indicator, result)
         preparation_seconds = time.perf_counter() - started
         figure_started = time.perf_counter()
-        charts = _charts(
+        charts, chart_timings = _charts(
             configuration,
             result,
             ranking,
             selected,
             country_names,
             indicator,
-            include_figures=include_figures,
         )
         figure_seconds = time.perf_counter() - figure_started
         content = ReportContent(
@@ -160,10 +157,17 @@ class ReportBuilder:
             table_rows=_table_rows(ranking, selected, result, indicator),
             timings={
                 "query_seconds": round(dataset.query_seconds, 4),
+                "normalization_seconds": round(dataset.normalization_seconds, 4),
+                "analysis_seconds": round(dataset.analysis_seconds, 4),
                 "preparation_seconds": round(preparation_seconds, 4),
                 "figure_build_seconds": round(figure_seconds, 4),
+                **{
+                    f"figure_{key}_seconds": round(seconds, 4)
+                    for key, seconds in chart_timings.items()
+                },
                 "build_seconds": round(time.perf_counter() - started, 4),
             },
+            data_cache_hit=dataset.cache_hit,
             focus_label=hr_report_focus_label(configuration.language),
             objective_label=hr_report_objective(configuration.objective).label(
                 configuration.language
@@ -308,9 +312,7 @@ def _charts(
     selected: list[str],
     country_names: list[str],
     indicator: str,
-    *,
-    include_figures: bool,
-) -> list[ReportChart]:
+) -> tuple[list[ReportChart], dict[str, float]]:
     rows = cast(list[dict[str, Any]], ranking.to_dict("records"))
     source = str(result.get("source") or "")
     detail = list(result.get("detail_data") or result.get("data") or [])
@@ -496,7 +498,7 @@ def _charts(
             ]
         )
 
-    if include_figures and config.source != "combined" and "radar" in config.charts:
+    if config.source != "combined" and "radar" in config.charts:
         radar_payload = result.get("experience_legal_radar") or {}
         radar_country = selected[0] if selected else _first_comparable_radar_country(radar_payload)
         radar, compatible, _metadata, _interpretation = build_experience_legal_radar(
@@ -518,6 +520,7 @@ def _charts(
             )
 
     charts: list[ReportChart] = []
+    chart_timings: dict[str, float] = {}
     combined_support = dict((result.get("combined_analysis") or {}).get("supported_analyses") or {})
     for key, title, factory in builders:
         if not key.startswith("map_") and key not in config.charts:
@@ -528,23 +531,11 @@ def _charts(
             "ILGA-Europe" if key == "map_ilga" else "FRA" if key == "map_fra" else source
         )
         what_shows, how_to_read, observation = _chart_explanation(key, config, result, indicator)
-        if not include_figures:
-            charts.append(
-                ReportChart(
-                    key,
-                    title,
-                    None,
-                    figure_source,
-                    page_ranges=page_ranges_by_key.get(key, []),
-                    what_shows=what_shows,
-                    how_to_read=how_to_read,
-                    observation=observation,
-                )
-            )
-            continue
+        chart_started = time.perf_counter()
         built = factory()
         figures = list(built) if isinstance(built, list) else [built]
         figures = [figure for figure in figures if figure.data]
+        chart_timings[key] = time.perf_counter() - chart_started
         if not figures:
             continue
         figure_year = (
@@ -581,7 +572,7 @@ def _charts(
                 observation=observation,
             )
         )
-    return charts
+    return charts, chart_timings
 
 
 def _report_ranking_pages(rows: list[dict[str, Any]], selected: list[str]) -> list[RankingPage]:

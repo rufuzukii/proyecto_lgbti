@@ -180,7 +180,7 @@ def test_batch_export_validates_every_png(
     assert all(path.read_bytes() == PNG for path in paths)
 
 
-def test_large_export_is_strictly_sequential(
+def test_large_export_uses_bounded_browser_batches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -194,7 +194,7 @@ def test_large_export_is_strictly_sequential(
             Path(path).write_bytes(PNG)
 
     monkeypatch.setattr(exports.pio, "write_images", write_images)
-    paths = [tmp_path / f"chart-{index}.png" for index in range(5)]
+    paths = [tmp_path / f"chart-{index}.png" for index in range(8)]
 
     rendered = exports.export_figures_for_report(
         [go.Figure() for _index in paths],
@@ -202,7 +202,7 @@ def test_large_export_is_strictly_sequential(
     )
 
     assert rendered == paths
-    assert batch_sizes == [1, 1, 1, 1, 1]
+    assert batch_sizes == [6, 2]
     assert all(path.read_bytes() == PNG for path in paths)
 
 
