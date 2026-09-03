@@ -1150,12 +1150,19 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     render_config = (root / "render.yaml").read_text(encoding="utf-8")
     requirements = (root / "requirements.txt").read_text(encoding="utf-8")
 
-    assert "mkdir -p .venv/kaleido-chrome" in render_config
-    assert "plotly_get_chrome -y --path .venv/kaleido-chrome" in render_config
-    assert render_config.count('test -x "$BROWSER_PATH"') == 2
-    assert "BROWSER_PATH" in render_config
-    assert "/opt/render/project/src/.venv/kaleido-chrome/chrome-linux64/chrome" in render_config
+    build_script = (root / "scripts" / "render_build.sh").read_text(encoding="utf-8")
+    start_script = (root / "scripts" / "render_start.sh").read_text(encoding="utf-8")
+
+    assert "bash scripts/render_build.sh" in render_config
+    assert "bash scripts/render_start.sh" in render_config
+    assert 'browser_root="${venv_root}/kaleido-chrome"' in build_script
+    assert 'plotly_get_chrome -y --path "${browser_root}"' in build_script
+    assert 'test -x "${BROWSER_PATH}"' in build_script
+    assert "python scripts/check_chart_export.py" in build_script
+    assert "python scripts/check_chart_export.py --single-only" in start_script
+    assert "exec gunicorn wsgi:server" in start_script
     assert "kaleido==1.3.0" in requirements
+    assert "choreographer==1.3.0" in requirements
     assert "reportlab==4.5.1" in requirements
     assert "healthCheckPath: /health" in render_config
     assert "type: keyvalue" not in render_config
@@ -1170,6 +1177,7 @@ def test_report_export_finds_bundled_chrome_when_environment_path_is_stale(
     browser = tmp_path / "kaleido-chrome" / "chrome-linux64" / "chrome"
     browser.parent.mkdir(parents=True)
     browser.write_bytes(b"chrome")
+    browser.chmod(0o755)
     monkeypatch.setenv("BROWSER_PATH", "/missing/old-render-chrome")
 
     configured = _configure_kaleido_browser(tmp_path)

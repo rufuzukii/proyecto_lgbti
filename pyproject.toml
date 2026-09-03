@@ -29,6 +29,7 @@ dependencies = [
     "PyMuPDF==1.28.0",
     "Pillow==12.3.0",
     "kaleido==1.3.0",
+    "choreographer==1.3.0",
     "reportlab==4.5.1",
     "boto3==1.43.51",
     "botocore==1.43.51",
@@ -64,6 +65,10 @@ where = ["src"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = ["-p", "no:cacheprovider", "-p", "no:dash"]
+markers = [
+    "browser: requires a locally executable Chrome/Chromium and Kaleido",
+    "production_like: opt-in smoke coverage for CI or the Render runtime",
+]
 
 [tool.coverage.run]
 branch = true

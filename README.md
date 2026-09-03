@@ -88,6 +88,31 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
+### Exportación de gráficas para informes
+
+En local, Kaleido utiliza un Chrome o Chromium ya instalado y detectable. El diagnóstico
+reutilizable comprueba las versiones, el navegador, una figura mínima, el batch de Plotly y el
+helper de RainbowLens:
+
+```bash
+python scripts/check_chart_export.py
+```
+
+En Render se mantiene el runtime nativo de Python. `scripts/render_build.sh` descarga la versión
+de Chrome for Testing fijada por Choreographer dentro de `$VENV_ROOT/kaleido-chrome`, valida el
+binario, sus librerías y una ejecución headless, y ejecuta el diagnóstico completo. El archivo
+creado queda dentro del artefacto desplegable del virtualenv. `scripts/render_start.sh` vuelve a
+calcular la misma ruta, exporta `BROWSER_PATH` —la variable que Choreographer 1.3 consume— y exige
+una exportación PNG real antes de iniciar Gunicorn. Un fallo en cualquiera de estos pasos cancela
+el despliegue.
+
+La prueba de integración que incluye batch e informes social, legal y legal con todos los países
+es opt-in para CI o un entorno production-like:
+
+```bash
+RUN_BROWSER_INTEGRATION=1 python -m pytest tests/integration/test_chart_export_production_like.py
+```
+
 ## Configuración
 
 La configuración local puede cargarse desde un archivo `.env` no versionado. En Render, los mismos nombres se configuran desde el panel de variables de entorno.

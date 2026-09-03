@@ -27,11 +27,14 @@ def test_production_source_has_no_workstation_or_local_dataset_paths() -> None:
     assert violations == []
 
 
-def test_render_startup_runs_only_the_wsgi_application() -> None:
+def test_render_startup_preflights_charts_then_runs_the_wsgi_application() -> None:
     render_config = (PROJECT_ROOT / "render.yaml").read_text(encoding="utf-8")
+    start_script = (PROJECT_ROOT / "scripts" / "render_start.sh").read_text(encoding="utf-8")
     wsgi = (PROJECT_ROOT / "wsgi.py").read_text(encoding="utf-8")
 
-    assert "gunicorn wsgi:server" in render_config
+    assert "bash scripts/render_start.sh" in render_config
+    assert "python scripts/check_chart_export.py --single-only" in start_script
+    assert "exec gunicorn wsgi:server" in start_script
     assert "import_to_db" not in wsgi
     assert "backfill" not in wsgi.casefold()
     assert "rglob" not in wsgi

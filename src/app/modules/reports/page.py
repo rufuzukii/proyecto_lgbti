@@ -773,8 +773,8 @@ def register_reports_callbacks(app: Dash) -> None:
                 no_update,
                 _t(
                     language,
-                    "No se ha podido generar el informe.",
-                    "The report could not be generated.",
+                    "No se ha podido generar el informe. Inténtalo de nuevo más tarde.",
+                    "The report could not be generated. Please try again later.",
                 ),
                 "reports-status reports-status-error",
             )

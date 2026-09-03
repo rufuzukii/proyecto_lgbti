@@ -92,6 +92,7 @@ from app.modules.reports.page import (
     register_reports_callbacks,
 )
 from app.modules.spain.page import build_spain_layout, register_spain_callbacks
+from app.modules.statistics.chart_export_runtime import log_chart_export_runtime
 from app.modules.statistics.page import (
     build_statistics_layout,
     register_statistics_callbacks,
@@ -174,6 +175,7 @@ class SessionUser(UserMixin):
 
 def create_dash_app() -> Dash:
     _configure_application_logging()
+    log_chart_export_runtime()
     config = get_app_config()
     assets_path = Path(__file__).resolve().parent / "assets"
     app = Dash(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, cast
 
 from dash import Dash, html
 
@@ -142,7 +142,9 @@ def test_response_details_can_limit_rendering_without_changing_selection_semanti
         visible_countries=["ES", "DE"],
     )
 
-    assert {country for trace in figure.data for country in trace.y} == {
+    assert {
+        country for trace in figure.data for country in (cast(Any, trace).y or [])
+    } == {
         "España",
         "Alemania",
     }

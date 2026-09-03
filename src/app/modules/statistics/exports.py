@@ -4,9 +4,7 @@ import csv
 import html
 import io
 import logging
-import os
 import re
-import sys
 import textwrap
 import unicodedata
 from collections.abc import Iterable
@@ -17,6 +15,10 @@ from typing import Any, cast
 import plotly.graph_objects as go
 import plotly.io as pio
 
+from app.modules.statistics.chart_export_runtime import (
+    ChartExportBrowser,
+    configure_chart_export_browser,
+)
 from app.shared.data.source_attribution import attribution_for_sources, source_metadata
 
 EXPORT_FORMAT = "png"
@@ -255,10 +257,10 @@ def export_figure_for_report(
     scale: float = REPORT_EXPORT_SCALE,
 ) -> bytes:
     """Render one existing Plotly figure as a document-ready white PNG."""
-    _configure_kaleido_browser()
+    _require_chart_export_browser()
     prepared = _prepare_report_figure(figure)
     try:
-        return pio.to_image(
+        image_bytes = pio.to_image(
             prepared,
             format=EXPORT_FORMAT,
             width=width,
@@ -267,8 +269,12 @@ def export_figure_for_report(
             validate=True,
         )
     except Exception as exc:
-        logger.exception("report_chart_export_failed")
+        logger.exception(_chart_export_error_event(exc))
         raise ChartExportError("The report chart could not be generated.") from exc
+    if not _is_png(image_bytes):
+        logger.error("chart_export_failed reason=invalid_png")
+        raise ChartExportError("The report chart could not be generated.")
+    return image_bytes
 
 
 def export_figures_for_report(
@@ -280,13 +286,13 @@ def export_figures_for_report(
     scale: float = REPORT_EXPORT_SCALE,
 ) -> list[Path]:
     """Batch-render report figures so one Chrome session serves all charts."""
-    _configure_kaleido_browser()
     prepared = [_prepare_report_figure(figure) for figure in figures]
     targets: list[str | Path] = [Path(path) for path in paths]
     if len(prepared) != len(targets):
         raise ValueError("Each report figure requires exactly one output path.")
     if not prepared:
         return []
+    _require_chart_export_browser()
     for target_value in targets:
         Path(target_value).parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -301,45 +307,62 @@ def export_figures_for_report(
         )
     except Exception as exc:
         logger.exception(
-            "report_chart_batch_export_failed",
+            _chart_export_error_event(exc),
             extra={"chart_count": len(prepared)},
         )
         raise ChartExportError("The report charts could not be generated.") from exc
-    return [Path(target) for target in targets]
+    rendered = [Path(target) for target in targets]
+    if not all(_is_png_file(target) for target in rendered):
+        logger.error(
+            "chart_export_failed reason=invalid_or_missing_png",
+            extra={"chart_count": len(prepared)},
+        )
+        raise ChartExportError("The report charts could not be generated.")
+    return rendered
 
 
 def _configure_kaleido_browser(prefix: str | Path | None = None) -> str | None:
-    """Point Choreographer at the Chrome copy bundled in Render's virtualenv."""
-    configured = str(os.getenv("BROWSER_PATH") or "").strip()
-    if configured and Path(configured).is_file():
-        return configured
+    """Compatibility wrapper around the shared runtime browser detector."""
+    browser = configure_chart_export_browser(prefix)
+    return str(browser.path) if browser.ready and browser.path is not None else None
 
-    environment_root = Path(prefix) if prefix is not None else Path(sys.prefix)
-    chrome_root = environment_root / "kaleido-chrome"
-    candidates = (
-        chrome_root / "chrome-linux64" / "chrome",
-        chrome_root / "chrome-win64" / "chrome.exe",
-        chrome_root / "chrome-win32" / "chrome.exe",
-        chrome_root
-        / "chrome-mac-x64"
-        / "Google Chrome for Testing.app"
-        / "Contents"
-        / "MacOS"
-        / "Google Chrome for Testing",
-        chrome_root
-        / "chrome-mac-arm64"
-        / "Google Chrome for Testing.app"
-        / "Contents"
-        / "MacOS"
-        / "Google Chrome for Testing",
-    )
-    browser = next((candidate for candidate in candidates if candidate.is_file()), None)
-    if browser is None:
-        return None
-    resolved = str(browser.resolve())
-    os.environ["BROWSER_PATH"] = resolved
-    logger.info("kaleido_browser_configured path=%s", resolved)
-    return resolved
+
+def _require_chart_export_browser() -> ChartExportBrowser:
+    browser = configure_chart_export_browser()
+    if not browser.found:
+        logger.error("browser_not_found")
+        raise ChartExportError("The report charts could not be generated.")
+    if not browser.executable:
+        logger.error("browser_not_executable browser_path=%s", browser.path)
+        raise ChartExportError("The report charts could not be generated.")
+    return browser
+
+
+def _chart_export_error_event(exc: BaseException) -> str:
+    exceptions: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and current not in exceptions:
+        exceptions.append(current)
+        current = current.__cause__ or current.__context__
+    names = {type(item).__name__ for item in exceptions}
+    messages = " ".join(str(item).casefold() for item in exceptions)
+    if "ChromeNotFoundError" in names or ("chrome" in messages and "not" in messages):
+        return "browser_not_found"
+    if names & {"BrowserFailedError", "BrowserClosedError"}:
+        return "kaleido_initialization_failed"
+    return "chart_export_failed"
+
+
+def _is_png(value: bytes) -> bool:
+    return len(value) > 8 and value.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def _is_png_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as image_file:
+            return _is_png(image_file.read(16))
+    except OSError:
+        return False
 
 
 def _prepare_report_figure(figure: go.Figure) -> go.Figure:

@@ -11,6 +11,7 @@ from app.modules.reports.builder import ReportBuilder
 from app.modules.reports.models import ReportConfiguration, ReportContent, ReportDataset
 from app.modules.reports.pdf_exporter import PDFExporter
 from app.modules.statistics.exports import (
+    ChartExportError,
     build_export_filename,
     export_figures_for_report,
 )
@@ -116,13 +117,36 @@ def generate_report_pdf(
             paths = [
                 path for chart in content.charts for path in chart_paths[chart.key]
             ]
-            export_figures_for_report(
-                figures,
-                paths,
-            )
+            try:
+                export_figures_for_report(
+                    figures,
+                    paths,
+                )
+            except ChartExportError as exc:
+                logger.error(
+                    "chart_export_failed",
+                    extra={
+                        "source": configuration.source,
+                        "year": configuration.year,
+                        "country_count": len(configuration.countries),
+                        "image_count": len(figures),
+                    },
+                )
+                raise ReportGenerationError("The report could not be generated.") from exc
             image_seconds = time.perf_counter() - image_started
             pdf_started = time.perf_counter()
-            pdf_bytes = PDFExporter().export(content, chart_paths)
+            try:
+                pdf_bytes = PDFExporter().export(content, chart_paths)
+            except Exception as exc:
+                logger.exception(
+                    "pdf_generation_failed",
+                    extra={
+                        "source": configuration.source,
+                        "year": configuration.year,
+                        "country_count": len(configuration.countries),
+                    },
+                )
+                raise ReportGenerationError("The report could not be generated.") from exc
             pdf_seconds = time.perf_counter() - pdf_started
         timings = {
             **content.timings,
