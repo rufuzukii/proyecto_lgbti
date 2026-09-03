@@ -4,7 +4,9 @@ import csv
 import html
 import io
 import logging
+import os
 import re
+import sys
 import textwrap
 import unicodedata
 from collections.abc import Iterable
@@ -253,6 +255,7 @@ def export_figure_for_report(
     scale: float = REPORT_EXPORT_SCALE,
 ) -> bytes:
     """Render one existing Plotly figure as a document-ready white PNG."""
+    _configure_kaleido_browser()
     prepared = _prepare_report_figure(figure)
     try:
         return pio.to_image(
@@ -277,6 +280,7 @@ def export_figures_for_report(
     scale: float = REPORT_EXPORT_SCALE,
 ) -> list[Path]:
     """Batch-render report figures so one Chrome session serves all charts."""
+    _configure_kaleido_browser()
     prepared = [_prepare_report_figure(figure) for figure in figures]
     targets: list[str | Path] = [Path(path) for path in paths]
     if len(prepared) != len(targets):
@@ -302,6 +306,40 @@ def export_figures_for_report(
         )
         raise ChartExportError("The report charts could not be generated.") from exc
     return [Path(target) for target in targets]
+
+
+def _configure_kaleido_browser(prefix: str | Path | None = None) -> str | None:
+    """Point Choreographer at the Chrome copy bundled in Render's virtualenv."""
+    configured = str(os.getenv("BROWSER_PATH") or "").strip()
+    if configured and Path(configured).is_file():
+        return configured
+
+    environment_root = Path(prefix) if prefix is not None else Path(sys.prefix)
+    chrome_root = environment_root / "kaleido-chrome"
+    candidates = (
+        chrome_root / "chrome-linux64" / "chrome",
+        chrome_root / "chrome-win64" / "chrome.exe",
+        chrome_root / "chrome-win32" / "chrome.exe",
+        chrome_root
+        / "chrome-mac-x64"
+        / "Google Chrome for Testing.app"
+        / "Contents"
+        / "MacOS"
+        / "Google Chrome for Testing",
+        chrome_root
+        / "chrome-mac-arm64"
+        / "Google Chrome for Testing.app"
+        / "Contents"
+        / "MacOS"
+        / "Google Chrome for Testing",
+    )
+    browser = next((candidate for candidate in candidates if candidate.is_file()), None)
+    if browser is None:
+        return None
+    resolved = str(browser.resolve())
+    os.environ["BROWSER_PATH"] = resolved
+    logger.info("kaleido_browser_configured path=%s", resolved)
+    return resolved
 
 
 def _prepare_report_figure(figure: go.Figure) -> go.Figure:

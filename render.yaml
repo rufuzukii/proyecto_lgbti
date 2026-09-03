@@ -2,8 +2,8 @@ services:
   - type: web
     name: proyecto-lgbti
     runtime: python
-    buildCommand: python -m pip install --upgrade pip==26.2.1 setuptools==83.0.0 && python -m pip install -e . && mkdir -p .render/chrome && plotly_get_chrome -y --path .render/chrome && test -x "$BROWSER_PATH" && "$BROWSER_PATH" --version
-    startCommand: gunicorn wsgi:server --bind 0.0.0.0:$PORT --worker-class gthread --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile -
+    buildCommand: python -m pip install --upgrade pip==26.2.1 setuptools==83.0.0 && python -m pip install -e . && mkdir -p .venv/kaleido-chrome && plotly_get_chrome -y --path .venv/kaleido-chrome && test -x "$BROWSER_PATH" && "$BROWSER_PATH" --version
+    startCommand: test -x "$BROWSER_PATH" && "$BROWSER_PATH" --version && gunicorn wsgi:server --bind 0.0.0.0:$PORT --worker-class gthread --workers ${WEB_CONCURRENCY:-1} --threads ${GUNICORN_THREADS:-4} --timeout ${GUNICORN_TIMEOUT:-180} --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile -
     healthCheckPath: /health
     envVars:
       - key: APP_ENV
@@ -15,7 +15,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.14.2
       - key: BROWSER_PATH
-        value: /opt/render/project/src/.render/chrome/chrome-linux64/chrome
+        value: /opt/render/project/src/.venv/kaleido-chrome/chrome-linux64/chrome
       - key: SECRET_KEY
         generateValue: true
       - key: SESSION_LIFETIME_HOURS

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -21,6 +22,7 @@ from app.modules.reports.models import (
 )
 from app.modules.reports.pdf_exporter import PDFExporter
 from app.modules.statistics.exports import (
+    _configure_kaleido_browser,
     _prepare_report_figure,
     export_figure_for_report,
 )
@@ -1148,17 +1150,32 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     render_config = (root / "render.yaml").read_text(encoding="utf-8")
     requirements = (root / "requirements.txt").read_text(encoding="utf-8")
 
-    assert "mkdir -p .render/chrome" in render_config
-    assert "plotly_get_chrome -y --path .render/chrome" in render_config
-    assert 'test -x "$BROWSER_PATH"' in render_config
+    assert "mkdir -p .venv/kaleido-chrome" in render_config
+    assert "plotly_get_chrome -y --path .venv/kaleido-chrome" in render_config
+    assert render_config.count('test -x "$BROWSER_PATH"') == 2
     assert "BROWSER_PATH" in render_config
-    assert "/opt/render/project/src/.render/chrome/chrome-linux64/chrome" in render_config
+    assert "/opt/render/project/src/.venv/kaleido-chrome/chrome-linux64/chrome" in render_config
     assert "kaleido==1.3.0" in requirements
     assert "reportlab==4.5.1" in requirements
     assert "healthCheckPath: /health" in render_config
     assert "type: keyvalue" not in render_config
     assert "LOCAL_CACHE_MAX_ENTRIES" in render_config
     assert "LOCAL_CACHE_MAX_TOTAL_BYTES" in render_config
+
+
+def test_report_export_finds_bundled_chrome_when_environment_path_is_stale(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    browser = tmp_path / "kaleido-chrome" / "chrome-linux64" / "chrome"
+    browser.parent.mkdir(parents=True)
+    browser.write_bytes(b"chrome")
+    monkeypatch.setenv("BROWSER_PATH", "/missing/old-render-chrome")
+
+    configured = _configure_kaleido_browser(tmp_path)
+
+    assert configured == str(browser.resolve())
+    assert os.environ["BROWSER_PATH"] == str(browser.resolve())
 
 
 def _walk(component):
