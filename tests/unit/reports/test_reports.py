@@ -1157,6 +1157,7 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     assert "bash scripts/render_start.sh" in render_config
     assert 'browser_root="${venv_root}/kaleido-chrome"' in build_script
     assert 'plotly_get_chrome -y --path "${browser_root}"' in build_script
+    assert "plotly_get_chrome --help || true" in build_script
     assert 'test -x "${BROWSER_PATH}"' in build_script
     assert "python scripts/check_chart_export.py" in build_script
     assert "python scripts/check_chart_export.py --single-only" in start_script

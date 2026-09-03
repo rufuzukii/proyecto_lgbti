@@ -13,7 +13,7 @@ mkdir -p "${browser_root}"
 printf 'chart_export_build user=%s venv_root=%s browser_root=%s\n' "$(id -un)" "${venv_root}" "${browser_root}"
 command -v plotly_get_chrome
 command -v kaleido_get_chrome
-plotly_get_chrome --help
+plotly_get_chrome --help || true
 kaleido_get_chrome --help
 
 plotly_get_chrome -y --path "${browser_root}"
