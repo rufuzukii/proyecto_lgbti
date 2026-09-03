@@ -34,9 +34,9 @@ def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) 
     single.write_bytes(
         export_figure_for_report(figure, width=640, height=360, scale=1)
     )
-    batch = [tmp_path / "batch-1.png", tmp_path / "batch-2.png"]
+    batch = [tmp_path / f"batch-{index}.png" for index in range(1, 6)]
     rendered = export_figures_for_report(
-        [figure, figure],
+        [figure for _path in batch],
         batch,
         width=640,
         height=360,

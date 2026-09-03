@@ -180,6 +180,32 @@ def test_batch_export_validates_every_png(
     assert all(path.read_bytes() == PNG for path in paths)
 
 
+def test_large_export_uses_memory_bounded_batches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    browser = ChartExportBrowser(True, tmp_path / "chrome", True, "test")
+    monkeypatch.setattr(exports, "configure_chart_export_browser", lambda: browser)
+    batch_sizes: list[int] = []
+
+    def write_images(figures, paths, **_kwargs) -> None:
+        batch_sizes.append(len(figures))
+        for path in paths:
+            Path(path).write_bytes(PNG)
+
+    monkeypatch.setattr(exports.pio, "write_images", write_images)
+    paths = [tmp_path / f"chart-{index}.png" for index in range(5)]
+
+    rendered = exports.export_figures_for_report(
+        [go.Figure() for _index in paths],
+        paths,
+    )
+
+    assert rendered == paths
+    assert batch_sizes == [2, 2, 1]
+    assert all(path.read_bytes() == PNG for path in paths)
+
+
 def test_batch_export_rejects_missing_output(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

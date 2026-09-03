@@ -82,16 +82,16 @@ def main() -> int:
             except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 print(f"batch_error={type(exc).__name__}")
 
-            helper_paths = [root / "helper-1.png", root / "helper-2.png"]
+            helper_paths = [root / f"helper-{index}.png" for index in range(1, 6)]
             try:
                 rendered = export_figures_for_report(
-                    [figure, figure],
+                    [figure for _path in helper_paths],
                     helper_paths,
                     width=640,
                     height=360,
                     scale=1,
                 )
-                helper_ok = len(rendered) == 2 and all(_valid_png(path) for path in rendered)
+                helper_ok = len(rendered) == 5 and all(_valid_png(path) for path in rendered)
             except (OSError, RuntimeError, TypeError, ValueError) as exc:
                 print(f"rainbowlens_error={type(exc).__name__}")
 
