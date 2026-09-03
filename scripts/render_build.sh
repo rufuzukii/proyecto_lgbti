@@ -19,6 +19,7 @@ kaleido_get_chrome --help
 plotly_get_chrome -y --path "${browser_root}"
 printf 'chart_export_build managed_browser_version_tag\n'
 cat "${browser_root}/version_tag.txt"
+printf '\n'
 
 printf 'chart_export_build PATH browser candidates\n'
 command -v google-chrome || true
@@ -42,11 +43,19 @@ if command -v ldd >/dev/null 2>&1; then
 fi
 
 "${BROWSER_PATH}" --version
-timeout 30 "${BROWSER_PATH}" \
+headless_probe_log="$(mktemp)"
+if timeout 30 "${BROWSER_PATH}" \
   --headless \
   --no-sandbox \
   --disable-gpu \
   --disable-dev-shm-usage \
-  --dump-dom about:blank >/dev/null
+  --dump-dom about:blank >/dev/null 2>"${headless_probe_log}"; then
+  rm -f "${headless_probe_log}"
+  printf 'chart_export_build browser_headless=PASS\n'
+else
+  printf 'chart_export_build browser_headless=INCONCLUSIVE reason=standalone_probe_failed\n' >&2
+  tail -n 20 "${headless_probe_log}" >&2
+  rm -f "${headless_probe_log}"
+fi
 
 python scripts/check_chart_export.py
