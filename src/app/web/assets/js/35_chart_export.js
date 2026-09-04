@@ -253,10 +253,15 @@
         line: {color: colors.grid},
       },
     });
-    layout.title = themedTitle(
-      `<b>RainbowLens DataHub</b><br><sup>${String(meta.export_map_title || "")}</sup>`,
-      colors
-    );
+    const existingTitleText = typeof layout.title === "string"
+      ? layout.title
+      : layout.title && layout.title.text;
+    if (!String(existingTitleText || "").trim()) {
+      layout.title = themedTitle(
+        `<b>RainbowLens DataHub</b><br><sup>${String(meta.export_map_title || "")}</sup>`,
+        colors
+      );
+    }
     layout.annotations = Array.isArray(layout.annotations) ? layout.annotations : [];
     layout.annotations.push({
       text: `<b>${String(meta.export_ranking_title || "")}</b>`,

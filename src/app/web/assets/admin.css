@@ -174,8 +174,8 @@
   border-bottom: 1px solid var(--color-border);
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: 92px minmax(170px, 1.1fr) minmax(220px, 1.25fr) minmax(180px, 1fr) 130px 96px;
-  min-width: 980px;
+  grid-template-columns: 180px minmax(170px, 1.1fr) minmax(220px, 1.25fr) minmax(180px, 1fr) 130px 96px;
+  min-width: 1068px;
   padding: 0.75rem;
 }
 
@@ -228,6 +228,17 @@
 
 .admin-table-heading,
 .admin-table-cell {
+  min-width: 0;
+}
+
+.admin-edit-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+}
+
+.admin-edit-actions .admin-action-button {
+  flex: 1 1 0;
   min-width: 0;
 }
 

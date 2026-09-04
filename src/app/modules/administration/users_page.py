@@ -74,6 +74,10 @@ ERROR_MESSAGES = {
         "La cuenta seleccionada ya no existe.",
         "The selected account no longer exists.",
     ),
+    "update_failed": (
+        "No se han podido guardar los cambios. Inténtalo de nuevo.",
+        "The changes could not be saved. Please try again.",
+    ),
 }
 
 
@@ -141,6 +145,22 @@ def build_admin_users_layout(
                                     ),
                                     _message(status, is_error=False),
                                     _message(error, is_error=True),
+                                    html.Div(
+                                        id="admin-user-edit-feedback",
+                                        className="auth-message",
+                                        role="status",
+                                        hidden=True,
+                                        **dash_attrs(
+                                            {
+                                                "data-admin-user-feedback": "true",
+                                                "data-success-es": STATUS_MESSAGES["user_updated"][0],
+                                                "data-success-en": STATUS_MESSAGES["user_updated"][1],
+                                                "data-error-es": ERROR_MESSAGES["update_failed"][0],
+                                                "data-error-en": ERROR_MESSAGES["update_failed"][1],
+                                                "aria-live": "polite",
+                                            }
+                                        ),
+                                    ),
                                     _search_users_control(search),
                                     dcc.Loading(
                                         html.Div(
@@ -416,18 +436,40 @@ def _build_user_row(
                             }
                         ),
                     ),
+                    html.Button(
+                        "Cancelar",
+                        type="button",
+                        hidden=True,
+                        disabled=is_current,
+                        className="admin-action-button admin-cancel-button",
+                        **dash_attrs(
+                            {
+                                "data-admin-user-cancel": "true",
+                                **text_attrs("Cancelar", "Cancel"),
+                            }
+                        ),
+                    ),
                 ],
-                className="admin-table-cell",
+                className="admin-table-cell admin-edit-actions",
             ),
             html.Div(
                 [
+                    html.Label(
+                        "Nombre visible",
+                        htmlFor=f"{form_id}-username",
+                        className="sr-only",
+                        **text_attrs("Nombre visible", "Display name"),
+                    ),
                     dcc.Input(
                         id=f"{form_id}-username",
                         name="username",
                         type="text",
                         value=user.username or "",
                         required=True,
-                        disabled=is_current,
+                        minLength=2,
+                        maxLength=80,
+                        autoComplete="name",
+                        disabled=True,
                         className="admin-input admin-editable-input",
                     ),
                     (
@@ -442,38 +484,66 @@ def _build_user_row(
                 className="admin-table-cell",
             ),
             html.Div(
-                dcc.Input(
-                    id=f"{form_id}-email",
-                    name="email",
-                    type="email",
-                    value=user.email or "",
-                    required=True,
-                    disabled=is_current,
-                    className="admin-input admin-editable-input",
-                ),
+                [
+                    html.Label(
+                        "Correo electrónico",
+                        htmlFor=f"{form_id}-email",
+                        className="sr-only",
+                        **text_attrs("Correo electrónico", "Email address"),
+                    ),
+                    dcc.Input(
+                        id=f"{form_id}-email",
+                        name="email",
+                        type="email",
+                        value=user.email or "",
+                        required=True,
+                        maxLength=254,
+                        autoComplete="email",
+                        disabled=True,
+                        className="admin-input admin-editable-input",
+                    ),
+                ],
                 className="admin-table-cell",
             ),
             html.Div(
-                dcc.Input(
-                    id=f"{form_id}-organization",
-                    name="organization",
-                    type="text",
-                    value=""
-                    if user.organization in {"No organization", "Sin organización"}
-                    else (user.organization or ""),
-                    className="admin-input admin-editable-input",
-                    disabled=is_current,
-                ),
+                [
+                    html.Label(
+                        "Organización",
+                        htmlFor=f"{form_id}-organization",
+                        className="sr-only",
+                        **text_attrs("Organización", "Organization"),
+                    ),
+                    dcc.Input(
+                        id=f"{form_id}-organization",
+                        name="organization",
+                        type="text",
+                        value=""
+                        if user.organization in {"No organization", "Sin organización"}
+                        else (user.organization or ""),
+                        className="admin-input admin-editable-input",
+                        maxLength=120,
+                        autoComplete="organization",
+                        disabled=True,
+                    ),
+                ],
                 className="admin-table-cell",
             ),
             html.Div(
-                html.Select(
-                    id=f"{form_id}-role",
-                    children=_admin_role_options(user.user_type or user.role),
-                    name="role",
-                    className="admin-input admin-role-select",
-                    disabled=is_current,
-                ),
+                [
+                    html.Label(
+                        "Tipo de acceso",
+                        htmlFor=f"{form_id}-role",
+                        className="sr-only",
+                        **text_attrs("Tipo de acceso", "Access type"),
+                    ),
+                    html.Select(
+                        id=f"{form_id}-role",
+                        children=_admin_role_options(user.user_type or user.role),
+                        name="role",
+                        className="admin-input admin-role-select",
+                        disabled=True,
+                    ),
+                ],
                 className="admin-table-cell",
             ),
             html.Div(

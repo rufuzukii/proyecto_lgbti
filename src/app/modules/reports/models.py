@@ -3,13 +3,11 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from datetime import date
 from typing import Any
 
 import bleach
 import plotly.graph_objects as go
 
-from app.core.dates import utc_today_iso
 from app.shared.data.normalization import normalize_country_code
 
 DEFAULT_REPORT_SECTIONS: tuple[str, ...] = (
@@ -93,7 +91,6 @@ class ReportConfiguration:
     detail_level: str = "standard"
     sections: tuple[str, ...] = DEFAULT_REPORT_SECTIONS
     charts: tuple[str, ...] = DEFAULT_REPORT_CHARTS
-    generated_on: str = field(default_factory=utc_today_iso)
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any] | None) -> ReportConfiguration:
@@ -154,7 +151,6 @@ class ReportConfiguration:
             detail_level=detail_level,
             sections=sections,
             charts=charts,
-            generated_on=_safe_date(payload.get("generated_on")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -245,13 +241,6 @@ def _safe_year(value: Any) -> int | None:
     except TypeError, ValueError:
         return None
     return year if 1900 <= year <= 2200 else None
-
-
-def _safe_date(value: Any) -> str:
-    try:
-        return date.fromisoformat(str(value)).isoformat()
-    except TypeError, ValueError:
-        return utc_today_iso()
 
 
 def _safe_bool(value: Any) -> bool:

@@ -107,6 +107,8 @@ def test_privacy_page_describes_only_real_stores_and_links_rights(monkeypatch) -
     assert "Logs de acceso de Render y proveedores" not in body
     assert "pendiente de documentar por el responsable" not in body
     assert "Logs de acceso de Render:" in body
+    assert "Política vigente desde:" not in body
+    assert "Policy effective from:" not in body
 
 
 def test_recipients_card_omits_transfer_paragraph_without_configured_location() -> None:
@@ -201,9 +203,14 @@ def test_personal_panel_has_export_and_reinforced_deletion_controls(monkeypatch)
         "privacy-confirm-checklist",
     } <= ids
     assert {"/privacy/delete-account", "/privacy/export"} <= actions
-    assert "Gestiona tu perfil." in rendered
+    assert "Gestiona tu perfil" in rendered
+    assert "Manage your profile" in rendered
+    assert "Consulta y actualiza los datos de tu cuenta" in rendered
+    assert "Review and update your account details" in rendered
     assert "Gestiona tu perfil, utiliza tus herramientas" not in rendered
-    assert "Esta acción eliminará tu cuenta y los datos personales asociados." in rendered
+    assert "Gestiona tu privacidad y tus datos personales." in rendered
+    assert "Manage your privacy and personal data." in rendered
+    assert "Esta acción no se puede deshacer." in rendered
 
 
 def test_privacy_assets_cover_persistence_accessibility_themes_and_mobile() -> None:

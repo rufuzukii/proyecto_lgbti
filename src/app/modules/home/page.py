@@ -55,7 +55,7 @@ from app.web.i18n import (
     ui_text_component,
 )
 from app.web.navigation import build_navbar
-from app.web.routes import current_route_language, route_path
+from app.web.routes import current_route_language
 from app.web.section_navigation import build_home_section_navigation
 
 logger = logging.getLogger(__name__)
@@ -143,14 +143,6 @@ def build_home_layout() -> Component:
                                                         _ilga_copy(ilga_document),
                                                         id="home-map-copy",
                                                         className="home-map-copy",
-                                                    ),
-                                                    html.A(
-                                                        text(
-                                                            "Abrir estadísticas",
-                                                            "Open statistics",
-                                                        ),
-                                                        href=route_path("statistics"),
-                                                        className="home-map-link",
                                                     ),
                                                 ],
                                                 className="home-map-summary-header",

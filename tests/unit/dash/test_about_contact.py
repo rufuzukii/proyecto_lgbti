@@ -42,21 +42,29 @@ def test_about_uses_direct_mailto_without_form_controls() -> None:
 
 def test_spanish_mailto_contains_encoded_subject_and_body() -> None:
     link = _contact_link("es")
-    query = parse_qs(urlsplit(getattr(link, "href", "")).query)
+    href = getattr(link, "href", "")
+    query = parse_qs(urlsplit(href).query)
     assert link.children == CONTACT_EMAIL
-    assert query["subject"] == ["Consulta sobre RainbowLens DataHub"]
+    assert "+" not in href
+    assert "%20" in href
+    assert "%0A" in href
+    assert "%C3%B3" in href
+    assert query["subject"] == ["Contacto con RainbowLens DataHub"]
     body = unquote(query["body"][0])
-    assert "Nombre:" in body
-    assert "Motivo de contacto:" in body
-    assert "Mensaje:" in body
-    assert "Correo electrónico:" not in body
+    assert body.startswith("Hola,\n\n")
+    assert "solicitar información" in body
+    assert body.endswith("Un saludo.")
 
 
 def test_english_mailto_contains_localized_subject_and_body() -> None:
     link = _contact_link("en")
-    query = parse_qs(urlsplit(getattr(link, "href", "")).query)
-    assert query["subject"] == ["RainbowLens DataHub enquiry"]
+    href = getattr(link, "href", "")
+    query = parse_qs(urlsplit(href).query)
+    assert "+" not in href
+    assert "%20" in href
+    assert "%0A" in href
+    assert query["subject"] == ["Contact with RainbowLens DataHub"]
     body = unquote(query["body"][0])
-    assert "Name:" in body
-    assert "Reason for contacting:" in body
-    assert "Message:" in body
+    assert body.startswith("Hello,\n\n")
+    assert "regarding..." in body
+    assert body.endswith("Kind regards.")

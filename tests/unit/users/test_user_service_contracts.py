@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from types import SimpleNamespace
-from typing import Any, Self
+from typing import Any, Self, cast
 
 import pytest
 
@@ -11,7 +11,13 @@ from app.modules.account.users.account_security import (
     AccountSecurityState,
     AccountSecurityStorageError,
 )
-from app.modules.account.users.schemas import UserRegister, UserRole, UserType
+from app.modules.account.users.schemas import (
+    MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    UserRegister,
+    UserRole,
+    UserType,
+)
 
 
 class _Result:
@@ -140,6 +146,21 @@ def test_create_user_validates_non_pydantic_callers(payload, error: str) -> None
     payload.password = SimpleNamespace(get_secret_value=lambda: "long-enough-password")
     with pytest.raises(ValueError, match=error):
         service.create_user(payload)
+
+
+@pytest.mark.parametrize("length", [MIN_PASSWORD_LENGTH - 1, MAX_PASSWORD_LENGTH + 1, 128])
+def test_create_user_rejects_passwords_outside_policy_for_non_pydantic_callers(
+    length: int,
+) -> None:
+    payload = SimpleNamespace(
+        email="alex@example.com",
+        name="Alex",
+        organization=None,
+        password=SimpleNamespace(get_secret_value=lambda: "x" * length),
+    )
+
+    with pytest.raises(ValueError, match="weak_password"):
+        service.create_user(cast(Any, payload))
 
 
 def test_create_user_assigns_role_initializes_security_and_commits(monkeypatch) -> None:

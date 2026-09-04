@@ -1208,6 +1208,8 @@
 }
 
 .stats-map-visual-grid {
+  --stats-map-height: min(74vh, 760px);
+  --stats-map-min-height: 540px;
   align-items: stretch;
   display: grid;
   grid-template-columns: minmax(0, 3.5fr) minmax(220px, 1fr);
@@ -1219,10 +1221,15 @@
   min-width: 0;
 }
 
-/* Dash writes height: 100% inline after Plotly mounts. Keep the map responsive. */
+.stats-map-graph-slot {
+  height: var(--stats-map-height);
+  min-height: var(--stats-map-min-height);
+}
+
+/* The slot owns sizing; Plotly fills the space already reserved before it mounts. */
 .stats-mapbox-graph.europe-map-container {
-  height: min(74vh, 760px) !important;
-  min-height: 540px !important;
+  height: 100% !important;
+  min-height: 100% !important;
 }
 
 .stats-map-ranking {
@@ -1230,9 +1237,9 @@
   border-left: 1px solid var(--stats-border);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: min(74vh, 760px);
+  height: var(--stats-map-height);
   max-width: 100%;
-  min-height: 540px;
+  min-height: var(--stats-map-min-height);
   min-width: 0;
   overflow: hidden;
   padding: 0.85rem 0.7rem 0.75rem;
@@ -2130,16 +2137,16 @@ body[data-theme="dark"] .stats-panel .dash-spreadsheet tr:hover .cell {
 }
 
 @media (max-width: 767px) {
-  .stats-mapbox-graph.europe-map-container {
-    height: 58vh !important;
-    min-height: 340px !important;
+  .stats-map-visual-grid {
+    --stats-map-height: 58vh;
+    --stats-map-min-height: 340px;
   }
 }
 
 @media (max-width: 430px) {
-  .stats-mapbox-graph.europe-map-container {
-    height: 52vh !important;
-    min-height: 300px !important;
+  .stats-map-visual-grid {
+    --stats-map-height: 52vh;
+    --stats-map-min-height: 300px;
   }
 }
 

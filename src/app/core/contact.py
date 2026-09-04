@@ -1,31 +1,24 @@
 from __future__ import annotations
 
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 CONTACT_EMAIL = "rainbowlensdatahub@gmail.com"
 
 
 def contact_mailto(language: str) -> str:
     if language == "en":
-        subject = "RainbowLens DataHub enquiry"
+        subject = "Contact with RainbowLens DataHub"
         body = """Hello,
 
-I am contacting RainbowLens DataHub.
+I am contacting RainbowLens DataHub regarding...
 
-Name:
-Reason for contacting:
-Message:
-
-Thank you."""
+Kind regards."""
     else:
-        subject = "Consulta sobre RainbowLens DataHub"
+        subject = "Contacto con RainbowLens DataHub"
         body = """Hola,
 
-Me pongo en contacto con RainbowLens DataHub.
+Me pongo en contacto con RainbowLens DataHub para solicitar información sobre...
 
-Nombre:
-Motivo de contacto:
-Mensaje:
-
-Gracias."""
-    return f"mailto:{CONTACT_EMAIL}?{urlencode({'subject': subject, 'body': body})}"
+Un saludo."""
+    query = urlencode({"subject": subject, "body": body}, quote_via=quote)
+    return f"mailto:{CONTACT_EMAIL}?{query}"

@@ -2,6 +2,7 @@
   const app = (window.RainbowLens = window.RainbowLens || {});
   const state = app.state;
   let pendingAdminUserDelete = null;
+  let activeAdminUserRow = null;
 
   document.addEventListener("click", (event) => {
     const adminUserDeleteConfirm = event.target.closest("[data-admin-user-delete-confirm]");
@@ -31,6 +32,12 @@
     const adminUserEdit = event.target.closest("[data-admin-user-edit]");
     if (adminUserEdit) {
       beginAdminUserEdit(adminUserEdit);
+      return;
+    }
+
+    const adminUserCancel = event.target.closest("[data-admin-user-cancel]");
+    if (adminUserCancel) {
+      cancelAdminUserEdit(adminUserCancel.closest("[data-admin-user-row]"), true);
       return;
     }
 
@@ -99,9 +106,8 @@
       adminUserSubmitter.name === "action" &&
       adminUserSubmitter.value === "update"
     ) {
-      adminUserRow.classList.add("is-saving");
-      adminUserRow.setAttribute("aria-busy", "true");
-      adminUserSubmitter.setAttribute("aria-disabled", "true");
+      event.preventDefault();
+      saveAdminUser(adminUserRow, adminUserSubmitter);
       return;
     }
 
@@ -129,6 +135,11 @@
     if (deleteDialog && deleteDialog.open) {
       event.preventDefault();
       closeAdminUserDeleteDialog(true);
+      return;
+    }
+    if (activeAdminUserRow) {
+      event.preventDefault();
+      cancelAdminUserEdit(activeAdminUserRow, true);
       return;
     }
     closeNavigation(document.querySelector(".navbar.is-menu-open"));
@@ -349,19 +360,31 @@
 
   function beginAdminUserEdit(button) {
     const row = button.closest("[data-admin-user-row]");
-    if (!row) {
+    if (!row || row.dataset.currentUserRow === "true") {
       return;
     }
+    if (activeAdminUserRow && activeAdminUserRow.classList.contains("is-saving")) {
+      return;
+    }
+    if (activeAdminUserRow && activeAdminUserRow !== row) {
+      cancelAdminUserEdit(activeAdminUserRow, false);
+    }
+    rememberAdminUserValues(row);
+    activeAdminUserRow = row;
     row.classList.add("is-editing");
     row.querySelectorAll(".admin-input").forEach((control) => {
       control.disabled = false;
     });
     const saveButton = row.querySelector("[data-admin-user-save]");
+    const cancelButton = row.querySelector("[data-admin-user-cancel]");
     const deleteButton = row.querySelector(".admin-delete-button");
     button.hidden = true;
     button.setAttribute("aria-expanded", "true");
     if (saveButton) {
       saveButton.hidden = false;
+    }
+    if (cancelButton) {
+      cancelButton.hidden = false;
     }
     if (deleteButton) {
       deleteButton.disabled = true;
@@ -373,6 +396,135 @@
         firstInput.select();
       }
     }
+  }
+
+  function rememberAdminUserValues(row) {
+    row.querySelectorAll(".admin-input").forEach((control) => {
+      control.dataset.adminOriginalValue = control.value;
+    });
+  }
+
+  function restoreAdminUserValues(row) {
+    row.querySelectorAll(".admin-input").forEach((control) => {
+      if (Object.prototype.hasOwnProperty.call(control.dataset, "adminOriginalValue")) {
+        control.value = control.dataset.adminOriginalValue;
+      }
+    });
+  }
+
+  function cancelAdminUserEdit(row, returnFocus) {
+    if (!row) {
+      return;
+    }
+    restoreAdminUserValues(row);
+    finishAdminUserEdit(row, returnFocus);
+  }
+
+  function finishAdminUserEdit(row, returnFocus) {
+    const isCurrentUser = row.dataset.currentUserRow === "true";
+    const editButton = row.querySelector("[data-admin-user-edit]");
+    const saveButton = row.querySelector("[data-admin-user-save]");
+    const cancelButton = row.querySelector("[data-admin-user-cancel]");
+    const deleteButton = row.querySelector(".admin-delete-button");
+    row.classList.remove("is-editing", "is-saving");
+    row.removeAttribute("aria-busy");
+    row.querySelectorAll(".admin-input").forEach((control) => {
+      control.disabled = true;
+    });
+    if (editButton) {
+      editButton.hidden = false;
+      editButton.disabled = isCurrentUser;
+      editButton.setAttribute("aria-expanded", "false");
+    }
+    if (saveButton) {
+      saveButton.hidden = true;
+      saveButton.disabled = isCurrentUser;
+      saveButton.removeAttribute("aria-disabled");
+    }
+    if (cancelButton) {
+      cancelButton.hidden = true;
+      cancelButton.disabled = isCurrentUser;
+    }
+    if (deleteButton) {
+      deleteButton.disabled = isCurrentUser;
+    }
+    if (activeAdminUserRow === row) {
+      activeAdminUserRow = null;
+    }
+    if (returnFocus && editButton && !isCurrentUser) {
+      editButton.focus();
+    }
+  }
+
+  async function saveAdminUser(row, submitter) {
+    row.classList.add("is-saving");
+    row.setAttribute("aria-busy", "true");
+    submitter.disabled = true;
+    submitter.setAttribute("aria-disabled", "true");
+    const cancelButton = row.querySelector("[data-admin-user-cancel]");
+    if (cancelButton) {
+      cancelButton.disabled = true;
+    }
+    const formData = new FormData(row);
+    formData.set("action", "update");
+
+    try {
+      const response = await window.fetch(row.action, {
+        method: "POST",
+        body: formData,
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok || !payload.user) {
+        throw new Error(payload.error || "update_failed");
+      }
+      applySavedAdminUser(row, payload.user);
+      finishAdminUserEdit(row, false);
+      showAdminUserFeedback(false);
+    } catch (_error) {
+      row.classList.remove("is-saving");
+      row.removeAttribute("aria-busy");
+      submitter.disabled = false;
+      submitter.removeAttribute("aria-disabled");
+      if (cancelButton) {
+        cancelButton.disabled = false;
+      }
+      showAdminUserFeedback(true);
+    }
+  }
+
+  function applySavedAdminUser(row, user) {
+    ["username", "email", "organization", "role"].forEach((name) => {
+      const control = row.elements.namedItem(name);
+      if (control && typeof user[name] === "string") {
+        control.value = user[name];
+      }
+    });
+    const version = row.elements.namedItem("version");
+    if (version && typeof user.version === "string") {
+      version.value = user.version;
+    }
+  }
+
+  function showAdminUserFeedback(isError) {
+    const feedback = document.querySelector("[data-admin-user-feedback]");
+    if (!feedback) {
+      return;
+    }
+    const es = isError ? feedback.dataset.errorEs : feedback.dataset.successEs;
+    const en = isError ? feedback.dataset.errorEn : feedback.dataset.successEn;
+    feedback.className = isError
+      ? "auth-message auth-message-error"
+      : "auth-message auth-message-success";
+    feedback.dataset.i18nEs = es;
+    feedback.dataset.i18nEn = en;
+    feedback.setAttribute("role", isError ? "alert" : "status");
+    feedback.hidden = false;
+    app.i18n.applyLanguage(state.currentLanguage());
   }
 
   function openAdminUserDeleteDialog(button) {
@@ -428,6 +580,9 @@
   }
 
   function initializeAdminUserRows(root) {
+    if (activeAdminUserRow && !document.contains(activeAdminUserRow)) {
+      activeAdminUserRow = null;
+    }
     const rows = [];
     if (root.matches && root.matches("[data-admin-user-row]")) {
       rows.push(root);
@@ -440,6 +595,7 @@
         return;
       }
       row.dataset.adminUserInitialized = "true";
+      const isCurrentUser = row.dataset.currentUserRow === "true";
       row.classList.remove("is-editing", "is-saving");
       row.removeAttribute("aria-busy");
       row.querySelectorAll(".admin-input").forEach((control) => {
@@ -447,16 +603,23 @@
       });
       const editButton = row.querySelector("[data-admin-user-edit]");
       const saveButton = row.querySelector("[data-admin-user-save]");
+      const cancelButton = row.querySelector("[data-admin-user-cancel]");
       const deleteButton = row.querySelector(".admin-delete-button");
       if (editButton) {
         editButton.hidden = false;
+        editButton.disabled = isCurrentUser;
         editButton.setAttribute("aria-expanded", "false");
       }
       if (saveButton) {
         saveButton.hidden = true;
+        saveButton.disabled = isCurrentUser;
+      }
+      if (cancelButton) {
+        cancelButton.hidden = true;
+        cancelButton.disabled = isCurrentUser;
       }
       if (deleteButton) {
-        deleteButton.disabled = false;
+        deleteButton.disabled = isCurrentUser;
       }
     });
   }

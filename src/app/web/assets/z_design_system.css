@@ -81,7 +81,7 @@
 .app-page-header > .reports-lead,
 .app-page-header > .about-lead,
 .app-page-header > .privacy-lead,
-.app-page-header > p:not(.app-page-eyebrow):not(.privacy-effective-date) {
+.app-page-header > p:not(.app-page-eyebrow) {
   color: var(--color-text-muted);
   font-size: clamp(1rem, 1.3vw, 1.08rem);
   line-height: 1.6;

@@ -3,7 +3,7 @@ from enum import StrEnum
 from pydantic import BaseModel, EmailStr, Field, SecretStr
 
 MIN_PASSWORD_LENGTH = 12
-MAX_PASSWORD_LENGTH = 128
+MAX_PASSWORD_LENGTH = 32
 
 
 class UserRole(StrEnum):

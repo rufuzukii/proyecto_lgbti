@@ -7,6 +7,7 @@ import pytest
 
 from app.modules.account.privacy import service as privacy_service
 from app.modules.account.users import service
+from app.modules.account.users.schemas import UserRead
 
 
 @dataclass
@@ -102,6 +103,51 @@ def test_concurrent_admin_edit_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
             actor_user_id="00000000-0000-0000-0000-000000000002",
             expected_version="stale-version",
         )
+
+
+def test_admin_update_returns_normalized_row_and_new_concurrency_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    current = _user_row(user_type="docente")
+    updated_row = {
+        **current,
+        "username": "Updated user",
+        "email": "updated@example.com",
+        "organization": None,
+        "user_type": "ong",
+    }
+
+    def handler(query: str, _params: tuple[Any, ...] | None) -> _Result:
+        if "for update" in query.casefold():
+            return _Result(row=current)
+        if "update public.users" in query.casefold():
+            return _Result(row=updated_row)
+        return _Result()
+
+    connection = _Connection(handler)
+    monkeypatch.setattr(service, "_connect", lambda: connection)
+    monkeypatch.setattr(
+        service,
+        "_account_state",
+        lambda user_id: service.AccountSecurityState(user_id, True, 0),
+    )
+    monkeypatch.setattr(service, "_record_admin_event_safely", lambda **_kwargs: None)
+
+    updated = service.update_user_as_admin(
+        user_id=current["id"],
+        username="Updated user",
+        email="updated@example.com",
+        role="ong",
+        organization="",
+        actor_user_id="00000000-0000-0000-0000-000000000099",
+        expected_version=service._user_version(current),
+    )
+
+    assert isinstance(updated, UserRead)
+    assert updated.username == "Updated user"
+    assert updated.organization == "No organization"
+    assert updated.version == service._user_version(updated_row)
+    assert connection.committed is True
 
 
 def test_admin_cannot_delete_their_own_account() -> None:

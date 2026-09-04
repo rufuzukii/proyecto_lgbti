@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 from dash import Dash, Input, Output, State, dcc, html
 from dash.development.base_component import Component
-from flask import abort, redirect, request, send_file, session
+from flask import abort, jsonify, redirect, request, send_file, session
 from flask_login import LoginManager, UserMixin, current_user, login_user, logout_user
 from pydantic import ValidationError
 
@@ -854,13 +854,34 @@ def _register_auth_routes(app: Dash) -> None:
                     expected_version=request.form.get("version"),
                 )
             except ValueError as exc:
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"ok": False, "error": str(exc)}), 400
                 return _redirect("/admin", error=str(exc), **return_params)
             except Exception:
                 logger.exception("admin_user_update_failed")
+                if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                    return jsonify({"ok": False, "error": "storage"}), 503
                 return _redirect("/admin", error="storage", **return_params)
 
-            if updated.id == current_user.get_id():
-                login_user(_session_user_from_record(updated), remember=False, fresh=True)
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                role = updated.user_type or updated.role
+                return jsonify(
+                    {
+                        "ok": True,
+                        "user": {
+                            "id": updated.id,
+                            "username": updated.username or "",
+                            "email": updated.email or "",
+                            "organization": (
+                                ""
+                                if updated.organization in {"No organization", "Sin organización"}
+                                else (updated.organization or "")
+                            ),
+                            "role": role.value,
+                            "version": updated.version,
+                        },
+                    }
+                )
             return _redirect("/admin", status="user_updated", **return_params)
 
         return _redirect("/admin", error="storage")
@@ -1116,7 +1137,6 @@ def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
         "organization",
         "author",
         "language",
-        "generated_on",
     }
     values: dict[str, object] = {
         key: first for key in allowed if (first := _first_param(params, key)) is not None

@@ -186,7 +186,10 @@ def create_user(payload: UserRegister, *, role: UserRole = UserRole.COMMON) -> U
     organization = _normalize_optional_text(payload.organization)
     if organization and len(organization) > 120:
         raise ValueError("invalid_organization")
-    password_hash = generate_password_hash(payload.password.get_secret_value())
+    password = payload.password.get_secret_value()
+    if not MIN_PASSWORD_LENGTH <= len(password) <= MAX_PASSWORD_LENGTH:
+        raise ValueError("weak_password")
+    password_hash = generate_password_hash(password)
 
     try:
         with _connect() as conn:
@@ -312,7 +315,7 @@ def update_user_as_admin(
     organization: str | None,
     actor_user_id: str,
     expected_version: str | None = None,
-) -> UserRecord:
+) -> UserRead:
     if not actor_user_id:
         raise ValueError("actor_required")
     if user_id == actor_user_id:
@@ -378,7 +381,7 @@ def update_user_as_admin(
 
     if row is None:
         raise ValueError("user_not_found")
-    updated = _row_to_user_record(row, _account_state(user_id))
+    updated = _row_to_user_read(row, _account_state(user_id))
     _record_admin_event_safely(
         actor_user_id=actor_user_id,
         target_user_id=user_id,

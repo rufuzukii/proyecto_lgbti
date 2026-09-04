@@ -13,7 +13,14 @@ from app.core.config import get_app_config
 from app.core.http_security import client_ip, configure_flask_security, rate_limit_key
 from app.core.logging import redact_sensitive_text
 from app.modules.account.users import service as user_service
-from app.modules.account.users.schemas import UserRead, UserRegister, UserRole, UserType
+from app.modules.account.users.schemas import (
+    MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    UserRead,
+    UserRegister,
+    UserRole,
+    UserType,
+)
 from app.web.application import _safe_next
 
 
@@ -43,6 +50,9 @@ def test_flask_security_sets_headers_cookies_and_auth_request_limit() -> None:
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Strict-Transport-Security"].startswith("max-age=")
     assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+    permissions_policy = response.headers["Permissions-Policy"]
+    assert permissions_policy == "camera=(), microphone=(), geolocation=(), payment=()"
+    assert "attribution-reporting" not in permissions_policy
     cookie = response.headers["Set-Cookie"]
     assert "__Host-rainbowlens_test_session=" in cookie
     assert "Secure" in cookie
@@ -191,6 +201,30 @@ def test_user_registration_validates_email_and_masks_password() -> None:
 
     assert "long-enough-password" not in repr(payload)
     assert payload.password.get_secret_value() == "long-enough-password"
+
+
+@pytest.mark.parametrize(
+    ("length", "is_valid"),
+    [
+        (MIN_PASSWORD_LENGTH - 1, False),
+        (MIN_PASSWORD_LENGTH, True),
+        (MAX_PASSWORD_LENGTH, True),
+        (MAX_PASSWORD_LENGTH + 1, False),
+        (128, False),
+    ],
+)
+def test_password_policy_accepts_only_12_to_32_characters(length: int, is_valid: bool) -> None:
+    values = {
+        "name": "Test user",
+        "email": "user@example.com",
+        "password": "x" * length,
+    }
+
+    if is_valid:
+        assert len(UserRegister.model_validate(values).password.get_secret_value()) == length
+    else:
+        with pytest.raises(ValidationError):
+            UserRegister.model_validate(values)
 
 
 def test_unknown_login_performs_a_dummy_password_check(

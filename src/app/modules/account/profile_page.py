@@ -7,7 +7,12 @@ from flask_login import current_user
 from app.core.auth.csrf import get_csrf_token
 from app.modules.account.components import role_label
 from app.modules.account.privacy.service import PrivacyStorageError, get_personal_data_inventory
-from app.modules.account.users.schemas import UserRole, UserType
+from app.modules.account.users.schemas import (
+    MAX_PASSWORD_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    UserRole,
+    UserType,
+)
 from app.web.i18n import dash_attrs, text, text_attrs
 from app.web.navigation import build_navbar
 from app.web.routes import route_path
@@ -31,8 +36,8 @@ ERROR_MESSAGES = {
         "Enter a valid email address.",
     ),
     "weak_password": (
-        "La nueva contraseña debe tener entre 12 y 128 caracteres.",
-        "The new password must be between 12 and 128 characters.",
+        f"La nueva contraseña debe tener entre {MIN_PASSWORD_LENGTH} y {MAX_PASSWORD_LENGTH} caracteres.",
+        f"The new password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters.",
     ),
     "email_exists": (
         "Ese email ya está en uso por otra cuenta.",
@@ -106,8 +111,6 @@ def build_user_page_layout(
     organization = getattr(current_user, "organization", None) or "Sin organización"
     role = getattr(current_user, "role", UserRole.COMMON)
     user_type = getattr(current_user, "user_type", UserType.COMUN) or UserType.COMUN
-    display_name = username or email or "Usuario"
-
     return html.Div(
         [
             build_navbar(active="user"),
@@ -115,7 +118,7 @@ def build_user_page_layout(
                 [
                     html.Section(
                         [
-                            _dashboard_header(display_name, role, user_type),
+                            _dashboard_header(role, user_type),
                             _message(status, is_error=False),
                             _message(error, is_error=True),
                             (
@@ -142,7 +145,6 @@ def build_user_page_layout(
 
 
 def _dashboard_header(
-    display_name: str,
     role: UserRole | str,
     user_type: UserType | str | None,
 ) -> Component:
@@ -158,15 +160,15 @@ def _dashboard_header(
                         **text_attrs("Panel personal", "Personal dashboard"),
                     ),
                     html.H1(
-                        f"Hola, {display_name}",
-                        **text_attrs(f"Hola, {display_name}", f"Hi, {display_name}"),
+                        "Gestiona tu perfil",
+                        **text_attrs("Gestiona tu perfil", "Manage your profile"),
                     ),
                     html.P(
-                        "Gestiona tu perfil.",
+                        "Consulta y actualiza los datos de tu cuenta, revisa tus permisos y accede a las opciones de privacidad desde este espacio.",
                         className="user-lead",
                         **text_attrs(
-                            "Gestiona tu perfil.",
-                            "Manage your profile.",
+                            "Consulta y actualiza los datos de tu cuenta, revisa tus permisos y accede a las opciones de privacidad desde este espacio.",
+                            "Review and update your account details, check your permissions, and access your privacy options from this page.",
                         ),
                     ),
                 ],
@@ -425,7 +427,7 @@ def _privacy_zone(
                                 type="password",
                                 required=True,
                                 autoComplete="current-password",
-                                maxLength=128,
+                                maxLength=MAX_PASSWORD_LENGTH,
                                 className="auth-input",
                             ),
                             html.Label(
@@ -513,10 +515,10 @@ def _privacy_zone(
         [
             html.H2("Zona de privacidad", **text_attrs("Zona de privacidad", "Privacy area")),
             html.P(
-                "Esta acción eliminará tu cuenta y los datos personales asociados.",
+                "Gestiona tu privacidad y tus datos personales.",
                 **text_attrs(
-                    "Esta acción eliminará tu cuenta y los datos personales asociados.",
-                    "This action will delete your account and associated personal data.",
+                    "Gestiona tu privacidad y tus datos personales.",
+                    "Manage your privacy and personal data.",
                 ),
             ),
             html.Div(
@@ -661,7 +663,7 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                 name="current_password",
                 type="password",
                 required=True,
-                maxLength=128,
+                maxLength=MAX_PASSWORD_LENGTH,
                 autoComplete="current-password",
                 className="auth-input",
             ),
@@ -674,17 +676,17 @@ def _build_edit_form(username: str, email: str, organization: str) -> Component:
                 id="profile-new-password",
                 name="new_password",
                 type="password",
-                minLength=12,
-                maxLength=128,
+                minLength=MIN_PASSWORD_LENGTH,
+                maxLength=MAX_PASSWORD_LENGTH,
                 autoComplete="new-password",
                 className="auth-input",
             ),
             html.P(
-                "Entre 12 y 128 caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
+                f"Entre {MIN_PASSWORD_LENGTH} y {MAX_PASSWORD_LENGTH} caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
                 className="auth-help",
                 **text_attrs(
-                    "Entre 12 y 128 caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
-                    "Between 12 and 128 characters. Leave it empty to update only name or email.",
+                    f"Entre {MIN_PASSWORD_LENGTH} y {MAX_PASSWORD_LENGTH} caracteres. Déjala vacía si solo quieres actualizar nombre o email.",
+                    f"Between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters. Leave it empty to update only name or email.",
                 ),
             ),
             html.Div(

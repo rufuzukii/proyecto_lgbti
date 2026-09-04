@@ -233,9 +233,9 @@ def test_home_legal_map_helper_text_is_registered(monkeypatch) -> None:
     assert summary_header.className == "home-map-summary-header"
     assert [getattr(child, "id", None) for child in summary_header.children] == [
         "home-map-copy",
-        None,
     ]
-    assert summary_header.children[1].href == "/es/estadisticas"
+    assert "Abrir estadísticas" not in _text_content(summary_header)
+    assert "Open statistics" not in str(summary_header.to_plotly_json())
     assert summary_metrics.id == "home-map-metrics"
     assert "home-map-graph" in callback_outputs
 

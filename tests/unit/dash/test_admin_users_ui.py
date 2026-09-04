@@ -51,6 +51,11 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     components = list(_walk(row))
     edit = _component_with_class(components, "admin-edit-button")
     save = _component_with_class(components, "admin-save-button")
+    cancel = next(
+        component
+        for component in components
+        if _props(component).get("data-admin-user-cancel") == "true"
+    )
     delete = _component_with_class(components, "admin-delete-button")
     editable_fields = [
         component for component in components if "admin-editable-input" in _classes(component)
@@ -64,12 +69,33 @@ def test_user_row_starts_locked_with_edit_action(monkeypatch) -> None:
     assert _props(edit)["aria-expanded"] == "false"
     assert _props(save)["hidden"] is True
     assert _props(save)["value"] == "update"
+    assert _props(cancel)["hidden"] is True
+    assert _props(cancel)["type"] == "button"
     assert _props(delete)["value"] == "delete"
     assert _props(delete)["data-admin-user-delete"] == "true"
     assert len(editable_fields) == 3
     assert all("readOnly" not in _props(field) for field in editable_fields)
-    assert all(_props(field)["disabled"] is False for field in editable_fields)
-    assert _props(role)["disabled"] is False
+    assert all(_props(field)["disabled"] is True for field in editable_fields)
+    assert all(
+        not any(prop.startswith("data-i18n-aria-label-") for prop in _props(field))
+        for field in editable_fields
+    )
+    assert _props(role)["disabled"] is True
+    username, email, organization = editable_fields
+    assert (_props(username)["minLength"], _props(username)["maxLength"]) == (2, 80)
+    assert _props(email)["maxLength"] == 254
+    assert _props(organization)["maxLength"] == 120
+    labelled_controls = {
+        _props(component)["htmlFor"]
+        for component in components
+        if _props(component).get("className") == "sr-only"
+    }
+    assert labelled_controls == {
+        "admin-user-user-1-username",
+        "admin-user-user-1-email",
+        "admin-user-user-1-organization",
+        "admin-user-user-1-role",
+    }
     role_options = _props(role)["children"]
     assert [_props(option)["value"] for option in role_options] == [
         "comun",
@@ -269,15 +295,31 @@ def test_admin_assets_define_editing_and_saving_states() -> None:
     auth_styles = auth_css.read_text(encoding="utf-8")
 
     assert 'closest("[data-admin-user-edit]")' in javascript
+    assert 'closest("[data-admin-user-cancel]")' in javascript
     assert 'row.classList.add("is-editing")' in javascript
     assert "initializeAdminUserRows(document)" in javascript
     assert 'row.querySelectorAll(".admin-input")' in javascript
     assert "control.disabled = true" in javascript
     assert "control.disabled = false" in javascript
     assert "saveButton.hidden = false" in javascript
-    assert 'adminUserRow.classList.add("is-saving")' in javascript
-    assert 'adminUserSubmitter.setAttribute("aria-disabled", "true")' in javascript
-    assert "adminUserSubmitter.disabled = true" not in javascript
+    assert "cancelButton.hidden = false" in javascript
+    assert "rememberAdminUserValues(row)" in javascript
+    assert "restoreAdminUserValues(row)" in javascript
+    assert "activeAdminUserRow !== row" in javascript
+    assert "cancelAdminUserEdit(activeAdminUserRow, false)" in javascript
+    assert 'activeAdminUserRow.classList.contains("is-saving")' in javascript
+    assert 'row.classList.add("is-saving")' in javascript
+    assert 'submitter.setAttribute("aria-disabled", "true")' in javascript
+    assert "submitter.disabled = true" in javascript
+    assert 'formData.set("action", "update")' in javascript
+    assert '"X-Requested-With": "XMLHttpRequest"' in javascript
+    assert "applySavedAdminUser(row, payload.user)" in javascript
+    assert "finishAdminUserEdit(row, false)" in javascript
+    assert 'row.classList.remove("is-saving")' in javascript
+    assert "submitter.disabled = false" in javascript
+    assert "deleteButton.disabled = isCurrentUser" in javascript
+    assert "feedback.dataset.errorEs" in javascript
+    assert "feedback.dataset.errorEn" in javascript
     assert "scheduleAutoDismissMessages(document)" in javascript
     assert 'message.classList.add("is-dismissing")' in javascript
     assert "message.hidden = true" in javascript
@@ -289,6 +331,7 @@ def test_admin_assets_define_editing_and_saving_states() -> None:
     assert "data-admin-user-deactivate" not in javascript
     assert "deactivateConfirmed" not in javascript
     assert ".admin-table-row.is-editing" in css
+    assert ".admin-edit-actions" in css
     assert ".admin-input:disabled" in css
     assert "background: #ffffff" in css
     assert "border-radius: 999px" in css

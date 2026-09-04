@@ -43,10 +43,21 @@ def test_initial_category_and_ready_lifecycle_never_exposes_plotly_placeholders(
     assert [graph.id for graph in graphs] == ["stats-map-graph"]
     assert "stats-map-graph-slot" in component_ids
     assert "stats-map-graph" in component_ids
+    map_slot = next(
+        component
+        for component in _walk(layout)
+        if getattr(component, "id", None) == "stats-map-graph-slot"
+    )
+    assert "stats-map-graph-slot" in map_slot.className.split()
     map_graph = next(graph for graph in graphs if graph.id == "stats-map-graph")
     map_props = map_graph.to_plotly_json()["props"]
     assert "figure" not in map_props
     assert map_props["style"]["display"] == "none"
+
+    stylesheet = Path("src/app/web/assets/statistics.css").read_text(encoding="utf-8")
+    slot_rule = stylesheet.split(".stats-map-graph-slot {", 1)[1].split("}", 1)[0]
+    assert "height: var(--stats-map-height);" in slot_rule
+    assert "min-height: var(--stats-map-min-height);" in slot_rule
 
     app = Dash("statistics-render-lifecycle-e2e", suppress_callback_exceptions=True)
     statistics_page.register_statistics_callbacks(app)

@@ -22,7 +22,10 @@
   }
 
   function uniqueFieldId(field) {
-    const dropdownOwner = field.classList.contains("dash-dropdown-focus-target")
+    const isDropdownField =
+      field.classList.contains("dash-dropdown-focus-target") ||
+      field.classList.contains("dash-dropdown-search");
+    const dropdownOwner = isDropdownField
       ? field.closest(".dash-dropdown-wrapper")?.querySelector(".dash-dropdown[id]")
       : null;
     const owner = dropdownOwner || field.closest("[id]");
@@ -33,6 +36,8 @@
         ? "maximum"
         : field.classList.contains("dash-dropdown-focus-target")
           ? "focus-target"
+          : field.classList.contains("dash-dropdown-search")
+            ? "search"
           : `input-${fieldIndex(field) + 1}`;
     const base = `${ownerKey}-${suffix}`;
     let candidate = base;

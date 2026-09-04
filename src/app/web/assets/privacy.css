@@ -15,13 +15,6 @@
   box-shadow: var(--shadow-md);
 }
 
-.privacy-effective-date {
-  color: var(--color-text-muted);
-  font-size: 0.86rem;
-  font-weight: 650;
-  margin: 1rem 0 0;
-}
-
 .privacy-toc {
   align-items: center;
   display: grid;

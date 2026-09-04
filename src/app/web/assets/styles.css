@@ -872,7 +872,6 @@ body[data-theme="dark"] .user-role-value {
   color: var(--color-text);
 }
 
-body[data-theme="dark"] .home-map-link,
 body[data-theme="dark"] .home-analysis-link,
 body[data-theme="dark"] .auth-eyebrow,
 body[data-theme="dark"] .upload-eyebrow,

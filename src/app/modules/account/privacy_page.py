@@ -48,13 +48,6 @@ def build_privacy_layout() -> Component:
                             "Esta página explica qué información usa realmente RainbowLens DataHub, por qué la necesita y cómo puedes ejercer tus derechos.",
                             "This page explains what information RainbowLens DataHub actually uses, why it is needed and how you can exercise your rights.",
                         ),
-                        meta=html.P(
-                                text(
-                                    f"Política vigente desde: {config.policy_effective_date}.",
-                                    f"Policy effective from: {config.policy_effective_date}.",
-                                ),
-                                className="privacy-effective-date",
-                        ),
                         class_name="privacy-header",
                     ),
                     _privacy_navigation(),

@@ -1643,7 +1643,7 @@ def _stable_map_graph_slot() -> Component:
             style=_map_graph_style(visible=False),
         ),
         id="stats-map-graph-slot",
-        className="stats-deferred-graph-slot",
+        className="stats-deferred-graph-slot stats-map-graph-slot",
     )
 
 
@@ -1658,23 +1658,7 @@ def _map_ranking_content(
     ranking: list[dict[str, Any]], language: str = "es"
 ) -> list[Component]:
     """Build the map's accessible ranking from the already queried FRA rows."""
-    language_index = 1 if language == "en" else 0
-    available: list[dict[str, Any]] = []
-    for row in ranking:
-        value = row.get("value")
-        if value is None or isinstance(value, bool):
-            continue
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            continue
-        if not math.isfinite(number):
-            continue
-        label = country_labels(
-            str(row.get("iso") or ""), str(row.get("country") or "")
-        )[language_index]
-        available.append({"country": label, "value": number})
-    available.sort(key=lambda row: (-float(row["value"]), str(row["country"]).casefold()))
+    available = _map_ranking_rows(ranking, language)
     title = text("Ranking de países", "Country ranking", language=language)
     if not available:
         return [
@@ -1728,6 +1712,36 @@ def _map_ranking_content(
         ),
         html.Ol(rows, className="stats-map-ranking-list"),
     ]
+
+
+def _map_ranking_rows(
+    ranking: list[dict[str, Any]], language: str = "es"
+) -> list[dict[str, Any]]:
+    """Return the localized valid rows shared by the map panel and its PNG export."""
+    language_index = 1 if language == "en" else 0
+    available: list[dict[str, Any]] = []
+    for row in ranking:
+        value = row.get("value")
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(number):
+            continue
+        label = country_labels(
+            str(row.get("iso") or ""), str(row.get("country") or "")
+        )[language_index]
+        available.append(
+            {
+                "country_code": str(row.get("iso") or ""),
+                "country": label,
+                "value": number,
+            }
+        )
+    available.sort(key=lambda row: (-float(row["value"]), str(row["country"]).casefold()))
+    return available
 
 
 def _graph_component(
@@ -2987,6 +3001,30 @@ def _prepare_dashboard_exports(
             filters=filters,
             language=language,
         )
+        if chart_type == "map":
+            ranking_rows = _map_ranking_rows(list(result.get("ranking") or []), language)
+            existing_meta = figure.layout.meta
+            figure.update_layout(
+                meta={
+                    **(dict(existing_meta) if isinstance(existing_meta, dict) else {}),
+                    "export_map_ranking": [
+                        {
+                            "country_code": row["country_code"],
+                            "country_name": row["country"],
+                            "score": row["value"],
+                        }
+                        for row in ranking_rows
+                    ],
+                    "export_map_title": (
+                        "Map of Europe" if language == "en" else "Mapa de Europa"
+                    ),
+                    "export_ranking_title": (
+                        "Country ranking" if language == "en" else "Ranking de países"
+                    ),
+                    "export_country_label": "Country" if language == "en" else "País",
+                    "export_score_label": "Value" if language == "en" else "Valor",
+                }
+            )
 
 
 def _export_filter_labels(

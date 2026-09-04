@@ -166,7 +166,7 @@ python -m pyright
 ruff check .
 ```
 
-Para las pruebas de humo contra un despliegue real se define `RENDER_EXTERNAL_URL` y se ejecuta `python -m pytest tests/smoke`.
+`python -m pytest tests/smoke` ejecuta comprobaciones de humo con el cliente Flask local; no despliega ni valida el servicio remoto de Render. La comprobación de producción se realiza contra la URL pública después del despliegue.
 
 ## Despliegue
 

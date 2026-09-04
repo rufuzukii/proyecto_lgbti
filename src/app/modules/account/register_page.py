@@ -4,6 +4,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.core.auth.csrf import get_csrf_token
+from app.modules.account.users.schemas import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 from app.web.i18n import text, text_attrs, ui_text
 from app.web.navigation import build_navbar
 from app.web.routes import route_path
@@ -150,15 +151,15 @@ def build_register_layout(
                                                 name="password",
                                                 type="password",
                                                 required=True,
-                                                minLength=12,
-                                                maxLength=128,
+                                                minLength=MIN_PASSWORD_LENGTH,
+                                                maxLength=MAX_PASSWORD_LENGTH,
                                                 autoComplete="new-password",
                                                 className="auth-input",
                                             ),
                                             html.P(
                                                 text(
-                                                    "La contraseña debe tener entre 12 y 128 caracteres.",
-                                                    "Password must be between 12 and 128 characters.",
+                                                    f"La contraseña debe tener entre {MIN_PASSWORD_LENGTH} y {MAX_PASSWORD_LENGTH} caracteres.",
+                                                    f"The password must be between {MIN_PASSWORD_LENGTH} and {MAX_PASSWORD_LENGTH} characters.",
                                                 ),
                                                 className="auth-help",
                                             ),

@@ -122,6 +122,95 @@ def test_admin_management_is_enforced_server_side_and_updates_a_user(monkeypatch
     assert updates[0]["role"] == "teacher"
 
 
+def test_admin_ajax_update_returns_the_saved_row_without_a_redirect(monkeypatch) -> None:
+    updated = UserRead(
+        id="7bf1c278-4ad4-4cf3-a70d-9769590c5099",
+        username="Managed user",
+        email="managed@example.test",
+        role=UserRole.COMMON,
+        organization="School",
+        user_type=UserType.DOCENTE,
+        version="v2",
+    )
+    monkeypatch.setattr(
+        dash_app_module,
+        "authenticate_user",
+        lambda _email, _password: _record(role=UserRole.ADMIN),
+    )
+    monkeypatch.setattr(
+        dash_app_module,
+        "get_user_record",
+        lambda _user_id: _record(role=UserRole.ADMIN),
+    )
+    monkeypatch.setattr(dash_app_module, "update_user_as_admin", lambda **_kwargs: updated)
+    client = _app(monkeypatch).server.test_client()
+    client.post(
+        "/auth/login",
+        data={"csrf_token": "valid", "email": "admin@example.test", "password": "password"},
+    )
+    assert updated.user_type is not None
+
+    response = client.post(
+        "/admin/users",
+        data={
+            "csrf_token": "valid",
+            "action": "update",
+            "user_id": updated.id,
+            "username": updated.username,
+            "email": updated.email,
+            "role": updated.user_type.value,
+            "organization": updated.organization,
+            "version": "v1",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "ok": True,
+        "user": {
+            "id": updated.id,
+            "username": "Managed user",
+            "email": "managed@example.test",
+            "organization": "School",
+            "role": "docente",
+            "version": "v2",
+        },
+    }
+
+
+def test_admin_ajax_update_failure_returns_json_for_an_in_place_retry(monkeypatch) -> None:
+    monkeypatch.setattr(
+        dash_app_module,
+        "authenticate_user",
+        lambda _email, _password: _record(role=UserRole.ADMIN),
+    )
+    monkeypatch.setattr(
+        dash_app_module,
+        "get_user_record",
+        lambda _user_id: _record(role=UserRole.ADMIN),
+    )
+
+    def reject_update(**_kwargs):
+        raise ValueError("invalid_email")
+
+    monkeypatch.setattr(dash_app_module, "update_user_as_admin", reject_update)
+    client = _app(monkeypatch).server.test_client()
+    client.post(
+        "/auth/login",
+        data={"csrf_token": "valid", "email": "admin@example.test", "password": "password"},
+    )
+
+    response = client.post(
+        "/admin/users",
+        data={"csrf_token": "valid", "action": "update"},
+        headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"ok": False, "error": "invalid_email"}
+
+
 def test_unknown_route_is_a_localized_http_404(monkeypatch) -> None:
     # Arrange
     client = _app(monkeypatch).server.test_client()

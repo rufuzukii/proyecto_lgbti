@@ -81,6 +81,16 @@ def test_account_details_keep_real_values_in_english(monkeypatch) -> None:
     assert values[1]["data-i18n-en"] != "Not set"
 
 
+def test_profile_header_is_professional_and_does_not_use_the_username(monkeypatch) -> None:
+    layout = _layout(monkeypatch, UserType.COMUN)
+    heading = next(item for item in _walk(layout) if item.__class__.__name__ == "H1")
+    props = heading.to_plotly_json()["props"]
+
+    assert props["children"] == "Gestiona tu perfil"
+    assert props["data-i18n-en"] == "Manage your profile"
+    assert "Alex" not in props["children"]
+
+
 def _walk(component: Any):
     yield component
     children = getattr(component, "children", None)

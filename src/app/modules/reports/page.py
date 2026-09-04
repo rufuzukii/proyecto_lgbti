@@ -12,7 +12,6 @@ from flask_login import current_user
 
 from app.core.auth.permissions import Permission, user_has_permission
 from app.core.auth.rate_limit import create_rate_limiter
-from app.core.dates import utc_today_iso
 from app.core.http_security import rate_limit_key
 from app.modules.reports.hr_reporting import (
     HR_REPORT_SECTIONS,
@@ -572,7 +571,6 @@ def register_reports_callbacks(app: Dash) -> None:
         State("report-filter-a-value", "value"),
         State("report-filter-b-name", "value"),
         State("report-filter-b-value", "value"),
-        State("report-generated-on", "date"),
         State("report-config-store", "data"),
         prevent_initial_call=True,
         running=[
@@ -601,7 +599,6 @@ def register_reports_callbacks(app: Dash) -> None:
         filter_a_value: str | None,
         filter_b_name: str | None,
         filter_b_value: str | None,
-        generated_on: str | None,
         inherited_configuration: dict[str, Any] | None,
     ):
         if _missing_social_indicator(source, category, indicator):
@@ -663,7 +660,6 @@ def register_reports_callbacks(app: Dash) -> None:
                 filter_a_value=filter_a_value,
                 filter_b_name=filter_b_name,
                 filter_b_value=filter_b_value,
-                generated_on=generated_on,
                 inherited_configuration=inherited_configuration,
             )
             config = _hr_report_configuration(config.to_dict())
@@ -1102,15 +1098,6 @@ def _configuration_panel(
                     inline=True,
                 ),
             ),
-            _field(
-                "Fecha de generación",
-                "Generation date",
-                dcc.DatePickerSingle(
-                    id="report-generated-on",
-                    date=config.generated_on or utc_today_iso(),
-                    display_format="YYYY-MM-DD",
-                ),
-            ),
         ],
         className="reports-card reports-card-configuration",
     )
@@ -1479,6 +1466,7 @@ def _preview_error(language: str) -> Component:
 
 def _configuration_from_controls(**values: Any) -> ReportConfiguration:
     inherited = dict(values.pop("inherited_configuration", None) or {})
+    inherited.pop("generated_on", None)
     comparison = list(values.pop("comparison_countries") or [])
     primary = values.get("primary_country")
     countries = ([primary] if primary else []) + comparison

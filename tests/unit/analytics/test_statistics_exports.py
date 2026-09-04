@@ -79,8 +79,11 @@ def test_statistics_css_has_full_width_ranking_and_mobile_boundaries() -> None:
     assert ".europe-map-container {" in shared_css
     assert "height: min(68vh, 680px);" in shared_css
     assert "min-height: 480px;" in shared_css
-    assert "height: min(74vh, 760px) !important;" in css
-    assert "min-height: 540px !important;" in css
+    assert "--stats-map-height: min(74vh, 760px);" in css
+    assert "--stats-map-min-height: 540px;" in css
+    assert ".stats-map-graph-slot {" in css
+    assert "height: var(--stats-map-height);" in css
+    assert "min-height: var(--stats-map-min-height);" in css
     assert "height: 58vh;" in shared_css
     assert "min-height: 340px;" in shared_css
     assert "overflow-x: hidden" not in css
@@ -516,6 +519,16 @@ def test_rendered_export_metadata_tracks_visible_filters_and_country_selection()
     assert "Respuesta: Yes" in selected_title
     assert "Age: 25-39" in selected_title
     assert "Fuente: FRA, EU LGBTIQ Survey III, 2023" in selected_title
+    assert selected_meta["export_map_ranking"] == [
+        {"country_code": "ES", "country_name": "España", "score": 63.0},
+        {"country_code": "FR", "country_name": "Francia", "score": 48.0},
+    ]
+    assert europe_meta["export_map_ranking"] == [
+        {"country_code": "ES", "country_name": "Spain", "score": 63.0},
+        {"country_code": "FR", "country_name": "France", "score": 48.0},
+    ]
+    assert selected_meta["export_ranking_title"] == "Ranking de países"
+    assert europe_meta["export_ranking_title"] == "Country ranking"
     assert selected[24] == "stats-analytics-block is-hidden"
     assert selected[25] is None
     assert selected[-3] is False

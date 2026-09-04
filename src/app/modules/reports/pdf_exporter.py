@@ -23,6 +23,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from app.core.dates import utc_today_iso
 from app.modules.reports.models import ReportChart, ReportContent
 
 BRAND_BLUE = colors.HexColor("#2F6BDE")
@@ -449,7 +450,7 @@ def _cover_metadata(
     rows = [
         [
             _paragraph(_t(language, "Fecha", "Date"), styles["table"], bold=True),
-            _paragraph(report.configuration.generated_on, styles["table"]),
+            _paragraph(utc_today_iso(), styles["table"]),
         ],
         [
             _paragraph(

@@ -121,7 +121,11 @@ def test_statistics_map_is_large_shared_and_responsive() -> None:
     assert "height: 52vh;" in shared_css
     assert ".stats-mapbox-graph {\n  height:" not in statistics_css
     assert ".stats-mapbox-graph.europe-map-container {" in statistics_css
-    assert "height: min(74vh, 760px) !important;" in statistics_css
+    assert 'className="stats-deferred-graph-slot stats-map-graph-slot"' in page
+    assert "--stats-map-height: min(74vh, 760px);" in statistics_css
+    assert ".stats-map-graph-slot {" in statistics_css
+    assert "height: var(--stats-map-height);" in statistics_css
+    assert "height: 100% !important;" in statistics_css
 
 
 def test_report_workflow_is_centered_vertical_and_download_is_last() -> None:

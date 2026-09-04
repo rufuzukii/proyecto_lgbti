@@ -218,6 +218,7 @@ def test_report_configuration_sanitizes_user_text_and_keeps_only_identifiers() -
             "sections": ["metrics", "sources", "unknown"],
             "charts": ["ranking", "invalid"],
             "year": "2024",
+            "generated_on": "2000-01-01",
         }
     )
 
@@ -228,6 +229,7 @@ def test_report_configuration_sanitizes_user_text_and_keeps_only_identifiers() -
     assert config.sections == ("metrics", "sources")
     assert config.charts == ("ranking",)
     assert config.year == 2024
+    assert "generated_on" not in config.to_dict()
     assert sanitize_report_text("\x00hola") == "hola"
 
 
@@ -846,7 +848,14 @@ def test_report_renderer_does_not_mutate_interactive_selection_annotations(tmp_p
     assert [annotation.text for annotation in figure.layout.annotations] == ["Seleccionado"]
 
 
-def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) -> None:
+def test_pdf_export_contains_sections_charts_and_automatic_generation_date(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.modules.reports.pdf_exporter.utc_today_iso",
+        lambda: "2026-09-04",
+    )
     content = HRReportBuilder().build(
         _configuration(
             mode="custom",
@@ -910,6 +919,7 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
     assert "EU LGBTIQ Survey III, 2023" in extracted
     assert "España" in extracted
     assert "RainbowLens Datahub" in extracted
+    assert "2026-09-04" in extracted
     assert extracted.index("Resumen ejecutivo") < extracted.index("Métricas principales")
     metadata = document.metadata
     assert metadata is not None
@@ -1234,6 +1244,7 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     comparison_control = _component_by_id(layout, "report-comparison-countries")
     assert "report-spanish-context" not in ids
     assert "report-template-select" not in ids
+    assert "report-generated-on" not in ids
     assert "template_id" not in store_data
     assert [option["value"] for option in source_control.options] == ["fra", "ilga", "combined"]
     assert comparison_control.value == ["FR"]
@@ -1412,7 +1423,6 @@ def test_preview_is_blocked_when_social_indicator_is_missing() -> None:
         "All",
         "All",
         "All",
-        "2026-08-21",
         {},
     )
 
@@ -1427,6 +1437,7 @@ def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None
             "source": ["fra"],
             "indicator_id": ["EMP_1"],
             "countries": ["ES,FR"],
+            "generated_on": ["2000-01-01"],
             "frames": ['[{"large": "payload"}]'],
             "password": ["secret"],
         }

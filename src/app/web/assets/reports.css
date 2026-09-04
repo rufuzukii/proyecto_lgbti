@@ -279,37 +279,6 @@
     color: var(--reports-muted-text);
 }
 
-.reports-field .dash-datepicker,
-.reports-field .dash-datepicker-input-wrapper {
-    box-sizing: border-box;
-    display: inline-flex;
-    width: min(100%, 11.25rem);
-}
-
-.reports-field .dash-datepicker {
-    align-items: center;
-    min-width: 0;
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-.reports-field .dash-datepicker-input-wrapper {
-    flex: 1 1 auto;
-    padding: 0 !important;
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-.reports-field .dash-datepicker-input-wrapper input {
-    box-sizing: border-box;
-    min-height: 36px;
-    width: 100%;
-    padding: 0.42rem 0.6rem;
-    font-size: 0.875rem;
-}
-
 .reports-actions {
     display: flex;
     flex-wrap: wrap;
@@ -626,99 +595,10 @@ body[data-theme="dark"] textarea.reports-section-narrative {
 }
 
 html[data-theme="dark"] .reports-field input[type="text"],
-body[data-theme="dark"] .reports-field input[type="text"],
-html[data-theme="dark"] .reports-field .DateInput,
-html[data-theme="dark"] .reports-field .DateInput_input,
-html[data-theme="dark"] .reports-field .SingleDatePickerInput,
-body[data-theme="dark"] .reports-field .DateInput,
-body[data-theme="dark"] .reports-field .DateInput_input,
-body[data-theme="dark"] .reports-field .SingleDatePickerInput {
+body[data-theme="dark"] .reports-field input[type="text"] {
     background: var(--reports-control-bg) !important;
     border-color: var(--reports-border) !important;
     color: var(--reports-text) !important;
-}
-
-html[data-theme="dark"] .reports-field .DateInput_input__focused,
-body[data-theme="dark"] .reports-field .DateInput_input__focused {
-    border-color: var(--reports-primary) !important;
-}
-
-html[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper,
-body[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    color: var(--reports-text) !important;
-    color-scheme: dark;
-}
-
-html[data-theme="dark"] .reports-field .dash-datepicker,
-body[data-theme="dark"] .reports-field .dash-datepicker {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-html[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input,
-body[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input {
-    background: var(--reports-control-bg) !important;
-    border-color: var(--reports-border) !important;
-    color: var(--reports-text) !important;
-}
-
-html[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input::placeholder,
-body[data-theme="dark"] .reports-field .dash-datepicker-input-wrapper input::placeholder {
-    color: var(--reports-muted-text) !important;
-}
-
-html[data-theme="dark"] .reports-field .SingleDatePicker_picker,
-html[data-theme="dark"] .reports-field .DayPicker,
-html[data-theme="dark"] .reports-field .DayPicker_transitionContainer,
-html[data-theme="dark"] .reports-field .CalendarMonth,
-html[data-theme="dark"] .reports-field .CalendarMonthGrid,
-body[data-theme="dark"] .reports-field .SingleDatePicker_picker,
-body[data-theme="dark"] .reports-field .DayPicker,
-body[data-theme="dark"] .reports-field .DayPicker_transitionContainer,
-body[data-theme="dark"] .reports-field .CalendarMonth,
-body[data-theme="dark"] .reports-field .CalendarMonthGrid {
-    background: #0f1522 !important;
-    color: var(--reports-text) !important;
-}
-
-html[data-theme="dark"] .reports-field .CalendarMonth_caption,
-html[data-theme="dark"] .reports-field .DayPicker_weekHeader,
-body[data-theme="dark"] .reports-field .CalendarMonth_caption,
-body[data-theme="dark"] .reports-field .DayPicker_weekHeader {
-    color: var(--reports-text) !important;
-}
-
-html[data-theme="dark"] .reports-field .CalendarDay__default,
-body[data-theme="dark"] .reports-field .CalendarDay__default {
-    background: #151d2c !important;
-    border-color: var(--reports-border) !important;
-    color: var(--reports-text) !important;
-}
-
-html[data-theme="dark"] .reports-field .CalendarDay__default:hover,
-body[data-theme="dark"] .reports-field .CalendarDay__default:hover {
-    background: #243044 !important;
-}
-
-html[data-theme="dark"] .reports-field .CalendarDay__selected,
-html[data-theme="dark"] .reports-field .CalendarDay__selected:hover,
-body[data-theme="dark"] .reports-field .CalendarDay__selected,
-body[data-theme="dark"] .reports-field .CalendarDay__selected:hover {
-    background: var(--reports-primary) !important;
-    border-color: var(--reports-primary) !important;
-    color: #0a0e17 !important;
-}
-
-html[data-theme="dark"] .reports-field .CalendarDay__blocked_out_of_range,
-html[data-theme="dark"] .reports-field .CalendarDay__outside,
-body[data-theme="dark"] .reports-field .CalendarDay__blocked_out_of_range,
-body[data-theme="dark"] .reports-field .CalendarDay__outside {
-    background: #0b111d !important;
-    color: #64748b !important;
 }
 
 html[data-theme="dark"] .reports-shell .Select--multi .Select-value,

@@ -4,6 +4,7 @@ from dash import dcc, html
 from dash.development.base_component import Component
 
 from app.core.auth.csrf import get_csrf_token
+from app.modules.account.users.schemas import MAX_PASSWORD_LENGTH
 from app.web.i18n import dash_attrs, text, text_attrs, ui_text_component
 from app.web.navigation import build_navbar
 from app.web.routes import route_path
@@ -106,7 +107,7 @@ def build_login_layout(
                                                 name="password",
                                                 type="password",
                                                 required=True,
-                                                maxLength=128,
+                                                maxLength=MAX_PASSWORD_LENGTH,
                                                 autoComplete="current-password",
                                                 className="auth-input",
                                             ),

@@ -696,16 +696,6 @@
   font-size: 0.82rem;
 }
 
-.home-map-link {
-  color: var(--link-green);
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.home-map-link:hover {
-  text-decoration: underline;
-}
-
 .home-sections {
   background: color-mix(in srgb, var(--panel-bg) 86%, var(--color-accent));
   border: 1px solid var(--panel-border);

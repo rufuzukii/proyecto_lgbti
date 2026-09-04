@@ -33,6 +33,8 @@ def test_dash_generated_form_fields_receive_stable_accessibility_attributes() ->
     js = (ASSETS_JS / "25_form_accessibility.js").read_text(encoding="utf-8")
 
     assert "dash-dropdown-focus-target" in js
+    assert "dash-dropdown-search" in js
+    assert '? "search"' in js
     assert "dash-range-slider-min-input" in js
     assert "dash-range-slider-max-input" in js
     assert 'field.setAttribute("name", fieldId)' in js
