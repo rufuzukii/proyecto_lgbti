@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,41 +10,23 @@ from PIL import Image
 
 from app.modules.reports import service as report_service
 from app.modules.reports.models import ReportConfiguration, ReportDataset
-from app.modules.statistics.exports import (
-    export_figure_for_report,
-    export_figures_for_report,
-)
+from app.modules.reports.static_charts import ReportChartRenderer
 
-pytestmark = [
-    pytest.mark.browser,
-    pytest.mark.production_like,
-    pytest.mark.skipif(
-        os.getenv("RUN_BROWSER_INTEGRATION") != "1",
-        reason="set RUN_BROWSER_INTEGRATION=1 in an environment with Chrome/Kaleido",
-    ),
-]
+pytestmark = pytest.mark.production_like
 
 
-def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) -> None:
+def test_report_renderer_exports_png_without_a_browser(tmp_path: Path) -> None:
     figure = go.Figure(go.Bar(x=["A", "B"], y=[1, 2]))
+    target = tmp_path / "chart.png"
 
-    single = tmp_path / "single.png"
-    single.write_bytes(export_figure_for_report(figure, width=640, height=360, scale=1))
-    batch = [tmp_path / f"batch-{index}.png" for index in range(1, 6)]
-    rendered = export_figures_for_report(
-        [figure for _path in batch],
-        batch,
-        width=640,
-        height=360,
-        scale=1,
-    )
+    with ReportChartRenderer(width=640, height=360) as renderer:
+        rendered = renderer.write("ranking", figure, target)
 
-    assert rendered == batch
-    for path in [single, *batch]:
-        assert path.stat().st_size > 0
-        with Image.open(path) as image:
-            assert image.format == "PNG"
-            assert image.size == (640, 360)
+    assert rendered == target
+    assert target.stat().st_size > 0
+    with Image.open(target) as image:
+        assert image.format == "PNG"
+        assert image.size == (640, 360)
 
 
 @pytest.mark.parametrize(
@@ -66,7 +47,7 @@ def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) 
             ),
             lambda: _social_result(),
             3,
-            30.0,
+            5.0,
         ),
         (
             "social_all_countries",
@@ -82,7 +63,7 @@ def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) 
             ),
             lambda: _social_result(all_countries=True),
             7,
-            60.0,
+            10.0,
         ),
         (
             "legal_selected",
@@ -97,7 +78,7 @@ def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) 
             ),
             lambda: _legal_result(),
             3,
-            30.0,
+            5.0,
         ),
         (
             "legal_all_countries",
@@ -111,7 +92,7 @@ def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) 
             ),
             lambda: _legal_result(all_countries=True),
             9,
-            60.0,
+            10.0,
         ),
     ),
     ids=("social-selected", "social-all", "legal-selected", "legal-all"),
@@ -141,6 +122,12 @@ def test_generate_report_pdf_production_like(
     with fitz.open(stream=generated.pdf_bytes, filetype="pdf") as document:
         assert document.page_count == generated.page_count
         assert sum(len(page.get_images(full=True)) for page in document) >= expected_images
+        document_text = "\n".join(str(page.get_text("text")) for page in document)
+        assert "Ranking comparativo" in document_text
+        expected_map_title = (
+            "Mapa europeo FRA" if configuration.source == "fra" else "Mapa legal ILGA-Europe"
+        )
+        assert expected_map_title in document_text
 
 
 def _social_result(*, all_countries: bool = False) -> dict[str, object]:

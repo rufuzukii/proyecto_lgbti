@@ -26,11 +26,8 @@ from app.modules.reports.models import (
     sanitize_report_text,
 )
 from app.modules.reports.pdf_exporter import PDFExporter
-from app.modules.statistics.exports import (
-    _configure_kaleido_browser,
-    _prepare_report_figure,
-    export_figure_for_report,
-)
+from app.modules.reports.static_charts import ReportChartRenderer
+from app.modules.statistics.chart_export_runtime import configure_chart_export_browser
 from app.web.application import _report_params
 
 
@@ -197,6 +194,10 @@ def _many_country_result(count: int = 12) -> dict[str, Any]:
         ("DK", "Denmark"),
         ("EE", "Estonia"),
         ("GE", "Georgia"),
+        ("GR", "Greece"),
+        ("HU", "Hungary"),
+        ("IS", "Iceland"),
+        ("IE", "Ireland"),
     ][:count]
     result = _fra_result()
     result["ranking"] = [
@@ -342,6 +343,36 @@ def test_combined_preview_contains_both_maps_and_valid_plotly_figures() -> None:
     assert all(isinstance(getattr(graph, "figure", None), go.Figure) for graph in graphs)
 
 
+def test_combined_pdf_renders_numeric_and_categorical_scatter_charts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configuration = ReportConfiguration.from_mapping(
+        {
+            "source": "combined",
+            "year": 2024,
+            "charts": ["scatter", "quadrants", "ranking_gap"],
+            "countries": [],
+            "language": "es",
+        }
+    )
+    monkeypatch.setattr(
+        report_service,
+        "load_report_dataset",
+        lambda _configuration: ReportDataset(_combined_result(), query_seconds=0.01),
+    )
+
+    generated = report_service.generate_report_pdf(configuration)
+
+    assert [chart.key for chart in generated.content.charts] == [
+        "map_fra",
+        "map_ilga",
+        "scatter",
+        "ranking_gap",
+    ]
+    assert generated.image_count == 4
+    assert generated.pdf_bytes.startswith(b"%PDF")
+
+
 def test_unselected_ranking_uses_one_pdf_figure_without_losing_countries() -> None:
     content = HRReportBuilder().build(
         _configuration(countries=[], primary_country="", charts=["ranking"]),
@@ -362,19 +393,19 @@ def test_unselected_ranking_uses_one_pdf_figure_without_losing_countries() -> No
 def test_preview_uses_one_complete_ranking_when_no_countries_are_selected() -> None:
     content = HRReportBuilder().build(
         _configuration(countries=[], primary_country="", charts=["ranking"]),
-        ReportDataset(_many_country_result(23), query_seconds=0.01),
+        ReportDataset(_many_country_result(27), query_seconds=0.01),
     )
     ranking = next(chart for chart in content.charts if chart.key == "ranking")
     assert ranking.figure is not None
     rendered = [str(country) for country in cast(Any, ranking.figure.data[0]).y]
 
     assert len(ranking.figures) == 1
-    assert len(rendered) == len(set(rendered)) == 23
+    assert len(rendered) == len(set(rendered)) == 27
     assert set(rendered) == {row["country"] for row in content.table_rows}
 
 
-def test_pdf_ranking_pages_stream_ten_ten_three_without_loss_or_duplicates() -> None:
-    result = _many_country_result(23)
+def test_pdf_ranking_pages_stream_ten_ten_seven_without_loss_or_duplicates() -> None:
+    result = _many_country_result(27)
     result["ranking"][10]["value"] = result["ranking"][9]["value"]
     tied_codes = {result["ranking"][9]["iso"], result["ranking"][10]["iso"]}
     rendered_pages: list[list[str]] = []
@@ -401,12 +432,12 @@ def test_pdf_ranking_pages_stream_ten_ten_three_without_loss_or_duplicates() -> 
     rendered = [country for page in rendered_pages for country in page]
     expected = {str(row["country"]) for row in content.table_rows}
 
-    assert [len(page) for page in rendered_pages] == [10, 10, 3]
-    assert ranking.page_ranges == [(1, 10), (11, 20), (21, 23)]
+    assert [len(page) for page in rendered_pages] == [10, 10, 7]
+    assert ranking.page_ranges == [(1, 10), (11, 20), (21, 27)]
     assert set(rendered) == expected
     assert len(rendered) == len(set(rendered))
     assert positions["ES"] == "1"
-    assert positions["GE"] == "23"
+    assert positions["IE"] == "27"
     assert {positions[code] for code in tied_codes} == {"10"}
     assert not ranking.figures
 
@@ -789,16 +820,15 @@ def test_report_dataset_exposes_statistics_timings(monkeypatch) -> None:
 
 
 def test_server_png_export_is_valid_and_document_resolution() -> None:
-    image_bytes = export_figure_for_report(
-        go.Figure(go.Bar(x=["España", "Francia"], y=[64, 55])),
-        width=800,
-        height=450,
-        scale=1,
-    )
     image_path = Path("tmp/pdfs/test-report-chart.png")
     image_path.parent.mkdir(parents=True, exist_ok=True)
-    image_path.write_bytes(image_bytes)
     try:
+        with ReportChartRenderer(width=800, height=450) as renderer:
+            renderer.write(
+                "ranking",
+                go.Figure(go.Bar(x=["España", "Francia"], y=[64, 55])),
+                image_path,
+            )
         with Image.open(image_path) as image:
             assert image.format == "PNG"
             assert image.size == (800, 450)
@@ -806,14 +836,14 @@ def test_server_png_export_is_valid_and_document_resolution() -> None:
         image_path.unlink(missing_ok=True)
 
 
-def test_report_export_removes_interactive_selection_annotations() -> None:
+def test_report_renderer_does_not_mutate_interactive_selection_annotations(tmp_path: Path) -> None:
     figure = go.Figure(go.Bar(x=[64], y=["España"], orientation="h"))
     figure.add_annotation(text="Seleccionado", x=1, y="España")
 
-    prepared = _prepare_report_figure(figure)
+    with ReportChartRenderer() as renderer:
+        renderer.write("ranking", figure, tmp_path / "ranking.png")
 
     assert [annotation.text for annotation in figure.layout.annotations] == ["Seleccionado"]
-    assert list(prepared.layout.annotations) == []
 
 
 def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) -> None:
@@ -836,19 +866,13 @@ def test_pdf_export_contains_sections_charts_and_page_numbers(tmp_path: Path) ->
         ReportDataset(_fra_result(), query_seconds=0.01),
     )
     chart_paths = {}
-    for chart in content.charts:
-        path = tmp_path / f"{chart.key}.png"
-        figure = chart.figure
-        assert figure is not None
-        path.write_bytes(
-            export_figure_for_report(
-                figure,
-                width=1000,
-                height=560,
-                scale=1,
-            )
-        )
-        chart_paths[chart.key] = path
+    with ReportChartRenderer(width=1000, height=560) as renderer:
+        for chart in content.charts:
+            path = tmp_path / f"{chart.key}.png"
+            figure = chart.figure
+            assert figure is not None
+            renderer.write(chart.key, figure, path)
+            chart_paths[chart.key] = path
 
     report_service.apply_chart_narratives(
         content,
@@ -934,13 +958,13 @@ def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
         def __exit__(self, *_args):
             return None
 
-        def write(self, _figure, path_value):
+        def write(self, _key, _figure, path_value):
             path = Path(path_value)
             observed_roots.append(path.parent)
             path.write_bytes(b"png")
             return path
 
-    monkeypatch.setattr(report_service, "ReportFigureExporter", FakeExporter)
+    monkeypatch.setattr(report_service, "ReportChartRenderer", FakeExporter)
     monkeypatch.setattr(
         report_service.PDFExporter,
         "export",
@@ -995,14 +1019,14 @@ def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None
         def __exit__(self, *_args):
             return None
 
-        def write(self, _figure, target):
+        def write(self, _key, _figure, target):
             nonlocal export_calls
             export_calls += 1
             target = Path(target)
             target.write_bytes(b"png")
             return target
 
-    monkeypatch.setattr(report_service, "ReportFigureExporter", FakeExporter)
+    monkeypatch.setattr(report_service, "ReportChartRenderer", FakeExporter)
 
     preview = report_service.build_report_preview(configuration)
 
@@ -1445,7 +1469,7 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     assert 'value: "16777216"' in render_config
 
 
-def test_report_export_finds_bundled_chrome_when_environment_path_is_stale(
+def test_chart_export_runtime_finds_bundled_chrome_when_environment_path_is_stale(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1455,9 +1479,9 @@ def test_report_export_finds_bundled_chrome_when_environment_path_is_stale(
     browser.chmod(0o755)
     monkeypatch.setenv("BROWSER_PATH", "/missing/old-render-chrome")
 
-    configured = _configure_kaleido_browser(tmp_path)
+    configured = configure_chart_export_browser(tmp_path)
 
-    assert configured == str(browser.resolve())
+    assert configured.path == browser.resolve()
     assert os.environ["BROWSER_PATH"] == str(browser.resolve())
 
 

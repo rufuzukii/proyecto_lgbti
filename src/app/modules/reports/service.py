@@ -13,11 +13,11 @@ import plotly.graph_objects as go
 from app.modules.reports.builder import ReportBuilder
 from app.modules.reports.models import ReportConfiguration, ReportContent, ReportDataset
 from app.modules.reports.pdf_exporter import PDFExporter
-from app.modules.statistics.exports import (
-    ChartExportError,
-    ReportFigureExporter,
-    build_export_filename,
+from app.modules.reports.static_charts import (
+    ReportChartRenderer,
+    ReportChartRenderError,
 )
+from app.modules.statistics.exports import build_export_filename
 from app.modules.statistics.models import FraStatisticsQuery, IlgaStatisticsQuery
 from app.modules.statistics.service import (
     get_combined_statistics_analysis,
@@ -186,11 +186,11 @@ def _generate_report_pdf(
             root = Path(temp_dir).resolve()
             chart_paths: dict[str, list[Path]] = {}
             try:
-                with ReportFigureExporter() as image_exporter:
+                with ReportChartRenderer() as chart_renderer:
 
                     def export_figure(key: str, page: int, figure: go.Figure) -> None:
                         path = root / f"{key}-{page:02d}.png"
-                        image_exporter.write(figure, path)
+                        chart_renderer.write(key, figure, path)
                         chart_paths.setdefault(key, []).append(path)
 
                     content = ReportBuilder().build_for_pdf(
@@ -198,9 +198,9 @@ def _generate_report_pdf(
                         dataset,
                         export_figure,
                     )
-            except ChartExportError as exc:
-                logger.error(
-                    "chart_export_failed",
+            except ReportChartRenderError as exc:
+                logger.exception(
+                    "report_generation_failed stage=chart_render",
                     extra={
                         "source": configuration.source,
                         "year": configuration.year,
