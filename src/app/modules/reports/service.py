@@ -8,14 +8,15 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import plotly.graph_objects as go
+
 from app.modules.reports.builder import ReportBuilder
 from app.modules.reports.models import ReportConfiguration, ReportContent, ReportDataset
 from app.modules.reports.pdf_exporter import PDFExporter
-from app.modules.reports.resource_usage import ReportMemorySampler
 from app.modules.statistics.exports import (
     ChartExportError,
+    ReportFigureExporter,
     build_export_filename,
-    export_figures_for_report,
 )
 from app.modules.statistics.models import FraStatisticsQuery, IlgaStatisticsQuery
 from app.modules.statistics.service import (
@@ -40,7 +41,6 @@ class GeneratedReport:
     timings: dict[str, float]
     image_count: int
     page_count: int
-    memory_peak_mb: float | None
 
 
 def load_report_dataset(configuration: ReportConfiguration) -> ReportDataset:
@@ -170,56 +170,34 @@ def _generate_report_pdf(
     wait_seconds: float,
 ) -> GeneratedReport:
     total_started = time.perf_counter()
-    memory_sampler = ReportMemorySampler()
-    memory_sampler.start()
     try:
         dataset = load_report_dataset(configuration)
-        data_memory = memory_sampler.sample()
         logger.info(
             "report_data_loaded source=%s report_query_ms=%.2f "
-            "report_normalization_ms=%.2f report_analysis_ms=%.2f cache_hit=%s "
-            "memory_mb=%s python_mb=%s memory_limit_mb=%s memory_source=%s",
+            "report_normalization_ms=%.2f report_analysis_ms=%.2f cache_hit=%s",
             configuration.source,
             dataset.query_seconds * 1000,
             dataset.normalization_seconds * 1000,
             dataset.analysis_seconds * 1000,
             dataset.cache_hit,
-            _memory_value(data_memory.total_mb),
-            _memory_value(data_memory.python_mb),
-            _memory_value(data_memory.limit_mb),
-            data_memory.source,
-        )
-        content = ReportBuilder().build(configuration, dataset)
-        apply_chart_narratives(content, chart_narratives or {})
-        apply_section_narratives(content, section_narratives or {})
-        image_count = sum(len(chart.figures) for chart in content.charts)
-        figure_memory = memory_sampler.sample()
-        logger.info(
-            "report_figures_built count=%s preparation_ms=%.2f figure_ms=%.2f "
-            "chart_ms=%s memory_mb=%s python_mb=%s",
-            image_count,
-            content.timings["preparation_seconds"] * 1000,
-            content.timings["figure_build_seconds"] * 1000,
-            _chart_timing_log(content),
-            _memory_value(figure_memory.total_mb),
-            _memory_value(figure_memory.python_mb),
         )
         image_started = time.perf_counter()
         with tempfile.TemporaryDirectory(prefix="rainbowlens-datahub-report-") as temp_dir:
             root = Path(temp_dir).resolve()
-            chart_paths = {
-                chart.key: [
-                    root / f"{index:02d}-{chart.key}-{page:02d}.png"
-                    for page, _figure in enumerate(chart.figures, start=1)
-                ]
-                for index, chart in enumerate(content.charts, start=1)
-            }
-            paths = [path for chart in content.charts for path in chart_paths[chart.key]]
+            chart_paths: dict[str, list[Path]] = {}
             try:
-                export_figures_for_report(
-                    _report_figures(content),
-                    paths,
-                )
+                with ReportFigureExporter() as image_exporter:
+
+                    def export_figure(key: str, page: int, figure: go.Figure) -> None:
+                        path = root / f"{key}-{page:02d}.png"
+                        image_exporter.write(figure, path)
+                        chart_paths.setdefault(key, []).append(path)
+
+                    content = ReportBuilder().build_for_pdf(
+                        configuration,
+                        dataset,
+                        export_figure,
+                    )
             except ChartExportError as exc:
                 logger.error(
                     "chart_export_failed",
@@ -227,19 +205,18 @@ def _generate_report_pdf(
                         "source": configuration.source,
                         "year": configuration.year,
                         "country_count": len(configuration.countries),
-                        "image_count": image_count,
                     },
                 )
                 raise ReportGenerationError("The report could not be generated.") from exc
             image_seconds = time.perf_counter() - image_started
-            export_memory = memory_sampler.sample()
+            image_count = sum(len(paths) for paths in chart_paths.values())
+            apply_chart_narratives(content, chart_narratives or {})
+            apply_section_narratives(content, section_narratives or {})
             logger.info(
-                "report_chart_export_completed count=%s total_ms=%.2f "
-                "memory_mb=%s peak_memory_mb=%s",
+                "report_figures_built count=%s preparation_ms=%.2f figure_ms=%.2f",
                 image_count,
-                image_seconds * 1000,
-                _memory_value(export_memory.total_mb),
-                _memory_value(memory_sampler.peak_mb),
+                content.timings["preparation_seconds"] * 1000,
+                content.timings["figure_build_seconds"] * 1000,
             )
             pdf_started = time.perf_counter()
             try:
@@ -257,16 +234,12 @@ def _generate_report_pdf(
                 raise ReportGenerationError("The report could not be generated.") from exc
             pdf_seconds = time.perf_counter() - pdf_started
             page_count = pdf_exporter.page_count
-            pdf_memory = memory_sampler.sample()
             logger.info(
-                "report_pdf_generated pages=%s bytes=%s total_ms=%.2f memory_mb=%s",
+                "report_pdf_generated pages=%s bytes=%s total_ms=%.2f",
                 page_count,
                 len(pdf_bytes),
                 pdf_seconds * 1000,
-                _memory_value(pdf_memory.total_mb),
             )
-        memory_sampler.stop()
-        memory_peak_mb = memory_sampler.peak_mb
         timings = {
             **content.timings,
             "queue_seconds": round(wait_seconds, 4),
@@ -276,13 +249,12 @@ def _generate_report_pdf(
         }
         logger.info(
             "report_generation_completed source=%s charts=%s images=%s pages=%s "
-            "total_ms=%.2f peak_memory_mb=%s",
+            "total_ms=%.2f",
             configuration.source,
             len(content.charts),
             image_count,
             page_count,
             timings["total_seconds"] * 1000,
-            _memory_value(memory_peak_mb),
         )
         return GeneratedReport(
             content=content,
@@ -291,7 +263,6 @@ def _generate_report_pdf(
             timings=timings,
             image_count=image_count,
             page_count=page_count,
-            memory_peak_mb=memory_peak_mb,
         )
     except ReportGenerationError:
         raise
@@ -305,8 +276,6 @@ def _generate_report_pdf(
             },
         )
         raise ReportGenerationError("The report could not be generated.") from exc
-    finally:
-        memory_sampler.stop()
 
 
 def apply_chart_narratives(
@@ -367,10 +336,6 @@ def sanitize_report_narrative(value: object, *, max_length: int = 2_000) -> str:
     return text[:max_length]
 
 
-def _memory_value(value: float | None) -> str:
-    return f"{value:.1f}" if value is not None else "unavailable"
-
-
 def _timing_ms(payload: dict[str, object], key: str) -> float:
     value = payload.get(key)
     if not isinstance(value, int | float | str):
@@ -379,18 +344,6 @@ def _timing_ms(payload: dict[str, object], key: str) -> float:
         return max(0.0, float(value or 0.0))
     except TypeError, ValueError:
         return 0.0
-
-
-def _chart_timing_log(content: ReportContent) -> str:
-    return ",".join(
-        f"{chart.key}:{content.timings.get(f'figure_{chart.key}_seconds', 0.0) * 1000:.2f}"
-        for chart in content.charts
-    )
-
-
-def _report_figures(content: ReportContent):
-    for chart in content.charts:
-        yield from chart.figures
 
 
 def _report_filename(

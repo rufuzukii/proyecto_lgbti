@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections.abc import Callable, Iterator
 from typing import Any, cast
 
 import pandas as pd
@@ -40,7 +41,8 @@ from app.shared.data.normalization import normalize_country_code
 from app.shared.data.source_attribution import attribution_for_sources
 from app.web.i18n import country_labels
 
-REPORT_RANKING_ROWS_PER_FIGURE = 32
+REPORT_PDF_ROWS_PER_FIGURE = 10
+ReportFigureConsumer = Callable[[str, int, Any], None]
 
 
 def _first_comparable_radar_country(payload: dict[str, Any]) -> str | None:
@@ -63,6 +65,10 @@ class ReportBuilder:
         self,
         configuration: ReportConfiguration,
         dataset: ReportDataset,
+        *,
+        include_figures: bool = True,
+        ranking_page_size: int | None = None,
+        figure_consumer: ReportFigureConsumer | None = None,
     ) -> ReportContent:
         started = time.perf_counter()
         result = dataset.result
@@ -118,7 +124,6 @@ class ReportBuilder:
         )
         limitations = _limitations(configuration, indicator, result)
         preparation_seconds = time.perf_counter() - started
-        figure_started = time.perf_counter()
         charts, chart_timings = _charts(
             configuration,
             result,
@@ -126,8 +131,11 @@ class ReportBuilder:
             selected,
             country_names,
             indicator,
+            include_figures=include_figures,
+            ranking_page_size=ranking_page_size,
+            figure_consumer=figure_consumer,
         )
-        figure_seconds = time.perf_counter() - figure_started
+        figure_seconds = sum(chart_timings.values())
         content = ReportContent(
             configuration=configuration,
             source_name=source_name,
@@ -174,6 +182,21 @@ class ReportBuilder:
             ),
         )
         return content
+
+    def build_for_pdf(
+        self,
+        configuration: ReportConfiguration,
+        dataset: ReportDataset,
+        figure_consumer: ReportFigureConsumer,
+    ) -> ReportContent:
+        """Build PDF content while each bounded chart page is exported immediately."""
+        return self.build(
+            configuration,
+            dataset,
+            include_figures=False,
+            ranking_page_size=REPORT_PDF_ROWS_PER_FIGURE,
+            figure_consumer=figure_consumer,
+        )
 
 
 # Compatibility alias for integrations that imported the original builder.
@@ -312,14 +335,18 @@ def _charts(
     selected: list[str],
     country_names: list[str],
     indicator: str,
+    *,
+    include_figures: bool,
+    ranking_page_size: int | None,
+    figure_consumer: ReportFigureConsumer | None,
 ) -> tuple[list[ReportChart], dict[str, float]]:
     rows = cast(list[dict[str, Any]], ranking.to_dict("records"))
     source = str(result.get("source") or "")
     detail = list(result.get("detail_data") or result.get("data") or [])
     language = config.language
-    ranking_pages = _report_ranking_pages(rows, selected)
+    page_ranges = _report_ranking_page_ranges(rows, selected, ranking_page_size)
     page_ranges_by_key = {
-        key: [(page.start, page.end) for page in ranking_pages]
+        key: page_ranges
         for key in ("ranking", "countries", "responses", "temporal")
     }
     map_builders: list[tuple[str, str, Any]] = []
@@ -357,7 +384,7 @@ def _charts(
         (
             "ranking",
             _t(language, "Ranking comparativo", "Comparative ranking"),
-            lambda: [
+            lambda: (
                 build_comparative_ranking_chart(
                     page.rows,
                     None,
@@ -365,8 +392,8 @@ def _charts(
                     indicator=indicator,
                     year=result.get("year"),
                 )
-                for page in ranking_pages
-            ],
+                for page in _iter_report_ranking_pages(rows, selected, ranking_page_size)
+            ),
         ),
         (
             "average",
@@ -380,7 +407,7 @@ def _charts(
                 (
                     "countries",
                     _t(language, "Comparación de respuestas", "Response comparison"),
-                    lambda: [
+                    lambda: (
                         build_response_country_comparison_chart(
                             detail,
                             _page_country_codes(page),
@@ -388,21 +415,25 @@ def _charts(
                             indicator=indicator,
                             year=result.get("year"),
                         )
-                        for page in ranking_pages
-                    ],
+                        for page in _iter_report_ranking_pages(
+                            rows, selected, ranking_page_size
+                        )
+                    ),
                 ),
                 (
                     "responses",
                     _t(language, "Detalle de respuestas", "Response detail"),
-                    lambda: [
+                    lambda: (
                         build_fra_response_comparison_chart(
                             detail,
                             selected_countries=(_page_country_codes(page) if selected else []),
                             visible_countries=_page_country_codes(page),
                             language=language,
                         )
-                        for page in ranking_pages
-                    ],
+                        for page in _iter_report_ranking_pages(
+                            rows, selected, ranking_page_size
+                        )
+                    ),
                 ),
             ]
         )
@@ -412,7 +443,7 @@ def _charts(
                 (
                     "responses",
                     _t(language, "Criterios jurídicos", "Legal criteria"),
-                    lambda: [
+                    lambda: (
                         build_ilga_response_details_chart(
                             detail,
                             _page_country_codes(page),
@@ -420,21 +451,25 @@ def _charts(
                             indicator=indicator,
                             year=result.get("year"),
                         )
-                        for page in ranking_pages
-                    ],
+                        for page in _iter_report_ranking_pages(
+                            rows, selected, ranking_page_size
+                        )
+                    ),
                 ),
                 (
                     "temporal",
                     _t(language, "Evolución temporal", "Temporal evolution"),
-                    lambda: [
+                    lambda: (
                         build_temporal_evolution_chart(
                             list(result.get("history") or []),
                             selected,
                             language,
                             visible_countries=_page_country_codes(page),
                         )
-                        for page in ranking_pages
-                    ],
+                        for page in _iter_report_ranking_pages(
+                            rows, selected, ranking_page_size
+                        )
+                    ),
                 ),
             ]
         )
@@ -531,23 +566,54 @@ def _charts(
             "ILGA-Europe" if key == "map_ilga" else "FRA" if key == "map_fra" else source
         )
         what_shows, how_to_read, observation = _chart_explanation(key, config, result, indicator)
-        chart_started = time.perf_counter()
-        built = factory()
-        figures = list(built) if isinstance(built, list) else [built]
-        figures = [figure for figure in figures if figure.data]
-        chart_timings[key] = time.perf_counter() - chart_started
-        if not figures:
+        chart_page_ranges = page_ranges_by_key.get(key, [])
+        if not include_figures and figure_consumer is None:
+            charts.append(
+                ReportChart(
+                    key,
+                    title,
+                    None,
+                    source,
+                    page_ranges=chart_page_ranges,
+                    what_shows=what_shows,
+                    how_to_read=how_to_read,
+                    observation=observation,
+                )
+            )
             continue
-        figure_year = (
-            (result.get("combined_analysis") or {}).get("ilga_year")
-            if key == "map_ilga" and config.source == "combined"
-            else result.get("year")
-        )
-        figure_indicator = (
-            _t(language, "Ranking total", "Overall ranking") if key == "map_ilga" else indicator
-        )
-        for page_index, figure in enumerate(figures, start=1):
-            page_title = f"{title} ({page_index}/{len(figures)})" if len(figures) > 1 else title
+        chart_build_seconds = 0.0
+        figure_started = time.perf_counter()
+        built = factory()
+        chart_build_seconds += time.perf_counter() - figure_started
+        source_figures = iter((built,)) if hasattr(built, "data") else iter(built)
+        figures = []
+        rendered_count = 0
+        expected_page_count = max(1, len(chart_page_ranges))
+        for page_index in range(1, expected_page_count + 1):
+            figure_started = time.perf_counter()
+            try:
+                figure = next(source_figures)
+            except StopIteration:
+                break
+            chart_build_seconds += time.perf_counter() - figure_started
+            if not figure.data:
+                continue
+            page_title = (
+                f"{title} ({page_index}/{expected_page_count})"
+                if expected_page_count > 1
+                else title
+            )
+            figure_year = (
+                (result.get("combined_analysis") or {}).get("ilga_year")
+                if key == "map_ilga" and config.source == "combined"
+                else result.get("year")
+            )
+            figure_indicator = (
+                _t(language, "Ranking total", "Overall ranking")
+                if key == "map_ilga"
+                else indicator
+            )
+            figure_started = time.perf_counter()
             prepare_figure_for_export(
                 figure,
                 chart_type=key,
@@ -559,14 +625,25 @@ def _charts(
                 filters=_filter_labels(config),
                 language=language,
             )
+            chart_build_seconds += time.perf_counter() - figure_started
+            rendered_count += 1
+            if figure_consumer is not None:
+                figure_consumer(key, page_index, figure)
+            if include_figures:
+                figures.append(figure)
+            else:
+                del figure
+        chart_timings[key] = chart_build_seconds
+        if not rendered_count:
+            continue
         charts.append(
             ReportChart(
                 key,
                 title,
-                figures[0],
+                figures[0] if figures else None,
                 source,
-                additional_figures=figures[1:],
-                page_ranges=page_ranges_by_key.get(key, []),
+                additional_figures=figures[1:] if figures else [],
+                page_ranges=chart_page_ranges,
                 what_shows=what_shows,
                 how_to_read=how_to_read,
                 observation=observation,
@@ -575,24 +652,45 @@ def _charts(
     return charts, chart_timings
 
 
-def _report_ranking_pages(rows: list[dict[str, Any]], selected: list[str]) -> list[RankingPage]:
+def _iter_report_ranking_pages(
+    rows: list[dict[str, Any]],
+    selected: list[str],
+    page_size: int | None,
+) -> Iterator[RankingPage]:
+    effective_page_size = page_size or max(1, len(rows))
     first = paginate_ranking(
         rows,
         0,
         selected_countries=selected,
-        page_size=REPORT_RANKING_ROWS_PER_FIGURE,
+        page_size=effective_page_size,
     )
+    yield first
+    for page in range(1, first.page_count):
+        yield paginate_ranking(
+            rows,
+            page,
+            selected_countries=selected,
+            page_size=effective_page_size,
+        )
+
+
+def _report_ranking_page_ranges(
+    rows: list[dict[str, Any]],
+    selected: list[str],
+    page_size: int | None,
+) -> list[tuple[int, int]]:
+    effective_page_size = page_size or max(1, len(rows))
+    first = paginate_ranking(
+        rows,
+        0,
+        selected_countries=selected,
+        page_size=effective_page_size,
+    )
+    if not first.total_items:
+        return [(0, 0)]
     return [
-        first,
-        *[
-            paginate_ranking(
-                rows,
-                page,
-                selected_countries=selected,
-                page_size=REPORT_RANKING_ROWS_PER_FIGURE,
-            )
-            for page in range(1, first.page_count)
-        ],
+        (offset + 1, min(offset + effective_page_size, first.total_items))
+        for offset in range(0, first.total_items, effective_page_size)
     ]
 
 

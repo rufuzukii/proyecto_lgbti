@@ -164,11 +164,11 @@ def test_batch_export_validates_every_png(
     browser = ChartExportBrowser(True, tmp_path / "chrome", True, "test")
     monkeypatch.setattr(exports, "configure_chart_export_browser", lambda: browser)
 
-    def write_images(_figures, paths, **_kwargs) -> None:
-        for path in paths:
-            Path(path).write_bytes(PNG)
+    def write_figure(_figure, path, **_kwargs):
+        Path(path).write_bytes(PNG)
+        return ()
 
-    monkeypatch.setattr(exports.pio, "write_images", write_images)
+    monkeypatch.setattr(exports.kaleido, "write_fig_sync", write_figure)
     paths = [tmp_path / "one.png", tmp_path / "two.png"]
 
     rendered = exports.export_figures_for_report(
@@ -180,20 +180,21 @@ def test_batch_export_validates_every_png(
     assert all(path.read_bytes() == PNG for path in paths)
 
 
-def test_large_export_uses_bounded_browser_batches(
+def test_large_export_writes_one_figure_per_bounded_browser_lifecycle(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     browser = ChartExportBrowser(True, tmp_path / "chrome", True, "test")
     monkeypatch.setattr(exports, "configure_chart_export_browser", lambda: browser)
-    batch_sizes: list[int] = []
+    writes: list[tuple[Path, dict[str, object]]] = []
 
-    def write_images(figures, paths, **_kwargs) -> None:
-        batch_sizes.append(len(figures))
-        for path in paths:
-            Path(path).write_bytes(PNG)
+    def write_figure(_figure, path, **kwargs):
+        target = Path(path)
+        writes.append((target, kwargs))
+        target.write_bytes(PNG)
+        return ()
 
-    monkeypatch.setattr(exports.pio, "write_images", write_images)
+    monkeypatch.setattr(exports.kaleido, "write_fig_sync", write_figure)
     paths = [tmp_path / f"chart-{index}.png" for index in range(8)]
 
     rendered = exports.export_figures_for_report(
@@ -202,7 +203,9 @@ def test_large_export_uses_bounded_browser_batches(
     )
 
     assert rendered == paths
-    assert batch_sizes == [6, 2]
+    assert [path for path, _kwargs in writes] == paths
+    assert all(kwargs["kopts"] == {"n": 1, "timeout": 60} for _path, kwargs in writes)
+    assert all(kwargs["cancel_on_error"] is True for _path, kwargs in writes)
     assert all(path.read_bytes() == PNG for path in paths)
 
 
@@ -236,7 +239,7 @@ def test_batch_export_rejects_missing_output(
 ) -> None:
     browser = ChartExportBrowser(True, tmp_path / "chrome", True, "test")
     monkeypatch.setattr(exports, "configure_chart_export_browser", lambda: browser)
-    monkeypatch.setattr(exports.pio, "write_images", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(exports.kaleido, "write_fig_sync", lambda *_args, **_kwargs: ())
 
     with pytest.raises(exports.ChartExportError):
         exports.export_figures_for_report(

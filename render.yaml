@@ -55,11 +55,11 @@ services:
       - key: CACHE_DEFAULT_TIMEOUT
         value: "300"
       - key: LOCAL_CACHE_MAX_ENTRIES
-        value: "512"
+        value: "256"
       - key: LOCAL_CACHE_MAX_VALUE_BYTES
         value: "4194304"
       - key: LOCAL_CACHE_MAX_TOTAL_BYTES
-        value: "67108864"
+        value: "16777216"
       - key: RATE_LIMIT_LOCAL_MAX_KEYS
         value: "10000"
       - key: HTTP_GZIP_MIN_BYTES

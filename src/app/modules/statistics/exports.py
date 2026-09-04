@@ -11,8 +11,9 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Self, cast
 
+import kaleido
 import plotly.graph_objects as go
 import plotly.io as pio
 
@@ -28,11 +29,10 @@ EXPORT_HEIGHT = 900
 EXPORT_SCALE = 2
 EXPORT_FILENAME_MAX_LENGTH = 160
 EXPORT_SUBTITLE_LINE_LENGTH = 110
-REPORT_EXPORT_WIDTH = 1200
-REPORT_EXPORT_HEIGHT = 800
+REPORT_EXPORT_WIDTH = 1000
+REPORT_EXPORT_HEIGHT = 650
 REPORT_EXPORT_SCALE = 1
-
-REPORT_EXPORT_BATCH_SIZE = 6
+REPORT_EXPORT_TIMEOUT_SECONDS = 60
 SUMMARY_TABLE_EXPORT_FIELDS = (
     "country",
     "country_code",
@@ -64,6 +64,79 @@ class SummaryTableExport:
     content: str
     filename: str
     mime_type: str
+
+
+class ReportFigureExporter:
+    """Export one report figure per bounded Kaleido browser lifecycle."""
+
+    def __init__(
+        self,
+        *,
+        width: int = REPORT_EXPORT_WIDTH,
+        height: int = REPORT_EXPORT_HEIGHT,
+        scale: float = REPORT_EXPORT_SCALE,
+    ) -> None:
+        self.width = width
+        self.height = height
+        self.scale = scale
+        self.image_count = 0
+        self.elapsed_seconds = 0.0
+        self._started_at = 0.0
+        self._open = False
+
+    def __enter__(self) -> Self:
+        _require_chart_export_browser()
+        self._started_at = time.perf_counter()
+        logger.info(
+            "report_chart_export_started batch_size=1 width=%s height=%s scale=%s",
+            self.width,
+            self.height,
+            self.scale,
+        )
+        self._open = True
+        return self
+
+    def write(self, figure: go.Figure, path: str | Path) -> Path:
+        if not self._open:
+            raise RuntimeError("report_figure_exporter_not_open")
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        payload = _prepare_report_payload(figure)
+        try:
+            errors = kaleido.write_fig_sync(
+                payload,
+                path=target,
+                opts={
+                    "format": EXPORT_FORMAT,
+                    "width": self.width,
+                    "height": self.height,
+                    "scale": self.scale,
+                },
+                cancel_on_error=True,
+                kopts={"n": 1, "timeout": REPORT_EXPORT_TIMEOUT_SECONDS},
+            )
+            if errors:
+                raise errors[0]
+        except Exception as exc:
+            logger.exception(_chart_export_error_event(exc))
+            raise ChartExportError("The report chart could not be generated.") from exc
+        finally:
+            payload.clear()
+        if not _is_png_file(target):
+            logger.error("chart_export_failed reason=invalid_or_missing_png")
+            raise ChartExportError("The report chart could not be generated.")
+        self.image_count += 1
+        return target
+
+    def __exit__(self, *_exc_info: object) -> None:
+        if self._open:
+            self._open = False
+            self.elapsed_seconds = time.perf_counter() - self._started_at
+            logger.info(
+                "report_chart_export_completed count=%s total_ms=%.2f",
+                self.image_count,
+                self.elapsed_seconds * 1000,
+            )
 
 
 def chart_graph_config() -> Any:
@@ -288,91 +361,25 @@ def export_figures_for_report(
     height: int = REPORT_EXPORT_HEIGHT,
     scale: float = REPORT_EXPORT_SCALE,
 ) -> list[Path]:
-    """Render report figures in bounded batches to cap Chrome memory usage."""
+    """Render figures one at a time in one bounded, explicitly closed browser."""
     source_figures = iter(figures)
     targets = [Path(path) for path in paths]
     if not targets:
         if next(source_figures, None) is not None:
             raise ValueError("Each report figure requires exactly one output path.")
         return []
-    _require_chart_export_browser()
-    for target in targets:
-        target.parent.mkdir(parents=True, exist_ok=True)
-
-    batch_count = (len(targets) + REPORT_EXPORT_BATCH_SIZE - 1) // REPORT_EXPORT_BATCH_SIZE
-    logger.info(
-        "chart_export_started chart_count=%s batch_size=%s batch_count=%s",
-        len(targets),
-        REPORT_EXPORT_BATCH_SIZE,
-        batch_count,
-    )
-    export_started = time.perf_counter()
-    for batch_index, batch_start in enumerate(
-        range(0, len(targets), REPORT_EXPORT_BATCH_SIZE), start=1
-    ):
-        batch_started = time.perf_counter()
-        batch_targets: list[str | Path] = list(
-            targets[batch_start : batch_start + REPORT_EXPORT_BATCH_SIZE]
-        )
-        batch_figures: list[go.Figure] = []
-        for _ in batch_targets:
+    rendered: list[Path] = []
+    with ReportFigureExporter(width=width, height=height, scale=scale) as exporter:
+        for target in targets:
             try:
-                batch_figures.append(next(source_figures))
+                figure = next(source_figures)
             except StopIteration as exc:
                 raise ValueError("Each report figure requires exactly one output path.") from exc
-        prepared = [_prepare_report_payload(figure) for figure in batch_figures]
-        try:
-            pio.write_images(
-                prepared,
-                batch_targets,
-                format=EXPORT_FORMAT,
-                width=width,
-                height=height,
-                scale=scale,
-                validate=False,
-            )
-        except Exception as exc:
-            logger.exception(
-                "%s batch_number=%s batch_count=%s chart_count=%s",
-                _chart_export_error_event(exc),
-                batch_index,
-                batch_count,
-                len(batch_targets),
-            )
-            raise ChartExportError("The report charts could not be generated.") from exc
-        finally:
-            for payload in prepared:
-                payload.clear()
-            prepared.clear()
-            batch_figures.clear()
-
-        for target in batch_targets:
-            if not _is_png_file(Path(target)):
-                logger.error(
-                    "chart_export_failed reason=invalid_or_missing_png "
-                    "batch_number=%s batch_count=%s",
-                    batch_index,
-                    batch_count,
-                )
-                raise ChartExportError("The report charts could not be generated.")
-        logger.info(
-            "chart_export_batch_completed batch_number=%s batch_count=%s "
-            "image_count=%s height=%s elapsed_seconds=%.3f",
-            batch_index,
-            batch_count,
-            len(batch_targets),
-            height,
-            time.perf_counter() - batch_started,
-        )
+            rendered.append(exporter.write(figure, target))
+            del figure
     if next(source_figures, None) is not None:
         raise ValueError("Each report figure requires exactly one output path.")
-    logger.info(
-        "chart_export_completed chart_count=%s batch_count=%s elapsed_seconds=%.3f",
-        len(targets),
-        batch_count,
-        time.perf_counter() - export_started,
-    )
-    return targets
+    return rendered
 
 
 def _configure_kaleido_browser(prefix: str | Path | None = None) -> str | None:

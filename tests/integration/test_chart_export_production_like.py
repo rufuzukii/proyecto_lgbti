@@ -81,7 +81,7 @@ def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) 
                 }
             ),
             lambda: _social_result(all_countries=True),
-            3,
+            7,
             60.0,
         ),
         (
@@ -110,7 +110,7 @@ def test_plotly_kaleido_exports_one_png_and_a_rainbowlens_batch(tmp_path: Path) 
                 }
             ),
             lambda: _legal_result(all_countries=True),
-            5,
+            9,
             60.0,
         ),
     ),
@@ -138,9 +138,6 @@ def test_generate_report_pdf_production_like(
     assert generated.image_count == expected_images
     assert generated.timings["chart_export_seconds"] > 0
     assert generated.timings["total_seconds"] < maximum_seconds
-    memory_budget = os.getenv("REPORT_MEMORY_BUDGET_MB")
-    if memory_budget and generated.memory_peak_mb is not None:
-        assert generated.memory_peak_mb < float(memory_budget)
     with fitz.open(stream=generated.pdf_bytes, filetype="pdf") as document:
         assert document.page_count == generated.page_count
         assert sum(len(page.get_images(full=True)) for page in document) >= expected_images

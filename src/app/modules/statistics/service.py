@@ -6,7 +6,6 @@ import logging
 import re
 import time
 from collections.abc import Callable
-from copy import deepcopy
 from typing import Any, cast
 
 import pandas as pd
@@ -598,14 +597,14 @@ def get_fra_control_payload(
     )
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
-        return deepcopy(cached)
+        return cached
 
     document = get_fra_indicator_control_document(clean_code, clean_category or None, year)
     payload = build_fra_control_payload(document)
     payload["code"] = clean_code
     payload["category"] = str((document or {}).get("category") or "").strip()
     if isinstance(document, dict):
-        _server_cache_set(cache_key, deepcopy(payload))
+        _server_cache_set(cache_key, payload)
     return payload
 
 
@@ -619,7 +618,7 @@ def get_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
     cache_key = _fra_statistics_cache_key(query)
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
-        result = deepcopy(cached)
+        result = cached
         result["_statistics_timings"] = {
             "query_ms": 0.0,
             "normalization_ms": 0.0,
@@ -681,7 +680,7 @@ def get_combined_statistics_analysis(
     cache_key = f"fra-ilga-analysis-v4:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
-        result = deepcopy(cached)
+        result = cached
         result["_statistics_timings"] = {
             "query_ms": 0.0,
             "normalization_ms": 0.0,
@@ -715,7 +714,7 @@ def get_combined_statistics_analysis(
             "total_ms": (time.perf_counter() - started_at) * 1000,
         },
     }
-    _server_cache_set(cache_key, deepcopy(result))
+    _server_cache_set(cache_key, result)
     return result
 
 
@@ -991,7 +990,7 @@ def _fra_dataframe_for_code(
             "statistics_frame_loaded indicator=%s query_ms=0 normalization_ms=0 cache_hit=true",
             code,
         )
-        dataframe = cached.copy(deep=True)
+        dataframe = cached
         dataframe.attrs["_statistics_timings"] = {
             "query_ms": 0.0,
             "normalization_ms": 0.0,
@@ -1023,7 +1022,7 @@ def _fra_dataframe_for_code(
         normalization_ms,
     )
     if not dataframe.empty:
-        _server_cache_set(cache_key, dataframe.copy(deep=True))
+        _server_cache_set(cache_key, dataframe)
     return dataframe
 
 
@@ -1111,7 +1110,7 @@ def get_experience_legal_radar(
     cache_key = f"experience-legal-radar:{hashlib.sha256(serialized.encode('utf-8')).hexdigest()}"
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
-        return deepcopy(cached)
+        return cached
 
     fra_rows = _experience_radar_rows(query)
     legal_rows, effective_ilga_year = _legal_radar_rows(query)
@@ -1124,7 +1123,7 @@ def get_experience_legal_radar(
             "fra_year": query.fra_year,
             "ilga_year": effective_ilga_year,
         }
-        _server_cache_set(cache_key, deepcopy(result))
+        _server_cache_set(cache_key, result)
         return result
 
     merged = fra_rows.rename(columns={"country": "experience_country"}).merge(
@@ -1157,7 +1156,7 @@ def get_experience_legal_radar(
             "ILGA criterion points are normalized against their available weights."
         ),
     }
-    _server_cache_set(cache_key, deepcopy(result))
+    _server_cache_set(cache_key, result)
     return result
 
 
@@ -1211,7 +1210,7 @@ def _experience_radar_base_dataframe(year: int | None) -> pd.DataFrame:
             year,
             len(cached),
         )
-        return cached.copy(deep=True)
+        return cached
 
     started_at = time.perf_counter()
     fra_configs = [
@@ -1255,7 +1254,7 @@ def _experience_radar_base_dataframe(year: int | None) -> pd.DataFrame:
     ]
     matched = matched[compact_columns].reset_index(drop=True)
     if not matched.empty:
-        _server_cache_set(cache_key, matched.copy(deep=True))
+        _server_cache_set(cache_key, matched)
     logger.info(
         "statistics_radar_frame_loaded year=%s rows=%d normalization_ms=%.2f cache_hit=false",
         year,
@@ -1338,7 +1337,7 @@ def get_ilga_statistics(
     cache_key = _ilga_statistics_cache_key(query, include_history=include_history)
     cached = _server_cache_get(cache_key)
     if isinstance(cached, dict):
-        result = deepcopy(cached)
+        result = cached
         result["_statistics_timings"] = {
             "query_ms": 0.0,
             "normalization_ms": 0.0,
@@ -1354,7 +1353,7 @@ def get_ilga_statistics(
 
     result = _build_ilga_statistics(query, include_history=include_history)
     if result.get("status") == "ok":
-        _server_cache_set(cache_key, deepcopy(result))
+        _server_cache_set(cache_key, result)
     logger.info(
         "statistics_loaded source=ilga category=%s status=%s total_ms=%.2f cache_hit=false",
         query.category,

@@ -189,7 +189,7 @@ class ReportRecommendation:
 class ReportChart:
     key: str
     title: str
-    figure: go.Figure
+    figure: go.Figure | None
     source: str
     additional_figures: list[go.Figure] = field(default_factory=list)
     page_ranges: list[tuple[int, int]] = field(default_factory=list)
@@ -200,7 +200,11 @@ class ReportChart:
     @property
     def figures(self) -> tuple[go.Figure, ...]:
         """All static pages belonging to this conceptual visualization."""
-        return (self.figure, *self.additional_figures)
+        return tuple(
+            figure
+            for figure in (self.figure, *self.additional_figures)
+            if figure is not None
+        )
 
 
 @dataclass

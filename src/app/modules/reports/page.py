@@ -144,7 +144,6 @@ def build_reports_layout(
                 data=config.to_dict(),
                 storage_type="memory",
             ),
-            dcc.Download(id="report-download"),
             html.Main(
                 [
                     build_page_header(
@@ -198,13 +197,24 @@ def build_reports_layout(
                                         className="reports-primary-button",
                                         n_clicks=0,
                                     ),
-                                    html.Button(
-                                        text("Descargar informe PDF", "Download PDF report"),
-                                        id="report-download-button",
-                                        type="button",
-                                        className="reports-secondary-button",
-                                        disabled=True,
-                                        n_clicks=0,
+                                    contextual_loading(
+                                        [
+                                            html.Button(
+                                                text(
+                                                    "Descargar informe PDF",
+                                                    "Download PDF report",
+                                                ),
+                                                id="report-download-button",
+                                                type="button",
+                                                className="reports-secondary-button",
+                                                disabled=True,
+                                                n_clicks=0,
+                                            ),
+                                            dcc.Download(id="report-download"),
+                                        ],
+                                        "generating_report",
+                                        element_id="report-download-loading",
+                                        target_components={"report-download": "data"},
                                     ),
                                     html.Span(
                                         "",

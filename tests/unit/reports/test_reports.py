@@ -186,6 +186,17 @@ def _many_country_result(count: int = 12) -> dict[str, Any]:
         ("AT", "Austria"),
         ("SE", "Sweden"),
         ("FI", "Finland"),
+        ("AL", "Albania"),
+        ("AD", "Andorra"),
+        ("AM", "Armenia"),
+        ("AZ", "Azerbaijan"),
+        ("BA", "Bosnia and Herzegovina"),
+        ("BG", "Bulgaria"),
+        ("HR", "Croatia"),
+        ("CY", "Cyprus"),
+        ("DK", "Denmark"),
+        ("EE", "Estonia"),
+        ("GE", "Georgia"),
     ][:count]
     result = _fra_result()
     result["ranking"] = [
@@ -346,6 +357,73 @@ def test_unselected_ranking_uses_one_pdf_figure_without_losing_countries() -> No
     assert [len(cast(Any, figure.data[0]).y) for figure in ranking.figures] == [12]
     assert len(page_countries) == len(set(page_countries)) == 12
     assert len(content.table_rows) == 12
+
+
+def test_preview_uses_one_complete_ranking_when_no_countries_are_selected() -> None:
+    content = HRReportBuilder().build(
+        _configuration(countries=[], primary_country="", charts=["ranking"]),
+        ReportDataset(_many_country_result(23), query_seconds=0.01),
+    )
+    ranking = next(chart for chart in content.charts if chart.key == "ranking")
+    assert ranking.figure is not None
+    rendered = [str(country) for country in cast(Any, ranking.figure.data[0]).y]
+
+    assert len(ranking.figures) == 1
+    assert len(rendered) == len(set(rendered)) == 23
+    assert set(rendered) == {row["country"] for row in content.table_rows}
+
+
+def test_pdf_ranking_pages_stream_ten_ten_three_without_loss_or_duplicates() -> None:
+    result = _many_country_result(23)
+    result["ranking"][10]["value"] = result["ranking"][9]["value"]
+    tied_codes = {result["ranking"][9]["iso"], result["ranking"][10]["iso"]}
+    rendered_pages: list[list[str]] = []
+    positions: dict[str, str] = {}
+
+    def consume(key: str, _page: int, figure: go.Figure) -> None:
+        if key != "ranking":
+            return
+        countries = [str(country) for country in cast(Any, figure.data[0]).y]
+        rendered_pages.append(countries)
+        positions.update(
+            {
+                str(custom[0]): str(custom[1])
+                for custom in cast(Any, figure.data[0]).customdata
+            }
+        )
+
+    content = HRReportBuilder().build_for_pdf(
+        _configuration(countries=[], primary_country="", charts=["ranking"]),
+        ReportDataset(result, query_seconds=0.01),
+        consume,
+    )
+    ranking = next(chart for chart in content.charts if chart.key == "ranking")
+    rendered = [country for page in rendered_pages for country in page]
+    expected = {str(row["country"]) for row in content.table_rows}
+
+    assert [len(page) for page in rendered_pages] == [10, 10, 3]
+    assert ranking.page_ranges == [(1, 10), (11, 20), (21, 23)]
+    assert set(rendered) == expected
+    assert len(rendered) == len(set(rendered))
+    assert positions["ES"] == "1"
+    assert positions["GE"] == "23"
+    assert {positions[code] for code in tied_codes} == {"10"}
+    assert not ranking.figures
+
+
+def test_report_keeps_real_zero_and_excludes_missing_country_values() -> None:
+    result = _fra_result()
+    result["ranking"][2]["value"] = 0.0
+    content = HRReportBuilder().build(
+        _configuration(countries=[], primary_country="", charts=["ranking"]),
+        ReportDataset(result, query_seconds=0.01),
+    )
+
+    values = {row["country"]: row["value"] for row in content.table_rows}
+
+    assert 0.0 in values.values()
+    assert len(values) == 3
+    assert all("Portugal" not in country for country in values)
 
 
 def test_other_multi_country_figures_use_one_static_pdf_scope() -> None:
@@ -849,14 +927,20 @@ def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
         lambda _config: ReportDataset(_fra_result(), query_seconds=0.01),
     )
 
-    def fake_export(_figures, paths):
-        for path_value in paths:
+    class FakeExporter:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def write(self, _figure, path_value):
             path = Path(path_value)
             observed_roots.append(path.parent)
             path.write_bytes(b"png")
-        return [Path(path) for path in paths]
+            return path
 
-    monkeypatch.setattr(report_service, "export_figures_for_report", fake_export)
+    monkeypatch.setattr(report_service, "ReportFigureExporter", FakeExporter)
     monkeypatch.setattr(
         report_service.PDFExporter,
         "export",
@@ -904,17 +988,21 @@ def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None
         tracked_figure("responses"),
     )
 
-    def fake_export(figures, paths):
-        nonlocal export_calls
-        export_calls += 1
-        source_figures = list(figures)
-        targets = [Path(path) for path in paths]
-        assert len(source_figures) == len(targets)
-        for target in targets:
-            target.write_bytes(b"png")
-        return targets
+    class FakeExporter:
+        def __enter__(self):
+            return self
 
-    monkeypatch.setattr(report_service, "export_figures_for_report", fake_export)
+        def __exit__(self, *_args):
+            return None
+
+        def write(self, _figure, target):
+            nonlocal export_calls
+            export_calls += 1
+            target = Path(target)
+            target.write_bytes(b"png")
+            return target
+
+    monkeypatch.setattr(report_service, "ReportFigureExporter", FakeExporter)
 
     preview = report_service.build_report_preview(configuration)
 
@@ -937,9 +1025,9 @@ def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None
     )
 
     assert calls == {"map": 2, "ranking": 2, "responses": 2}
-    assert export_calls == 1
+    assert export_calls == 3
     assert generated.image_count == 3
-    assert all(chart.figures for chart in generated.content.charts)
+    assert all(not chart.figures for chart in generated.content.charts)
 
 
 def test_preview_converts_chart_failures_to_controlled_errors(monkeypatch) -> None:
@@ -1092,6 +1180,7 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     assert {
         "report-preview-button",
         "report-download-button",
+        "report-download-loading",
         "report-preview-content",
         "report-download",
         "report-source-select",
@@ -1130,6 +1219,8 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     assert "Datos sociales" in source_labels
     assert "Datos legales" in source_labels
     assert indicator_control is not None
+    download_loading = _component_by_id(layout, "report-download-loading")
+    assert download_loading.target_components == {"report-download": "data"}
     assert indicator_control.to_plotly_json()["props"].get("persistence") in {None, False}
     final_actions = next(
         component
@@ -1350,6 +1441,8 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     assert "type: keyvalue" not in render_config
     assert "LOCAL_CACHE_MAX_ENTRIES" in render_config
     assert "LOCAL_CACHE_MAX_TOTAL_BYTES" in render_config
+    assert 'value: "256"' in render_config
+    assert 'value: "16777216"' in render_config
 
 
 def test_report_export_finds_bundled_chrome_when_environment_path_is_stale(
