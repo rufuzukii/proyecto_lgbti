@@ -56,6 +56,7 @@ FIGURE_IMAGE_MIME_TYPE = "image/webp"
 FIGURE_IMAGE_EXTENSION = "webp"
 logger = logging.getLogger(__name__)
 
+
 def _peak_memory_mb() -> float | None:
     try:
         resource_module = importlib.import_module("resource")
@@ -447,9 +448,7 @@ def _run_felgtbi_pdf_pipeline(
                 if str(document.get("section_title") or "").strip()
             }
         )
-        detected_figures = sum(
-            isinstance(document.get("figure"), dict) for document in documents
-        )
+        detected_figures = sum(isinstance(document.get("figure"), dict) for document in documents)
         discarded = _discarded_block_summary(documents)
         _pdf_import_log(
             logging.INFO,
@@ -881,9 +880,7 @@ def parse_felgtbi_text_pages(
                 fieldwork=fieldwork,
             )
         )
-        layout_documents.sort(
-            key=lambda item: (int(item.get("page") or 0), str(item.get("code")))
-        )
+        layout_documents.sort(key=lambda item: (int(item.get("page") or 0), str(item.get("code"))))
         _attach_source_document_metadata(
             layout_documents,
             file_name=file_name,
@@ -1234,9 +1231,7 @@ def _build_layout_page_documents(
                     "block_count": len(blocks),
                     "data_point_count": len(data_points),
                     "semantic_cleanup_removed": len(semantic_cleanup.removed),
-                    "semantic_cleanup_reasons": _semantic_cleanup_reasons(
-                        semantic_cleanup.removed
-                    ),
+                    "semantic_cleanup_reasons": _semantic_cleanup_reasons(semantic_cleanup.removed),
                 },
             }
         )
@@ -1334,7 +1329,9 @@ def _is_layout_content_page(
         if len(str(block.get("text") or "").strip()) >= 40
         and _block_has_letters(str(block.get("text") or ""))
     ]
-    return len(values) >= 2 or (bool(values) and (bool(visual_regions) or len(narrative_blocks) >= 2))
+    return len(values) >= 2 or (
+        bool(values) and (bool(visual_regions) or len(narrative_blocks) >= 2)
+    )
 
 
 def _extract_layout_data_points(
@@ -1414,9 +1411,7 @@ def _layout_numeric_matches(
             continue
         block_has_percentages = bool(PERCENT_PATTERN.search(text))
         block_is_narrative = (
-            len(text) > 80
-            and _block_has_letters(text)
-            and is_semantically_useful_text(text)
+            len(text) > 80 and _block_has_letters(text) and is_semantically_useful_text(text)
         )
         if block_is_narrative:
             continue
@@ -2271,10 +2266,19 @@ def _resolve_report_title(full_text: str, file_name: str) -> str:
             if 4 <= len(content_title.split()) <= 16:
                 return _clean_report_title(content_title)
     normalized_full_text = normalize_header(full_text)
-    if _is_generic_report_title(stem_title) and sum(
-        token in normalized_full_text
-        for token in ("estimacion_de_voto", "transferencias_de_voto", "movilizacion", "ideologia")
-    ) >= 2:
+    if (
+        _is_generic_report_title(stem_title)
+        and sum(
+            token in normalized_full_text
+            for token in (
+                "estimacion_de_voto",
+                "transferencias_de_voto",
+                "movilizacion",
+                "ideologia",
+            )
+        )
+        >= 2
+    ):
         return "El voto en la comunidad LGTBI+"
     return stem_title or FELGTBI_SOURCE_NAME
 
@@ -3024,7 +3028,6 @@ def _figure_block_extraction_context(
     )
 
 
-
 def _clean_figure_caption_title(text: str) -> str:
     match = FIGURE_CAPTION_PATTERN.match(text)
     if not match:
@@ -3174,8 +3177,7 @@ def _extract_toc_sections(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         elif not toc_active:
             continue
         visual_index_entries = sum(
-            bool(re.match(r"^(?:gr[aá]fico|figura|tabla)\b", line, re.IGNORECASE))
-            for line in lines
+            bool(re.match(r"^(?:gr[aá]fico|figura|tabla)\b", line, re.IGNORECASE)) for line in lines
         )
         if visual_index_entries >= 3:
             toc_active = False
@@ -3238,10 +3240,7 @@ def _extract_toc_sections(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     body_sections = _extract_body_outline_sections(pages)
     body_by_title = {normalize_header(item["title"]): item for item in body_sections}
-    combined = [
-        body_by_title.get(normalize_header(item["title"]), item)
-        for item in sections
-    ]
+    combined = [body_by_title.get(normalize_header(item["title"]), item) for item in sections]
     existing_titles = {normalize_header(item["title"]) for item in combined}
     combined.extend(
         item for item in body_sections if normalize_header(item["title"]) not in existing_titles
@@ -3304,10 +3303,7 @@ def _spatial_toc_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
         matching_numbers = [
             number
             for number in number_blocks
-            if abs(
-                (float(number.get("y0") or 0) + float(number.get("y1") or 0)) / 2
-                - center_y
-            )
+            if abs((float(number.get("y0") or 0) + float(number.get("y1") or 0)) / 2 - center_y)
             <= 8
         ]
         if not matching_numbers:
@@ -3349,9 +3345,7 @@ def _extract_body_outline_sections(pages: list[dict[str, Any]]) -> list[dict[str
 
 def _looks_like_reference_entry(value: str) -> bool:
     text = " ".join(str(value or "").split())
-    return bool(
-        re.match(r"^\d+\s+(?:https?://|www\.|\S+.*,.*\(20\d{2}\))", text, re.IGNORECASE)
-    )
+    return bool(re.match(r"^\d+\s+(?:https?://|www\.|\S+.*,.*\(20\d{2}\))", text, re.IGNORECASE))
 
 
 def _looks_like_toc_title_fragment(value: str) -> bool:
@@ -3492,7 +3486,6 @@ def _page_text_block_entries(page: dict[str, Any]) -> list[dict[str, Any]]:
                 merged_blocks.append(dict(block))
         return merged_blocks
     return []
-
 
 
 def _reading_order_key(block: dict[str, Any]) -> tuple[int, float, float]:
@@ -3724,7 +3717,6 @@ def _infer_topic(
             if keyword in normalized:
                 return topic
     return fallback or "Spanish LGBTIQ+ indicators"
-
 
 
 def _looks_like_heading(value: str) -> bool:

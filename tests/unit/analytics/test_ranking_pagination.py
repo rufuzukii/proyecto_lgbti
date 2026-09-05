@@ -58,9 +58,7 @@ def test_forty_nine_countries_are_accessible_in_ten_pages() -> None:
     assert all(len(page.rows) == 5 for page in pages[:-1])
     assert len(pages[-1].rows) == 4
     assert pages[-1].end == 49
-    assert {row["iso"] for page in pages for row in page.rows} == {
-        row["iso"] for row in rows
-    }
+    assert {row["iso"] for page in pages for row in page.rows} == {row["iso"] for row in rows}
 
 
 def test_ranking_is_sorted_descending_before_it_is_paginated() -> None:

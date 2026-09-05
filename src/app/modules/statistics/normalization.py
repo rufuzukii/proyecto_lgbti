@@ -9,7 +9,7 @@ def safe_chart_float(value: Any) -> float | None:
     """Return a finite chart number while preserving missing values as missing."""
     try:
         numeric = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return numeric if pd.notna(numeric) else None
 

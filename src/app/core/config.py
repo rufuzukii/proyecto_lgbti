@@ -7,10 +7,9 @@ from urllib.parse import parse_qs, quote_plus, unquote, urlparse, urlsplit, urlu
 
 from dotenv import load_dotenv
 
-if (
-    os.getenv("APP_ENV", "local").strip().casefold() != "production"
-    or os.getenv("LOCAL_MODE", "").strip().casefold() in {"1", "true", "yes", "on"}
-):
+if os.getenv("APP_ENV", "local").strip().casefold() != "production" or os.getenv(
+    "LOCAL_MODE", ""
+).strip().casefold() in {"1", "true", "yes", "on"}:
     load_dotenv()
 
 _LOCAL_SECRET_KEY = secrets.token_urlsafe(32)

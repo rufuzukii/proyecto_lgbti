@@ -77,5 +77,7 @@ def test_unknown_value_uses_controlled_fallback_and_is_logged_once(caplog) -> No
 
     # Assert
     assert first == second == unknown
-    messages = [record.message for record in caplog.records if record.message == "taxonomy_label_missing"]
+    messages = [
+        record.message for record in caplog.records if record.message == "taxonomy_label_missing"
+    ]
     assert len(messages) == 1

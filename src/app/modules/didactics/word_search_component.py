@@ -115,9 +115,7 @@ def word_search_progress(state: dict[str, Any], language: str) -> list[Component
                 value=str(found),
                 max=str(max(total, 1)),
                 className="word-search-progress-bar",
-                **dash_attrs(
-                    {"aria-label": f"{tr('words_found', language)}: {found} / {total}"}
-                ),
+                **dash_attrs({"aria-label": f"{tr('words_found', language)}: {found} / {total}"}),
             ),
         ),
     ]

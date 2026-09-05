@@ -28,8 +28,7 @@ def record_user_admin_event(
             "before": _safe_snapshot(before),
             "after": _safe_snapshot(after),
             "created_at": now,
-            "expires_at": now
-            + timedelta(days=get_privacy_policy_config().audit_retention_days),
+            "expires_at": now + timedelta(days=get_privacy_policy_config().audit_retention_days),
         }
     )
 

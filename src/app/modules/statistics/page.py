@@ -154,7 +154,9 @@ def build_statistics_layout() -> Component:
                                 dcc.Store(id="stats-dashboard-ready-store", storage_type="memory"),
                                 dcc.Store(id="stats-active-query-store", storage_type="memory"),
                                 dcc.Store(id="stats-survey-catalog-store", storage_type="memory"),
-                                dcc.Store(id="stats-indicator-catalog-store", storage_type="memory"),
+                                dcc.Store(
+                                    id="stats-indicator-catalog-store", storage_type="memory"
+                                ),
                                 html.Div(
                                     id="stats-query-state",
                                     className="stats-query-state is-hidden",
@@ -268,7 +270,10 @@ def build_statistics_layout() -> Component:
                                                 html.Div(
                                                     [
                                                         html.H2(
-                                                            text("Tabla FRA resumida", "FRA summary table")
+                                                            text(
+                                                                "Tabla FRA resumida",
+                                                                "FRA summary table",
+                                                            )
                                                         ),
                                                         html.Div(
                                                             [
@@ -763,9 +768,9 @@ def register_statistics_callbacks(app: Dash) -> None:
                 "ilga_score": row.get("ilga_value"),
                 "legal_rank": gap_by_iso.get(str(row.get("iso") or ""), {}).get("ilga_rank"),
                 "social_rank": gap_by_iso.get(str(row.get("iso") or ""), {}).get("fra_rank"),
-                "ranking_position_difference": gap_by_iso.get(
-                    str(row.get("iso") or ""), {}
-                ).get("absolute_rank_difference"),
+                "ranking_position_difference": gap_by_iso.get(str(row.get("iso") or ""), {}).get(
+                    "absolute_rank_difference"
+                ),
             }
             for row in rows
         ]
@@ -903,12 +908,16 @@ def register_statistics_callbacks(app: Dash) -> None:
             if ctx.triggered_id == "app-language-store"
             else None
         )
-        return options, selected, {
-            "survey_id": survey.survey_id,
-            "year": survey.year,
-            "loaded": True,
-            "has_data": bool(options),
-        }
+        return (
+            options,
+            selected,
+            {
+                "survey_id": survey.survey_id,
+                "year": survey.year,
+                "loaded": True,
+                "has_data": bool(options),
+            },
+        )
 
     @app.callback(
         Output("fra-indicator-select", "options"),
@@ -923,12 +932,18 @@ def register_statistics_callbacks(app: Dash) -> None:
     def update_fra_indicators(survey_id: str | None, category: str | None):
         survey = get_fra_survey(survey_id)
         if survey is None or not category:
-            return [], None, True, None, {
-                "survey_id": survey_id,
-                "category": category,
-                "loaded": bool(survey is not None and not category),
-                "has_data": False,
-            }
+            return (
+                [],
+                None,
+                True,
+                None,
+                {
+                    "survey_id": survey_id,
+                    "category": category,
+                    "loaded": bool(survey is not None and not category),
+                    "has_data": False,
+                },
+            )
         options = build_dropdown_options(
             (
                 {"label": _fra_indicator_option_label(indicator), "value": indicator.code}
@@ -936,12 +951,18 @@ def register_statistics_callbacks(app: Dash) -> None:
             ),
             context="statistics-fra-indicator",
         )
-        return options, None, not bool(options), None, {
-            "survey_id": survey.survey_id,
-            "category": category,
-            "loaded": True,
-            "has_data": bool(options),
-        }
+        return (
+            options,
+            None,
+            not bool(options),
+            None,
+            {
+                "survey_id": survey.survey_id,
+                "category": category,
+                "loaded": True,
+                "has_data": bool(options),
+            },
+        )
 
     @app.callback(
         Output("fra-answer-select", "options"),
@@ -1004,8 +1025,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
         return (
             answers,
-            payload.get("default_answer")
-            or (answers[0]["value"] if len(answers) == 1 else None),
+            payload.get("default_answer") or (answers[0]["value"] if len(answers) == 1 else None),
             demographic_options,
             _all_option_value(demographic_options),
             payload,
@@ -1400,6 +1420,7 @@ def register_statistics_callbacks(app: Dash) -> None:
             return (*([no_update] * 31), failed_ready)
         return (*component_outputs, ready_payload)
 
+
 def _controls(categories: list[dict[str, Any]]) -> Component:
     return html.Section(
         [
@@ -1654,9 +1675,7 @@ def _map_graph_style(*, visible: bool) -> dict[str, str]:
     return style
 
 
-def _map_ranking_content(
-    ranking: list[dict[str, Any]], language: str = "es"
-) -> list[Component]:
+def _map_ranking_content(ranking: list[dict[str, Any]], language: str = "es") -> list[Component]:
     """Build the map's accessible ranking from the already queried FRA rows."""
     available = _map_ranking_rows(ranking, language)
     title = text("Ranking de países", "Country ranking", language=language)
@@ -1714,9 +1733,7 @@ def _map_ranking_content(
     ]
 
 
-def _map_ranking_rows(
-    ranking: list[dict[str, Any]], language: str = "es"
-) -> list[dict[str, Any]]:
+def _map_ranking_rows(ranking: list[dict[str, Any]], language: str = "es") -> list[dict[str, Any]]:
     """Return the localized valid rows shared by the map panel and its PNG export."""
     language_index = 1 if language == "en" else 0
     available: list[dict[str, Any]] = []
@@ -1726,13 +1743,13 @@ def _map_ranking_rows(
             continue
         try:
             number = float(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if not math.isfinite(number):
             continue
-        label = country_labels(
-            str(row.get("iso") or ""), str(row.get("country") or "")
-        )[language_index]
+        label = country_labels(str(row.get("iso") or ""), str(row.get("country") or ""))[
+            language_index
+        ]
         available.append(
             {
                 "country_code": str(row.get("iso") or ""),
@@ -2371,8 +2388,7 @@ def _all_option_value(options: list[dict[str, Any]]) -> str | None:
 
 def _has_real_segmentation_option(options: list[dict[str, Any]]) -> bool:
     return any(
-        not option.get("disabled", False)
-        and normalize_text_key(option.get("value")) != "all"
+        not option.get("disabled", False) and normalize_text_key(option.get("value")) != "all"
         for option in options
     )
 
@@ -2810,9 +2826,7 @@ def _render_dashboard_uncached(
     quadrants_eligible = bool(supported.get("quadrants"))
     ranking_gap_eligible = bool(supported.get("ranking_gap"))
     combined_visualizations_available = bool(
-        supported.get("any_visualization")
-        or quadrants_eligible
-        or ranking_gap_eligible
+        supported.get("any_visualization") or quadrants_eligible or ranking_gap_eligible
     )
     combined_download_available = bool(
         supported.get("download") and combined_visualizations_available and combined
@@ -2914,9 +2928,7 @@ def _render_dashboard_uncached(
         average,
         _average_panel_class(selected),
         comparison,
-        (
-            "stats-panel stats-panel-wide stats-response-comparison-section"
-        ),
+        ("stats-panel stats-panel-wide stats-response-comparison-section"),
         _detail_summary(
             detail,
             language,
@@ -3015,9 +3027,7 @@ def _prepare_dashboard_exports(
                         }
                         for row in ranking_rows
                     ],
-                    "export_map_title": (
-                        "Map of Europe" if language == "en" else "Mapa de Europa"
-                    ),
+                    "export_map_title": ("Map of Europe" if language == "en" else "Mapa de Europa"),
                     "export_ranking_title": (
                         "Country ranking" if language == "en" else "Ranking de países"
                     ),
@@ -3162,8 +3172,7 @@ def _combined_compatibility_messages(
     answer = str(analysis.get("answer") or "—")
     semantics = dict(analysis.get("semantics") or {})
     eligibility = dict(
-        analysis.get("quadrant_eligibility")
-        or quadrant_eligibility(indicator, answer)
+        analysis.get("quadrant_eligibility") or quadrant_eligibility(indicator, answer)
     )
     supported = dict(analysis.get("supported_analyses") or {})
     if not supported:
@@ -3247,13 +3256,10 @@ def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component
             if quadrants_eligible
             else "Only analyses that can be interpreted safely for the current answer are displayed."
         )
-        timing = (
-            f"Temporal context: FRA {fra_year} and ILGA-Europe {ilga_year}. "
-            + (
-                "The variables refer to different years, so this is an exploratory comparison rather than a simultaneous measurement."
-                if str(fra_year) != str(ilga_year)
-                else "Both sources use the same reference year, although their constructs and collection methods still differ."
-            )
+        timing = f"Temporal context: FRA {fra_year} and ILGA-Europe {ilga_year}. " + (
+            "The variables refer to different years, so this is an exploratory comparison rather than a simultaneous measurement."
+            if str(fra_year) != str(ilga_year)
+            else "Both sources use the same reference year, although their constructs and collection methods still differ."
         )
         source_text = (
             "Sources: European Union Agency for Fundamental Rights (FRA) and ILGA-Europe "
@@ -3277,13 +3283,10 @@ def _combined_intro(analysis: dict[str, Any], language: str = "es") -> Component
             if quadrants_eligible
             else "Solo se muestran los análisis que pueden interpretarse de forma segura para la respuesta actual."
         )
-        timing = (
-            f"Contexto temporal: FRA {fra_year} e ILGA-Europe {ilga_year}. "
-            + (
-                "Las variables corresponden a años diferentes: es una comparación exploratoria, no una medición simultánea."
-                if str(fra_year) != str(ilga_year)
-                else "Ambas fuentes usan el mismo año de referencia, aunque miden conceptos y emplean metodologías diferentes."
-            )
+        timing = f"Contexto temporal: FRA {fra_year} e ILGA-Europe {ilga_year}. " + (
+            "Las variables corresponden a años diferentes: es una comparación exploratoria, no una medición simultánea."
+            if str(fra_year) != str(ilga_year)
+            else "Ambas fuentes usan el mismo año de referencia, aunque miden conceptos y emplean metodologías diferentes."
         )
         source_text = (
             "Fuentes: European Union Agency for Fundamental Rights (FRA) e ILGA-Europe "
@@ -3392,14 +3395,10 @@ def _detail_summary(
     children.append(
         html.Div(
             [
-                html.Span(
-                    f"{ui_text('statistics_european_average', language)}{response_suffix}"
-                ),
+                html.Span(f"{ui_text('statistics_european_average', language)}{response_suffix}"),
                 html.Strong(average_text),
             ],
-            className=(
-                "stats-detail-summary-card stats-european-average-reference"
-            ),
+            className=("stats-detail-summary-card stats-european-average-reference"),
         )
     )
     return children

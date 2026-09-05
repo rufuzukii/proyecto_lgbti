@@ -69,7 +69,7 @@ def get_fra_survey_by_year(year: object) -> FraSurveyConfig | None:
         return None
     try:
         clean_year = int(year)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return FRA_SURVEYS_BY_YEAR.get(clean_year)
 

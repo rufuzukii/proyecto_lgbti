@@ -94,9 +94,7 @@ def test_footer_attributions_contain_three_accessible_official_source_blocks() -
     assert set(source_blocks) == {"fra", "ilga", "felgtbi"}
     assert "Atribuciones" in _content(section)
     assert "RainbowLens DataHub" in _content(section)
-    links = {
-        _prop(child, "href"): child for child in _walk(section) if _prop(child, "href")
-    }
+    links = {_prop(child, "href"): child for child in _walk(section) if _prop(child, "href")}
     assert set(links) == {FRA_ORGANIZATION_URL, ILGA_URL, FELGTBI_URL}
     for link in links.values():
         assert _prop(link, "target") == "_blank"
@@ -106,9 +104,7 @@ def test_footer_attributions_contain_three_accessible_official_source_blocks() -
 
 
 def test_attribution_styles_cover_dark_mode_mobile_wrapping_and_keyboard_focus() -> None:
-    component_styles = Path("src/app/web/assets/source_attribution.css").read_text(
-        encoding="utf-8"
-    )
+    component_styles = Path("src/app/web/assets/source_attribution.css").read_text(encoding="utf-8")
     footer_styles = Path("src/app/web/assets/styles.css").read_text(encoding="utf-8")
 
     assert ':root[data-theme="dark"] .source-attribution' in component_styles

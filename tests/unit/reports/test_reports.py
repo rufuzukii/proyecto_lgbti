@@ -419,10 +419,7 @@ def test_pdf_ranking_pages_stream_ten_ten_seven_without_loss_or_duplicates() -> 
         countries = [str(country) for country in cast(Any, figure.data[0]).y]
         rendered_pages.append(countries)
         positions.update(
-            {
-                str(custom[0]): str(custom[1])
-                for custom in cast(Any, figure.data[0]).customdata
-            }
+            {str(custom[0]): str(custom[1]) for custom in cast(Any, figure.data[0]).customdata}
         )
 
     content = HRReportBuilder().build_for_pdf(
@@ -1453,7 +1450,6 @@ def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None
 def test_render_dependencies_install_plotly_chrome() -> None:
     root = Path(__file__).resolve().parents[3]
     render_config = (root / "render.yaml").read_text(encoding="utf-8")
-    requirements = (root / "requirements.txt").read_text(encoding="utf-8")
 
     build_script = (root / "scripts" / "render_build.sh").read_text(encoding="utf-8")
     start_script = (root / "scripts" / "render_start.sh").read_text(encoding="utf-8")
@@ -1466,9 +1462,6 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     assert "python scripts/check_chart_export.py" in build_script
     assert "check_chart_export.py" not in start_script
     assert "exec gunicorn wsgi:server" in start_script
-    assert "kaleido==1.3.0" in requirements
-    assert "choreographer==1.3.0" in requirements
-    assert "reportlab==4.5.1" in requirements
     assert "healthCheckPath: /health" in render_config
     assert "type: keyvalue" not in render_config
     assert "LOCAL_CACHE_MAX_ENTRIES" in render_config

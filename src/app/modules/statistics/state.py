@@ -76,11 +76,7 @@ def resolve_statistics_view_state(
             return StatisticsViewState.AWAITING_INDICATOR
         return StatisticsViewState.INITIAL
     payload_indicator = str(payload.get("indicator_code") or "").strip()
-    if (
-        has_complete_selection
-        and payload_indicator
-        and payload_indicator != str(indicator).strip()
-    ):
+    if has_complete_selection and payload_indicator and payload_indicator != str(indicator).strip():
         return StatisticsViewState.LOADING_STATISTICS
     if status == "ok":
         ready_token = str((ready_payload or {}).get("query_token") or "").strip()

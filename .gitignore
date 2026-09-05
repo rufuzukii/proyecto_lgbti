@@ -7,7 +7,7 @@ __pycache__/
 # C extensions
 *.so
 
-# 
+# Static type checker cache
 .pyright/
 
 # Distribution / packaging
@@ -113,6 +113,15 @@ cython_debug/
 
 # IDE local settings
 .idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
 
 # Local browser-test artifacts
 .playwright-mcp/

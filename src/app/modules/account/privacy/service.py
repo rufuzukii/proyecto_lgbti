@@ -243,7 +243,7 @@ def _execute_account_deletion(
     if actor_user_id:
         try:
             _record_admin_deletion(actor_user_id, subject_ref)
-        except (OSError, PyMongoError, RuntimeError, ValueError):
+        except OSError, PyMongoError, RuntimeError, ValueError:
             logger.exception("privacy_admin_deletion_audit_failed")
     logger.info("privacy_account_deletion_completed", extra={"subject": subject_ref})
     return DeletionOutcome(
@@ -308,7 +308,7 @@ def _mark_stage(user_id: str, stage: str) -> None:
 def _mark_stage_safely(user_id: str, stage: str) -> None:
     try:
         _mark_stage(user_id, stage)
-    except (OSError, PyMongoError, RuntimeError, ValueError):
+    except OSError, PyMongoError, RuntimeError, ValueError:
         logger.warning("privacy_deletion_stage_record_failed", extra={"stage": stage})
 
 

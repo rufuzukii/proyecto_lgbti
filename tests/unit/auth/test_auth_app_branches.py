@@ -111,9 +111,7 @@ def test_login_rejects_payload_shape_types_rate_limit_and_credentials(monkeypatc
     assert client.post("/auth/login", json={"email": 4, "password": []}).status_code == 400
 
     monkeypatch.setattr(auth_app, "authenticate_user", lambda *_args: None)
-    invalid = client.post(
-        "/auth/login", json={"email": "user@example.test", "password": "wrong"}
-    )
+    invalid = client.post("/auth/login", json={"email": "user@example.test", "password": "wrong"})
     assert invalid.status_code == 401
     assert limiter.failures
 
@@ -140,9 +138,7 @@ def test_login_maps_storage_error_and_success_then_logout(monkeypatch) -> None:
     monkeypatch.setattr(auth_app, "get_user", lambda _user_id: _user())
     application, limiter = _app(monkeypatch)
     client = application.test_client()
-    login = client.post(
-        "/auth/login", json={"email": "user@example.test", "password": "password"}
-    )
+    login = client.post("/auth/login", json={"email": "user@example.test", "password": "password"})
     assert login.status_code == 200
     assert client.get("/auth/me").get_json()["user_id"] == "user-1"
     assert limiter.resets

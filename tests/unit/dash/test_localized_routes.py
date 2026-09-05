@@ -78,9 +78,7 @@ def test_mixed_and_historical_paths_have_one_canonical_destination() -> None:
     assert public_es is not None
     assert public_es.route_id == "educator_public_activity"
     assert public_es.public_id == "share_ABC-123"
-    assert equivalent_path(public_es.path, "en") == (
-        "/en/learning/games/activity/share_ABC-123"
-    )
+    assert equivalent_path(public_es.path, "en") == ("/en/learning/games/activity/share_ABC-123")
 
 
 def test_safe_next_only_accepts_registered_local_pages() -> None:

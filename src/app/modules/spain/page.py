@@ -78,9 +78,7 @@ def build_spain_layout() -> Component:
                 [
                     build_page_header(
                         eyebrow=text("España", "Spain"),
-                        title=text(
-                            "Indicadores estatales LGBTIQ+", "National LGBTIQ+ indicators"
-                        ),
+                        title=text("Indicadores estatales LGBTIQ+", "National LGBTIQ+ indicators"),
                         description=text(
                             "Explora información estatal sobre derechos, percepción social y experiencias de las personas LGBTIQ+.",
                             "Explore national information on rights, social perception, and experiences of LGBTIQ+ people.",
@@ -130,9 +128,7 @@ def build_spain_layout() -> Component:
                                 ],
                                 className="stats-control-field spain-control-field spain-document-field",
                                 role="group",
-                                **dash_attrs(
-                                    {"aria-labelledby": "spain-document-select-label"}
-                                ),
+                                **dash_attrs({"aria-labelledby": "spain-document-select-label"}),
                             ),
                             html.Div(
                                 [
@@ -150,7 +146,9 @@ def build_spain_layout() -> Component:
                                                 value=None,
                                                 clearable=False,
                                                 className="spain-dropdown spain-topic-dropdown",
-                                                disabled=not bool(initial_document and initial_year),
+                                                disabled=not bool(
+                                                    initial_document and initial_year
+                                                ),
                                                 placeholder="Selecciona un indicador",
                                             ),
                                             html.Div(
@@ -386,9 +384,7 @@ def register_spain_callbacks(app: Dash) -> None:
                 ),
             )
 
-        document = get_felgtbi_indicator_answers(
-            code or "", document_id=document_id
-        )
+        document = get_felgtbi_indicator_answers(code or "", document_id=document_id)
         render_started_at = time.perf_counter()
         view_state = _spain_document_view_state(document)
         render_ms = (time.perf_counter() - render_started_at) * 1000
@@ -566,21 +562,14 @@ def _document_options(year: int | str | None = None) -> list[dict[str, str]]:
 
 def _available_years() -> list[int]:
     years = {
-        clean_year
-        for year in get_felgtbi_years()
-        if (clean_year := _clean_year(year)) is not None
+        clean_year for year in get_felgtbi_years() if (clean_year := _clean_year(year)) is not None
     }
     return sorted(years, reverse=True)
 
 
 def _year_options(years: list[int] | None = None) -> list[dict[str, Any]]:
-    available_years = (
-        _available_years() if years is None else sorted(set(years), reverse=True)
-    )
-    return [
-        {"label": str(year), "value": year}
-        for year in available_years
-    ]
+    available_years = _available_years() if years is None else sorted(set(years), reverse=True)
+    return [{"label": str(year), "value": year} for year in available_years]
 
 
 def _resolve_initial_year(years: list[int]) -> int | None:

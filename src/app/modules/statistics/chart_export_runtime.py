@@ -91,8 +91,7 @@ def log_chart_export_runtime() -> ChartExportBrowser:
     browser = configure_chart_export_browser()
     if not browser.found:
         logger.error(
-            "browser_not_found chart_export_runtime browser_found=false "
-            "browser_executable=false"
+            "browser_not_found chart_export_runtime browser_found=false browser_executable=false"
         )
     elif not browser.executable:
         logger.error(
@@ -128,9 +127,7 @@ def _browser_candidates(
         roots.append(Path(venv_root))
     roots.append(Path(sys.prefix))
     for root in _unique_paths(roots):
-        candidates.extend(
-            (candidate, "managed_venv") for candidate in _managed_browser_paths(root)
-        )
+        candidates.extend((candidate, "managed_venv") for candidate in _managed_browser_paths(root))
 
     downloaded = get_chrome_download_path(mkdir=False)
     if downloaded is not None:

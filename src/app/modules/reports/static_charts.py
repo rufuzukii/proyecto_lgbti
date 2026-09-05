@@ -37,7 +37,9 @@ class ReportChartRenderError(RuntimeError):
 class ReportChartRenderer:
     """Draw report-only PNGs with Pillow, without Chrome or Kaleido."""
 
-    def __init__(self, *, width: int = REPORT_CHART_WIDTH, height: int = REPORT_CHART_HEIGHT) -> None:
+    def __init__(
+        self, *, width: int = REPORT_CHART_WIDTH, height: int = REPORT_CHART_HEIGHT
+    ) -> None:
         self.width = width
         self.height = height
         self.image_count = 0
@@ -153,10 +155,15 @@ def _draw_horizontal_bars(
     plot_width = max(1, right - plot_left - 45)
     row_height = (plot_bottom - top) / len(categories)
     values_by_trace = [_category_values(trace, "y", "x") for trace in traces]
-    totals = [sum(max(0.0, values.get(category, 0.0)) for values in values_by_trace) for category in categories]
+    totals = [
+        sum(max(0.0, values.get(category, 0.0)) for values in values_by_trace)
+        for category in categories
+    ]
     maximum = max(totals, default=1.0)
     axis_title = _axis_title(figure, "xaxis")
-    scale_max = 100.0 if maximum <= 100 and (len(traces) > 1 or "%" in axis_title) else maximum * 1.12
+    scale_max = (
+        100.0 if maximum <= 100 and (len(traces) > 1 or "%" in axis_title) else maximum * 1.12
+    )
     scale_max = max(scale_max, 1.0)
     _draw_horizontal_grid(draw, plot_left, top, plot_width, plot_bottom, scale_max)
     for row_index, category in enumerate(categories):
@@ -188,7 +195,9 @@ def _draw_horizontal_bars(
             total += value
         if len(traces) == 1:
             label_text = _trace_text_for_category(first, category) or _format_number(total)
-            draw.text((min(cursor + 6, right - 55), center_y - 7), label_text, fill=_INK, font=_font(12))
+            draw.text(
+                (min(cursor + 6, right - 55), center_y - 7), label_text, fill=_INK, font=_font(12)
+            )
     if len(traces) > 1:
         _draw_legend(draw, traces, plot_left, bottom - 22, right)
 
@@ -275,8 +284,18 @@ def _draw_scatter(
         y = bottom - (bottom - top) * step / 4
         draw.line((x, top, x, bottom), fill=_GRID, width=1)
         draw.line((left, y, plot_right, y), fill=_GRID, width=1)
-        draw.text((x - 12, bottom + 6), _format_number(x_min + (x_max - x_min) * step / 4), fill=_MUTED, font=_font(10))
-        draw.text((8, y - 7), _format_number(y_min + (y_max - y_min) * step / 4), fill=_MUTED, font=_font(10))
+        draw.text(
+            (x - 12, bottom + 6),
+            _format_number(x_min + (x_max - x_min) * step / 4),
+            fill=_MUTED,
+            font=_font(10),
+        )
+        draw.text(
+            (8, y - 7),
+            _format_number(y_min + (y_max - y_min) * step / 4),
+            fill=_MUTED,
+            font=_font(10),
+        )
     for trace_index, (trace, points) in enumerate(zip(traces, series, strict=True)):
         color = _trace_color(trace, trace_index)
         pixels = [
@@ -330,7 +349,9 @@ def _draw_categorical_y_scatter(
     left, top, right, bottom = bounds
     label_width = min(285, max(145, max(map(len, categories)) * 7 + 18))
     plot_left = left + label_width
-    legend_height = 35 if sum(bool(getattr(trace, "showlegend", True)) for trace in traces) > 1 else 0
+    legend_height = (
+        35 if sum(bool(getattr(trace, "showlegend", True)) for trace in traces) > 1 else 0
+    )
     plot_bottom = bottom - legend_height
     plot_width = max(1, right - plot_left)
     row_height = (plot_bottom - top) / len(categories)
@@ -536,7 +557,12 @@ def _draw_vertical_legend(
         color = _trace_color(trace, index)
         label = str(getattr(trace, "name", "") or f"Serie {index + 1}")
         draw.line((left, y + 6, left + 18, y + 6), fill=color, width=3)
-        draw.text((left + 24, y), _ellipsize(label, max(8, (right - left - 24) // 7)), fill=_INK, font=_font(10))
+        draw.text(
+            (left + 24, y),
+            _ellipsize(label, max(8, (right - left - 24) // 7)),
+            fill=_INK,
+            font=_font(10),
+        )
 
 
 def _draw_axis_titles(
@@ -551,7 +577,12 @@ def _draw_axis_titles(
     y_title = _axis_title(figure, "yaxis")
     if x_title:
         box = draw.textbbox((0, 0), x_title, font=_font(11))
-        draw.text(((left + right - (box[2] - box[0])) / 2, bottom + 28), x_title, fill=_MUTED, font=_font(11))
+        draw.text(
+            ((left + right - (box[2] - box[0])) / 2, bottom + 28),
+            x_title,
+            fill=_MUTED,
+            font=_font(11),
+        )
     if y_title:
         draw.text((left, max(2, top - 18)), y_title, fill=_MUTED, font=_font(11))
 
@@ -577,7 +608,9 @@ def _xy_values(trace: Any) -> list[tuple[float, float]]:
     y_values = _values(getattr(trace, "y", None))
     numeric_x = [_number(value) for value in x_values]
     if not all(value is not None for value in numeric_x):
-        categories = {str(value): float(index) for index, value in enumerate(dict.fromkeys(x_values))}
+        categories = {
+            str(value): float(index) for index, value in enumerate(dict.fromkeys(x_values))
+        }
         numeric_x = [categories[str(value)] for value in x_values]
     return [
         (float(x), float(y))
@@ -590,11 +623,7 @@ def _axis_range(values: list[float], *, percentage: bool = False) -> tuple[float
     if percentage:
         return 0.0, 100.0
     minimum, maximum = min(values), max(values)
-    padding = (
-        max(1.0, abs(minimum) * 0.1)
-        if minimum == maximum
-        else (maximum - minimum) * 0.08
-    )
+    padding = max(1.0, abs(minimum) * 0.1) if minimum == maximum else (maximum - minimum) * 0.08
     return minimum - padding, maximum + padding
 
 
@@ -672,10 +701,12 @@ def _safe_color(value: object, fallback: str) -> str:
     if candidate.startswith("rgb("):
         parts = re.findall(r"[\d.]+", candidate)
         if len(parts) >= 3:
-            return "#" + "".join(f"{max(0, min(255, round(float(part)))):02X}" for part in parts[:3])
+            return "#" + "".join(
+                f"{max(0, min(255, round(float(part)))):02X}" for part in parts[:3]
+            )
     try:
         ImageColor.getrgb(candidate)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return fallback
     return candidate
 
@@ -725,7 +756,7 @@ def _values(value: object) -> list[Any]:
 def _number(value: object) -> float | None:
     try:
         number = float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return number if math.isfinite(number) else None
 

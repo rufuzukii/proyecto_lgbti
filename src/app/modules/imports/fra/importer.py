@@ -221,7 +221,6 @@ class IndicatorQuestionParts:
     raw_question: str
 
 
-
 def parse_answer_survey_csv(
     file_path: Path | str,
     *,
@@ -261,13 +260,9 @@ def parse_answer_survey_csv_text(
     if survey_year is not None and survey is None:
         raise ValueError("unsupported_fra_survey_year")
     if survey is not None and schema.version not in survey.csv_versions:
-        raise ValueError(
-            f"fra_survey_schema_mismatch:year={survey.year}:schema={schema.version}"
-        )
+        raise ValueError(f"fra_survey_schema_mismatch:year={survey.year}:schema={schema.version}")
     detected_years = {
-        int(value)
-        for value in normalized["survey_year"].dropna().tolist()
-        if str(value).strip()
+        int(value) for value in normalized["survey_year"].dropna().tolist() if str(value).strip()
     }
     if survey_year is not None and detected_years and detected_years != {int(survey_year)}:
         raise ValueError(
@@ -289,11 +284,11 @@ def parse_answer_survey_csv_text(
 
     path_category = _path_category(context.category)
     if path_category:
-        category_missing = normalized["category"].astype(str).str.strip().isin(
-            {"", "Uncategorized"}
+        category_missing = (
+            normalized["category"].astype(str).str.strip().isin({"", "Uncategorized"})
         )
-        specific_category_missing = normalized["specific_category"].astype(str).str.strip().isin(
-            {"", "Uncategorized"}
+        specific_category_missing = (
+            normalized["specific_category"].astype(str).str.strip().isin({"", "Uncategorized"})
         )
         normalized.loc[category_missing, "category"] = path_category
         normalized.loc[specific_category_missing, "specific_category"] = path_category
@@ -375,7 +370,6 @@ def _parse_normalized_fra_dataframe(
     return list(documents.values())
 
 
-
 def read_text_with_fallback(file_path: Path) -> str:
     last_error: UnicodeDecodeError | None = None
     for encoding in ENCODINGS:
@@ -386,16 +380,6 @@ def read_text_with_fallback(file_path: Path) -> str:
     if last_error is not None:
         raise last_error
     return file_path.read_text()
-
-
-
-
-
-
-
-
-
-
 
 
 def build_path_context(file_path: Path, root: Path | None) -> FraPathContext:
@@ -468,15 +452,10 @@ def parse_prefixed_filter(value: str) -> tuple[str, str] | None:
     return filter_key, raw_filter_value.strip()
 
 
-
-
 def build_question_code(question: str) -> str:
     seed = "|".join(part for part in [normalize_header(question)] if part) or "unknown_question"
     digest = hashlib.sha1(seed.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
     return f"fra_{digest}"
-
-
-
 
 
 def validate_fra_document(document: dict) -> dict:

@@ -214,9 +214,7 @@ def build_home_layout() -> Component:
                                                 hidden=True,
                                                 role="alert",
                                                 **dash_attrs(
-                                                    {
-                                                        "data-chart-export-error": "home-map-graph"
-                                                    }
+                                                    {"data-chart-export-error": "home-map-graph"}
                                                 ),
                                             ),
                                         ],
@@ -948,14 +946,10 @@ def _country_status_card(
         _status_text_block("Contexto social", social_es, "Social context", social_en)
     )
     details_children.extend(
-        _status_list_block(
-            "Avances destacados", progress_es, "Key progress", progress_en
-        )
+        _status_list_block("Avances destacados", progress_es, "Key progress", progress_en)
     )
     details_children.extend(
-        _status_list_block(
-            "Retos principales", challenges_es, "Main challenges", challenges_en
-        )
+        _status_list_block("Retos principales", challenges_es, "Main challenges", challenges_en)
     )
 
     children: list[Any] = [
@@ -1663,11 +1657,7 @@ def _legal_ranking_content(
             ],
             className="home-legal-ranking-row",
             **dash_attrs(
-                {
-                    "aria-label": (
-                        f"{position}. {entry.country_name} — {entry.score_text}"
-                    )
-                }
+                {"aria-label": (f"{position}. {entry.country_name} — {entry.score_text}")}
             ),
         )
         for position, entry in enumerate(ranking, start=1)
@@ -1682,9 +1672,7 @@ def _legal_ranking_content(
                     **dash_attrs(
                         {
                             "aria-label": (
-                                f"{len(ranking)} countries"
-                                if english
-                                else f"{len(ranking)} países"
+                                f"{len(ranking)} countries" if english else f"{len(ranking)} países"
                             )
                         }
                     ),

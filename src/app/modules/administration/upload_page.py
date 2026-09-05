@@ -632,7 +632,9 @@ def _upload_validation_message(reason: str, filenames: Any) -> Component:
                 "The received file is HTML, not a FRA CSV. Download it again.",
             )
         )
-    if reason.startswith(("unsupported_fra_csv_schema", "fra_current_schema_without_answer_columns")):
+    if reason.startswith(
+        ("unsupported_fra_csv_schema", "fra_current_schema_without_answer_columns")
+    ):
         return build_error_message(
             (
                 "No se reconoce el esquema del CSV de FRA ni sus columnas de respuesta.",
@@ -646,7 +648,9 @@ def _upload_validation_message(reason: str, filenames: Any) -> Component:
                 "The filters or answer declared by the FRA CSV do not match the file.",
             )
         )
-    if reason.startswith(("invalid_fra_percentage", "fra_percentage_out_of_range", "fra_proportion_out_of_range")):
+    if reason.startswith(
+        ("invalid_fra_percentage", "fra_percentage_out_of_range", "fra_proportion_out_of_range")
+    ):
         return build_error_message(
             (
                 "El CSV de FRA contiene un porcentaje no válido.",

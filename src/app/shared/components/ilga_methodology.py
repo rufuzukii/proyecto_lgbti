@@ -98,7 +98,7 @@ def _note_component(
 def _display_number(value: Any) -> str:
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return "?"
     return str(int(number)) if number.is_integer() else str(number)
 

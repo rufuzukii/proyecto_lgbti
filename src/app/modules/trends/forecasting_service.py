@@ -97,9 +97,7 @@ def generate_forecast(
         selected_model=selected_model,
         validation=validation,
         selection_reason=selection_reason,
-        uncertainty_method=(
-            "walk_forward_rmse_scaled_by_horizon" if uncertainty_available else ""
-        ),
+        uncertainty_method=("walk_forward_rmse_scaled_by_horizon" if uncertainty_available else ""),
         exploratory=len(normalized) <= 5,
         requested_horizon=requested_horizon,
         forecast_horizon=allowed_horizon,
@@ -116,7 +114,7 @@ def normalize_historical_series(
         try:
             year = int(point.year)
             value = float(point.value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         if not math.isfinite(value) or not 1900 <= year <= 2200:
             continue
@@ -203,13 +201,14 @@ def classify_historical_trend(
             meaningful_signs[index] != meaningful_signs[index - 1]
             for index in range(1, len(meaningful_signs))
         )
-        if (
-            counter_movement / movement >= IRREGULAR_COUNTER_MOVEMENT_SHARE
-            and reversals >= 2
-        ):
+        if counter_movement / movement >= IRREGULAR_COUNTER_MOVEMENT_SHARE and reversals >= 2:
             return TrendDirection.IRREGULAR
     if abs(slope) < STABLE_TREND_THRESHOLD:
-        return TrendDirection.IRREGULAR if observed_range > STABLE_RANGE_THRESHOLD else TrendDirection.STABLE
+        return (
+            TrendDirection.IRREGULAR
+            if observed_range > STABLE_RANGE_THRESHOLD
+            else TrendDirection.STABLE
+        )
     return TrendDirection.UPWARD if slope > 0 else TrendDirection.DOWNWARD
 
 

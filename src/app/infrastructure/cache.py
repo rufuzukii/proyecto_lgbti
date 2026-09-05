@@ -78,7 +78,7 @@ class LocalTTLCache:
             payload = entry.payload
         try:
             return pickle.loads(payload)
-        except (pickle.PickleError, EOFError, AttributeError, ImportError):
+        except pickle.PickleError, EOFError, AttributeError, ImportError:
             self.delete(key)
             logger.warning("local_cache_deserialization_failed key=%s", key)
             return None
@@ -86,7 +86,7 @@ class LocalTTLCache:
     def set(self, key: str, value: Any, timeout: int | None = None) -> bool:
         try:
             payload = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-        except (pickle.PickleError, AttributeError, TypeError):
+        except pickle.PickleError, AttributeError, TypeError:
             logger.debug("local_cache_value_not_serializable key=%s", key, exc_info=True)
             return False
         if len(payload) > self.max_value_bytes or len(payload) > self.max_total_bytes:
@@ -174,7 +174,7 @@ class LocalTTLCache:
                     source_digest = hashlib.sha256(
                         inspect.getsource(function).encode("utf-8")
                     ).hexdigest()
-                except (OSError, TypeError):
+                except OSError, TypeError:
                     source_digest = "source-unavailable"
 
             @wraps(function)
@@ -235,7 +235,7 @@ class LocalTTLCache:
                 (namespace, source_digest, args, sorted(kwargs.items())),
                 protocol=pickle.HIGHEST_PROTOCOL,
             )
-        except (pickle.PickleError, AttributeError, TypeError):
+        except pickle.PickleError, AttributeError, TypeError:
             identity = repr((namespace, source_digest, args, sorted(kwargs.items()))).encode()
         digest = hashlib.sha256(identity).hexdigest()
         return f"memoize:{namespace}:{digest}"

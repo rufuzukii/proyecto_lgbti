@@ -53,14 +53,16 @@ class _Connection:
 
 def test_import_log_registration_maps_success_and_failure_payloads(monkeypatch) -> None:
     calls: list[dict[str, Any]] = []
-    monkeypatch.setattr(import_log, "insert_import_log", lambda *args, **kwargs: calls.append({"args": args, **kwargs}))
+    monkeypatch.setattr(
+        import_log,
+        "insert_import_log",
+        lambda *args, **kwargs: calls.append({"args": args, **kwargs}),
+    )
 
     import_log.register_pending_import(
         "fra.json", file_json='{"questions": []}', user_id="user-1", source_id="fra"
     )
-    import_log.register_failed_import(
-        "fra.json", "invalid", user_id="user-1", source_id="fra"
-    )
+    import_log.register_failed_import("fra.json", "invalid", user_id="user-1", source_id="fra")
 
     assert calls[0]["status"] == "pending"
     assert calls[0]["file_json"].obj == {"questions": []}

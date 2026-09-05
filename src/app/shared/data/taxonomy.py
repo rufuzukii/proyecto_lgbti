@@ -39,12 +39,21 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         "Sexual Orientation": {"es": "Orientaci\u00f3n sexual", "en": "Sexual orientation"},
         "Education": {"es": "Educaci\u00f3n", "en": "Education"},
         "Employment status": {"es": "Situaci\u00f3n laboral", "en": "Employment status"},
-        "Belonging to a minority group": {"es": "Pertenencia a una minor\u00eda", "en": "Minority status"},
-        "Openness about being LGBTIQ+": {"es": "Apertura sobre ser LGBTIQ+", "en": "Openness about being LGBTIQ+"},
+        "Belonging to a minority group": {
+            "es": "Pertenencia a una minor\u00eda",
+            "en": "Minority status",
+        },
+        "Openness about being LGBTIQ+": {
+            "es": "Apertura sobre ser LGBTIQ+",
+            "en": "Openness about being LGBTIQ+",
+        },
         "Place of residence": {"es": "Lugar de residencia", "en": "Place of residence"},
         "Activity limitation": {"es": "Limitaci\u00f3n de actividad", "en": "Activity limitation"},
         "Making ends meet": {"es": "Capacidad para llegar a fin de mes", "en": "Making ends meet"},
-        "Gender Expression": {"es": "Identidad o expresi\u00f3n de g\u00e9nero", "en": "Gender identity or expression"},
+        "Gender Expression": {
+            "es": "Identidad o expresi\u00f3n de g\u00e9nero",
+            "en": "Gender identity or expression",
+        },
         "Sex Characteristics": {"es": "Caracter\u00edsticas sexuales", "en": "Sex characteristics"},
     },
     "fra_filter_value": {
@@ -59,19 +68,34 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         "Limited but not severely": {"es": "Limitación no grave", "en": "Limited but not severely"},
         "Not limited at all": {"es": "Sin limitación", "en": "Not limited at all"},
         "Severely limited": {"es": "Limitación grave", "en": "Severely limited"},
-        "Lower education or less (1,2,3)": {"es": "Educación inferior o menos (1,2,3)", "en": "Lower education or less (1,2,3)"},
-        "Tertiary education (5,6,7,8)": {"es": "Educación terciaria (5,6,7,8)", "en": "Tertiary education (5,6,7,8)"},
-        "Upper secondary education (4)": {"es": "Educación secundaria superior (4)", "en": "Upper secondary education (4)"},
+        "Lower education or less (1,2,3)": {
+            "es": "Educación inferior o menos (1,2,3)",
+            "en": "Lower education or less (1,2,3)",
+        },
+        "Tertiary education (5,6,7,8)": {
+            "es": "Educación terciaria (5,6,7,8)",
+            "en": "Tertiary education (5,6,7,8)",
+        },
+        "Upper secondary education (4)": {
+            "es": "Educación secundaria superior (4)",
+            "en": "Upper secondary education (4)",
+        },
         "In work": {"es": "Con empleo", "en": "In work"},
         "Not in work": {"es": "Sin empleo", "en": "Not in work"},
         "Unemployed": {"es": "En desempleo", "en": "Unemployed"},
         "Cisgender men": {"es": "Hombres cisgénero", "en": "Cisgender men"},
         "Cisgender women": {"es": "Mujeres cisgénero", "en": "Cisgender women"},
-        "Non-binary & gender-diverse": {"es": "Personas no binarias y de género diverso", "en": "Non-binary and gender-diverse"},
+        "Non-binary & gender-diverse": {
+            "es": "Personas no binarias y de género diverso",
+            "en": "Non-binary and gender-diverse",
+        },
         "Other": {"es": "Otra categoría", "en": "Other"},
         "Trans men": {"es": "Hombres trans", "en": "Trans men"},
         "Trans women": {"es": "Mujeres trans", "en": "Trans women"},
-        "Fairly - very easily": {"es": "Con bastante o mucha facilidad", "en": "Fairly or very easily"},
+        "Fairly - very easily": {
+            "es": "Con bastante o mucha facilidad",
+            "en": "Fairly or very easily",
+        },
         "With difficulty": {"es": "Con dificultad", "en": "With difficulty"},
         "With great difficulty": {"es": "Con mucha dificultad", "en": "With great difficulty"},
         "With some difficulty": {"es": "Con alguna dificultad", "en": "With some difficulty"},
@@ -80,10 +104,19 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         "Rarely open": {"es": "Rara vez abierta", "en": "Rarely open"},
         "Very open": {"es": "Muy abierta", "en": "Very open"},
         "A big city": {"es": "Una gran ciudad", "en": "A big city"},
-        "A farm or home in the countryside": {"es": "Una granja o vivienda rural", "en": "A farm or home in the countryside"},
-        "A town or a small city": {"es": "Un pueblo o ciudad pequeña", "en": "A town or a small city"},
+        "A farm or home in the countryside": {
+            "es": "Una granja o vivienda rural",
+            "en": "A farm or home in the countryside",
+        },
+        "A town or a small city": {
+            "es": "Un pueblo o ciudad pequeña",
+            "en": "A town or a small city",
+        },
         "A village": {"es": "Una aldea", "en": "A village"},
-        "The suburbs or outskirts of a big city": {"es": "Los suburbios o afueras de una gran ciudad", "en": "The suburbs or outskirts of a big city"},
+        "The suburbs or outskirts of a big city": {
+            "es": "Los suburbios o afueras de una gran ciudad",
+            "en": "The suburbs or outskirts of a big city",
+        },
         "Endosex": {"es": "Endosex", "en": "Endosex"},
         "Intersex": {"es": "Intersex", "en": "Intersex"},
         "Asexual": {"es": "Asexual", "en": "Asexual"},
@@ -104,10 +137,19 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         },
         "Housing": {"es": "Vivienda", "en": "Housing"},
         "Family": {"es": "Familia", "en": "Family"},
-        "Hate crime & hate speech": {"es": "Delitos y discursos de odio", "en": "Hate crime and hate speech"},
-        "Political participation": {"es": "Participaci\u00f3n pol\u00edtica", "en": "Political participation"},
+        "Hate crime & hate speech": {
+            "es": "Delitos y discursos de odio",
+            "en": "Hate crime and hate speech",
+        },
+        "Political participation": {
+            "es": "Participaci\u00f3n pol\u00edtica",
+            "en": "Political participation",
+        },
         "Territory": {"es": "Territorio", "en": "Territory"},
-        "Trans and gender identity": {"es": "Realidad trans e identidad de g\u00e9nero", "en": "Trans and gender identity"},
+        "Trans and gender identity": {
+            "es": "Realidad trans e identidad de g\u00e9nero",
+            "en": "Trans and gender identity",
+        },
         "Intersex": {"es": "Intersexualidad", "en": "Intersex"},
         "Intersex specific questions": {
             "es": "Preguntas específicas sobre intersexualidad",
@@ -168,11 +210,23 @@ TAXONOMY_LABELS: TaxonomyLabels = {
     },
     "ilga_category": {
         "Ranking total": {"es": "Ranking total", "en": "Overall ranking"},
-        "Equality & non-discrimination": {"es": "Igualdad y no discriminaci\u00f3n", "en": "Equality and non-discrimination"},
+        "Equality & non-discrimination": {
+            "es": "Igualdad y no discriminaci\u00f3n",
+            "en": "Equality and non-discrimination",
+        },
         "Family": {"es": "Familia", "en": "Family"},
-        "Hate crime & hate speech": {"es": "Delitos y discursos de odio", "en": "Hate crime and hate speech"},
-        "Legal gender recognition": {"es": "Reconocimiento legal del g\u00e9nero", "en": "Legal gender recognition"},
-        "Intersex bodily integrity": {"es": "Integridad corporal intersex", "en": "Intersex bodily integrity"},
+        "Hate crime & hate speech": {
+            "es": "Delitos y discursos de odio",
+            "en": "Hate crime and hate speech",
+        },
+        "Legal gender recognition": {
+            "es": "Reconocimiento legal del g\u00e9nero",
+            "en": "Legal gender recognition",
+        },
+        "Intersex bodily integrity": {
+            "es": "Integridad corporal intersex",
+            "en": "Intersex bodily integrity",
+        },
         "Civil society space": {"es": "Espacio de la sociedad civil", "en": "Civil society space"},
         "Asylum": {"es": "Asilo", "en": "Asylum"},
     },
@@ -192,17 +246,26 @@ TAXONOMY_LABELS: TaxonomyLabels = {
         "Education": {"es": "Educaci\u00f3n", "en": "Education"},
         "Housing": {"es": "Vivienda", "en": "Housing"},
         "Family": {"es": "Familia", "en": "Family"},
-        "Trans and gender identity": {"es": "Realidad trans e identidad de g\u00e9nero", "en": "Trans and gender identity"},
+        "Trans and gender identity": {
+            "es": "Realidad trans e identidad de g\u00e9nero",
+            "en": "Trans and gender identity",
+        },
         "Trans rights": {"es": "Derechos trans", "en": "Trans rights"},
         "Intersex": {"es": "Intersexualidad", "en": "Intersex"},
-        "Hate crime & hate speech": {"es": "Delitos y discursos de odio", "en": "Hate crime and hate speech"},
+        "Hate crime & hate speech": {
+            "es": "Delitos y discursos de odio",
+            "en": "Hate crime and hate speech",
+        },
         "Hate crime": {"es": "Delitos de odio", "en": "Hate crime"},
         "Harassment": {"es": "Acoso", "en": "Harassment"},
         "Physical violence": {"es": "Violencia f\u00edsica", "en": "Physical violence"},
         "Sexual violence": {"es": "Violencia sexual", "en": "Sexual violence"},
         "LGBTIQ+ youth": {"es": "Juventud LGBTIQ+", "en": "LGBTIQ+ youth"},
         "Social acceptance": {"es": "Aceptaci\u00f3n social", "en": "Social acceptance"},
-        "Political participation": {"es": "Participaci\u00f3n pol\u00edtica", "en": "Political participation"},
+        "Political participation": {
+            "es": "Participaci\u00f3n pol\u00edtica",
+            "en": "Political participation",
+        },
         "Territory": {"es": "Territorio", "en": "Territory"},
     },
 }
@@ -240,7 +303,9 @@ def canonical_taxonomy_value(namespace: str, value: object) -> str:
     labels = TAXONOMY_LABELS.get(namespace, {})
     normalized = _normalize(clean)
     canonical_by_normalized = {_normalize(key): key for key in labels}
-    aliases = {_normalize(key): canonical for key, canonical in TAXONOMY_ALIASES.get(namespace, {}).items()}
+    aliases = {
+        _normalize(key): canonical for key, canonical in TAXONOMY_ALIASES.get(namespace, {}).items()
+    }
     return aliases.get(normalized) or canonical_by_normalized.get(normalized) or clean
 
 
@@ -283,7 +348,5 @@ def _log_missing_label(namespace: str, canonical: str) -> None:
 
 def _normalize(value: str) -> str:
     text = unicodedata.normalize("NFKD", value).casefold().replace("_", " ")
-    unaccented = "".join(
-        character for character in text if not unicodedata.combining(character)
-    )
+    unaccented = "".join(character for character in text if not unicodedata.combining(character))
     return " ".join(unaccented.split())

@@ -224,9 +224,7 @@ def match_route(pathname: str | None) -> RouteMatch | None:
         if path.startswith(prefix):
             public_id = path.removeprefix(prefix)
             if public_id and "/" not in public_id:
-                return RouteMatch(
-                    "educator_public_activity", language, path, public_id
-                )
+                return RouteMatch("educator_public_activity", language, path, public_id)
     return None
 
 
@@ -262,12 +260,9 @@ def client_route_config() -> dict[str, object]:
     return {
         "defaultLanguage": DEFAULT_LANGUAGE,
         "routes": {
-            route.route_id: {"es": route.es, "en": route.en}
-            for route in _ROUTE_DEFINITIONS
+            route.route_id: {"es": route.es, "en": route.en} for route in _ROUTE_DEFINITIONS
         },
-        "pathIndex": {
-            path: match.route_id for path, match in _CANONICAL_PATHS.items()
-        },
+        "pathIndex": {path: match.route_id for path, match in _CANONICAL_PATHS.items()},
         "titles": ROUTE_TITLES,
         "dynamicRouteIds": ["educator_public_activity"],
     }
@@ -282,12 +277,7 @@ def canonical_safe_next(value: str | None) -> str | None:
         return None
     parsed = urlsplit(value)
     decoded_path = unquote(parsed.path)
-    if (
-        parsed.scheme
-        or parsed.netloc
-        or parsed.fragment
-        or decoded_path.startswith("//")
-    ):
+    if parsed.scheme or parsed.netloc or parsed.fragment or decoded_path.startswith("//"):
         return None
     target = parsed.path if parsed.path in SAFE_NEXT_PATHS else LEGACY_REDIRECTS.get(parsed.path)
     if target not in SAFE_NEXT_PATHS:

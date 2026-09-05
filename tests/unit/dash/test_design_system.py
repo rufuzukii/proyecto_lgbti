@@ -86,9 +86,9 @@ def test_navbar_has_a_border_but_no_lower_shadow() -> None:
 
 def test_statistics_buttons_fit_their_labels_at_all_breakpoints() -> None:
     statistics = (ASSETS / "statistics.css").read_text(encoding="utf-8")
-    fit_rule = statistics.split(
-        "/* Keep every Statistics action proportional to its label. */", 1
-    )[1].split("}", 1)[0]
+    fit_rule = statistics.split("/* Keep every Statistics action proportional to its label. */", 1)[
+        1
+    ].split("}", 1)[0]
 
     for selector in (
         ".stats-create-report-link",
@@ -104,15 +104,15 @@ def test_statistics_buttons_fit_their_labels_at_all_breakpoints() -> None:
     assert "width: fit-content;" in fit_rule
 
     survey = statistics.split(".stats-survey-control {", 1)[1].split("}", 1)[0]
-    survey_option = statistics.split(
-        ".stats-survey-control .dash-options-list-option {", 1
-    )[1].split("}", 1)[0]
-    compact_card = statistics.split(
-        ".stats-filter-card-compact .stats-filter-card-body {", 1
-    )[1].split("}", 1)[0]
-    compact_title = statistics.split(
-        ".stats-filter-card-compact .stats-filter-card-title {", 1
-    )[1].split("}", 1)[0]
+    survey_option = statistics.split(".stats-survey-control .dash-options-list-option {", 1)[
+        1
+    ].split("}", 1)[0]
+    compact_card = statistics.split(".stats-filter-card-compact .stats-filter-card-body {", 1)[
+        1
+    ].split("}", 1)[0]
+    compact_title = statistics.split(".stats-filter-card-compact .stats-filter-card-title {", 1)[
+        1
+    ].split("}", 1)[0]
     assert "display: grid;" in survey
     assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in survey
     assert "gap: 1rem;" in survey

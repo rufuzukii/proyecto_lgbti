@@ -105,9 +105,7 @@ class StatisticsFilters:
         clean_identity_type = _canonical_filter_type(identity_type)
         return cls(
             demographic_type=clean_demographic_type,
-            demographic_value=_canonical_filter_value(
-                clean_demographic_type, demographic_value
-            ),
+            demographic_value=_canonical_filter_value(clean_demographic_type, demographic_value),
             identity_type=clean_identity_type,
             identity_value=_canonical_filter_value(clean_identity_type, identity_value),
         )

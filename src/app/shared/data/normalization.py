@@ -18,6 +18,7 @@ def normalize_header(text: str) -> str:
     )
     return re.sub(r"[^a-z0-9]+", "_", ascii_text).strip("_")
 
+
 VALUE_ALIASES: dict[str, str] = {
     "Rairly open": "Fairly open",
     "Rarely opened": "Rarely open",

@@ -63,9 +63,7 @@ def parse_fra_csv_text(
     file_name: Path | str | None = None,
     survey_year: int | None = None,
 ) -> JsonPayload:
-    documents = parse_answer_survey_csv_text(
-        csv_text, file_name=file_name, survey_year=survey_year
-    )
+    documents = parse_answer_survey_csv_text(csv_text, file_name=file_name, survey_year=survey_year)
     return build_fra_questions_payload(
         documents,
         file_name=Path(file_name).name if file_name else "",

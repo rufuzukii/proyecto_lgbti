@@ -263,7 +263,9 @@ def _summary_cards(result: ForecastResult, language: str) -> Component:
             language,
         ),
         _metric_card("trends_trend", _direction_label(summary.direction, language), language),
-        _metric_card("trends_total_change", _signed_points(summary.absolute_change, language), language),
+        _metric_card(
+            "trends_total_change", _signed_points(summary.absolute_change, language), language
+        ),
         _metric_card(
             "trends_selected_model",
             _model_friendly_label(result.selected_model, language)
@@ -273,9 +275,7 @@ def _summary_cards(result: ForecastResult, language: str) -> Component:
         ),
         _metric_card(
             "trends_mean_error",
-            f"±{validation.mae:.1f} {ui_text('trends_points', language)}"
-            if validation
-            else "—",
+            f"±{validation.mae:.1f} {ui_text('trends_points', language)}" if validation else "—",
             language,
         ),
     ]
@@ -283,9 +283,7 @@ def _summary_cards(result: ForecastResult, language: str) -> Component:
 
 
 def _interpretation_guide(result: ForecastResult, language: str) -> Component:
-    country = country_labels(result.country_code, result.country_name)[
-        1 if language == "en" else 0
-    ]
+    country = country_labels(result.country_code, result.country_name)[1 if language == "en" else 0]
     items = [
         _explanation_item(
             "trends_time_axis_title",
@@ -352,9 +350,7 @@ def _evolution_summary(result: ForecastResult, language: str) -> Component:
     summary = result.summary
     if summary is None:
         return html.Section(className="trend-evolution-card")
-    country = country_labels(result.country_code, result.country_name)[
-        1 if language == "en" else 0
-    ]
+    country = country_labels(result.country_code, result.country_name)[1 if language == "en" else 0]
     if summary.absolute_change > 0.05:
         change_key = "trends_evolution_increase"
     elif summary.absolute_change < -0.05:
@@ -641,9 +637,7 @@ def _collection_text(result: ForecastResult, language: str) -> str:
     summary = result.summary
     if summary is None:
         return ""
-    country = country_labels(result.country_code, result.country_name)[
-        1 if language == "en" else 0
-    ]
+    country = country_labels(result.country_code, result.country_name)[1 if language == "en" else 0]
     return ui_text("trends_data_collection_detail", language).format(
         country=country,
         start=summary.start_year,
@@ -772,7 +766,7 @@ def _selected_range(value: list[int] | None) -> tuple[int | None, int | None]:
         return None, None
     try:
         start, end = sorted((int(value[0]), int(value[1])))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None, None
     return start, end
 

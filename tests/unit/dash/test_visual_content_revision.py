@@ -97,9 +97,7 @@ def test_footer_attributions_are_uniform_and_use_the_requested_copy() -> None:
 
 def test_home_context_uses_natural_height_and_a_theme_divider() -> None:
     css = (ASSETS / "home.css").read_text(encoding="utf-8")
-    layout = (ROOT / "src" / "app" / "modules" / "home" / "page.py").read_text(
-        encoding="utf-8"
-    )
+    layout = (ROOT / "src" / "app" / "modules" / "home" / "page.py").read_text(encoding="utf-8")
 
     assert "#home-legal-details-loading {\n  min-height: 0;" in css
     assert ".home-legal-context-divider:not(:empty)" in css
@@ -133,9 +131,10 @@ def test_report_workflow_is_centered_vertical_and_download_is_last() -> None:
     css = (ASSETS / "reports.css").read_text(encoding="utf-8")
 
     assert "reports-config-grid" not in page
-    assert "grid-template-columns: repeat(2" not in css.split(
-        ".reports-filters-grid", 1
-    )[1].split("}", 1)[0]
+    assert (
+        "grid-template-columns: repeat(2"
+        not in css.split(".reports-filters-grid", 1)[1].split("}", 1)[0]
+    )
     assert "width: min(100%, 840px);" not in css
     design_system = (ASSETS / "z_design_system.css").read_text(encoding="utf-8")
     header_rule = design_system.split(".app-page-header {", 1)[1].split("}", 1)[0]
@@ -155,9 +154,7 @@ def test_report_workflow_is_centered_vertical_and_download_is_last() -> None:
     assert page.index('className="reports-card reports-plan-summary"') < page.index(
         'id="report-preview-button"'
     )
-    assert page.index('id="report-download-button"') < page.index(
-        'id="report-preview-content"'
-    )
+    assert page.index('id="report-download-button"') < page.index('id="report-preview-content"')
 
 
 def test_dark_button_overrides_keep_text_readable() -> None:

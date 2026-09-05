@@ -46,11 +46,15 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
                     "text": page_text,
                     "blocks": [
                         {
-                            "x0": block[0], "y0": block[1], "x1": block[2], "y1": block[3],
+                            "x0": block[0],
+                            "y0": block[1],
+                            "x1": block[2],
+                            "y1": block[3],
                             "text": repair_block_text_spacing(str(block[4]), page_text),
                             **text_block_style(dict_blocks, block),
                         }
-                        for block in text_blocks if len(block) >= 5
+                        for block in text_blocks
+                        if len(block) >= 5
                     ],
                     "figures": deduplicate_visual_regions(visual_regions),
                     "width": page_width,
@@ -117,8 +121,11 @@ def text_block_style(dict_blocks: list[dict[str, Any]], text_block: Any) -> dict
     if best is None:
         return {}
     spans = [
-        span for line in best.get("lines", []) if isinstance(line, dict)
-        for span in line.get("spans", []) if isinstance(span, dict)
+        span
+        for line in best.get("lines", [])
+        if isinstance(line, dict)
+        for span in line.get("spans", [])
+        if isinstance(span, dict)
     ]
     if not spans:
         return {}
@@ -159,14 +166,14 @@ def extract_page_vector_regions(
 ) -> list[dict[str, Any]]:
     try:
         regions = page.cluster_drawings()
-    except (AttributeError, RuntimeError, ValueError):
+    except AttributeError, RuntimeError, ValueError:
         return []
     page_area = max(page_width * page_height, 1.0)
     figures: list[dict[str, Any]] = []
     for region in regions:
         try:
             x0, y0, x1, y1 = map(float, (region.x0, region.y0, region.x1, region.y1))
-        except (AttributeError, TypeError, ValueError):
+        except AttributeError, TypeError, ValueError:
             continue
         width, height = x1 - x0, y1 - y0
         if width < 80 or height < 60 or (width * height) / page_area >= 0.8:
@@ -204,7 +211,7 @@ def safe_bbox(value: Any) -> list[float] | None:
         return None
     try:
         bbox = [float(item) for item in value]
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
         return None

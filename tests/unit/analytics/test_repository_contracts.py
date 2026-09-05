@@ -103,9 +103,7 @@ def test_postgres_catalogs_map_valid_rows_and_fail_closed(monkeypatch) -> None:
         lambda **_kwargs: _Postgres(_Result(rows=indicator_rows)),
     )
     indicators = repository.get_fra_indicators.uncached()
-    assert [(item.code, item.label) for item in indicators] == [
-        ("E1", "Employment · Work · Safe?")
-    ]
+    assert [(item.code, item.label) for item in indicators] == [("E1", "Employment · Work · Safe?")]
 
     monkeypatch.setattr(
         repository,
@@ -191,7 +189,9 @@ def test_fra_control_catalog_maps_answer_specific_filters(monkeypatch) -> None:
     assert repository.get_fra_indicator_control_document.__wrapped__("E1") is None
 
 
-def test_fra_multi_document_query_deduplicates_codes_and_ignores_malformed_rows(monkeypatch) -> None:
+def test_fra_multi_document_query_deduplicates_codes_and_ignores_malformed_rows(
+    monkeypatch,
+) -> None:
     collection = _Collection()
     collection.find_rows = [
         {"code": "A", "question": "One", "answers": [{"percentage": 0}, "bad"]},
@@ -305,7 +305,10 @@ def test_country_status_repository_preserves_requested_order_and_latest(monkeypa
     collection.find_one_row = {"country_code": "ES", "year": 2026, "active": False}
     assert repository.get_country_lgbti_status_record("", 2026) is None
     assert repository.get_country_lgbti_status_record("ES", cast(Any, "bad")) is None
-    assert repository.get_country_lgbti_status_record(" es ", 2026, active_only=True) == collection.find_one_row
+    assert (
+        repository.get_country_lgbti_status_record(" es ", 2026, active_only=True)
+        == collection.find_one_row
+    )
     assert collection.calls[-1][1][0]["active"] is True
 
 
@@ -510,9 +513,7 @@ def test_spain_collection_resolution_and_document_lookup(monkeypatch) -> None:
     assert repository._resolve_spain_collection_name("custom_spain") == "custom_spain"
     assert repository._resolve_spain_collection_name("missing") == "Indicator_felgtbi"
 
-    direct = repository._resolve_felgtbi_document(
-        "document:source-1", "Indicator_felgtbi"
-    )
+    direct = repository._resolve_felgtbi_document("document:source-1", "Indicator_felgtbi")
     assert direct is not None and direct.filter_fields == (("source_document_id", "source-1"),)
     assert repository._resolve_felgtbi_document("document:", "Indicator_felgtbi") is None
 
@@ -602,9 +603,9 @@ def test_spain_collection_probe_uses_extended_country_fields_only_for_matching_n
 def test_collection_labels_are_readable_in_both_languages() -> None:
     assert repository._readable_collection_label("", language="es") == "Fuente de datos"
     assert repository._readable_collection_label("", language="en") == "Data source"
-    assert repository._readable_collection_label("felgtbi_discrimination_reports", language="es") == (
-        "FELGTBI - Informes de discriminación"
-    )
+    assert repository._readable_collection_label(
+        "felgtbi_discrimination_reports", language="es"
+    ) == ("FELGTBI - Informes de discriminación")
     assert repository._readable_collection_label("felgtbi_lgtbi_spain_2026", language="en") == (
         "FELGTBI Spain 2026"
     )

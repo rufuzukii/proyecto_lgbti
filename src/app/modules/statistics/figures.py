@@ -2240,8 +2240,7 @@ def build_ilga_response_details_chart(
         for code, name in zip(dataframe["country_code"], dataframe["country_name"], strict=True)
     ]
     dataframe = dataframe[
-        dataframe["country_code"].ne("")
-        & ~dataframe["country_code"].isin(NON_GEOGRAPHIC_CODES)
+        dataframe["country_code"].ne("") & ~dataframe["country_code"].isin(NON_GEOGRAPHIC_CODES)
     ]
     if dataframe.empty:
         return empty_figure("No hay países comparables para esta selección.")
@@ -2752,8 +2751,7 @@ def build_combined_scatter(
             customdata=customdata,
             marker={
                 "size": [
-                    14 if str(row.iso).upper() in selected else 10
-                    for row in dataframe.itertuples()
+                    14 if str(row.iso).upper() in selected else 10 for row in dataframe.itertuples()
                 ],
                 "color": [country_color(row.iso, row.country) for row in dataframe.itertuples()],
                 "line": {
@@ -2854,8 +2852,10 @@ def build_combined_quadrant_chart(
     frame = pd.DataFrame(classified)
     fra_median = (analysis_metrics.get("fra") or {}).get("median")
     ilga_median = (analysis_metrics.get("ilga") or {}).get("median")
-    if frame.empty or not isinstance(fra_median, (int, float)) or not isinstance(
-        ilga_median, (int, float)
+    if (
+        frame.empty
+        or not isinstance(fra_median, (int, float))
+        or not isinstance(ilga_median, (int, float))
     ):
         return empty_figure(
             _chart_text(language, "No hay datos comparables.", "No comparable data is available.")
@@ -2882,7 +2882,11 @@ def build_combined_quadrant_chart(
         for row in frame.itertuples()
     ]
     customdata = [
-        [row.country, situation[index], segmentation or _chart_text(language, "Sin segmentación", "No segmentation")]
+        [
+            row.country,
+            situation[index],
+            segmentation or _chart_text(language, "Sin segmentación", "No segmentation"),
+        ]
         for index, row in enumerate(frame.itertuples())
     ]
     colours = {
@@ -2908,7 +2912,10 @@ def build_combined_quadrant_chart(
                 "size": [14 if str(iso).upper() in selected else 10 for iso in frame["iso"]],
                 "color": [colours.get(str(value), "#64748b") for value in frame["quadrant"]],
                 "line": {
-                    "color": ["#111827" if str(iso).upper() in selected else "#ffffff" for iso in frame["iso"]],
+                    "color": [
+                        "#111827" if str(iso).upper() in selected else "#ffffff"
+                        for iso in frame["iso"]
+                    ],
                     "width": [3 if str(iso).upper() in selected else 1 for iso in frame["iso"]],
                 },
             },
@@ -2950,12 +2957,17 @@ def build_combined_quadrant_chart(
     ):
         annotations.append(
             {
-                "x": x, "y": y, "xref": "paper", "yref": "paper", "showarrow": False,
+                "x": x,
+                "y": y,
+                "xref": "paper",
+                "yref": "paper",
+                "showarrow": False,
                 "xanchor": "left" if x < 0.5 else "right",
                 "yanchor": "top" if y > 0.5 else "bottom",
                 "text": f"<b>{legal}</b><br>{experience}",
                 "font": {"size": 11},
-                "bgcolor": "rgba(148,163,184,0.18)", "borderpad": 4,
+                "bgcolor": "rgba(148,163,184,0.18)",
+                "borderpad": 4,
             }
         )
     figure.update_layout(
@@ -2988,9 +3000,9 @@ def build_ranking_position_gap_chart(
     language_index = 1 if language == "en" else 0
     localized_rows = []
     for row in rows:
-        country = country_labels(
-            str(row.get("iso") or ""), str(row.get("country") or "")
-        )[language_index]
+        country = country_labels(str(row.get("iso") or ""), str(row.get("country") or ""))[
+            language_index
+        ]
         localized_rows.append({**row, "localized_country": country})
     localized_rows.sort(
         key=lambda row: (
@@ -3053,9 +3065,7 @@ def build_ranking_position_gap_chart(
                 hovertemplate=hover,
             )
         )
-    max_rank = max(
-        max(int(row["ilga_rank"]), int(row["fra_rank"])) for row in localized_rows
-    )
+    max_rank = max(max(int(row["ilga_rank"]), int(row["fra_rank"])) for row in localized_rows)
     figure.update_layout(
         xaxis={
             "title": _chart_text(

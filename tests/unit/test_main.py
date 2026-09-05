@@ -14,6 +14,4 @@ def test_main_run_uses_configured_server_without_reloader(monkeypatch) -> None:
 
     main.run()
 
-    assert calls == [
-        {"host": "127.0.0.1", "port": 8050, "debug": True, "use_reloader": False}
-    ]
+    assert calls == [{"host": "127.0.0.1", "port": 8050, "debug": True, "use_reloader": False}]

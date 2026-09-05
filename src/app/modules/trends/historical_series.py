@@ -19,9 +19,7 @@ def load_ilga_global_history() -> tuple[HistoricalPoint, ...]:
         year = _safe_year(row.get("year"))
         value = _safe_float(row.get("value"))
         country_code = str(row.get("country_code") or row.get("iso") or "").strip().upper()
-        country_name = repair_text_encoding(
-            row.get("country_name") or row.get("country")
-        ).strip()
+        country_name = repair_text_encoding(row.get("country_name") or row.get("country")).strip()
         if year is None or not country_code:
             continue
         points.append(
@@ -115,7 +113,7 @@ def audit_country_coverage(
 def _safe_year(value: Any) -> int | None:
     try:
         year = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return year if 1900 <= year <= 2200 else None
 
@@ -125,6 +123,6 @@ def _safe_float(value: Any) -> float | None:
         return None
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return number if math.isfinite(number) else None

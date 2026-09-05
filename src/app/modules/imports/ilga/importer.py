@@ -95,10 +95,7 @@ def parse_ilga_json_text(
     if not documents or not all(isinstance(document, dict) for document in documents):
         raise ValueError("invalid_ilga_json")
 
-    normalized = [
-        _normalize_ilga_document(document, file_name=file_name)
-        for document in documents
-    ]
+    normalized = [_normalize_ilga_document(document, file_name=file_name) for document in documents]
     return normalized if isinstance(payload, list) else normalized[0]
 
 
@@ -140,15 +137,11 @@ def _normalize_ilga_document(
             errors.extend(f"country[{index}].{error}" for error in exc.errors)
 
     country_codes = [country["country_code"] for country in normalized_countries]
-    duplicate_codes = sorted(
-        code for code in set(country_codes) if country_codes.count(code) > 1
-    )
+    duplicate_codes = sorted(code for code in set(country_codes) if country_codes.count(code) > 1)
     if duplicate_codes:
         errors.append(f"duplicate_country_codes:{','.join(duplicate_codes)}")
     country_names = [country["country"].casefold() for country in normalized_countries]
-    duplicate_names = sorted(
-        name for name in set(country_names) if country_names.count(name) > 1
-    )
+    duplicate_names = sorted(name for name in set(country_names) if country_names.count(name) > 1)
     if duplicate_names:
         errors.append(f"duplicate_countries:{','.join(duplicate_names)}")
     if errors or year is None:

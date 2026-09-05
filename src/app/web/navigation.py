@@ -226,6 +226,4 @@ def _nav_link_class(key: str, active: str | None) -> str:
     classes = ["nav-link"]
     if key == active:
         classes.append("is-active")
-    if key == "upload":
-        classes.append("nav-cta")
     return " ".join(classes)

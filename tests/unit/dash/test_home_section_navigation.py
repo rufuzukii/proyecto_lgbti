@@ -173,10 +173,7 @@ def test_home_card_copy_is_complete_in_both_languages() -> None:
 
 
 def test_home_cards_describe_the_current_user_facing_features() -> None:
-    assert (
-        "mapas, rankings y comparaciones"
-        in UI_TEXT["home_statistics_description"]["es"]
-    )
+    assert "mapas, rankings y comparaciones" in UI_TEXT["home_statistics_description"]["es"]
     assert "segmentaciones" not in UI_TEXT["home_statistics_description"]["es"]
     assert "plantillas de informe" not in UI_TEXT["home_profile_description"]["es"]
     assert "no son predicciones oficiales" not in UI_TEXT["home_trends_description"]["es"]

@@ -86,9 +86,9 @@ def test_concurrent_admin_edit_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
     # Arrange
     current = _user_row(user_type="docente")
     connection = _Connection(
-        lambda query, _params: _Result(row=current)
-        if "for update" in query.casefold()
-        else _Result()
+        lambda query, _params: (
+            _Result(row=current) if "for update" in query.casefold() else _Result()
+        )
     )
     monkeypatch.setattr(service, "_connect", lambda: connection)
 
@@ -175,8 +175,7 @@ def test_user_page_uses_one_count_and_one_paged_query(monkeypatch: pytest.Monkey
         service,
         "get_account_security_many",
         lambda user_ids: {
-            user_id: service.AccountSecurityState(user_id, True, 0)
-            for user_id in user_ids
+            user_id: service.AccountSecurityState(user_id, True, 0) for user_id in user_ids
         },
     )
 

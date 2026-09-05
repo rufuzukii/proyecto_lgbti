@@ -120,5 +120,14 @@ def test_runtime_does_not_use_path_hacks_or_old_python_packages() -> None:
     source = "\n".join(path.read_text(encoding="utf-8-sig") for path in APP_ROOT.rglob("*.py"))
     assert "sys.path.append" not in source
     assert "sys.path.insert" not in source
-    for old_package in ("analytics", "dash", "edu", "import_to_db", "privacy", "reports", "trends", "users"):
+    for old_package in (
+        "analytics",
+        "dash",
+        "edu",
+        "import_to_db",
+        "privacy",
+        "reports",
+        "trends",
+        "users",
+    ):
         assert not any((APP_ROOT / old_package).rglob("*.py"))

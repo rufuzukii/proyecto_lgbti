@@ -105,7 +105,7 @@ def _numeric_value(value: Any) -> float | None:
         return None
     try:
         numeric = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return numeric if math.isfinite(numeric) else None
 

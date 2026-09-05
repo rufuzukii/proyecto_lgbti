@@ -241,8 +241,7 @@ def ensure_ilga_unique_index() -> None:
     if duplicates:
         duplicate = duplicates[0].get("_id") or {}
         raise ValueError(
-            "duplicate_ilga_documents:"
-            f"{duplicate.get('dataset')}:{duplicate.get('year')}"
+            f"duplicate_ilga_documents:{duplicate.get('dataset')}:{duplicate.get('year')}"
         )
 
     desired = IndexModel(

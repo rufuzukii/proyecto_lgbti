@@ -82,9 +82,7 @@ def test_resolution_creates_collision_safe_code_or_reuses_existing_canonical(mon
     monkeypatch.setattr(indicators, "_catalog_rows_by_question", lambda *_args: [])
 
     connection = cast(Any, object())
-    created = indicators._resolve_indicator(
-        connection, _document(code="E-1", question_code="E-1")
-    )
+    created = indicators._resolve_indicator(connection, _document(code="E-1", question_code="E-1"))
     assert (created.canonical_id, created.action, created.reason) == (
         "fra_2023_E_1",
         "created",
@@ -92,9 +90,7 @@ def test_resolution_creates_collision_safe_code_or_reuses_existing_canonical(mon
     )
 
     rows["fra_2023_E_1"] = _catalog_row("fra_2023_E_1")
-    reused = indicators._resolve_indicator(
-        connection, _document(code="E-1", question_code="E-1")
-    )
+    reused = indicators._resolve_indicator(connection, _document(code="E-1", question_code="E-1"))
     assert (reused.action, reused.reason) == ("reused", "canonical_code")
 
 
@@ -124,7 +120,9 @@ def test_indicator_upsert_inserts_new_catalog_row(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize("preserve_existing", [False, True])
-def test_indicator_upsert_merges_answer_types_for_updates(monkeypatch, preserve_existing: bool) -> None:
+def test_indicator_upsert_merges_answer_types_for_updates(
+    monkeypatch, preserve_existing: bool
+) -> None:
     connection = _Connection({"answer_type": '["Maybe"]'})
     monkeypatch.setattr(indicators, "_get_or_create_category", lambda _conn, _name: "cat-1")
 

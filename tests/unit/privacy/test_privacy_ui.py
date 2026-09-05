@@ -25,9 +25,10 @@ def test_registration_contains_bilingual_privacy_information(monkeypatch) -> Non
         "RainbowLens DataHub utiliza los datos necesarios para gestionar tu cuenta y "
         "ofrecer las funcionalidades solicitadas."
     ) in rendered
-    assert "RainbowLens DataHub uses the data required to manage your account" in UI_TEXT[
-        "registration_privacy_notice"
-    ]["en"]
+    assert (
+        "RainbowLens DataHub uses the data required to manage your account"
+        in UI_TEXT["registration_privacy_notice"]["en"]
+    )
     assert "/es/privacidad" in rendered
 
 

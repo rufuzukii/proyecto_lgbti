@@ -43,18 +43,10 @@ def test_indicator_answer_semantics_prevent_inverted_conclusions() -> None:
     assert indicator_semantics("Felt discriminated", "Yes") == "adverse"
     assert indicator_semantics("Felt discriminated", "No") == "favourable"
     assert indicator_semantics("Feels safe", "Yes") == "favourable"
-    assert result_level(
-        semantics="adverse", country_value=60.0, benchmark=40.0
-    ) == "adverse"
-    assert result_level(
-        semantics="favourable", country_value=60.0, benchmark=40.0
-    ) == "favourable"
-    assert result_level(
-        semantics="adverse", country_value=0.0, benchmark=10.0
-    ) == "favourable"
-    assert result_level(
-        semantics="adverse", country_value=None, benchmark=10.0
-    ) == "unknown"
+    assert result_level(semantics="adverse", country_value=60.0, benchmark=40.0) == "adverse"
+    assert result_level(semantics="favourable", country_value=60.0, benchmark=40.0) == "favourable"
+    assert result_level(semantics="adverse", country_value=0.0, benchmark=10.0) == "favourable"
+    assert result_level(semantics="adverse", country_value=None, benchmark=10.0) == "unknown"
 
 
 def test_combined_report_reuses_one_fra_result_for_shared_analysis(monkeypatch) -> None:

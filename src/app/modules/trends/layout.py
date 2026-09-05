@@ -45,11 +45,11 @@ def _header() -> Component:
         title=text(ui_text("trends_title", "es"), ui_text("trends_title", "en")),
         description=text(ui_text("trends_lead", "es"), ui_text("trends_lead", "en")),
         meta=html.P(
-                text(
-                    ui_text("trends_historical_source", "es"),
-                    ui_text("trends_historical_source", "en"),
-                ),
-                className="trend-source-note",
+            text(
+                ui_text("trends_historical_source", "es"),
+                ui_text("trends_historical_source", "en"),
+            ),
+            className="trend-source-note",
         ),
         class_name="trend-header",
     )

@@ -128,12 +128,14 @@ def test_correlation_strength_taxonomy_has_stable_boundaries() -> None:
 
 
 def test_indicator_semantics_does_not_invert_yes_and_no() -> None:
-    assert infer_indicator_semantics("Felt discriminated in the last 12 months", "Yes")[
-        "direction"
-    ] == "adverse"
-    assert infer_indicator_semantics("Felt discriminated in the last 12 months", "No")[
-        "direction"
-    ] == "favourable"
+    assert (
+        infer_indicator_semantics("Felt discriminated in the last 12 months", "Yes")["direction"]
+        == "adverse"
+    )
+    assert (
+        infer_indicator_semantics("Felt discriminated in the last 12 months", "No")["direction"]
+        == "favourable"
+    )
     assert infer_indicator_semantics("Feels safe holding hands", "Yes")["direction"] == (
         "favourable"
     )
@@ -233,9 +235,7 @@ def test_combined_figures_use_full_scales_medians_and_country_hover() -> None:
 
 def test_quadrant_classification_respects_semantics_and_median_equality() -> None:
     common = {"fra_median": 50, "ilga_median": 50}
-    high_high = classify_quadrant(
-        70, 70, semantic_direction="favourable", **common
-    )
+    high_high = classify_quadrant(70, 70, semantic_direction="favourable", **common)
     high_low = classify_quadrant(30, 70, semantic_direction="favourable", **common)
     low_high = classify_quadrant(70, 30, semantic_direction="adverse", **common)
     low_low = classify_quadrant(30, 30, semantic_direction="adverse", **common)
@@ -247,7 +247,9 @@ def test_quadrant_classification_respects_semantics_and_median_equality() -> Non
     assert equal is not None
 
     assert high_high == {
-        "legal_level": "high", "fra_level": "high", "experience": "favourable",
+        "legal_level": "high",
+        "fra_level": "high",
+        "experience": "favourable",
         "quadrant": "high_legal_favourable",
     }
     assert high_low["experience"] == "unfavourable"
@@ -340,9 +342,7 @@ def test_compatibility_hides_often_and_builds_dynamic_messages() -> None:
         "indicator": "conduct at school due to being LGBTIQ",
         "answer": "Often",
         "rows": rows,
-        "semantics": infer_indicator_semantics(
-            "conduct at school due to being LGBTIQ", "Often"
-        ),
+        "semantics": infer_indicator_semantics("conduct at school due to being LGBTIQ", "Often"),
         "quadrant_eligibility": quadrant_eligibility(
             "conduct at school due to being LGBTIQ", "Often"
         ),
@@ -387,9 +387,7 @@ def test_age_bucket_has_only_two_methodological_messages_and_no_analysis() -> No
 
 def test_combined_service_uses_nearest_legal_year_in_one_shared_payload(monkeypatch) -> None:
     requested_years: list[int | None] = []
-    monkeypatch.setattr(
-        "app.modules.statistics.service.get_ilga_years", lambda: [2019, 2023, 2026]
-    )
+    monkeypatch.setattr("app.modules.statistics.service.get_ilga_years", lambda: [2019, 2023, 2026])
 
     def fake_ilga(query, *, include_history):
         requested_years.append(query.year)

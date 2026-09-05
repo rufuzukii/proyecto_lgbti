@@ -266,10 +266,9 @@ def test_dashboard_render_cache_is_bounded_to_an_exact_query_identity(monkeypatc
     monkeypatch.setattr(
         statistics,
         "_render_dashboard_uncached",
-        lambda _result, selected, language, **_kwargs: renders.append(
-            (language, tuple(selected))
-        )
-        or tuple(range(33)),
+        lambda _result, selected, language, **_kwargs: (
+            renders.append((language, tuple(selected))) or tuple(range(33))
+        ),
     )
     result = {**_result(), "query_token": "survey:2023:indicator"}
 

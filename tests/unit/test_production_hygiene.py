@@ -30,9 +30,7 @@ def test_production_source_has_no_workstation_or_local_dataset_paths() -> None:
 def test_render_startup_runs_wsgi_without_opening_a_browser() -> None:
     render_config = (PROJECT_ROOT / "render.yaml").read_text(encoding="utf-8")
     start_script = (PROJECT_ROOT / "scripts" / "render_start.sh").read_text(encoding="utf-8")
-    export_check = (PROJECT_ROOT / "scripts" / "check_chart_export.py").read_text(
-        encoding="utf-8"
-    )
+    export_check = (PROJECT_ROOT / "scripts" / "check_chart_export.py").read_text(encoding="utf-8")
     wsgi = (PROJECT_ROOT / "wsgi.py").read_text(encoding="utf-8")
 
     assert "bash scripts/render_start.sh" in render_config
@@ -48,9 +46,7 @@ def test_render_startup_runs_wsgi_without_opening_a_browser() -> None:
 def test_runtime_and_render_have_no_automatic_email_infrastructure() -> None:
     render_config = (PROJECT_ROOT / "render.yaml").read_text(encoding="utf-8")
     runtime_source = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in PRODUCTION_ROOT.rglob("*.py")
-        if path.is_file()
+        path.read_text(encoding="utf-8") for path in PRODUCTION_ROOT.rglob("*.py") if path.is_file()
     )
 
     for marker in (

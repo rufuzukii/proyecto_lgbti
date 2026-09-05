@@ -170,11 +170,10 @@ def _criterion_number(value: Any) -> float | None:
             return None
     try:
         numeric_value = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return numeric_value if math.isfinite(numeric_value) else None
 
 
 def _format_number(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".")
-

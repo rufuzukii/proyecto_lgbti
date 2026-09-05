@@ -143,12 +143,14 @@ def test_search_indexes_spanish_english_and_aliases_without_accents() -> None:
     assert {term.id for term in search_glossary("LGR", language="en")} >= {
         "legal_gender_recognition"
     }
-    assert {term.id for term in search_glossary("Recognition of trans parenthood", language="en")} >= {
-        "trans_parenthood"
-    }
+    assert {
+        term.id for term in search_glossary("Recognition of trans parenthood", language="en")
+    } >= {"trans_parenthood"}
 
 
-def test_informed_consent_is_contextualised_for_intersex_people_without_conflating_asexuality() -> None:
+def test_informed_consent_is_contextualised_for_intersex_people_without_conflating_asexuality() -> (
+    None
+):
     term = get_glossary_term("informed_consent")
 
     assert term is not None
@@ -231,12 +233,30 @@ def test_every_active_card_is_fully_bilingual_and_uses_a_visible_category() -> N
 
 def test_scope_audit_removes_specialised_redundant_and_legacy_cards() -> None:
     removed = {
-        "abrosexual", "androsexual", "anthrosexual", "bigender",
-        "cisheteropatriarchy", "sexed_body", "demigender", "gender_dysphoria",
-        "drag_king", "drag_queen", "graysexual", "cis_man",
-        "homoparentality", "cis_woman", "omnisexual", "pangender", "polysexual",
-        "serophobia", "transgender", "gender_diverse_people", "trans_realities",
-        "lgbtiq_human_rights_defenders", "same_sex_couples", "lgbtiq_youth",
+        "abrosexual",
+        "androsexual",
+        "anthrosexual",
+        "bigender",
+        "cisheteropatriarchy",
+        "sexed_body",
+        "demigender",
+        "gender_dysphoria",
+        "drag_king",
+        "drag_queen",
+        "graysexual",
+        "cis_man",
+        "homoparentality",
+        "cis_woman",
+        "omnisexual",
+        "pangender",
+        "polysexual",
+        "serophobia",
+        "transgender",
+        "gender_diverse_people",
+        "trans_realities",
+        "lgbtiq_human_rights_defenders",
+        "same_sex_couples",
+        "lgbtiq_youth",
         "international_protection",
     }
 
@@ -244,18 +264,19 @@ def test_scope_audit_removes_specialised_redundant_and_legacy_cards() -> None:
 
 
 def test_ilga_family_cards_use_exact_criteria_and_methodology_source() -> None:
-    family = {
-        term.id: term
-        for term in list_glossary_terms()
-        if term.category == "families_rights"
-    }
+    family = {term.id: term for term in list_glossary_terms() if term.category == "families_rights"}
     assert family["co_parenthood"].term == "Reconocimiento automático de la coparentalidad"
     assert family["co_parenthood"].term_en == "Automatic co-parent recognition"
     assert "desde el nacimiento" in family["co_parenthood"].definition
     assert "from birth" in family["co_parenthood"].definition_en
     for identifier in {
-        "marriage_equality", "registered_partnership", "cohabitation_recognition",
-        "joint_adoption", "second_parent_adoption", "co_parenthood",
-        "assisted_reproduction", "trans_parenthood",
+        "marriage_equality",
+        "registered_partnership",
+        "cohabitation_recognition",
+        "joint_adoption",
+        "second_parent_adoption",
+        "co_parenthood",
+        "assisted_reproduction",
+        "trans_parenthood",
     }:
         assert family[identifier].sources[0].url == "https://rainbowmap.ilga-europe.org/about/"

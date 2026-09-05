@@ -1,1 +1,1 @@
-"""Shared FELGTBI+ document semantics."""
+"""Shared FELGTBI+ document identity and semantic helpers."""

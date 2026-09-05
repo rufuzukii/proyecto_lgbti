@@ -55,9 +55,7 @@ def test_controlled_pdf_parses_caption_text_answers_and_metadata(
     assert document["figure_number"] == "1"
     assert document["figure_caption"] == "Figura 1: Agresiones fisicas"
     assert document["extraction"]["method"] == "figure_caption"
-    assert document["paragraphs"] == [
-        "El 18,5% de las personas encuestadas declara discriminacion"
-    ]
+    assert document["paragraphs"] == ["El 18,5% de las personas encuestadas declara discriminacion"]
     assert document["answers"][0]["percentage"] == 18.5
     bbox = document["visual_context"]["bbox"]
     assert 0 <= bbox[0] < bbox[2] <= pages[0]["width"]

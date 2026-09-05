@@ -13,8 +13,7 @@ UNAM_SOURCE_URL = (
     "glosario-de-las-diversidades-sexogenericas-lgbtiq/"
 )
 FUNDEU_SOURCE_URL = (
-    "https://www.fundeu.es/noticia/"
-    "diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"
+    "https://www.fundeu.es/noticia/diccionario-lgtb-guia-de-conceptos-de-un-lenguaje-inclusivo/"
 )
 ALLOWED_SOURCES = {"UNAM": UNAM_SOURCE_URL, "FundéuRAE": FUNDEU_SOURCE_URL}
 ALLOWED_INSTITUTION_HOSTS = {
@@ -87,9 +86,7 @@ def glossary_categories() -> tuple[str, ...]:
 
 def _normalize(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value.casefold())
-    plain = "".join(
-        character for character in normalized if not unicodedata.combining(character)
-    )
+    plain = "".join(character for character in normalized if not unicodedata.combining(character))
     return " ".join(plain.split())
 
 

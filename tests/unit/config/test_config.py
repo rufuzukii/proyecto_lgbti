@@ -1,3 +1,5 @@
+"""Unit coverage for environment-backed application configuration."""
+
 import pytest
 
 from app.core.config import (

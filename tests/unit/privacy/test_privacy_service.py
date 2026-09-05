@@ -52,7 +52,8 @@ def test_deletion_confirmation_accepts_only_current_credentials_and_exact_phrase
     ):
         with pytest.raises(service.AccountDeletionError, match=expected):
             service.validate_deletion_confirmation(
-                record, **_confirmation(**override)  # type: ignore[arg-type]
+                record,
+                **_confirmation(**override),  # type: ignore[arg-type]
             )
 
 
@@ -177,10 +178,7 @@ def test_last_administrator_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         service,
         "get_account_security_many",
-        lambda user_ids: {
-            user_id: SimpleNamespace(active=True)
-            for user_id in user_ids
-        },
+        lambda user_ids: {user_id: SimpleNamespace(active=True) for user_id in user_ids},
     )
 
     # Act / Assert

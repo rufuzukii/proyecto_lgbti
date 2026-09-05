@@ -16,9 +16,7 @@ UNCERTAINTY_COLOR = "rgba(198, 40, 120, 0.16)"
 def build_trend_figure(result: ForecastResult, *, language: str = "es") -> go.Figure:
     if not result.historical:
         raise ValueError("trend_analysis_not_renderable")
-    country = country_labels(result.country_code, result.country_name)[
-        1 if language == "en" else 0
-    ]
+    country = country_labels(result.country_code, result.country_name)[1 if language == "en" else 0]
     actual_by_year = {
         int(point.year): float(point.value)
         for point in result.historical

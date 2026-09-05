@@ -1,3 +1,5 @@
+"""Optional FastAPI application exposing RainbowLens services."""
+
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse

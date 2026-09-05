@@ -27,9 +27,7 @@ def test_ilga_rows_to_forecast_result_and_figure(monkeypatch) -> None:
     monkeypatch.setattr(historical_series, "get_ilga_history_rows", lambda *_args: rows)
 
     points = historical_series.load_ilga_global_history()
-    result = generate_forecast(
-        points, country_code="ES", country_name="Spain", horizon=3
-    )
+    result = generate_forecast(points, country_code="ES", country_name="Spain", horizon=3)
     figure = build_trend_figure(result, language="es")
 
     assert result.status == "ok"

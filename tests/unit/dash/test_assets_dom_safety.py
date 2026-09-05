@@ -51,8 +51,7 @@ def test_statistics_segmented_buttons_use_outer_dash_options() -> None:
     assert ".dash-options-list-option" in js
     assert "markClickedLabel" not in js
     assert (
-        ".stats-survey-control .dash-options-list-option:has(.stats-segmented-input:checked)"
-        in css
+        ".stats-survey-control .dash-options-list-option:has(.stats-segmented-input:checked)" in css
     )
     assert "stats-data-type-control" not in css
 
@@ -64,11 +63,10 @@ def test_spain_document_buttons_keep_selected_visual_state() -> None:
 
     assert ".spain-selection-control" in segmented_js
     assert 'control.querySelectorAll(".dash-options-list-option")' in segmented_js
-    assert 'setActiveOption(option, Boolean(input && input.checked))' in segmented_js
+    assert "setActiveOption(option, Boolean(input && input.checked))" in segmented_js
     assert ".spain-document-radio-input" in bootstrap_js
     assert (
-        ".spain-document-radio .dash-options-list-option.is-active "
-        ".spain-document-radio-label"
+        ".spain-document-radio .dash-options-list-option.is-active .spain-document-radio-label"
     ) in css
 
 
@@ -289,11 +287,22 @@ def test_rrhh_navbar_exposes_upload_without_admin_navigation(monkeypatch) -> Non
     )
 
     components = list(_walk(navigation.build_navbar()))
+    upload_link = next(
+        component for component in components if getattr(component, "href", None) == "/es/importar"
+    )
 
-    assert any(getattr(component, "href", None) == "/es/importar" for component in components)
+    assert upload_link.className == "nav-link"
     assert not any(
         "nav-admin-cta" in getattr(component, "className", "") for component in components
     )
+
+    active_components = list(_walk(navigation.build_navbar(active="upload")))
+    active_upload_link = next(
+        component
+        for component in active_components
+        if getattr(component, "href", None) == "/es/importar"
+    )
+    assert active_upload_link.className == "nav-link is-active"
 
 
 def test_navbar_icon_controls_have_initial_accessible_names(monkeypatch) -> None:

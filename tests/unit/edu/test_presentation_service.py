@@ -77,9 +77,7 @@ def test_lists_supported_root_and_nested_files_and_ignores_other_formats(monkeyp
     assert result[0].display_name == "Introduccion colectivo lgbtiq 2026"
     assert result[0].file_type == "PowerPoint"
     assert result[1].file_type == "PDF"
-    assert result[0].download_url.endswith(
-        "?download=introduccion_colectivo_lgbtiq_2026.pptx"
-    )
+    assert result[0].download_url.endswith("?download=introduccion_colectivo_lgbtiq_2026.pptx")
     assert client.list_calls == [{"Bucket": "slideshow-didactics", "MaxKeys": 1000}]
 
 
@@ -132,7 +130,9 @@ def test_private_bucket_uses_short_lived_signed_url_without_changing_path(monkey
     assert expires == presentation_service.SIGNED_URL_TTL_SECONDS
 
 
-@pytest.mark.parametrize("unsafe_path", ["../secret.pdf", "folder/../secret.pdf", "https://x/a.pdf"])
+@pytest.mark.parametrize(
+    "unsafe_path", ["../secret.pdf", "folder/../secret.pdf", "https://x/a.pdf"]
+)
 def test_unsafe_storage_paths_are_not_exposed(monkeypatch, unsafe_path) -> None:
     client = StorageClient(
         [{"Contents": [{"Key": unsafe_path, "Size": 100}], "IsTruncated": False}]

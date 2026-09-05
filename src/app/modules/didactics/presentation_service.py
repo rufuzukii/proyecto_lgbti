@@ -157,9 +157,7 @@ def _download_url(
                 Params={
                     "Bucket": bucket,
                     "Key": storage_path,
-                    "ResponseContentDisposition": (
-                        f'attachment; filename="{safe_filename}"'
-                    ),
+                    "ResponseContentDisposition": (f'attachment; filename="{safe_filename}"'),
                 },
                 ExpiresIn=SIGNED_URL_TTL_SECONDS,
             )
@@ -181,11 +179,7 @@ def _bucket_is_public() -> bool:
 
 def _clean_storage_path(value: object) -> str:
     path = str(value or "").strip().replace("\\", "/").lstrip("/")
-    if (
-        not path
-        or "://" in path
-        or any(part in {"", ".", ".."} for part in path.split("/"))
-    ):
+    if not path or "://" in path or any(part in {"", ".", ".."} for part in path.split("/")):
         return ""
     return path
 

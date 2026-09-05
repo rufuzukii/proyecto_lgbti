@@ -135,9 +135,7 @@ def test_fra_unique_identity_includes_value_bucket(monkeypatch) -> None:
         "docente_games_by_type",
     }
     owner_index = next(
-        index
-        for index in docente_indexes
-        if index.document.get("name") == "docente_games_by_owner"
+        index for index in docente_indexes if index.document.get("name") == "docente_games_by_owner"
     )
     assert list(owner_index.document["key"].items()) == [
         ("owner_user_id", 1),
@@ -161,9 +159,7 @@ def test_removes_only_explicitly_obsolete_indexes(monkeypatch) -> None:
     )
     monkeypatch.setattr(mongo_indexes, "get_mongo_collection", lambda _name: collection)
 
-    mongo_indexes._drop_obsolete_indexes(
-        "Indicator_fra", {"fra_category_question_code_year"}
-    )
+    mongo_indexes._drop_obsolete_indexes("Indicator_fra", {"fra_category_question_code_year"})
 
     assert collection.dropped == ["fra_category_question_code_year"]
     assert any(index["name"] == "fra_category_year_question_code" for index in collection.indexes)

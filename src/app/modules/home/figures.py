@@ -75,9 +75,9 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
     countries = _countries(document)
     countries = [country for country in countries if _iso3_location(country)]
     for country in countries:
-        country["country"] = country_labels(
-            country["country_code"], country["country"]
-        )[1 if language == "en" else 0]
+        country["country"] = country_labels(country["country_code"], country["country"])[
+            1 if language == "en" else 0
+        ]
     figure = go.Figure()
     if countries:
         for country in countries:
@@ -151,11 +151,6 @@ def build_ilga_choropleth(document: dict[str, Any] | None, *, language: str = "e
         uirevision="ilga-europe",
     )
     return figure
-
-
-
-
-
 
 
 def build_fra_choropleth(
@@ -270,11 +265,6 @@ def build_fra_choropleth(
     return figure
 
 
-
-
-
-
-
 def _countries(document: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(document, dict):
         return []
@@ -341,7 +331,6 @@ def _fra_map_answers(
         }
         for row in rows_by_country.values()
     ]
-
 
 
 def _fra_answer_rows(

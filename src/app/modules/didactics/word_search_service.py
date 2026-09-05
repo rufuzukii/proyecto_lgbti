@@ -102,9 +102,7 @@ def generate_word_search(
         for word in ordered_words:
             candidates = [
                 candidate
-                for candidate in _placement_candidates(
-                    word, grid, rows, columns, direction_names
-                )
+                for candidate in _placement_candidates(word, grid, rows, columns, direction_names)
                 # A new word must contribute a cell of its own. This rejects
                 # placements such as GENERO entirely inside AGENERO.
                 if candidate[0] < len(word)
@@ -125,9 +123,7 @@ def generate_word_search(
                     "cells": [list(cell) for cell in cells],
                 }
             )
-        if len(placements) == len(words_to_place) and placements_have_exclusive_cells(
-            placements
-        ):
+        if len(placements) == len(words_to_place) and placements_have_exclusive_cells(placements):
             randomizer = attempt_randomizer
             break
     else:

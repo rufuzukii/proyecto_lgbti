@@ -40,9 +40,7 @@ def test_dropdown_options_preserve_stable_input_order() -> None:
 
 
 def test_option_value_is_cleared_when_new_options_do_not_contain_it() -> None:
-    options = build_dropdown_options(
-        [{"label": "Social attitudes", "value": "social-attitudes"}]
-    )
+    options = build_dropdown_options([{"label": "Social attitudes", "value": "social-attitudes"}])
 
     assert option_value_or_none(options, "old-category-indicator") is None
     assert option_value_or_none(options, "social-attitudes") == "social-attitudes"

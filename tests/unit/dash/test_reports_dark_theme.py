@@ -34,9 +34,9 @@ def test_reports_dark_theme_covers_dash_controls_and_preview_content() -> None:
 
 def test_report_chart_narratives_keep_black_text_in_dark_mode() -> None:
     css = _reports_css()
-    rule = css.split(
-        'html[data-theme="dark"] textarea.reports-chart-narrative,', 1
-    )[1].split("}", 1)[0]
+    rule = css.split('html[data-theme="dark"] textarea.reports-chart-narrative,', 1)[1].split(
+        "}", 1
+    )[0]
 
     assert 'body[data-theme="dark"] textarea.reports-chart-narrative' in rule
     assert 'html[data-theme="dark"] textarea.reports-section-narrative' in rule

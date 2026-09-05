@@ -178,9 +178,7 @@ def test_upload_callback_allows_an_authenticated_professional_profile(monkeypatc
     )
     monkeypatch.setattr(upload_page, "rate_limit_key", lambda **_kwargs: "upload-key")
 
-    result, _reset = callback(
-        _data_uri(b"%PDF-1.4\n%%EOF"), "report.pdf", "FELGTB"
-    )
+    result, _reset = callback(_data_uri(b"%PDF-1.4\n%%EOF"), "report.pdf", "FELGTB")
 
     assert result.to_plotly_json()["props"]["children"] == "ok"
 

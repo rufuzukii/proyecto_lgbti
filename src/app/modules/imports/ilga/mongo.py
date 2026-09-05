@@ -33,9 +33,7 @@ class IlgaWriteSummary:
 
     @property
     def inserted_countries(self) -> int:
-        return sum(
-            outcome.countries for outcome in self.outcomes if outcome.status == "inserted"
-        )
+        return sum(outcome.countries for outcome in self.outcomes if outcome.status == "inserted")
 
 
 def insert_indicator_ilga_json(file_json: dict[str, Any] | list[Any]) -> int:
@@ -94,8 +92,7 @@ def write_indicator_ilga_json(
         if int(result.inserted_count) != len(inserts):
             raise RuntimeError("incomplete_ilga_bulk_write")
         countries_by_year = {
-            int(document["year"]): len(document["countries"])
-            for document in prepared_documents
+            int(document["year"]): len(document["countries"]) for document in prepared_documents
         }
         outcomes.extend(
             IlgaWriteOutcome(
@@ -161,7 +158,5 @@ def _document_differences(
     prepared_payload = {key: value for key, value in prepared.items() if key not in ignored}
     fields = sorted(set(existing_payload) | set(prepared_payload))
     return tuple(
-        field
-        for field in fields
-        if existing_payload.get(field) != prepared_payload.get(field)
+        field for field in fields if existing_payload.get(field) != prepared_payload.get(field)
     )

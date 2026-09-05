@@ -68,5 +68,10 @@ def test_current_ilga_source_aliases_all_resolve_to_specific_bilingual_copy() ->
         assert spanish["id"] == expected_id
         assert spanish["known"] == "true"
         assert english["known"] == "true"
-        assert spanish["summary"] != "Consulta el grado de cumplimiento de este indicador en el país seleccionado."
-        assert english["summary"] != "View this indicator's compliance level for the selected country."
+        assert (
+            spanish["summary"]
+            != "Consulta el grado de cumplimiento de este indicador en el país seleccionado."
+        )
+        assert (
+            english["summary"] != "View this indicator's compliance level for the selected country."
+        )

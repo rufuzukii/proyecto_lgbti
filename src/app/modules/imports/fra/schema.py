@@ -98,6 +98,7 @@ def _fra_response_comparison_key(value: Any) -> str:
     normalized = unicodedata.normalize("NFKD", normalize_header(value)).casefold()
     return "".join(character for character in normalized if character.isalnum())
 
+
 FILTER_KEY_TO_LABEL = {
     "age_group": "Age",
     "minority_group": "Belonging to a minority group",
@@ -1184,9 +1185,7 @@ def _dataframe_from_fra_rows(rows: list[list[str]], *, header_row: int) -> pd.Da
         raise UnsupportedFraCsvSchemaError("fra_csv_header_contains_empty_columns")
     normalized_columns = [normalize_header(column) for column in columns]
     protected_duplicates = {"topic", "question", "question_code", "location", "country"}
-    repeated = {
-        column for column in normalized_columns if normalized_columns.count(column) > 1
-    }
+    repeated = {column for column in normalized_columns if normalized_columns.count(column) > 1}
     if repeated & protected_duplicates:
         raise UnsupportedFraCsvSchemaError("fra_csv_header_contains_duplicate_columns")
     unique_columns: list[str] = []

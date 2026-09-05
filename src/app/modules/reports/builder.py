@@ -346,8 +346,7 @@ def _charts(
     language = config.language
     page_ranges = _report_ranking_page_ranges(rows, selected, ranking_page_size)
     page_ranges_by_key = {
-        key: page_ranges
-        for key in ("ranking", "countries", "responses", "temporal")
+        key: page_ranges for key in ("ranking", "countries", "responses", "temporal")
     }
     map_builders: list[tuple[str, str, Any]] = []
     if config.source in {"fra", "combined"}:
@@ -415,9 +414,7 @@ def _charts(
                             indicator=indicator,
                             year=result.get("year"),
                         )
-                        for page in _iter_report_ranking_pages(
-                            rows, selected, ranking_page_size
-                        )
+                        for page in _iter_report_ranking_pages(rows, selected, ranking_page_size)
                     ),
                 ),
                 (
@@ -430,9 +427,7 @@ def _charts(
                             visible_countries=_page_country_codes(page),
                             language=language,
                         )
-                        for page in _iter_report_ranking_pages(
-                            rows, selected, ranking_page_size
-                        )
+                        for page in _iter_report_ranking_pages(rows, selected, ranking_page_size)
                     ),
                 ),
             ]
@@ -451,9 +446,7 @@ def _charts(
                             indicator=indicator,
                             year=result.get("year"),
                         )
-                        for page in _iter_report_ranking_pages(
-                            rows, selected, ranking_page_size
-                        )
+                        for page in _iter_report_ranking_pages(rows, selected, ranking_page_size)
                     ),
                 ),
                 (
@@ -466,9 +459,7 @@ def _charts(
                             language,
                             visible_countries=_page_country_codes(page),
                         )
-                        for page in _iter_report_ranking_pages(
-                            rows, selected, ranking_page_size
-                        )
+                        for page in _iter_report_ranking_pages(rows, selected, ranking_page_size)
                     ),
                 ),
             ]
@@ -609,9 +600,7 @@ def _charts(
                 else result.get("year")
             )
             figure_indicator = (
-                _t(language, "Ranking total", "Overall ranking")
-                if key == "map_ilga"
-                else indicator
+                _t(language, "Ranking total", "Overall ranking") if key == "map_ilga" else indicator
             )
             figure_started = time.perf_counter()
             prepare_figure_for_export(

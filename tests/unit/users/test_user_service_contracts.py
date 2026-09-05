@@ -135,7 +135,10 @@ def test_user_lookup_handles_blank_missing_and_security_state(monkeypatch) -> No
     ("payload", "error"),
     [
         (SimpleNamespace(email="bad", name="Alex", organization=None), "invalid_email"),
-        (SimpleNamespace(email="alex@example.com", name="A", organization=None), "invalid_username"),
+        (
+            SimpleNamespace(email="alex@example.com", name="A", organization=None),
+            "invalid_username",
+        ),
         (
             SimpleNamespace(email="alex@example.com", name="Alex", organization="x" * 121),
             "invalid_organization",
@@ -203,7 +206,9 @@ def test_create_user_maps_missing_row_and_security_storage(monkeypatch) -> None:
         (_row(password_hash=None), {}, "invalid_current_password"),
     ],
 )
-def test_profile_update_rejects_missing_user_or_password(monkeypatch, record, kwargs, error) -> None:
+def test_profile_update_rejects_missing_user_or_password(
+    monkeypatch, record, kwargs, error
+) -> None:
     mapped = service._row_to_user_record(record) if record else None
     monkeypatch.setattr(service, "get_user_record", lambda _user_id: mapped)
     with pytest.raises(ValueError, match=error):

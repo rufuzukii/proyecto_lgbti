@@ -5,14 +5,15 @@ import math
 
 def mean_absolute_error(actual: list[float], predicted: list[float]) -> float:
     _validate_metric_inputs(actual, predicted)
-    return sum(abs(observed - estimate) for observed, estimate in zip(actual, predicted, strict=True)) / len(actual)
+    return sum(
+        abs(observed - estimate) for observed, estimate in zip(actual, predicted, strict=True)
+    ) / len(actual)
 
 
 def root_mean_squared_error(actual: list[float], predicted: list[float]) -> float:
     _validate_metric_inputs(actual, predicted)
     squared = [
-        (observed - estimate) ** 2
-        for observed, estimate in zip(actual, predicted, strict=True)
+        (observed - estimate) ** 2 for observed, estimate in zip(actual, predicted, strict=True)
     ]
     return math.sqrt(sum(squared) / len(squared))
 
@@ -24,8 +25,7 @@ def r_squared(actual: list[float], predicted: list[float]) -> float | None:
     if math.isclose(total, 0.0):
         return None
     residual = sum(
-        (observed - estimate) ** 2
-        for observed, estimate in zip(actual, predicted, strict=True)
+        (observed - estimate) ** 2 for observed, estimate in zip(actual, predicted, strict=True)
     )
     return 1.0 - residual / total
 

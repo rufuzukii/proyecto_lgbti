@@ -227,9 +227,7 @@ def test_legal_statistics_reuses_one_query_for_all_countries_and_years(monkeypat
         "indicator_id",
         "source",
     }.issubset(result["history"][0])
-    normalized_history = {
-        row["year"] for row in result["history"] if row["normalization_applied"]
-    }
+    normalized_history = {row["year"] for row in result["history"] if row["normalization_applied"]}
     assert normalized_history == {2011, 2012}
 
 

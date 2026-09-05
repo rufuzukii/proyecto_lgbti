@@ -40,7 +40,9 @@ def test_country_horizon_and_language_round_trip_updates_entire_methodology(monk
     monkeypatch.setattr(
         trend_callbacks,
         "get_trend_scope",
-        lambda: TrendScope(countries=(("ES", "Spain"), ("FR", "France")), years=tuple(range(2011, 2024))),
+        lambda: TrendScope(
+            countries=(("ES", "Spain"), ("FR", "France")), years=tuple(range(2011, 2024))
+        ),
     )
     monkeypatch.setattr(
         trend_callbacks,

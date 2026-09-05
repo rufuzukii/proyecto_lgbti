@@ -142,9 +142,7 @@ def test_response_details_can_limit_rendering_without_changing_selection_semanti
         visible_countries=["ES", "DE"],
     )
 
-    assert {
-        country for trace in figure.data for country in (cast(Any, trace).y or [])
-    } == {
+    assert {country for trace in figure.data for country in (cast(Any, trace).y or [])} == {
         "España",
         "Alemania",
     }

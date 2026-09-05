@@ -173,9 +173,7 @@ def test_valid_collisions_share_only_matching_letters() -> None:
 
 def test_contained_words_keep_at_least_one_exclusive_cell() -> None:
     # Arrange / Act
-    generated = generate_word_search(
-        ["GENERO", "AGENERO"], 10, 10, seed=11, directions=["right"]
-    )
+    generated = generate_word_search(["GENERO", "AGENERO"], 10, 10, seed=11, directions=["right"])
 
     # Assert
     assert set(generated["words_used"]) == {"GENERO", "AGENERO"}

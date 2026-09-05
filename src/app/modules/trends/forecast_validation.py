@@ -106,7 +106,7 @@ def evaluate_candidate_models(
                     minimum_training_size=common_training_size,
                 )
             )
-        except (ValueError, np.linalg.LinAlgError):
+        except ValueError, np.linalg.LinAlgError:
             continue
     return tuple(results)
 

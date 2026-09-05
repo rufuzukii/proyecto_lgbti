@@ -24,12 +24,13 @@ TIMEOUT_SECONDS = 12
 
 def _catalog_urls() -> tuple[str, ...]:
     payload = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-    return tuple(
-        sorted({source["url"] for term in payload for source in term.get("sources", [])})
-    )
+    return tuple(sorted({source["url"] for term in payload for source in term.get("sources", [])}))
 
 
 def _request(url: str, method: str):
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError(f"Unsupported source URL: {url}")
     request = Request(
         url,
         method=method,
@@ -56,7 +57,7 @@ def _check(url: str) -> tuple[bool, str]:
             status = response.status
         secure = urlsplit(final_url).scheme == "https"
         return secure and status < 400, f"{status}, final={final_url}"
-    except (HTTPError, URLError, TimeoutError) as error:
+    except (HTTPError, URLError, TimeoutError, ValueError) as error:
         return False, f"{type(error).__name__}: {error}"
 
 

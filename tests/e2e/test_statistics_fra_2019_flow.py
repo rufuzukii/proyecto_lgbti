@@ -33,23 +33,23 @@ def test_survey_ii_keeps_nonexistent_segmentations_visible_and_disabled(monkeypa
         statistics_page,
         "_category_options",
         lambda year, _language: (
-            [{"label": "Discrimination", "value": "Discrimination"}]
-            if year == 2019
-            else []
+            [{"label": "Discrimination", "value": "Discrimination"}] if year == 2019 else []
         ),
     )
     monkeypatch.setattr(
         statistics_page,
         "get_fra_mongo_indicators_by_category",
-        lambda category, year: [
-            type(
-                "Indicator",
-                (),
-                {"code": "DEX1", "question": "Survey II question"},
-            )()
-        ]
-        if (category, year) == ("Discrimination", 2019)
-        else [],
+        lambda category, year: (
+            [
+                type(
+                    "Indicator",
+                    (),
+                    {"code": "DEX1", "question": "Survey II question"},
+                )()
+            ]
+            if (category, year) == ("Discrimination", 2019)
+            else []
+        ),
     )
     monkeypatch.setattr(
         statistics_page,
@@ -82,9 +82,7 @@ def test_survey_ii_keeps_nonexistent_segmentations_visible_and_disabled(monkeypa
 
     payload = control_result[4]
     demographic_value_options, demographic_value = demographic_values("All", payload, None)
-    identity_options, identity_type, identity_class = identity_state(
-        "All", payload, "es", None
-    )
+    identity_options, identity_type, identity_class = identity_state("All", payload, "es", None)
     identity_value_options, identity_value = identity_values("All", payload, "All", None)
 
     assert demographic_value == "All"

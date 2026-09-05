@@ -153,8 +153,12 @@ def build_admin_users_layout(
                                         **dash_attrs(
                                             {
                                                 "data-admin-user-feedback": "true",
-                                                "data-success-es": STATUS_MESSAGES["user_updated"][0],
-                                                "data-success-en": STATUS_MESSAGES["user_updated"][1],
+                                                "data-success-es": STATUS_MESSAGES["user_updated"][
+                                                    0
+                                                ],
+                                                "data-success-en": STATUS_MESSAGES["user_updated"][
+                                                    1
+                                                ],
                                                 "data-error-es": ERROR_MESSAGES["update_failed"][0],
                                                 "data-error-en": ERROR_MESSAGES["update_failed"][1],
                                                 "aria-live": "polite",
@@ -611,8 +615,7 @@ def _pagination(search: str, page: int, page_count: int) -> Component | str:
             html.A(
                 text("Siguiente", "Next"),
                 href=page_href(page + 1) if page < page_count else None,
-                className="admin-pagination-link"
-                + (" is-disabled" if page >= page_count else ""),
+                className="admin-pagination-link" + (" is-disabled" if page >= page_count else ""),
                 **dash_attrs(
                     {
                         "aria-disabled": str(page >= page_count).lower(),

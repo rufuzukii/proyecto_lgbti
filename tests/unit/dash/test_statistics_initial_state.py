@@ -101,12 +101,9 @@ def test_statistics_header_places_fixed_guidance_before_report_action() -> None:
 
     title = "Estadísticas europeas LGBTIQ+"
     introduction = (
-        "Explora la realidad sociodemográfica, la protección legal y la relación "
-        "entre ambas."
+        "Explora la realidad sociodemográfica, la protección legal y la relación entre ambas."
     )
-    instruction = (
-        "Para generar una respuesta, selecciona una Categoría y un Indicador."
-    )
+    instruction = "Para generar una respuesta, selecciona una Categoría y un Indicador."
     report_action = "stats-create-report-link"
 
     assert title in rendered
@@ -218,9 +215,7 @@ def test_statistics_distinguishes_initial_empty_and_ready_states() -> None:
         "C9_E",
         "en",
     )
-    error = callback(
-        {"status": "error", "ranking": []}, None, None, "Education", "C9_E", "es"
-    )
+    error = callback({"status": "error", "ranking": []}, None, None, "Education", "C9_E", "es")
     ready = callback(
         {"status": "ok", "ranking": [{"value": 1}]},
         None,
@@ -339,9 +334,7 @@ def test_indicator_catalog_prevents_initial_prompt_during_category_loading() -> 
 
     assert 'id="stats-indicator-catalog-store"' in source
     assert "indicatorCatalogReady" in source
-    assert source.index('phase = "loading_indicators"') < source.index(
-        'phase = "initial"'
-    )
+    assert source.index('phase = "loading_indicators"') < source.index('phase = "initial"')
     assert 'phase = "awaiting_indicator"' in source
 
 
@@ -416,6 +409,7 @@ def test_changing_survey_resets_category_and_exposes_empty_catalog(monkeypatch) 
         },
     )
 
+
 def test_statistics_dropdown_ids_are_unique_and_do_not_persist_stale_values(monkeypatch) -> None:
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     layout = statistics_page.build_statistics_layout()
@@ -431,11 +425,7 @@ def test_statistics_dropdown_ids_are_unique_and_do_not_persist_stale_values(monk
 def test_critical_statistics_callback_ids_exist_once_in_page_layout(monkeypatch) -> None:
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     layout = statistics_page.build_statistics_layout()
-    ids = [
-        item.id
-        for item in _walk(layout)
-        if isinstance(getattr(item, "id", None), str)
-    ]
+    ids = [item.id for item in _walk(layout) if isinstance(getattr(item, "id", None), str)]
     counts = Counter(ids)
 
     assert counts["stats-map-graph"] == 1

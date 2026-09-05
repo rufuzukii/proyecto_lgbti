@@ -75,7 +75,7 @@ def _apply_update(document: dict[str, Any], update: dict[str, Any], *, inserting
     if inserting:
         document.update(deepcopy(update.get("$setOnInsert") or {}))
     document.update(deepcopy(update.get("$set") or {}))
-    for key in (update.get("$unset") or {}):
+    for key in update.get("$unset") or {}:
         document.pop(key, None)
     for key, increment in (update.get("$inc") or {}).items():
         document[key] = int(document.get(key) or 0) + int(increment)
@@ -171,8 +171,14 @@ def test_many_security_states_deduplicate_ids_and_fill_legacy_defaults(monkeypat
     [
         (lambda: account_security.initialize_new_account("user"), "account_security_unavailable"),
         (lambda: account_security.get_account_security("user"), "account_security_unavailable"),
-        (lambda: account_security.get_account_security_many(["user"]), "account_security_unavailable"),
-        (lambda: account_security.increment_session_version("user"), "account_security_unavailable"),
+        (
+            lambda: account_security.get_account_security_many(["user"]),
+            "account_security_unavailable",
+        ),
+        (
+            lambda: account_security.increment_session_version("user"),
+            "account_security_unavailable",
+        ),
     ],
 )
 def test_security_storage_errors_are_mapped(monkeypatch, operation, message: str) -> None:

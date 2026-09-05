@@ -89,7 +89,7 @@ def _managed_browser_version(path: Path) -> str:
     version_tag = path.parent.parent / "version_tag.txt"
     try:
         return version_tag.read_text(encoding="utf-8").splitlines()[0].strip()
-    except (IndexError, OSError):
+    except IndexError, OSError:
         return ""
 
 

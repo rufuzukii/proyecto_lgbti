@@ -248,8 +248,7 @@ def _generate_report_pdf(
             "total_seconds": round(wait_seconds + time.perf_counter() - total_started, 4),
         }
         logger.info(
-            "report_generation_completed source=%s charts=%s images=%s pages=%s "
-            "total_ms=%.2f",
+            "report_generation_completed source=%s charts=%s images=%s pages=%s total_ms=%.2f",
             configuration.source,
             len(content.charts),
             image_count,

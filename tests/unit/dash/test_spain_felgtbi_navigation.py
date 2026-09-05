@@ -31,11 +31,13 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     monkeypatch.setattr(
         spain,
         "get_felgtbi_document_options",
-        lambda **kwargs: document_queries.append(kwargs)
-        or [
-            {"label": "Estado del odio", "value": "doc-odio"},
-            {"label": "El voto en la comunidad LGTBI+", "value": "doc-voto"},
-        ],
+        lambda **kwargs: (
+            document_queries.append(kwargs)
+            or [
+                {"label": "Estado del odio", "value": "doc-odio"},
+                {"label": "El voto en la comunidad LGTBI+", "value": "doc-voto"},
+            ]
+        ),
     )
     monkeypatch.setattr(spain, "build_navbar", lambda **_kwargs: None)
 
@@ -69,8 +71,7 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
         if item is not document_label
         and hasattr(item, "to_plotly_json")
         and item.to_plotly_json()["props"].get("role") == "group"
-        and item.to_plotly_json()["props"].get("aria-labelledby")
-        == "spain-document-select-label"
+        and item.to_plotly_json()["props"].get("aria-labelledby") == "spain-document-select-label"
     )
     assert document_group.className.endswith("spain-document-field")
     assert indicator.value is None
@@ -140,9 +141,9 @@ def test_document_selector_never_queries_all_years_without_a_valid_year(monkeypa
 
 def test_spain_indicator_dropdown_keeps_its_natural_height() -> None:
     css = Path("src/app/web/assets/statistics.css").read_text(encoding="utf-8")
-    selector_rule = css.split(".spain-topic-selector-row {", maxsplit=1)[1].split(
-        "}", maxsplit=1
-    )[0]
+    selector_rule = css.split(".spain-topic-selector-row {", maxsplit=1)[1].split("}", maxsplit=1)[
+        0
+    ]
 
     assert "align-items: start;" in selector_rule
     assert "align-items: stretch;" not in selector_rule

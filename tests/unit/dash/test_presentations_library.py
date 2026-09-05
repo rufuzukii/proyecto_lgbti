@@ -116,9 +116,7 @@ def test_library_callback_renders_powerpoint_pdf_and_direct_downloads(
             download_url="https://project.supabase.co/storage/guia.pdf?download=guia.pdf",
         ),
     )
-    monkeypatch.setattr(
-        didactica_page, "list_didactic_presentations", lambda: presentations
-    )
+    monkeypatch.setattr(didactica_page, "list_didactic_presentations", lambda: presentations)
     callback = _callback(dash_app, "load_didactic_presentations")
 
     children, list_class, retry_class, state = callback(1, 0)

@@ -108,9 +108,7 @@ def test_document_label_prefers_pdf_title_and_cleans_technical_filename() -> Non
         "1b845c_FINAL_2025.pdf",
         "20 años de matrimonio igualitario",
     )
-    fallback = clean_felgtbi_document_label(
-        "Informe-socio-economico_estado-lgrbi-2025_FINAL.pdf"
-    )
+    fallback = clean_felgtbi_document_label("Informe-socio-economico_estado-lgrbi-2025_FINAL.pdf")
 
     # Assert
     assert official == "20 años de matrimonio igualitario"

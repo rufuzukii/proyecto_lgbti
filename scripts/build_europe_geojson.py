@@ -12,8 +12,7 @@ from shapely.geometry import box
 from app.shared.data.geography import ISO2_TO_ISO3
 
 NATURAL_EARTH_URL = (
-    "https://naturalearth.s3.amazonaws.com/50m_cultural/"
-    "ne_50m_admin_0_countries.zip"
+    "https://naturalearth.s3.amazonaws.com/50m_cultural/ne_50m_admin_0_countries.zip"
 )
 DEFAULT_OUTPUT = Path("src/app/shared/data/resources/europe_countries.geojson")
 # Keep the European parts of transcontinental countries and remove overseas
@@ -49,9 +48,7 @@ def build_europe_geojson(source: str, output: Path, *, tolerance: float = 0.02) 
     europe.geometry = shapely.set_precision(geometry_values, grid_size=0.00001)
     # Plotly's spherical renderer expects clockwise exterior rings. Enforce the
     # orientation so a country is not interpreted as a hole in the world.
-    europe.geometry = shapely.orient_polygons(
-        europe.geometry.to_numpy(), exterior_cw=True
-    )
+    europe.geometry = shapely.orient_polygons(europe.geometry.to_numpy(), exterior_cw=True)
     if europe.geometry.is_empty.any() or not europe.geometry.is_valid.all():
         raise ValueError("Geometry simplification produced empty or invalid countries")
 

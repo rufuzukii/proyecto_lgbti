@@ -19,9 +19,7 @@ from app.shared.data.source_attribution import ILGA_ANNUAL_REVIEW_2026_PDF_URL
 ILGA_ANNUAL_REVIEW_2026_URL = ILGA_ANNUAL_REVIEW_2026_PDF_URL
 MISSING_STATUS_SUMMARY_ES = "Todavía no hay información disponible para este país."
 MISSING_STATUS_SUMMARY_EN = "No information is available for this country yet."
-COUNTRY_STATUS_EN_CATALOG_PATH = (
-    Path(__file__).with_name("data") / "country_status_2026_en.json"
-)
+COUNTRY_STATUS_EN_CATALOG_PATH = Path(__file__).with_name("data") / "country_status_2026_en.json"
 _TEXT_FIELDS = (
     "title",
     "summary",
@@ -115,9 +113,7 @@ def _merge_versioned_english_content(record: dict[str, Any]) -> None:
         translations = record.get(f"{key}_i18n")
         if not isinstance(translations, dict):
             translations = {}
-        if translations.get("en") or not _source_matches(
-            record.get(key), fingerprints.get(key)
-        ):
+        if translations.get("en") or not _source_matches(record.get(key), fingerprints.get(key)):
             continue
         english_text = _plain_text(catalog_record.get(key))
         if english_text:
@@ -128,9 +124,7 @@ def _merge_versioned_english_content(record: dict[str, Any]) -> None:
         translations = record.get(f"{key}_i18n")
         if not isinstance(translations, dict):
             translations = {}
-        if translations.get("en") or not _source_matches(
-            record.get(key), fingerprints.get(key)
-        ):
+        if translations.get("en") or not _source_matches(record.get(key), fingerprints.get(key)):
             continue
         english_items = _plain_text_list(catalog_record.get(key))
         if english_items:
@@ -141,27 +135,30 @@ def _merge_versioned_english_content(record: dict[str, Any]) -> None:
 def _source_matches(value: Any, expected_fingerprint: Any) -> bool:
     if not isinstance(expected_fingerprint, str) or not expected_fingerprint:
         return False
-    return hashlib.sha256(
-        json.dumps(
-            value,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest() == expected_fingerprint
+    return (
+        hashlib.sha256(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        == expected_fingerprint
+    )
 
 
 @lru_cache(maxsize=1)
 def _load_english_catalog() -> tuple[int | None, dict[str, dict[str, Any]]]:
     try:
         payload = json.loads(COUNTRY_STATUS_EN_CATALOG_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except OSError, json.JSONDecodeError:
         logger.exception("country_status_english_catalog_load_failed")
         return None, {}
 
     try:
         year = int(payload.get("year"))
-    except (AttributeError, TypeError, ValueError):
+    except AttributeError, TypeError, ValueError:
         logger.error("country_status_english_catalog_invalid_year")
         return None, {}
     raw_records = payload.get("records")

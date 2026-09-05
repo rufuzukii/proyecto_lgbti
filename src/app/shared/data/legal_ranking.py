@@ -268,7 +268,7 @@ def _sort_text(value: str) -> str:
 def _clean_year(value: int | str | None) -> int | None:
     try:
         return int(value) if value is not None and str(value).strip() else None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 

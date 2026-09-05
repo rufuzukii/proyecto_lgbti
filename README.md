@@ -88,6 +88,9 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
+`pyproject.toml` es la única fuente de dependencias y configuración de empaquetado, tanto en
+local como en Render.
+
 ### Exportación de gráficas para informes
 
 En local, Kaleido utiliza un Chrome o Chromium ya instalado y detectable. El diagnóstico
@@ -159,11 +162,15 @@ uvicorn app.api:app
 ## Tests
 
 ```bash
-python -m compileall .
+python -m compileall src scripts tests
 python -m pytest
 python -m pytest --cov=app --cov-report=term-missing
 python -m pyright
 ruff check .
+ruff format --check .
+python -m bandit -q -lll -r src scripts
+python -m vulture src scripts tests --min-confidence 90
+python -m pip_audit
 ```
 
 `python -m pytest tests/smoke` ejecuta comprobaciones de humo con el cliente Flask local; no despliega ni valida el servicio remoto de Render. La comprobación de producción se realiza contra la URL pública después del despliegue.

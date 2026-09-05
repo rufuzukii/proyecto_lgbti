@@ -121,9 +121,7 @@ def infer_indicator_semantics(question: Any, answer: Any) -> dict[str, str]:
     direction = "unknown"
     if question_tone == "adverse" and answer_polarity == "affirmative":
         direction = "adverse"
-    elif (
-        question_tone == "adverse" and answer_polarity == "negative"
-    ) or (
+    elif (question_tone == "adverse" and answer_polarity == "negative") or (
         question_tone == "favourable" and answer_polarity == "affirmative"
     ):
         direction = "favourable"
@@ -181,12 +179,8 @@ def build_combined_analysis(
         list(ilga_result.get("ranking") or []),
     )
     metrics = combined_metrics(rows)
-    semantics = infer_indicator_semantics(
-        fra_result.get("indicator"), fra_result.get("answer")
-    )
-    eligibility = quadrant_eligibility(
-        fra_result.get("indicator"), fra_result.get("answer")
-    )
+    semantics = infer_indicator_semantics(fra_result.get("indicator"), fra_result.get("answer"))
+    eligibility = quadrant_eligibility(fra_result.get("indicator"), fra_result.get("answer"))
     supported = get_combined_analysis_capabilities(
         question=fra_result.get("indicator"),
         answer=fra_result.get("answer"),
@@ -236,13 +230,9 @@ def get_combined_analysis_capabilities(
     )
     has_direction = direction in {"favourable", "adverse"}
     quadrants = bool(
-        quadrant_result.get("eligible")
-        and has_direction
-        and paired_n >= MINIMUM_ANALYSIS_N
+        quadrant_result.get("eligible") and has_direction and paired_n >= MINIMUM_ANALYSIS_N
     )
-    ranking_gap = bool(
-        quadrant_result.get("eligible") and has_direction and paired_n >= 2
-    )
+    ranking_gap = bool(quadrant_result.get("eligible") and has_direction and paired_n >= 2)
     return {
         "scatter": False,
         "quadrants": quadrants,
@@ -253,11 +243,7 @@ def get_combined_analysis_capabilities(
         "semantic_direction": direction,
         "quadrant_reason": (
             "insufficient_sample"
-            if (
-                quadrant_result.get("eligible")
-                and has_direction
-                and paired_n < MINIMUM_ANALYSIS_N
-            )
+            if (quadrant_result.get("eligible") and has_direction and paired_n < MINIMUM_ANALYSIS_N)
             else str(quadrant_result.get("reason") or "ambiguous_semantic_direction")
             if not (quadrant_result.get("eligible") and has_direction)
             else ""
@@ -326,9 +312,7 @@ def classify_quadrant(
     }
 
 
-def quadrant_rows(
-    rows: list[dict[str, Any]], semantic_direction: str
-) -> list[dict[str, Any]]:
+def quadrant_rows(rows: list[dict[str, Any]], semantic_direction: str) -> list[dict[str, Any]]:
     metrics = combined_metrics(rows)
     fra_median = (metrics.get("fra") or {}).get("median")
     ilga_median = (metrics.get("ilga") or {}).get("median")
@@ -346,9 +330,7 @@ def quadrant_rows(
     return classified
 
 
-def ranking_position_rows(
-    rows: list[dict[str, Any]], semantic_direction: str
-) -> dict[str, Any]:
+def ranking_position_rows(rows: list[dict[str, Any]], semantic_direction: str) -> dict[str, Any]:
     """Compare dense legal and social ranks without breaking numeric ties.
 
     Legal scores always rank from high to low. FRA ranks from high to low for
@@ -473,12 +455,12 @@ def combined_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         return _empty_combined_metrics()
     for column in ("fra_value", "ilga_value"):
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
-    frame = frame.replace([np.inf, -np.inf], np.nan).dropna(
-        subset=["fra_value", "ilga_value"]
-    )
+    frame = frame.replace([np.inf, -np.inf], np.nan).dropna(subset=["fra_value", "ilga_value"])
     n = len(frame)
-    sample_status = "insufficient" if n < MINIMUM_ANALYSIS_N else (
-        "exploratory" if n < NORMAL_ANALYSIS_N else "normal"
+    sample_status = (
+        "insufficient"
+        if n < MINIMUM_ANALYSIS_N
+        else ("exploratory" if n < NORMAL_ANALYSIS_N else "normal")
     )
     pearson = _correlation(frame, method="pearson") if n >= MINIMUM_ANALYSIS_N else None
     spearman = _correlation(frame, method="spearman") if n >= MINIMUM_ANALYSIS_N else None
@@ -499,8 +481,11 @@ def combined_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "correlation": preferred,
         "strength": strength,
         "association_direction": (
-            "positive" if preferred is not None and preferred > 0 else
-            "negative" if preferred is not None and preferred < 0 else "none"
+            "positive"
+            if preferred is not None and preferred > 0
+            else "negative"
+            if preferred is not None and preferred < 0
+            else "none"
         ),
         "trend_slope": slope,
         "trend_intercept": intercept,
@@ -570,7 +555,9 @@ def _matching_tone(value: str) -> str:
 
 def _semantic_key(value: Any) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or ""))
-    ascii_value = "".join(character for character in normalized if not unicodedata.combining(character))
+    ascii_value = "".join(
+        character for character in normalized if not unicodedata.combining(character)
+    )
     return re.sub(r"\s+", " ", ascii_value.casefold()).strip()
 
 
@@ -579,7 +566,7 @@ def _finite_float(value: Any) -> float | None:
         return None
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return number if math.isfinite(number) else None
 
@@ -587,5 +574,5 @@ def _finite_float(value: Any) -> float | None:
 def _safe_int(value: Any) -> int | None:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None

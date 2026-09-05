@@ -207,7 +207,9 @@ def create_dash_app() -> Dash:
             migrate_account_security_schema()
         except Exception:
             logger.warning("account_security_migration_failed", exc_info=True)
-        logger.info("mongo_index_initialization_skipped run_with=python_-m_app.infrastructure.mongo_indexes")
+        logger.info(
+            "mongo_index_initialization_skipped run_with=python_-m_app.infrastructure.mongo_indexes"
+        )
     _register_error_routes(app)
 
     login_manager = LoginManager()
@@ -696,6 +698,7 @@ def _register_auth_routes(app: Dash) -> None:
         window_seconds=int(os.getenv("AUTH_WINDOW_SECONDS", "300")),
         namespace="dash-auth",
     )
+
     @app.server.post("/auth/login")
     def login():
         next_path = _safe_next(request.form.get("next"), "/user")

@@ -184,9 +184,7 @@ def test_legacy_scales_keep_json_score_and_add_annual_metadata(
             {
                 "year": year,
                 "dataset": "ilga_rainbow_map",
-                "countries": [
-                    {"country": "Spain", "country_code": "ES", "criteria": score}
-                ],
+                "countries": [{"country": "Spain", "country_code": "ES", "criteria": score}],
             }
         ),
         file_name=f"rainbow-map-{year}.json",

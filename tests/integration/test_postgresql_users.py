@@ -40,7 +40,9 @@ def test_postgresql_users_schema_and_service_are_compatible(monkeypatch) -> None
             """
         ).fetchall()
         users = service.list_users_page(page=1, page_size=5)
-        role_rows = connection.execute("select distinct lower(user_type) from public.users").fetchall()
+        role_rows = connection.execute(
+            "select distinct lower(user_type) from public.users"
+        ).fetchall()
     finally:
         connection.close()
 

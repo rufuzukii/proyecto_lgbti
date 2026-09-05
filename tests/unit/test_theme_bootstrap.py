@@ -70,12 +70,8 @@ def test_light_theme_is_explicit_and_flat_across_dash_roots() -> None:
 
 
 def test_explicit_theme_never_depends_on_operating_system_preference() -> None:
-    styles = "\n".join(
-        path.read_text(encoding="utf-8") for path in ASSETS.rglob("*.css")
-    )
-    scripts = "\n".join(
-        path.read_text(encoding="utf-8") for path in ASSETS.rglob("*.js")
-    )
+    styles = "\n".join(path.read_text(encoding="utf-8") for path in ASSETS.rglob("*.css"))
+    scripts = "\n".join(path.read_text(encoding="utf-8") for path in ASSETS.rglob("*.js"))
     state = (ASSETS / "js" / "00_state.js").read_text(encoding="utf-8")
     theme = (ASSETS / "js" / "20_theme.js").read_text(encoding="utf-8")
 
@@ -105,7 +101,10 @@ def test_dark_theme_renders_dash_option_text_in_white() -> None:
     assert ':root[data-theme="dark"] span.dash-options-list-option-text' in styles
     assert 'body[data-theme="dark"] span.dash-options-list-option-text' in styles
     assert "color: #fff !important;" in styles
-    assert ':where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option' in styles
+    assert (
+        ':where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option'
+        in styles
+    )
     assert ".dash-options-list-option-wrapper" in styles
     assert "background-color: transparent;" in styles
 

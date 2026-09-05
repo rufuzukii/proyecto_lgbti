@@ -39,7 +39,7 @@ def test_dash_login_survives_navigation_when_proxy_identifier_changes(monkeypatc
             "csrf_token": "valid-csrf-token",
             "email": record.email,
             "password": "valid-password",
-                "next": "/es",
+            "next": "/es",
         },
         headers={
             "User-Agent": "session-regression-test",

@@ -37,7 +37,9 @@ class InMemoryFraCollection:
         identity_condition = query.get("answers.identity_key")
         if document is not None and isinstance(identity_condition, dict):
             excluded = set(identity_condition.get("$nin", []))
-            if any(answer.get("identity_key") in excluded for answer in document.get("answers", [])):
+            if any(
+                answer.get("identity_key") in excluded for answer in document.get("answers", [])
+            ):
                 document = None
         if document is None and upsert:
             document = dict(query)
@@ -104,7 +106,9 @@ class InMemoryFraCollection:
                 if key in {"category", "survey_year", "code"} and not isinstance(value, dict)
             )
         ]
-        if any("$group" in stage and isinstance(stage["$group"].get("_id"), dict) for stage in pipeline):
+        if any(
+            "$group" in stage and isinstance(stage["$group"].get("_id"), dict) for stage in pipeline
+        ):
             unique = {}
             for document in rows:
                 key = (
@@ -124,11 +128,11 @@ class InMemoryFraCollection:
 
 
 def _csv(value_spain: int = 62) -> str:
-    return f'''country,topic,question,answer,percentage,question_code
+    return f"""country,topic,question,answer,percentage,question_code
 Spain,Discrimination,Work > Felt discriminated at work,Yes,{value_spain},D1
 France,Discrimination,Work > Felt discriminated at work,Yes,48,D1
 Source:,"EU LGBTIQ Survey III, 2023",,,,
-'''
+"""
 
 
 def _query() -> FraStatisticsQuery:
@@ -145,15 +149,15 @@ def _query() -> FraStatisticsQuery:
 
 
 def _social_attitudes_csv() -> str:
-    return '''country,topic,question,answer,percentage,question_code
+    return """country,topic,question,answer,percentage,question_code
 Spain,Social attitudes and government response,Government response > Effectiveness of government,Yes,42.5,D5
 France,Social attitudes and government response,Government response > Effectiveness of government,Yes,38,D5
 Source:,"EU LGBTIQ Survey III, 2023",,,,
-'''
+"""
 
 
 def _ranked_reason_csv() -> str:
-    return '''country,topic,question,answer,percentage,question_code
+    return """country,topic,question,answer,percentage,question_code
 Spain,Living openly as LGBTIQ,Reason for housing difficulties > sexual orientation,1st,12,G22_A
 Spain,Living openly as LGBTIQ,Reason for housing difficulties > sexual orientation,2nd,8,G22_A
 Spain,Living openly as LGBTIQ,Reason for housing difficulties > sexual orientation,3rd,5,G22_A
@@ -163,17 +167,17 @@ France,Living openly as LGBTIQ,Reason for housing difficulties > sexual orientat
 France,Living openly as LGBTIQ,Reason for housing difficulties > sexual orientation,3rd,6,G22_A
 France,Living openly as LGBTIQ,Reason for housing difficulties > sexual orientation,Not Selected,75,G22_A
 Source:,"EU LGBTIQ Survey III, 2023",,,,
-'''
+"""
 
 
 def _education_bathroom_csv() -> str:
-    return '''country,topic,question,answer,Gender Expression,percentage,question_code
+    return """country,topic,question,answer,Gender Expression,percentage,question_code
 Spain,Education,Problems when going to bathroom and changing rooms at school,Always,Cisgender men,12,C9_E
 Spain,Education,Problems when going to bathroom and changing rooms at school,Never,,50,C9_E
 Spain,Education,Problems when going to bathroom and changing rooms at school,Often,,20,C9_E
 Spain,Education,Problems when going to bathroom and changing rooms at school,Rarely,,18,C9_E
 Source:,"EU LGBTIQ Survey III, 2023",,,,,
-'''
+"""
 
 
 def test_fra_import_normalization_persistence_and_statistics_query(monkeypatch) -> None:
@@ -330,7 +334,9 @@ def test_ranked_reason_csv_to_mongo_statistics_preserves_categorical_responses(
             )
         )
 
-    stored_answers = {answer["answer"] for document in collection.documents for answer in document["answers"]}
+    stored_answers = {
+        answer["answer"] for document in collection.documents for answer in document["answers"]
+    }
     assert stored_answers == {"1st", "2nd", "3rd", "Not Selected"}
     assert result["status"] == "ok"
     assert result["response_type"] == "ranked_reason"

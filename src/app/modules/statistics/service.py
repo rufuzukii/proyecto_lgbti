@@ -341,9 +341,7 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
     if not normalized:
         return _empty_ilga_analysis_dataframe()
 
-    resolved_rows, duplicate_groups, conflicting_groups = _resolve_ilga_analysis_rows(
-        normalized
-    )
+    resolved_rows, duplicate_groups, conflicting_groups = _resolve_ilga_analysis_rows(normalized)
     resolved = pd.DataFrame(resolved_rows)
     latest_names: dict[str, str] = {}
     latest_name_keys: dict[str, tuple[int, str, int, int]] = {}
@@ -543,9 +541,7 @@ def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]
         response_type=response_type,
     )
     global_answers = _global_answers_from_control_document(document)
-    answers = [
-        {"label": answer_values[value], "value": value} for value in ordered_answer_values
-    ]
+    answers = [{"label": answer_values[value], "value": value} for value in ordered_answer_values]
     ordered_types = ["All", *FRA_FILTER_GROUP_A[1:], *FRA_FILTER_GROUP_B[1:]]
     segmentations = [
         display_option(filter_type, filter_type)
@@ -805,9 +801,7 @@ def _build_fra_statistics(query: FraStatisticsQuery) -> dict[str, Any]:
             specific_category=next(
                 (
                     str(value)
-                    for value in source_dataframe.get(
-                        "specific_category", pd.Series(dtype=str)
-                    )
+                    for value in source_dataframe.get("specific_category", pd.Series(dtype=str))
                     .dropna()
                     .unique()
                     .tolist()

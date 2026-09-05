@@ -22,9 +22,7 @@ def fixed_europe_map_config(
     extra_mode_bar_buttons_to_remove: Iterable[str] = (),
 ) -> dcc.Graph.Config:
     """Return a non-navigable map config that keeps hover and click events active."""
-    buttons = list(
-        dict.fromkeys((*_FIXED_MAP_MODE_BAR_BUTTONS, *extra_mode_bar_buttons_to_remove))
-    )
+    buttons = list(dict.fromkeys((*_FIXED_MAP_MODE_BAR_BUTTONS, *extra_mode_bar_buttons_to_remove)))
     return {
         "displaylogo": False,
         "responsive": True,

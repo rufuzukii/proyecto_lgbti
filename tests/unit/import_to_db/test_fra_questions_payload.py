@@ -291,9 +291,7 @@ def test_mongo_groups_same_question_files_into_one_atomic_operation() -> None:
     operation_filter, operation_update = collection.update_one.call_args.args
     incoming = [
         answer
-        for answer in operation_update[0]["$set"]["answers"]["$let"]["vars"]["incoming"][
-            "$literal"
-        ]
+        for answer in operation_update[0]["$set"]["answers"]["$let"]["vars"]["incoming"]["$literal"]
     ]
     assert {answer["country_code"] for answer in incoming} == {"ES", "FR"}
     assert "value_bucket" in operation_filter

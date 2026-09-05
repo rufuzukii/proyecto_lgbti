@@ -36,22 +36,13 @@ def test_fra_2023_scope_is_edition_specific_and_contains_30_countries() -> None:
 
 
 def test_fra_country_state_does_not_infer_scope_from_value_presence() -> None:
-    assert (
-        classify_fra_country_state("ES", True, survey_year=2023)
-        is FraCountryState.HAS_DATA
-    )
-    assert (
-        classify_fra_country_state("ES", False, survey_year=2023)
-        is FraCountryState.NO_DATA
-    )
+    assert classify_fra_country_state("ES", True, survey_year=2023) is FraCountryState.HAS_DATA
+    assert classify_fra_country_state("ES", False, survey_year=2023) is FraCountryState.NO_DATA
     assert (
         classify_fra_country_state("GB", True, survey_year=2023)
         is FraCountryState.OUTSIDE_SURVEY_SCOPE
     )
-    assert (
-        classify_fra_country_state("GB", True, survey_year=2019)
-        is FraCountryState.HAS_DATA
-    )
+    assert classify_fra_country_state("GB", True, survey_year=2019) is FraCountryState.HAS_DATA
 
 
 def test_geography_merge_keeps_value_and_scope_as_separate_fields() -> None:
@@ -93,9 +84,7 @@ def test_fra_map_distinguishes_zero_missing_and_outside_scope_with_hover_and_leg
     assert "No data is available for this selection." in hovers["FR"]
     assert "not part of the European Union" in hovers["GB"]
     assert "Value:" not in hovers["GB"]
-    legend = {
-        cast(Any, trace).name: cast(Any, trace).marker.color for trace in figure.data[2:]
-    }
+    legend = {cast(Any, trace).name: cast(Any, trace).marker.color for trace in figure.data[2:]}
     assert legend["No data"] == FRA_NO_DATA_COLOR
     assert legend["Outside the scope of the FRA survey"] == FRA_OUTSIDE_SCOPE_COLOR
 
@@ -129,8 +118,7 @@ def test_ranked_reason_control_payload_preserves_values_and_semantic_order() -> 
             "question": "insufficient income",
             "specific_category": "Reason for housing difficulties - financial problems",
             "answers": [
-                {"answer": answer, "country": "Spain", "filters": []}
-                for answer in RANKED_RESPONSES
+                {"answer": answer, "country": "Spain", "filters": []} for answer in RANKED_RESPONSES
             ],
         }
     )

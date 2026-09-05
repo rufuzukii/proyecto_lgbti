@@ -197,9 +197,7 @@ class ReportChart:
     def figures(self) -> tuple[go.Figure, ...]:
         """All static pages belonging to this conceptual visualization."""
         return tuple(
-            figure
-            for figure in (self.figure, *self.additional_figures)
-            if figure is not None
+            figure for figure in (self.figure, *self.additional_figures) if figure is not None
         )
 
 

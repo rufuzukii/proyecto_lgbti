@@ -62,7 +62,10 @@ def test_country_status_markdown_parses_file_and_normalizes_records(tmp_path) ->
         ("## España (ES)", "Annual Review"),
         ("Annual Review 2026", "fichas de países"),
         (_markdown() + "\n" + _markdown(), "duplicado"),
-        (_markdown().replace("**Estado general:** Avance con retos pendientes\n", ""), "Estado general"),
+        (
+            _markdown().replace("**Estado general:** Avance con retos pendientes\n", ""),
+            "Estado general",
+        ),
         (_markdown().replace("https://example.test/review", "not-a-url"), "no es válida"),
     ],
 )

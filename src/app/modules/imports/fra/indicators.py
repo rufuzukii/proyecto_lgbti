@@ -107,7 +107,9 @@ def _resolve_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> In
 
     semantic_matches = _catalog_rows_by_question(conn, question, category)
     safe_matches = [
-        row for row in semantic_matches if _same_indicator(row, question=question, category=category)
+        row
+        for row in semantic_matches
+        if _same_indicator(row, question=question, category=category)
     ]
     if len(safe_matches) == 1:
         return IndicatorResolution(
@@ -128,9 +130,7 @@ def _resolve_indicator(conn: psycopg.Connection, document: dict[str, Any]) -> In
     action = "reused" if existing_canonical else "created"
     if existing_canonical:
         reason = "canonical_code"
-    return IndicatorResolution(
-        question_code, canonical_id, action, reason, question, category
-    )
+    return IndicatorResolution(question_code, canonical_id, action, reason, question, category)
 
 
 def _catalog_row_by_code(conn: psycopg.Connection, code: str) -> dict[str, Any] | None:
@@ -192,9 +192,7 @@ def _question_code(document: dict[str, Any]) -> str:
     return str(document.get("question_code") or document.get("code") or "").strip()
 
 
-def _resolved_document(
-    document: dict[str, Any], resolution: IndicatorResolution
-) -> dict[str, Any]:
+def _resolved_document(document: dict[str, Any], resolution: IndicatorResolution) -> dict[str, Any]:
     return {
         **document,
         "question_code": resolution.question_code,

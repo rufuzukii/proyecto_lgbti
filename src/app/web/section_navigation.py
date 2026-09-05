@@ -84,9 +84,7 @@ AUTHENTICATED_ACCOUNT_SECTION = PrimarySection(
 
 
 def build_home_section_navigation(*, authenticated: bool = False) -> Component:
-    account_section = (
-        AUTHENTICATED_ACCOUNT_SECTION if authenticated else ANONYMOUS_ACCOUNT_SECTION
-    )
+    account_section = AUTHENTICATED_ACCOUNT_SECTION if authenticated else ANONYMOUS_ACCOUNT_SECTION
     return html.Section(
         [
             html.Header(

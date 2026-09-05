@@ -64,9 +64,7 @@ def _points(count: int = 12) -> list[HistoricalPoint]:
 
 
 def _result(count: int = 12):
-    return generate_forecast(
-        _points(count), country_code="ES", country_name="Spain", horizon=2
-    )
+    return generate_forecast(_points(count), country_code="ES", country_name="Spain", horizon=2)
 
 
 def test_layout_only_contains_country_range_and_horizon_controls(monkeypatch) -> None:
@@ -206,7 +204,9 @@ def test_render_callback_returns_complete_result_and_methodology(monkeypatch) ->
     app = Dash("trend-render-test", suppress_callback_exceptions=True)
     register_trend_callbacks(app)
     callback = _callback(app, "render_trend_analysis")
-    monkeypatch.setattr(trend_callbacks, "generate_trend_analysis", lambda *_args, **_kwargs: _result())
+    monkeypatch.setattr(
+        trend_callbacks, "generate_trend_analysis", lambda *_args, **_kwargs: _result()
+    )
 
     rendered = callback("ES", [2011, 2022], False, 2, "es")
     ids = _ids(rendered)
@@ -280,11 +280,11 @@ def test_interpretation_and_summary_are_natural_and_localized() -> None:
 
 
 def test_insufficient_data_keeps_history_but_never_draws_fake_projection(monkeypatch) -> None:
-    result = generate_forecast(
-        _points(2), country_code="ES", country_name="Spain", horizon=3
-    )
+    result = generate_forecast(_points(2), country_code="ES", country_name="Spain", horizon=3)
     rendered = trend_callbacks._render_result(result, "en")
-    graph = next(item for item in _walk(rendered) if getattr(item, "id", None) == "trend-history-graph")
+    graph = next(
+        item for item in _walk(rendered) if getattr(item, "id", None) == "trend-history-graph"
+    )
 
     assert result.status == "insufficient"
     assert len(graph.figure.data) == 1
@@ -292,9 +292,7 @@ def test_insufficient_data_keeps_history_but_never_draws_fake_projection(monkeyp
 
 
 def test_short_valid_series_displays_exploratory_warning() -> None:
-    result = generate_forecast(
-        _points(4), country_code="ES", country_name="Spain", horizon=3
-    )
+    result = generate_forecast(_points(4), country_code="ES", country_name="Spain", horizon=3)
     rendered = trend_callbacks._render_result(result, "es")
 
     assert result.exploratory is True
@@ -323,7 +321,11 @@ def test_chart_distinguishes_history_forecast_uncertainty_and_missing_years() ->
 
 def test_normalization_note_is_rendered_for_2011_and_2012() -> None:
     rendered = trend_callbacks._render_result(_result(), "es")
-    notes = [item for item in _walk(rendered) if "trend-normalization-note" in str(getattr(item, "className", ""))]
+    notes = [
+        item
+        for item in _walk(rendered)
+        if "trend-normalization-note" in str(getattr(item, "className", ""))
+    ]
 
     assert notes
     text = str(notes[0].to_plotly_json())
@@ -347,9 +349,9 @@ def test_css_supports_dark_mode_responsive_cards_and_local_table_scroll() -> Non
     assert ".trend-explanation-grid" in css
     assert ".trend-glossary-list" in css
     assert ".trend-selected-method" in css
-    range_input_rule = css.split(
-        ".trend-range-field .dash-range-slider-input {", 1
-    )[1].split("}", 1)[0]
+    range_input_rule = css.split(".trend-range-field .dash-range-slider-input {", 1)[1].split(
+        "}", 1
+    )[0]
     assert "width: 100%;" in range_input_rule
     assert "max-width: 100%;" in range_input_rule
     assert "min-width: 0;" in range_input_rule

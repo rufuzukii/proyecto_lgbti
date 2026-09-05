@@ -85,12 +85,16 @@ def _document_report(documents: list[dict[str, Any]]) -> dict[str, Any]:
         for document in documents
         if str(document.get("section_title") or "").strip()
     }
-    figures = [document.get("figure") for document in documents if isinstance(document.get("figure"), dict)]
+    figures = [
+        document.get("figure") for document in documents if isinstance(document.get("figure"), dict)
+    ]
     stored = [figure for figure in figures if str((figure or {}).get("storage_path") or "").strip()]
     discarded: dict[str, int] = {}
     for document in documents:
         extraction = document.get("extraction")
-        reasons = extraction.get("semantic_cleanup_reasons") if isinstance(extraction, dict) else None
+        reasons = (
+            extraction.get("semantic_cleanup_reasons") if isinstance(extraction, dict) else None
+        )
         if not isinstance(reasons, dict):
             continue
         for reason, count in reasons.items():

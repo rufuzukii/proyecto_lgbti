@@ -70,16 +70,14 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
         type("Context", (), {"triggered_id": "app-language-store"})(),
     )
 
-    category_options, category_value, catalog = categories_callback(
-        "fra_survey_iii", "en", social
-    )
+    category_options, category_value, catalog = categories_callback("fra_survey_iii", "en", social)
     assert category_value == social
     assert catalog["year"] == 2023
     assert all(isinstance(option["label"], str) for option in category_options)
     assert all(isinstance(option["value"], str) for option in category_options)
 
-    social_options, social_value, social_disabled, cleared_result, indicator_catalog = indicators_callback(
-        "fra_survey_iii", social
+    social_options, social_value, social_disabled, cleared_result, indicator_catalog = (
+        indicators_callback("fra_survey_iii", social)
     )
     assert social_options == [{"label": "Effectiveness of government", "value": "D5"}]
     assert social_value is None
@@ -92,9 +90,7 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
         "has_data": True,
     }
 
-    controls_result = controls_callback(
-        "D5", "en", social, "fra_survey_iii"
-    )
+    controls_result = controls_callback("D5", "en", social, "fra_survey_iii")
     answer_options, answer_value = controls_result[:2]
     assert answer_options == [{"label": "Yes", "value": "Yes"}]
     assert answer_value == "Yes"
@@ -177,9 +173,7 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
         ("Age", "25-39", "All", "All"),
     ]
 
-    other_options, other_value, _, _, _ = indicators_callback(
-        "fra_survey_iii", "Discrimination"
-    )
+    other_options, other_value, _, _, _ = indicators_callback("fra_survey_iii", "Discrimination")
     assert other_options == [{"label": "Discrimination", "value": "D1"}]
     assert other_value is None
 
@@ -207,12 +201,8 @@ def test_ranked_reason_indicator_shows_ordered_answers_and_methodology(monkeypat
     )
     monkeypatch.setattr(statistics_page, "get_fra_control_payload", lambda *_args: payload)
 
-    spanish = controls_callback(
-        "G22_I", "es", "Living openly as LGBTIQ", "fra_survey_iii"
-    )
-    english = controls_callback(
-        "G22_I", "en", "Living openly as LGBTIQ", "fra_survey_iii"
-    )
+    spanish = controls_callback("G22_I", "es", "Living openly as LGBTIQ", "fra_survey_iii")
+    english = controls_callback("G22_I", "en", "Living openly as LGBTIQ", "fra_survey_iii")
 
     assert [option["value"] for option in spanish[0]] == [
         "1st",

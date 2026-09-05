@@ -7,12 +7,34 @@ from app.modules.statistics.combined_analysis import infer_indicator_semantics
 from app.shared.data.normalization import normalize_text_key
 
 WORKPLACE_TERMS = {
-    "work", "workplace", "employment", "job", "labour", "laboral", "empleo",
-    "promotion", "promocion", "recruitment", "seleccion", "colleague", "compañer",
+    "work",
+    "workplace",
+    "employment",
+    "job",
+    "labour",
+    "laboral",
+    "empleo",
+    "promotion",
+    "promocion",
+    "recruitment",
+    "seleccion",
+    "colleague",
+    "compañer",
 }
 DISCRIMINATION_TERMS = {
-    "discrimin", "harass", "acoso", "violence", "violencia", "hate", "odio",
-    "unsafe", "insegur", "bully", "intimid", "attack", "agres",
+    "discrimin",
+    "harass",
+    "acoso",
+    "violence",
+    "violencia",
+    "hate",
+    "odio",
+    "unsafe",
+    "insegur",
+    "bully",
+    "intimid",
+    "attack",
+    "agres",
 }
 LEGAL_TERMS = {"legal", "law", "rights", "derecho", "legisl", "protect", "proteccion"}
 
@@ -24,32 +46,32 @@ def _pair(es: tuple[str, ...], en: tuple[str, ...]) -> dict[str, tuple[str, ...]
 # Central, reviewable catalogue. Entries are general orientations, never
 # individual legal, medical or clinical advice.
 HR_RECOMMENDATION_RULES: dict[str, dict[str, tuple[str, ...]]] = {
-        "adverse": _pair(
-            (
-                "Considerar el refuerzo de protocolos frente a la discriminación y de canales confidenciales de comunicación.",
-                "Valorar formación preventiva en diversidad e inclusión para equipos y responsables de personas.",
-                "Realizar seguimiento periódico del clima laboral mediante mecanismos anónimos que protejan la privacidad.",
-                "Revisar que las políticas de igualdad, beneficios y medidas de apoyo incluyan expresamente a las personas LGBTIQ+.",
-            ),
-            (
-                "Consider strengthening anti-discrimination procedures and confidential communication channels.",
-                "Consider preventive diversity and inclusion training for teams and people managers.",
-                "Monitor workplace climate periodically through anonymous, privacy-preserving mechanisms.",
-                "Review whether equality policies, benefits and support measures explicitly include LGBTIQ+ people.",
-            ),
+    "adverse": _pair(
+        (
+            "Considerar el refuerzo de protocolos frente a la discriminación y de canales confidenciales de comunicación.",
+            "Valorar formación preventiva en diversidad e inclusión para equipos y responsables de personas.",
+            "Realizar seguimiento periódico del clima laboral mediante mecanismos anónimos que protejan la privacidad.",
+            "Revisar que las políticas de igualdad, beneficios y medidas de apoyo incluyan expresamente a las personas LGBTIQ+.",
         ),
-        "general": _pair(
-            (
-                "Revisar periódicamente las políticas internas de inclusión, el lenguaje y los procesos de gestión de personas.",
-                "Tratar estos datos como contexto europeo: no describen automáticamente la situación interna de una organización concreta.",
-                "Considerar redes internas de apoyo y mecanismos periódicos para evaluar la inclusión laboral.",
-            ),
-            (
-                "Periodically review internal inclusion policies, language and people-management processes.",
-                "Treat these data as European context: they do not automatically describe a specific organisation's internal situation.",
-                "Consider internal support networks and periodic mechanisms for assessing workplace inclusion.",
-            ),
+        (
+            "Consider strengthening anti-discrimination procedures and confidential communication channels.",
+            "Consider preventive diversity and inclusion training for teams and people managers.",
+            "Monitor workplace climate periodically through anonymous, privacy-preserving mechanisms.",
+            "Review whether equality policies, benefits and support measures explicitly include LGBTIQ+ people.",
         ),
+    ),
+    "general": _pair(
+        (
+            "Revisar periódicamente las políticas internas de inclusión, el lenguaje y los procesos de gestión de personas.",
+            "Tratar estos datos como contexto europeo: no describen automáticamente la situación interna de una organización concreta.",
+            "Considerar redes internas de apoyo y mecanismos periódicos para evaluar la inclusión laboral.",
+        ),
+        (
+            "Periodically review internal inclusion policies, language and people-management processes.",
+            "Treat these data as European context: they do not automatically describe a specific organisation's internal situation.",
+            "Consider internal support networks and periodic mechanisms for assessing workplace inclusion.",
+        ),
+    ),
 }
 
 
@@ -93,9 +115,7 @@ def result_level(
     gap = country_value - benchmark
     if abs(gap) < threshold or semantics == "unknown":
         return "neutral"
-    is_adverse = (semantics == "adverse" and gap > 0) or (
-        semantics == "favourable" and gap < 0
-    )
+    is_adverse = (semantics == "adverse" and gap > 0) or (semantics == "favourable" and gap < 0)
     return "adverse" if is_adverse else "favourable"
 
 

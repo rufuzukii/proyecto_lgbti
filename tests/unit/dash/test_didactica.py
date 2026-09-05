@@ -83,9 +83,7 @@ def test_teacher_space_is_restricted_to_docente_and_admin() -> None:
     assert not can_access_docente_material(_user(user_type=UserType.RRHH))
     assert not can_access_docente_material(_user(user_type=UserType.ONG))
     assert not can_access_docente_material(_user(user_type=UserType.COMUN))
-    assert not can_access_docente_material(
-        _user(authenticated=False, user_type=UserType.DOCENTE)
-    )
+    assert not can_access_docente_material(_user(authenticated=False, user_type=UserType.DOCENTE))
 
 
 def test_index_only_exposes_teacher_space_to_authorized_profiles(monkeypatch) -> None:
@@ -253,9 +251,7 @@ def test_dictionary_callback_finds_priority_terms_with_sources(
     assert cards
     assert count.startswith("1 ")
     assert any(getattr(node, "children", None) == expected_term for node in nodes)
-    assert any(
-        getattr(node, "className", "") == "didactica-glossary-sources" for node in nodes
-    )
+    assert any(getattr(node, "className", "") == "didactica-glossary-sources" for node in nodes)
 
 
 def test_guess_game_finishes_after_five_questions_and_restarts(dash_app, monkeypatch) -> None:
@@ -298,9 +294,7 @@ def test_guess_game_finishes_after_five_questions_and_restarts(dash_app, monkeyp
     assert set(restarted[6]["order"]).isdisjoint(original_order)
 
 
-def test_guess_game_incorrect_feedback_names_only_the_correct_term(
-    dash_app, monkeypatch
-) -> None:
+def test_guess_game_incorrect_feedback_names_only_the_correct_term(dash_app, monkeypatch) -> None:
     callback = _callback(dash_app, "play_game")
     monkeypatch.setattr(didactica_page, "current_user", _user())
     state = new_game_state("guess_term")
@@ -316,9 +310,7 @@ def test_guess_game_incorrect_feedback_names_only_the_correct_term(
 
     result = callback(1, None, None, "es", wrong_id, state)
 
-    assert result[3] == (
-        f'Respuesta incorrecta. La respuesta correcta era: "{correct_term.term}".'
-    )
+    assert result[3] == (f'Respuesta incorrecta. La respuesta correcta era: "{correct_term.term}".')
 
 
 def test_teacher_routes_redirect_unauthorized_profiles_and_keep_login_destination(
@@ -364,26 +356,20 @@ def test_games_route_is_public(dash_app, monkeypatch) -> None:
     registered = _user(user_type=UserType.COMUN)
     monkeypatch.setattr(dash_app_module, "current_user", registered)
     monkeypatch.setattr(didactica_page, "current_user", registered)
-    assert "didactica-game-state" in _ids(
-        display_page("/es/didactica/juegos", "?game=guess_term")
-    )
+    assert "didactica-game-state" in _ids(display_page("/es/didactica/juegos", "?game=guess_term"))
 
 
 def test_teacher_activity_editor_is_vertical_and_offers_exactly_three_engines(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
-    monkeypatch.setattr(
-        didactica_page, "current_user", _user(user_type=UserType.DOCENTE)
-    )
+    monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.DOCENTE))
     monkeypatch.setattr(didactica_page, "get_ilga_years", lambda: [2026])
     monkeypatch.setattr(didactica_page, "_legal_country_options", lambda _year: [])
 
     layout = didactica_page.build_activity_editor_layout(initial_game_type="word_search")
     selector = next(
-        item
-        for item in _walk(layout)
-        if getattr(item, "id", None) == "teacher-editor-game-type"
+        item for item in _walk(layout) if getattr(item, "id", None) == "teacher-editor-game-type"
     )
     assert selector.value == "word_search"
     assert {option["value"] for option in selector.options} == {
@@ -397,12 +383,8 @@ def test_teacher_activity_editor_is_vertical_and_offers_exactly_three_engines(
     assert ordered_ids.index("teacher-editor-game-type") < ordered_ids.index(
         "teacher-editor-term-ids"
     )
-    assert ordered_ids.index("teacher-editor-term-ids") < ordered_ids.index(
-        "teacher-editor-title"
-    )
-    assert ordered_ids.index("teacher-editor-preview") < ordered_ids.index(
-        "teacher-editor-save"
-    )
+    assert ordered_ids.index("teacher-editor-term-ids") < ordered_ids.index("teacher-editor-title")
+    assert ordered_ids.index("teacher-editor-preview") < ordered_ids.index("teacher-editor-save")
 
 
 def test_teacher_activity_delete_confirmation_drives_the_persistent_callback(
@@ -421,8 +403,7 @@ def test_teacher_activity_delete_confirmation_drives_the_persistent_callback(
     provider = next(
         item
         for item in _walk(card)
-        if getattr(item, "id", None)
-        == {"type": "teacher-activity-delete", "index": "activity-1"}
+        if getattr(item, "id", None) == {"type": "teacher-activity-delete", "index": "activity-1"}
     )
     child_button = provider.children
     callback = next(
@@ -465,9 +446,7 @@ def test_custom_activity_preview_mounts_the_existing_game_component_ids(
         "configuration": {},
     }
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
-    monkeypatch.setattr(
-        didactica_page, "current_user", _user(user_type=UserType.DOCENTE)
-    )
+    monkeypatch.setattr(didactica_page, "current_user", _user(user_type=UserType.DOCENTE))
     monkeypatch.setattr(didactica_page, "get_owned_game", lambda _user, _id: activity)
     states = {
         "guess_term": new_game_state("guess_term", rounds=5),
@@ -482,9 +461,7 @@ def test_custom_activity_preview_mounts_the_existing_game_component_ids(
     assert expected_store in _ids(layout)
 
 
-def test_public_activity_route_is_playable_without_authentication(
-    dash_app, monkeypatch
-) -> None:
+def test_public_activity_route_is_playable_without_authentication(dash_app, monkeypatch) -> None:
     display_page = dash_app.callback_map["page-content.children"]["callback"].__wrapped__
     activity = {
         "id": "internal-id",
@@ -508,9 +485,7 @@ def test_public_activity_route_is_playable_without_authentication(
     monkeypatch.setattr(dash_app_module, "current_user", anonymous)
     monkeypatch.setattr(didactica_page, "current_user", anonymous)
 
-    layout = display_page(
-        "/es/didactica/juegos/actividad/public-share-id", ""
-    )
+    layout = display_page("/es/didactica/juegos/actividad/public-share-id", "")
 
     assert "didactica-game-state" in _ids(layout)
     assert "teacher-editor-save" not in _ids(layout)
@@ -594,9 +569,7 @@ def test_glossary_catalog_preserves_legacy_sources_and_institutional_provenance(
     assert biphobia is not None
     assert bisexual is not None
     assert {source.name for source in intersex.sources} == {"Council of Europe"}
-    assert {source.name for source in biphobia.sources} == {
-        "Boletín Oficial del Estado (BOE)"
-    }
+    assert {source.name for source in biphobia.sources} == {"Boletín Oficial del Estado (BOE)"}
     assert {source.name for source in bisexual.sources} == {"UNAM"}
 
 
@@ -610,9 +583,7 @@ def test_glossary_is_complete_unique_sorted_and_searches_definitions_without_acc
     assert {term.id for term in search_glossary("orientacion", language="es")} >= {
         "sexual_orientation"
     }
-    assert {term.id for term in search_glossary("hate speech", language="en")} == {
-        "hate_speech"
-    }
+    assert {term.id for term in search_glossary("hate speech", language="en")} == {"hate_speech"}
     assert all(key not in PROHIBITED_TERM_KEYS for key in keys)
 
 

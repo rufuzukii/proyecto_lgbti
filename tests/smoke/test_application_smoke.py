@@ -1,3 +1,5 @@
+"""Smoke coverage for application startup and critical routes."""
+
 from __future__ import annotations
 
 import pytest

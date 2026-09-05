@@ -326,8 +326,7 @@ def _validated_glossary_configuration(
     if any(not catalog[item].word_search_enabled(language) for item in term_ids):
         raise CustomGameValidationError("word_does_not_fit")
     normalized = [
-        normalize_word_search_term(catalog[item].localized_term(language))
-        for item in term_ids
+        normalize_word_search_term(catalog[item].localized_term(language)) for item in term_ids
     ]
     if any(not word or len(word) > MAX_BOARD_SIZE for word in normalized):
         raise CustomGameValidationError("word_does_not_fit")
@@ -338,9 +337,7 @@ def _validated_glossary_configuration(
     return configuration
 
 
-def _validated_ranking_configuration(
-    raw: Mapping[str, Any]
-) -> dict[str, Any]:
+def _validated_ranking_configuration(raw: Mapping[str, Any]) -> dict[str, Any]:
     year = _bounded_integer(raw.get("year"), 2000, 2100, "year")
     available_years = {int(item) for item in get_ilga_years()}
     if year not in available_years:

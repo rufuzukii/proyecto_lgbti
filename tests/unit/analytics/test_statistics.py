@@ -1817,9 +1817,7 @@ def test_statistics_layout_keeps_response_details_without_duplicate_panels(monke
     }
     assert _component_by_id(layout, "stats-ranking-graph") is None
     assert _component_by_id(layout, "stats-ranking-graph-slot") is not None
-    ranking_graph = cast(
-        Any, statistics_page._graph_component("stats-ranking-graph", go.Figure())
-    )
+    ranking_graph = cast(Any, statistics_page._graph_component("stats-ranking-graph", go.Figure()))
     ranking_graph_props = ranking_graph.to_plotly_json()["props"]
     assert ranking_graph_props["responsive"] is True
     assert ranking_graph_props["style"] == {"width": "100%"}

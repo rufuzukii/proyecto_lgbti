@@ -110,6 +110,7 @@ SECTION_LABELS = {
     ),
 }
 
+
 def build_reports_layout(
     initial_values: dict[str, Any] | None = None,
     *,
@@ -418,17 +419,11 @@ def register_reports_callbacks(app: Dash) -> None:
     ):
         social_enabled = _requires_social_indicator(source) and bool(indicator)
         filters_enabled = source == "fra" and bool(indicator)
-        payload = (
-            get_fra_control_payload(indicator or "", category, year)
-            if social_enabled
-            else {}
-        )
+        payload = get_fra_control_payload(indicator or "", category, year) if social_enabled else {}
         answers = list(payload.get("answers") or [])
         answer_values = {item["value"] for item in answers}
         answer = (
-            current_answer
-            if current_answer in answer_values
-            else payload.get("default_answer")
+            current_answer if current_answer in answer_values else payload.get("default_answer")
         )
         segmentations = list(payload.get("segmentations") or []) if filters_enabled else []
         segmentation_values = {item["value"] for item in segmentations}
@@ -448,13 +443,23 @@ def register_reports_callbacks(app: Dash) -> None:
         if not b_enabled:
             b_name, b_value, b_options = "All", "All", list(values_by_type.get("All") or [])
         return (
-            answers, answer, not social_enabled,
+            answers,
+            answer,
+            not social_enabled,
             "reports-field" if _requires_social_indicator(source) else "reports-field is-hidden",
             "reports-filters-section" if source == "fra" else "reports-filters-section is-hidden",
-            segmentations, a_name, not filters_enabled,
-            a_options, a_value, not filters_enabled or a_name == "All",
-            segmentations, b_name, not b_enabled,
-            b_options, b_value, not b_enabled or b_name == "All",
+            segmentations,
+            a_name,
+            not filters_enabled,
+            a_options,
+            a_value,
+            not filters_enabled or a_name == "All",
+            segmentations,
+            b_name,
+            not b_enabled,
+            b_options,
+            b_value,
+            not b_enabled or b_name == "All",
         )
 
     @app.callback(
@@ -495,7 +500,9 @@ def register_reports_callbacks(app: Dash) -> None:
             "ilga": _t(clean_language, "Datos legales", "Legal data"),
             "combined": _t(clean_language, "Análisis combinado", "Combined analysis"),
         }.get(source or "fra", source or "")
-        countries = [country for country in [primary_country, *(comparison_countries or [])] if country]
+        countries = [
+            country for country in [primary_country, *(comparison_countries or [])] if country
+        ]
         filters = [
             f"{name}: {value}"
             for name, value in (
@@ -505,18 +512,23 @@ def register_reports_callbacks(app: Dash) -> None:
             if name and name != "All" and value
         ]
         sections = ", ".join(
-            _t(clean_language, *SECTION_LABELS.get(key, (key, key)))
-            for key in HR_REPORT_SECTIONS
+            _t(clean_language, *SECTION_LABELS.get(key, (key, key))) for key in HR_REPORT_SECTIONS
         )
         summary_items: list[Component] = [
-                html.Dt(_t(clean_language, "Enfoque", "Focus")),
-                html.Dd(_t(clean_language, "RRHH y diversidad e inclusión", "HR and diversity and inclusion")),
-                html.Dt(_t(clean_language, "Tipo de información", "Information type")),
-                html.Dd(source_label),
-                html.Dt(_t(clean_language, "Encuesta / año", "Survey / year")),
-                html.Dd(str(year or "—")),
-                html.Dt(_t(clean_language, "Categoría", "Category")),
-                html.Dd(category or "—"),
+            html.Dt(_t(clean_language, "Enfoque", "Focus")),
+            html.Dd(
+                _t(
+                    clean_language,
+                    "RRHH y diversidad e inclusión",
+                    "HR and diversity and inclusion",
+                )
+            ),
+            html.Dt(_t(clean_language, "Tipo de información", "Information type")),
+            html.Dd(source_label),
+            html.Dt(_t(clean_language, "Encuesta / año", "Survey / year")),
+            html.Dd(str(year or "—")),
+            html.Dt(_t(clean_language, "Categoría", "Category")),
+            html.Dd(category or "—"),
         ]
         if _requires_social_indicator(source):
             summary_items.extend(
@@ -864,9 +876,7 @@ def _configuration_panel(
     # Keep the layout query-free. The callback loads valid options after Dash
     # mounts the stable controls; inherited values remain visible meanwhile.
     controls: dict[str, Any] = {
-        "answers": (
-            [{"label": config.answer, "value": config.answer}] if config.answer else []
-        ),
+        "answers": ([{"label": config.answer, "value": config.answer}] if config.answer else []),
         "default_answer": config.answer or None,
     }
     segmentation_names = ["All", config.filter_a_name, config.filter_b_name]
@@ -876,12 +886,8 @@ def _configuration_panel(
     ]
     values_by_type = {
         "All": [{"label": "All", "value": "All"}],
-        config.filter_a_name: [
-            {"label": config.filter_a_value, "value": config.filter_a_value}
-        ],
-        config.filter_b_name: [
-            {"label": config.filter_b_value, "value": config.filter_b_value}
-        ],
+        config.filter_a_name: [{"label": config.filter_a_value, "value": config.filter_a_value}],
+        config.filter_b_name: [{"label": config.filter_b_value, "value": config.filter_b_value}],
     }
     return html.Section(
         [
@@ -914,9 +920,24 @@ def _configuration_panel(
             ),
             html.Div(
                 [
-                    html.P(text("Datos sociales: experiencias, opiniones y condiciones de vida recogidas en encuestas europeas LGBTIQ+.", "Social data: experiences, opinions and living conditions gathered in European LGBTIQ+ surveys.")),
-                    html.P(text("Datos legales: protección, reconocimiento y derechos legales en Europa.", "Legal data: legal protection, recognition and rights across Europe.")),
-                    html.P(text("Análisis combinado: relaciona experiencias sociales y protección legal sin asumir causalidad.", "Combined analysis: links social experiences and legal protection without assuming causality.")),
+                    html.P(
+                        text(
+                            "Datos sociales: experiencias, opiniones y condiciones de vida recogidas en encuestas europeas LGBTIQ+.",
+                            "Social data: experiences, opinions and living conditions gathered in European LGBTIQ+ surveys.",
+                        )
+                    ),
+                    html.P(
+                        text(
+                            "Datos legales: protección, reconocimiento y derechos legales en Europa.",
+                            "Legal data: legal protection, recognition and rights across Europe.",
+                        )
+                    ),
+                    html.P(
+                        text(
+                            "Análisis combinado: relaciona experiencias sociales y protección legal sin asumir causalidad.",
+                            "Combined analysis: links social experiences and legal protection without assuming causality.",
+                        )
+                    ),
                 ],
                 className="reports-source-help",
             ),
@@ -1046,7 +1067,11 @@ def _configuration_panel(
                                     id="report-filter-b-value",
                                     options=list(values_by_type.get(config.filter_b_name) or []),
                                     value=config.filter_b_value,
-                                    disabled=(not social_source or config.filter_a_name != "All" or config.filter_b_name == "All"),
+                                    disabled=(
+                                        not social_source
+                                        or config.filter_a_name != "All"
+                                        or config.filter_b_name == "All"
+                                    ),
                                     clearable=False,
                                 ),
                             ),
@@ -1078,9 +1103,7 @@ def _configuration_panel(
                     id="report-comparison-countries",
                     options=country_options,
                     value=[
-                        country
-                        for country in config.countries
-                        if country != config.primary_country
+                        country for country in config.countries if country != config.primary_country
                     ],
                     multi=True,
                 ),
@@ -1423,8 +1446,7 @@ def _section_narratives_from_pattern(
     return {
         section: str(value or "")
         for value, component_id in zip(values or [], ids or [], strict=False)
-        if (section := str(component_id.get("section") or "").strip())
-        in allowed_sections
+        if (section := str(component_id.get("section") or "").strip()) in allowed_sections
     }
 
 

@@ -80,7 +80,9 @@ def test_educators_route_has_login_role_and_success_branches(
 
 
 @pytest.mark.parametrize("route_id", ["educator_create", "educator_activity"])
-def test_owned_activity_routes_cover_login_role_owner_and_success(monkeypatch, route_id: str) -> None:
+def test_owned_activity_routes_cover_login_role_owner_and_success(
+    monkeypatch, route_id: str
+) -> None:
     monkeypatch.setattr(application, "build_login_layout", lambda **_kwargs: "login")
     monkeypatch.setattr(application, "current_user", _user(authenticated=False))
     assert application._build_page_for_route(route_id, "en", {}, "?id=one") == "login"
@@ -92,12 +94,15 @@ def test_owned_activity_routes_cover_login_role_owner_and_success(monkeypatch, r
 
     monkeypatch.setattr(application, "can_access_docente_material", lambda _user: True)
     builder_name = (
-        "build_activity_editor_layout" if route_id == "educator_create" else "build_custom_activity_layout"
+        "build_activity_editor_layout"
+        if route_id == "educator_create"
+        else "build_custom_activity_layout"
     )
     monkeypatch.setattr(application, builder_name, lambda *_args: "activity")
-    assert application._build_page_for_route(
-        route_id, "en", {"id": ["one"], "type": ["quiz"]}, None
-    ) == "activity"
+    assert (
+        application._build_page_for_route(route_id, "en", {"id": ["one"], "type": ["quiz"]}, None)
+        == "activity"
+    )
 
     def deny(*_args):
         raise CustomGameAuthorizationError("owner_required")
@@ -110,9 +115,12 @@ def test_owned_activity_routes_cover_login_role_owner_and_success(monkeypatch, r
 
 def test_public_activity_and_reports_dispatch(monkeypatch) -> None:
     monkeypatch.setattr(application, "build_public_activity_layout", lambda public_id: public_id)
-    assert application._build_page_for_route(
-        "educator_public_activity", "es", {"public_id": ["public-1"]}, None
-    ) == "public-1"
+    assert (
+        application._build_page_for_route(
+            "educator_public_activity", "es", {"public_id": ["public-1"]}, None
+        )
+        == "public-1"
+    )
 
     monkeypatch.setattr(application, "current_user", _user(authenticated=True))
     monkeypatch.setattr(application, "build_reports_access_denied_layout", lambda: "denied")
@@ -179,7 +187,9 @@ def test_admin_users_route_covers_auth_role_success_and_storage_failure(monkeypa
     monkeypatch.setattr(application, "_is_admin", lambda: True)
     page = SimpleNamespace(users=["one"], page=2, page_count=3, total=5)
     monkeypatch.setattr(application, "list_users_page", lambda **_kwargs: page)
-    monkeypatch.setattr(application, "build_admin_users_layout", lambda *args, **kwargs: (args, kwargs))
+    monkeypatch.setattr(
+        application, "build_admin_users_layout", lambda *args, **kwargs: (args, kwargs)
+    )
     _args, kwargs = application._build_page_for_route(
         "admin", "es", {"q": [" alex "], "page": ["2"]}, None
     )
@@ -210,7 +220,9 @@ def test_admin_imports_and_profile_routes_cover_access_and_storage(monkeypatch) 
 
     monkeypatch.setattr(application, "_is_admin", lambda: True)
     monkeypatch.setattr(application, "list_pending_import_logs", lambda: ["log"])
-    monkeypatch.setattr(application, "build_admin_imports_layout", lambda logs, **kwargs: (logs, kwargs))
+    monkeypatch.setattr(
+        application, "build_admin_imports_layout", lambda logs, **kwargs: (logs, kwargs)
+    )
     logs, kwargs = application._build_page_for_route("admin_imports", "es", {}, None)
     assert logs == ["log"] and kwargs["error_code"] is None
 
