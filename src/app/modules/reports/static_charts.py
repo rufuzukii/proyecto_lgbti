@@ -89,7 +89,13 @@ def _render_figure(figure: go.Figure, width: int, height: int) -> Image.Image:
     traces = [trace for trace in figure.data if getattr(trace, "visible", True) is not False]
     trace_types = {str(getattr(trace, "type", "")) for trace in traces}
     if "choropleth" in trace_types:
-        _draw_map(draw, traces, (35, plot_top, width - 35, height - 38))
+        metadata = getattr(figure.layout, "meta", None) or {}
+        _draw_map(
+            draw,
+            traces,
+            (35, plot_top, width - 35, height - 38),
+            language=metadata.get("language", "es"),
+        )
     elif "scatterpolar" in trace_types:
         _draw_radar(draw, traces, (55, plot_top, width - 55, height - 45))
     elif "bar" in trace_types:
@@ -445,6 +451,8 @@ def _draw_map(
     draw: ImageDraw.ImageDraw,
     traces: list[Any],
     bounds: tuple[int, int, int, int],
+    *,
+    language: str = "es",
 ) -> None:
     choropleth = next(trace for trace in traces if getattr(trace, "type", "") == "choropleth")
     geojson = getattr(choropleth, "geojson", None)
@@ -510,10 +518,12 @@ def _draw_map(
                 continue
             x, y = project((float(longitude), float(latitude)))
             draw.ellipse((x - 6, y - 6, x + 6, y + 6), fill=_INK, outline=_WHITE, width=2)
-    _draw_color_scale(draw, choropleth, map_right + 25, top + 40, bottom - 65)
+    _draw_color_scale(draw, choropleth, map_right + 25, top + 40, bottom - 65, language)
 
 
-def _draw_color_scale(draw: ImageDraw.ImageDraw, trace: Any, x: int, top: int, bottom: int) -> None:
+def _draw_color_scale(
+    draw: ImageDraw.ImageDraw, trace: Any, x: int, top: int, bottom: int, language: str = "es"
+) -> None:
     z_min = float(_number(getattr(trace, "zmin", None)) or 0.0)
     z_max = float(_number(getattr(trace, "zmax", None)) or 100.0)
     for y in range(top, bottom):
@@ -524,7 +534,12 @@ def _draw_color_scale(draw: ImageDraw.ImageDraw, trace: Any, x: int, top: int, b
     draw.text((x + 20, top - 6), _format_number(z_max), fill=_MUTED, font=_font(10))
     draw.text((x + 20, bottom - 8), _format_number(max(0.0, z_min)), fill=_MUTED, font=_font(10))
     draw.rectangle((x, bottom + 20, x + 12, bottom + 32), fill=_NO_DATA, outline=_MUTED)
-    draw.text((x + 18, bottom + 18), "Sin datos", fill=_MUTED, font=_font(9))
+    draw.text(
+        (x + 18, bottom + 18),
+        "No data" if language == "en" else "Sin datos",
+        fill=_MUTED,
+        font=_font(9),
+    )
 
 
 def _draw_legend(

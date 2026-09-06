@@ -4,9 +4,23 @@ import fitz
 import pytest
 
 from app.modules.imports.felgtbi.importer import (
+    _clean_block_paragraph,
+    _clean_data_sentence,
     extract_pdf_pages,
     parse_felgtbi_text_pages,
 )
+
+
+@pytest.mark.parametrize("cleaner", [_clean_block_paragraph, _clean_data_sentence])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Como se puede observar en la Figura 3.1, el 18% declara discriminación.",
+        "Los resultados se muestran en la Figura 1. El estudio analiza la orientación sexual.",
+    ],
+)
+def test_narrative_keeps_figure_references_and_sentence_separators(cleaner, text):
+    assert cleaner(text) == text.rstrip(".")
 
 
 @pytest.fixture

@@ -354,11 +354,11 @@ def build_games_layout(game_id: str | None = None) -> Component:
             dcc.Location(
                 id="didactica-games-catalog-redirect",
                 href=route_path("didactica"),
-                refresh=False,
+                refresh=True,
             )
         )
     state = new_game_state(game_id)
-    question, options = _game_round(state, "es")
+    question, options = _game_round(state, current_route_language())
     return _page(
         html.Main(
             [
@@ -523,7 +523,8 @@ def _build_ranking_game_layout() -> Component:
 
 
 def build_word_search_layout(*, seed: int | None = None) -> Component:
-    state = create_word_search_game(seed=seed)
+    language = current_route_language()
+    state = create_word_search_game(seed=seed, language=language)
     return _page(
         html.Main(
             [
@@ -550,13 +551,13 @@ def build_word_search_layout(*, seed: int | None = None) -> Component:
                         html.Section(
                             [
                                 html.Div(
-                                    word_search_progress(state, "es"),
+                                    word_search_progress(state, language),
                                     id="didactica-word-search-progress",
                                     className="word-search-progress",
                                     **dash_attrs({"aria-live": "polite"}),
                                 ),
                                 html.Div(
-                                    word_search_board(state, "es"),
+                                    word_search_board(state, language),
                                     id="didactica-word-search-grid",
                                 ),
                             ],
@@ -567,7 +568,7 @@ def build_word_search_layout(*, seed: int | None = None) -> Component:
                             [
                                 translated("words", tag=html.H2),
                                 html.Div(
-                                    word_search_words(state, "es"),
+                                    word_search_words(state, language),
                                     id="didactica-word-search-words",
                                 ),
                                 html.P(
@@ -2000,19 +2001,18 @@ def _game_round(state: dict[str, Any], language: str) -> tuple[str, list[dict[st
     term = get_glossary_term(identifier)
     if term is None:
         raise ValueError("unknown_glossary_term")
-    return term.definition, guess_options(identifier, language)
+    return term.localized_definition(language), guess_options(identifier, language)
 
 
 def _check_game_answer(
     game_id: str, identifier: str, selected: str, language: str
 ) -> tuple[bool, str]:
-    del language
     if game_id != "guess_term":
         raise ValueError("unknown_game")
     term = get_glossary_term(identifier)
     if term is None:
         raise ValueError("unknown_glossary_term")
-    return selected == identifier, term.term
+    return selected == identifier, term.localized_term(language)
 
 
 def _game_hint(game_id: str, identifier: str, language: str) -> str:
@@ -2021,4 +2021,4 @@ def _game_hint(game_id: str, identifier: str, language: str) -> str:
     term = get_glossary_term(identifier)
     if term is None:
         raise ValueError("unknown_glossary_term")
-    return f'{tr("hint_text", language)} "{term.term[0].upper()}".'
+    return f'{tr("hint_text", language)} "{term.localized_term(language)[0].upper()}".'

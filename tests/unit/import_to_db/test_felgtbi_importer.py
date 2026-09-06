@@ -114,7 +114,7 @@ Texto introductorio sin resultados relevantes.
     assert document["question"] == "Agresiones fisicas y sexuales"
     assert document["visual_context"]["bbox"] == [80.0, 200.0, 520.0, 340.0]
     assert [answer["percentage"] for answer in document["answers"]] == [6.0, 4.0, 4.0, 5.0]
-    assert document["data_points"][0]["text"].startswith("el 6%")
+    assert document["data_points"][0]["text"].startswith("La Figura 3.1 muestra que el 6%")
     assert document["paragraphs_before_figure"]
     assert document["paragraphs_after_figure"]
     assert "<h3>Agresiones fisicas y sexuales</h3>" in document["content_html"]

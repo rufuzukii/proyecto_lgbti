@@ -6,6 +6,7 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 import pytest
@@ -25,7 +26,7 @@ from app.web.routes import (
 def language_callback():
     registrations = []
     application._register_client_preferences_callbacks(
-        SimpleNamespace(clientside_callback=lambda *args: registrations.append(args))
+        cast(Any, SimpleNamespace(clientside_callback=lambda *args: registrations.append(args)))
     )
     assert len(registrations) == 1
     return registrations[0][0]
@@ -123,6 +124,7 @@ def _assert_round_trip(run_switch, path, language):
         ("second", language, equivalent_path(path, language)),
     ):
         step = result[phase]
+        assert expected_path is not None
         assert step["result"] == [selected, expected_path + search + fragment]
         assert step["appliedLanguage"] == step["persisted"] == selected
         assert urlsplit(step["result"][1]).netloc == ""
@@ -175,6 +177,7 @@ def test_switch_destinations_render_without_redirects(navigation_client, route_i
     with client.session_transaction(base_url=base_url) as session:
         session["navigation-regression"] = "keep-me"
     for selected in (language, "en" if language == "es" else "es", language):
+        assert path is not None
         response = client.get(path + search, base_url=base_url, headers=headers)
         assert response.status_code == 200
         assert "Location" not in response.headers
@@ -189,7 +192,7 @@ def test_switch_destinations_render_without_redirects(navigation_client, route_i
                     {"id": "url", "property": "pathname", "value": path},
                     {"id": "url", "property": "search", "value": search},
                 ],
-                "state": [],
+                "state": [{"id": "statistics-selection", "property": "data", "value": None}],
                 "changedPropIds": ["url.pathname"],
             },
         )

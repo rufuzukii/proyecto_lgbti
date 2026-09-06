@@ -298,7 +298,9 @@ def test_admin_assets_define_editing_and_saving_states() -> None:
     assert 'closest("[data-admin-user-cancel]")' in javascript
     assert 'row.classList.add("is-editing")' in javascript
     assert "initializeAdminUserRows(document)" in javascript
-    assert 'row.querySelectorAll(".admin-input")' in javascript
+    assert 'row.getAttribute("action")' in javascript
+    assert "input.admin-input, .admin-input input, select.admin-input" in javascript
+    assert ".admin-action-button[hidden]" in css
     assert "control.disabled = true" in javascript
     assert "control.disabled = false" in javascript
     assert "saveButton.hidden = false" in javascript

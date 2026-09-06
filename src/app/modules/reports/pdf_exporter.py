@@ -5,7 +5,9 @@ import re
 from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
+from typing import Any, cast
 
+import pymupdf
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -53,7 +55,7 @@ class _MultilineTextField(Flowable):
             max(1, (len(line) + characters_per_line - 1) // characters_per_line)
             for line in (self.value.splitlines() or [""])
         )
-        self.height = min(34 * mm, max(14 * mm, (wrapped_lines + 1) * 4.2 * mm))
+        self.height = min(220 * mm, max(14 * mm, (wrapped_lines + 1) * 4.2 * mm))
         return self.width, self.height
 
     def draw(self) -> None:
@@ -108,7 +110,15 @@ class PDFExporter:
             onLaterPages=lambda canvas, doc: _page_decorations(canvas, doc, cover=False),
         )
         self.page_count = document.page
-        return buffer.getvalue()
+        # ReportLab sets the multiline flag but draws a single-line appearance.
+        # Regenerate appearances so PDF viewers and printouts show wrapped text
+        # immediately, while preserving the editable fields and their values.
+        with pymupdf.open(stream=buffer.getvalue(), filetype="pdf") as pdf:
+            for page in pdf:
+                for widget in page.widgets() or ():
+                    if cast(Any, widget).field_type_string == "Text":
+                        widget.update()
+            return pdf.tobytes(deflate=True)
 
     def _story(
         self,

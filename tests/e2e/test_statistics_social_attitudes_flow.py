@@ -103,7 +103,7 @@ def test_social_attitudes_category_round_trip_keeps_stable_dropdown_state(monkey
 
     payload = statistics_page.get_fra_control_payload("D5")
     age_options, age_value = demographic_values_callback("Age", payload, None)
-    assert age_options == [{"label": "25-39", "value": "25-39"}]
+    assert age_options == [{"label": "25\u201339", "value": "25-39"}]
     assert age_value is None
 
     identity_options, identity_type, identity_class = identity_state_callback(

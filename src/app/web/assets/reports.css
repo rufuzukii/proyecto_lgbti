@@ -585,13 +585,12 @@ body[data-theme="dark"] .reports-preview-metric strong {
     color: var(--reports-primary);
 }
 
-html[data-theme="dark"] textarea.reports-chart-narrative,
-body[data-theme="dark"] textarea.reports-chart-narrative,
-html[data-theme="dark"] textarea.reports-section-narrative,
-body[data-theme="dark"] textarea.reports-section-narrative {
-    background: #ffffff !important;
-    color: #000000 !important;
-    caret-color: #000000;
+html[data-theme="dark"] .reports-preview-document textarea,
+body[data-theme="dark"] .reports-preview-document textarea {
+    background: var(--reports-control-bg) !important;
+    color: var(--reports-text) !important;
+    border-color: var(--reports-border) !important;
+    caret-color: var(--reports-text);
 }
 
 html[data-theme="dark"] .reports-field input[type="text"],

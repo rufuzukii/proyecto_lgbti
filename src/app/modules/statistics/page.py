@@ -5,7 +5,7 @@ import json
 import logging
 import math
 import time
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlencode
 
 import dash_ag_grid as dag
@@ -79,7 +79,7 @@ from app.shared.data.taxonomy import taxonomy_pair
 from app.web.graph_config import fixed_europe_map_config
 from app.web.i18n import attribute_attrs, country_labels, dash_attrs, text, text_attrs, ui_text
 from app.web.navigation import build_navbar
-from app.web.routes import route_path
+from app.web.routes import current_route_language, route_path
 
 logger = logging.getLogger(__name__)
 STATISTICS_DASHBOARD_CACHE_SECONDS = 300
@@ -133,8 +133,11 @@ CHART_EXPORT_TITLES = {
 }
 
 
-def build_statistics_layout() -> Component:
+def build_statistics_layout(selection: list[Any] | None = None) -> Component:
     categories: list[dict[str, Any]] = []
+    controls = _controls(categories)
+    if selection:
+        _restore_statistics_selection(controls, selection)
     return html.Div(
         [
             build_navbar(active="statistics"),
@@ -146,7 +149,7 @@ def build_statistics_layout() -> Component:
             html.Main(
                 [
                     _header(),
-                    _controls(categories),
+                    controls,
                     html.Div(
                         contextual_loading(
                             [
@@ -405,6 +408,22 @@ def build_statistics_layout() -> Component:
 def register_statistics_callbacks(app: Dash) -> None:
     app.clientside_callback(
         """
+        function(active) {
+            if (!active || !active.query_token) return window.dash_clientside.no_update;
+            const values = JSON.parse(active.query_token);
+            // Keep the last meaningful selection outside the page being remounted.
+            if (values.length !== 9 || !values[1] || !values[2] || !values[3]) {
+                return window.dash_clientside.no_update;
+            }
+            return values;
+        }
+        """,
+        Output("statistics-selection", "data"),
+        Input("stats-active-query-store", "data"),
+        prevent_initial_call=True,
+    )
+    app.clientside_callback(
+        """
         function(surveyId, category, indicator, answer,
                  demographicType, demographicValue, identityType, identityValue,
                  catalog, indicatorCatalog) {
@@ -553,6 +572,8 @@ def register_statistics_callbacks(app: Dash) -> None:
             )
         if query_state is StatisticsViewState.ERROR:
             message_key = "statistics_error"
+        elif query_state is StatisticsViewState.AWAITING_FILTER:
+            message_key = "statistics_awaiting_filter"
         elif query_state is StatisticsViewState.SURVEY_EMPTY:
             message_key = "statistics_survey_empty"
         elif query_state is StatisticsViewState.NO_DATA:
@@ -905,7 +926,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         options = _category_options(survey.year, language or "es")
         selected = (
             _selected_category_value(options, current)
-            if ctx.triggered_id == "app-language-store"
+            if ctx.triggered_id != "stats-survey-select"
             else None
         )
         return (
@@ -927,9 +948,12 @@ def register_statistics_callbacks(app: Dash) -> None:
         Output("stats-indicator-catalog-store", "data"),
         Input("stats-survey-select", "value"),
         Input("stats-category-select", "value"),
+        State("fra-indicator-select", "value"),
         prevent_initial_call=True,
     )
-    def update_fra_indicators(survey_id: str | None, category: str | None):
+    def update_fra_indicators(
+        survey_id: str | None, category: str | None, current: str | None = None
+    ):
         survey = get_fra_survey(survey_id)
         if survey is None or not category:
             return (
@@ -953,7 +977,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
         return (
             options,
-            None,
+            option_value_or_none(options, current),
             not bool(options),
             None,
             {
@@ -979,18 +1003,22 @@ def register_statistics_callbacks(app: Dash) -> None:
         Input("app-language-store", "data"),
         State("stats-category-select", "value"),
         State("stats-survey-select", "value"),
+        State("fra-answer-select", "value"),
+        State("fra-demographic-type", "value"),
     )
     def update_fra_controls(
         code: str | None,
         language: str | None,
         category: str | None,
         survey_id: str | None,
+        current_answer: str | None = None,
+        current_demographic_type: str | None = None,
     ):
         if not code:
             return (
                 [],
                 None,
-                _segmentation_catalog_options(FRA_FILTER_GROUP_A, []),
+                _segmentation_catalog_options(FRA_FILTER_GROUP_A, [], language or "es"),
                 None,
                 {},
                 None,
@@ -1002,7 +1030,10 @@ def register_statistics_callbacks(app: Dash) -> None:
         survey = get_fra_survey(survey_id)
         if survey is None:
             raise PreventUpdate
-        payload = get_fra_control_payload(code, category, survey.year)
+        payload = {
+            **get_fra_control_payload(code, category, survey.year),
+            "language": language or "es",
+        }
         # FRA indicators and answers stay in their canonical English wording
         # in both interfaces. Only category labels are localized.
         answers = build_dropdown_options(
@@ -1025,9 +1056,12 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
         return (
             answers,
-            payload.get("default_answer") or (answers[0]["value"] if len(answers) == 1 else None),
+            option_value_or_none(answers, current_answer)
+            or payload.get("default_answer")
+            or (answers[0]["value"] if len(answers) == 1 else None),
             demographic_options,
-            _all_option_value(demographic_options),
+            option_value_or_none(demographic_options, current_demographic_type)
+            or _all_option_value(demographic_options),
             payload,
             _fra_response_help(payload.get("response_type"), language or "es"),
             (
@@ -1064,6 +1098,9 @@ def register_statistics_callbacks(app: Dash) -> None:
         options = build_dropdown_options(
             values.get(segmentation or "All") or [],
             context="statistics-fra-demographic-value",
+        )
+        options = _translated_taxonomy_options(
+            options, "fra_filter_value", (payload or {}).get("language", "es")
         )
         if not _is_active_filter_type(segmentation):
             return _disable_all_options(options), _all_option_value(options)
@@ -1123,12 +1160,18 @@ def register_statistics_callbacks(app: Dash) -> None:
                 values.get("All") or [],
                 context="statistics-fra-identity-value",
             )
+            options = _translated_taxonomy_options(
+                options, "fra_filter_value", (payload or {}).get("language", "es")
+            )
             return _disable_all_options(options), _all_option_value(options)
         if normalize_text_key(demographic_type) != "all":
             return [], None
         options = build_dropdown_options(
             values.get(segmentation or "All") or [],
             context="statistics-fra-identity-value",
+        )
+        options = _translated_taxonomy_options(
+            options, "fra_filter_value", (payload or {}).get("language", "es")
         )
         if not _is_active_filter_type(segmentation):
             return _disable_all_options(options), _all_option_value(options)
@@ -1185,9 +1228,23 @@ def register_statistics_callbacks(app: Dash) -> None:
             identity_type,
             identity_value,
         )
-        if ctx.triggered_id == "stats-category-select" or not controls_ready:
+        if not controls_ready:
+            waiting_for_filter = _fra_controls_are_ready(category, fra_code, control_payload) and (
+                (_is_active_filter_type(demographic_type) and demographic_value is None)
+                or (
+                    not _is_active_filter_type(demographic_type)
+                    and _is_active_filter_type(identity_type)
+                    and identity_value is None
+                )
+            )
             return _result_with_query_token(
-                {"status": StatisticsViewState.LOADING_STATISTICS.value},
+                {
+                    "status": (
+                        StatisticsViewState.AWAITING_FILTER.value
+                        if waiting_for_filter
+                        else StatisticsViewState.LOADING_STATISTICS.value
+                    )
+                },
                 query_token,
             )
         filters = _resolved_ui_filters(
@@ -1277,6 +1334,8 @@ def register_statistics_callbacks(app: Dash) -> None:
         _survey_id: str | None,
         current: list[str] | None,
     ) -> list[str] | Any:
+        if ctx.triggered_id == "stats-survey-select":
+            return no_update
         return _next_country_selection(
             ctx.triggered_id,
             click_data=click_data,
@@ -1421,6 +1480,80 @@ def register_statistics_callbacks(app: Dash) -> None:
         return (*component_outputs, ready_payload)
 
 
+def _restore_statistics_selection(controls: Component, selection: list[Any]) -> None:
+    """Hydrate options before values, so Dash cannot discard restored selections."""
+    if not isinstance(selection, list) or len(selection) != 9:
+        return
+    (
+        survey_id,
+        _year,
+        category,
+        code,
+        answer,
+        demo_type,
+        demo_value,
+        identity_type,
+        identity_value,
+    ) = selection
+    survey = get_fra_survey(survey_id)
+    if survey is None or not survey.enabled:
+        return
+    language = current_route_language()
+    categories = _category_options(survey.year, language)
+    if option_value_or_none(categories, category) is None:
+        return
+    indicators = build_dropdown_options(
+        [
+            {"label": _fra_indicator_option_label(item), "value": item.code}
+            for item in get_fra_mongo_indicators_by_category(category, survey.year)
+        ],
+        context="statistics-fra-indicator",
+    )
+    if option_value_or_none(indicators, code) is None:
+        return
+    payload = get_fra_control_payload(code, category, survey.year)
+    answers = build_dropdown_options(
+        payload.get("answers") or [], context="statistics-fra-response"
+    )
+    segmentations = _translated_segmentation_options(payload.get("segmentations") or [], language)
+    types_a = _segmentation_catalog_options(FRA_FILTER_GROUP_A, segmentations, language)
+    types_b = _segmentation_catalog_options(FRA_FILTER_GROUP_B, segmentations, language)
+    values = payload.get("values") or {}
+    restored = {
+        "stats-survey-select": (FRA_SURVEY_OPTIONS, survey_id),
+        "stats-category-select": (categories, category),
+        "fra-indicator-select": (indicators, code),
+        "fra-answer-select": (answers, answer),
+        "fra-demographic-type": (types_a, demo_type),
+        "fra-demographic-value": (
+            _translated_taxonomy_options(values.get(demo_type) or [], "fra_filter_value", language),
+            demo_value,
+        ),
+        "fra-identity-type": (types_b, identity_type),
+        "fra-identity-value": (
+            _translated_taxonomy_options(
+                values.get(identity_type) or [], "fra_filter_value", language
+            ),
+            identity_value,
+        ),
+    }
+
+    def restore(node: Any) -> None:
+        component_id = getattr(node, "id", None)
+        if isinstance(component_id, str) and component_id in restored:
+            options, value = restored[component_id]
+            node.options = options
+            node.value = option_value_or_none(options, value)
+            if isinstance(node, dcc.Dropdown):
+                cast(Any, node).disabled = False
+        children = getattr(node, "children", None)
+        for child in children if isinstance(children, (list, tuple)) else [children]:
+            if isinstance(child, Component):
+                restore(child)
+
+    restore(controls)
+
+
 def _controls(categories: list[dict[str, Any]]) -> Component:
     return html.Section(
         [
@@ -1430,6 +1563,8 @@ def _controls(categories: list[dict[str, Any]]) -> Component:
                     html.Div(
                         dcc.RadioItems(
                             id="stats-survey-select",
+                            persistence=True,
+                            persistence_type="session",
                             options=FRA_SURVEY_OPTIONS,
                             value=default_fra_survey().survey_id,
                             className="stats-segmented-control stats-survey-control",
@@ -1459,6 +1594,8 @@ def _controls(categories: list[dict[str, Any]]) -> Component:
                         ("Categoría", "Category"),
                         dcc.Dropdown(
                             id="stats-category-select",
+                            persistence=True,
+                            persistence_type="session",
                             options=categories,
                             value=None,
                             clearable=False,
@@ -1471,6 +1608,8 @@ def _controls(categories: list[dict[str, Any]]) -> Component:
                                 "Pregunta o indicador",
                                 dcc.Dropdown(
                                     id="fra-indicator-select",
+                                    persistence=True,
+                                    persistence_type="session",
                                     options=[],
                                     value=None,
                                     clearable=False,
@@ -1482,6 +1621,8 @@ def _controls(categories: list[dict[str, Any]]) -> Component:
                                 "Respuesta",
                                 dcc.Dropdown(
                                     id="fra-answer-select",
+                                    persistence=True,
+                                    persistence_type="session",
                                     options=[],
                                     value=None,
                                     clearable=False,
@@ -2494,7 +2635,9 @@ def _segmentation_group(
             ("Tipo de filtro", "Filter type"),
             dcc.RadioItems(
                 id=type_id,
-                options=_segmentation_catalog_options(type_catalog, []),
+                persistence=True,
+                persistence_type="session",
+                options=_segmentation_catalog_options(type_catalog, [], current_route_language()),
                 value=None,
                 className="stats-radio-card-grid",
                 inputClassName="stats-radio-card-input",
@@ -2505,6 +2648,8 @@ def _segmentation_group(
             ("Valor", "Value"),
             dcc.RadioItems(
                 id=value_id,
+                persistence=True,
+                persistence_type="session",
                 options=[],
                 value=None,
                 className="stats-radio-value-grid",
@@ -2917,7 +3062,7 @@ def _render_dashboard_uncached(
         map_figure,
         _map_ranking_content(ranking, language),
         not bool(selected),
-        _executive_metric_cards(ranking, selected, history),
+        _executive_metric_cards(ranking, selected, history, language),
         temporal,
         (
             "stats-panel-wrapper stats-temporal-wrapper"
@@ -3065,10 +3210,17 @@ def _executive_metric_cards(
     ranking: list[dict[str, Any]],
     selected: list[str],
     history: list[dict[str, Any]] | None = None,
+    language: str = "es",
 ) -> list[Any]:
     dataframe = pd.DataFrame(ranking)
     if dataframe.empty:
         return []
+    dataframe["country"] = [
+        country_labels(str(row.get("iso") or ""), str(row.get("country") or ""))[
+            1 if language == "en" else 0
+        ]
+        for row in ranking
+    ]
     dataframe["value"] = pd.to_numeric(dataframe["value"], errors="coerce")
     dataframe = (
         dataframe.dropna(subset=["value"])
@@ -3544,7 +3696,7 @@ def _selection_scope(
             "title": "Europe" if language == "en" else "Europa",
             "names": [],
         }
-    names = _selected_country_names(ranking, selected)
+    names = _selected_country_names(ranking, selected, language)
     if len(names) == 1:
         return {"kind": "one", "title": names[0], "names": names}
     suffix = "selected countries" if language == "en" else "países seleccionados"
@@ -3555,9 +3707,13 @@ def _selection_scope(
     }
 
 
-def _selected_country_names(ranking: list[dict[str, Any]], selected: list[str]) -> list[str]:
+def _selected_country_names(
+    ranking: list[dict[str, Any]], selected: list[str], language: str = "es"
+) -> list[str]:
     names = {
-        normalize_country_code(row.get("iso")): str(row.get("country") or row.get("iso") or "")
+        normalize_country_code(row.get("iso")): country_labels(
+            str(row.get("iso") or ""), str(row.get("country") or row.get("iso") or "")
+        )[1 if language == "en" else 0]
         for row in ranking
     }
     return [names.get(normalize_country_code(country), country) for country in selected]

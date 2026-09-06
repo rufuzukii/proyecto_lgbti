@@ -1947,12 +1947,7 @@ def _clean_block_paragraph(text: str) -> str:
     paragraph = clean_semantic_text(text)
     if not paragraph:
         return ""
-    paragraph = re.sub(
-        r"\s*\(?\s*(?:Figura|Gr[aá]fico)\s+\d+(?:\.\d+)?\s*\)?",
-        "",
-        paragraph,
-        flags=re.IGNORECASE,
-    )
+    # In-text references are part of the sentence, not chart captions.
     paragraph = re.sub(r"\s+([,.;:!?])", r"\1", paragraph).strip(" .:-")
     if len(paragraph) < 35 and not PERCENT_PATTERN.search(paragraph):
         return ""
@@ -2045,19 +2040,6 @@ def _add_data_point(
 
 def _clean_data_sentence(text: str) -> str:
     clean_text = " ".join(str(text or "").split()).strip(" .:-")
-    clean_text = re.sub(
-        r"^(?:la\s+)?Figura\s+\d+(?:\.\d+)?[.:]?\s+"
-        r"(?:muestra|indica|presenta|refleja)\s+(?:que\s+)?",
-        "",
-        clean_text,
-        flags=re.IGNORECASE,
-    )
-    clean_text = re.sub(
-        r"\s*\(?\s*Figura\s+\d+(?:\.\d+)?\s*\)?",
-        "",
-        clean_text,
-        flags=re.IGNORECASE,
-    )
     clean_text = re.sub(r"\s+([,.;:!?])", r"\1", clean_text)
     clean_text = re.sub(r"^(?:y|e|o|,)\s+", "", clean_text, flags=re.IGNORECASE)
     return _truncate_at_word_boundary(clean_text, 700).strip(" .:-")

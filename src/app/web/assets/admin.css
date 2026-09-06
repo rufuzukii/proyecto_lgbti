@@ -242,6 +242,10 @@
   min-width: 0;
 }
 
+.admin-action-button[hidden] {
+  display: none;
+}
+
 .admin-input {
   width: 100%;
   min-height: 42px;

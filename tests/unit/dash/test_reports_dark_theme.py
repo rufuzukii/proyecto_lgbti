@@ -32,18 +32,16 @@ def test_reports_dark_theme_covers_dash_controls_and_preview_content() -> None:
     assert "fill: var(--reports-text) !important;" in css
 
 
-def test_report_chart_narratives_keep_black_text_in_dark_mode() -> None:
+def test_report_chart_narratives_use_dark_controls_including_dash_wrappers() -> None:
     css = _reports_css()
-    rule = css.split('html[data-theme="dark"] textarea.reports-chart-narrative,', 1)[1].split(
+    rule = css.split('html[data-theme="dark"] .reports-preview-document textarea,', 1)[1].split(
         "}", 1
     )[0]
 
-    assert 'body[data-theme="dark"] textarea.reports-chart-narrative' in rule
-    assert 'html[data-theme="dark"] textarea.reports-section-narrative' in rule
-    assert 'body[data-theme="dark"] textarea.reports-section-narrative' in rule
-    assert "background: #ffffff !important;" in rule
-    assert "color: #000000 !important;" in rule
-    assert "caret-color: #000000;" in rule
+    assert 'body[data-theme="dark"] .reports-preview-document textarea' in rule
+    assert "background: var(--reports-control-bg) !important;" in rule
+    assert "color: var(--reports-text) !important;" in rule
+    assert "caret-color: var(--reports-text);" in rule
 
 
 def test_profile_personalisation_and_login_notice_are_responsive_and_dark_compatible() -> None:

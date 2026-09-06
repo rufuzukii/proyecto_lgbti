@@ -8,6 +8,7 @@ class StatisticsViewState(StrEnum):
     INITIAL = "initial"
     LOADING_INDICATORS = "loading_indicators"
     AWAITING_INDICATOR = "awaiting_indicator"
+    AWAITING_FILTER = "awaiting_filter"
     LOADING_STATISTICS = "loading_statistics"
     SURVEY_EMPTY = "survey_empty"
     READY = "ready"
@@ -58,6 +59,8 @@ def resolve_statistics_view_state(
         return StatisticsViewState.LOADING_STATISTICS
     if status == StatisticsViewState.AWAITING_INDICATOR:
         return StatisticsViewState.AWAITING_INDICATOR
+    if status == StatisticsViewState.AWAITING_FILTER:
+        return StatisticsViewState.AWAITING_FILTER
     query_token = str(payload.get("query_token") or "").strip()
     active_token = str((active_payload or {}).get("query_token") or "").strip()
     if query_token and active_token and query_token != active_token:

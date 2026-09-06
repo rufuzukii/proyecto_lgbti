@@ -146,6 +146,7 @@ def build_admin_users_layout(
                                     _message(status, is_error=False),
                                     _message(error, is_error=True),
                                     html.Div(
+                                        " ",
                                         id="admin-user-edit-feedback",
                                         className="auth-message",
                                         role="status",

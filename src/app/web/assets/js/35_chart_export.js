@@ -77,6 +77,9 @@
     document.body.insertAdjacentElement("beforeend", exportGraph);
 
     const currentLayout = deepClone(graph.layout || {});
+    if (meta.export_title) {
+      currentLayout.title = Object.assign({}, currentLayout.title, {text: meta.export_title});
+    }
     const exportData = deepClone(graph.data || []);
     const colors = app.theme.colorsForTheme(theme);
     const currentMargin = currentLayout.margin || {};

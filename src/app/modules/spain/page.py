@@ -353,8 +353,8 @@ def register_spain_callbacks(app: Dash) -> None:
         if not document_id:
             return _spain_view_state(
                 empty=_empty_state(
-                    "No hay documentos disponibles",
-                    "Selecciona un documento.",
+                    "Selecciona un documento",
+                    "Selecciona un documento para cargar sus indicadores.",
                 ),
             )
         if document_id not in {option["value"] for option in document_options}:

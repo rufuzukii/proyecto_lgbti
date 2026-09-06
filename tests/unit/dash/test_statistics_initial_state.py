@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from dash import Dash, dcc
 
 import app.modules.statistics.page as statistics_page
@@ -37,6 +39,105 @@ def _callback(app: Dash, name: str):
         if getattr(value.get("callback"), "__wrapped__", None)
         and value["callback"].__wrapped__.__name__ == name
     )
+
+
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_missing_filter_value_waits_for_user_without_query_or_spinner(monkeypatch, language):
+    app = Dash("audit-filter-state", suppress_callback_exceptions=True)
+    statistics_page.register_statistics_callbacks(app)
+    monkeypatch.setattr(
+        statistics_page, "ctx", SimpleNamespace(triggered_id="fra-demographic-type")
+    )
+    monkeypatch.setattr(
+        statistics_page, "get_fra_statistics", lambda _: pytest.fail("query before selection")
+    )
+    result = _callback(app, "load_statistics_data")(
+        "fra_survey_iii",
+        "Discrimination",
+        "test",
+        "Yes",
+        "Age",
+        None,
+        "All",
+        "All",
+        {"category": "Discrimination", "code": "test"},
+    )
+    assert result["status"] == "awaiting_filter"
+    child, state_class, results_class = _callback(app, "update_statistics_query_state")(
+        result,
+        None,
+        None,
+        "Discrimination",
+        "test",
+        language,
+    )
+    assert "spinner" not in str(child)
+    assert (
+        "Select a value" in str(child) if language == "en" else "Selecciona un valor" in str(child)
+    )
+    assert "loading" not in state_class
+    assert "is-hidden" in results_class
+
+
+@pytest.mark.parametrize("language,label", [("es", "Todos"), ("en", "All")])
+def test_filter_value_labels_do_not_change_query_values(language, label):
+    app = Dash("audit-filter-labels", suppress_callback_exceptions=True)
+    statistics_page.register_statistics_callbacks(app)
+    options, value = _callback(app, "update_demographic_values")(
+        "All", {"language": language, "values": {"All": [{"label": "All", "value": "All"}]}}, "All"
+    )
+    assert options == [{"label": label, "value": "All", "disabled": True}]
+    assert value == "All"
+
+
+@pytest.mark.parametrize("language,country", [("es", "España"), ("en", "Spain")])
+def test_metric_and_selection_country_names_are_localized(language, country):
+    ranking = [{"iso": "ES", "country": "Spain", "value": 0}]
+    assert statistics_page._selection_scope(ranking, ["ES"], language)["title"] == country
+    cards = str(statistics_page._executive_metric_cards(ranking, ["ES"], language=language))
+    assert f"{country} · 0.00%" in cards
+
+
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_restore_query_mounts_valid_options_and_rejects_stale_indicator(monkeypatch, language):
+    from app.web.routes import localized_route_context
+
+    monkeypatch.setattr(statistics_page, "build_navbar", lambda **_: "")
+    monkeypatch.setattr(
+        statistics_page,
+        "_category_options",
+        lambda *_: [{"label": "Employment", "value": "Employment"}],
+    )
+    monkeypatch.setattr(
+        statistics_page,
+        "get_fra_mongo_indicators_by_category",
+        lambda *_: [SimpleNamespace(code="D1", question="Question")],
+    )
+    monkeypatch.setattr(
+        statistics_page,
+        "get_fra_control_payload",
+        lambda *_: {
+            "answers": [{"label": "Yes", "value": "Yes"}],
+            "segmentations": [{"label": "All", "value": "All"}, {"label": "Age", "value": "Age"}],
+            "values": {
+                "All": [{"label": "All", "value": "All"}],
+                "Age": [{"label": "25-39", "value": "25-39"}],
+            },
+        },
+    )
+    selection = ["fra_survey_iii", 2023, "Employment", "D1", "Yes", "Age", "25-39", "All", "All"]
+    with localized_route_context(language):
+        layout = statistics_page.build_statistics_layout(selection)
+    indicator = _component_by_id(layout, "fra-indicator-select")
+    assert indicator is not None
+    assert indicator.value == "D1"
+    assert indicator.options == [{"label": "Question", "value": "D1"}]
+    demographic = _component_by_id(layout, "fra-demographic-value")
+    assert demographic is not None and demographic.value == "25-39"
+    selection[3] = "removed-from-catalog"
+    stale = statistics_page.build_statistics_layout(selection)
+    stale_indicator = _component_by_id(stale, "fra-indicator-select")
+    assert stale_indicator is not None and stale_indicator.value is None
 
 
 def test_statistics_layout_defers_catalog_queries_and_hides_results(monkeypatch) -> None:
@@ -410,7 +511,7 @@ def test_changing_survey_resets_category_and_exposes_empty_catalog(monkeypatch) 
     )
 
 
-def test_statistics_dropdown_ids_are_unique_and_do_not_persist_stale_values(monkeypatch) -> None:
+def test_statistics_dropdown_ids_are_unique_and_preserve_session_selection(monkeypatch) -> None:
     monkeypatch.setattr(statistics_page, "build_navbar", lambda **_kwargs: "")
     layout = statistics_page.build_statistics_layout()
     dropdowns = [item for item in _walk(layout) if type(item).__name__ == "Dropdown"]
@@ -418,7 +519,7 @@ def test_statistics_dropdown_ids_are_unique_and_do_not_persist_stale_values(monk
 
     assert not [component_id for component_id, count in Counter(ids).items() if count > 1]
     assert all(
-        item.to_plotly_json()["props"].get("persistence") in {None, False} for item in dropdowns
+        item.to_plotly_json()["props"].get("persistence_type") == "session" for item in dropdowns
     )
 
 

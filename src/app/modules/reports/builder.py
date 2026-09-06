@@ -37,6 +37,7 @@ from app.modules.statistics.figures import (
     build_temporal_evolution_chart,
 )
 from app.modules.statistics.ranking import RankingPage, paginate_ranking
+from app.shared.data.legal_criteria import translate_legal_category
 from app.shared.data.normalization import normalize_country_code
 from app.shared.data.source_attribution import attribution_for_sources
 from app.web.i18n import country_labels
@@ -81,6 +82,8 @@ class ReportBuilder:
             or configuration.category
             or ""
         )
+        if configuration.source == "ilga":
+            indicator = translate_legal_category(indicator, configuration.language)
         selected = list(configuration.countries)
         country_names = _country_names(ranking, selected)
         primary_row = _primary_row(ranking, configuration.primary_country)

@@ -226,8 +226,9 @@ def create_dash_app() -> Dash:
         Output("page-content", "children"),
         Input("url", "pathname"),
         Input("url", "search"),
+        State("statistics-selection", "data"),
     )
-    def display_page(pathname: str | None, search: str | None):
+    def display_page(pathname: str | None, search: str | None, statistics_selection=None):
         params = _query_params(search)
         legacy_target = legacy_redirect_target(pathname)
         if legacy_target:
@@ -245,6 +246,8 @@ def create_dash_app() -> Dash:
             if route.public_id:
                 params = {**params, "public_id": [route.public_id]}
             with localized_route_context(route.language):
+                if route.route_id == "statistics" and statistics_selection:
+                    return build_statistics_layout(statistics_selection)
                 return _build_page_for_route(route.route_id, route.language, params, search)
         except DatabaseUnavailableError as exc:
             logger.warning(
@@ -305,7 +308,7 @@ def _build_page_for_route(
             return dcc.Location(
                 href=f"{route_path('didactica', language)}?notice=docente_required",
                 id="educator-access-denied-redirect",
-                refresh=False,
+                refresh=True,
             )
         return build_docente_layout()
     if route_id == "educator_create":
@@ -317,7 +320,7 @@ def _build_page_for_route(
             return dcc.Location(
                 href=f"{route_path('didactica', language)}?notice=docente_required",
                 id="educator-create-access-denied-redirect",
-                refresh=False,
+                refresh=True,
             )
         try:
             return build_activity_editor_layout(
@@ -327,7 +330,7 @@ def _build_page_for_route(
             return dcc.Location(
                 href=f"{route_path('didactica', language)}?notice=docente_required",
                 id="educator-editor-owner-denied-redirect",
-                refresh=False,
+                refresh=True,
             )
     if route_id == "educator_activity":
         activity_path = route_path("educator_activity", language)
@@ -337,7 +340,7 @@ def _build_page_for_route(
             return dcc.Location(
                 href=f"{route_path('didactica', language)}?notice=docente_required",
                 id="educator-activity-access-denied-redirect",
-                refresh=False,
+                refresh=True,
             )
         try:
             return build_custom_activity_layout(_first_param(params, "id"))
@@ -345,7 +348,7 @@ def _build_page_for_route(
             return dcc.Location(
                 href=f"{route_path('didactica', language)}?notice=docente_required",
                 id="educator-activity-owner-denied-redirect",
-                refresh=False,
+                refresh=True,
             )
     if route_id == "educator_public_activity":
         return build_public_activity_layout(_first_param(params, "public_id"))
@@ -452,6 +455,7 @@ def _build_application_shell() -> Component:
         [
             dcc.Location(id="url", refresh="callback-nav"),
             dcc.Store(id="app-language-store", storage_type="local"),
+            dcc.Store(id="statistics-selection", storage_type="session"),
             dcc.Store(id="app-route-config", data=client_route_config()),
             dcc.Interval(id="app-language-init", interval=150, max_intervals=1),
             html.Button(

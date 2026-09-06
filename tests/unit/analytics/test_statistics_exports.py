@@ -514,7 +514,7 @@ def test_rendered_export_metadata_tracks_visible_filters_and_country_selection()
     europe_meta = cast(Any, europe[2]).layout.meta
     selected_title = cast(Any, selected[2]).layout.title.text
 
-    assert selected_meta["export_filename"].endswith("_spain_2024.png")
+    assert selected_meta["export_filename"].endswith("_espana_2024.png")
     assert europe_meta["export_filename"].endswith("_europa_2024.png")
     assert "Respuesta: Yes" in selected_title
     assert "Age: 25-39" in selected_title

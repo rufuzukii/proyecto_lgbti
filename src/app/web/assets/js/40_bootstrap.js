@@ -5,6 +5,14 @@
   let activeAdminUserRow = null;
 
   document.addEventListener("click", (event) => {
+    if (event.target.closest(".stats-reset-link")) {
+      Object.keys(window.sessionStorage).forEach((key) => {
+        if (/^_dash_persistence\.(stats-|fra-)/.test(key)
+          || key === "stats-selected-countries" || key === "statistics-selection") {
+          window.sessionStorage.removeItem(key);
+        }
+      });
+    }
     const adminUserDeleteConfirm = event.target.closest("[data-admin-user-delete-confirm]");
     if (adminUserDeleteConfirm) {
       confirmAdminUserDelete();
@@ -201,6 +209,7 @@
       }
       if (targetsToApply.plotly) {
         app.theme.restylePlotly(state.currentTheme(), 0);
+        app.charts.observe();
       }
     }, 80);
   });
@@ -358,6 +367,11 @@
     }
   }
 
+  function adminUserControls(row) {
+    // Dash 4 puts className on a wrapper; only native controls own value/disabled.
+    return row.querySelectorAll("input.admin-input, .admin-input input, select.admin-input");
+  }
+
   function beginAdminUserEdit(button) {
     const row = button.closest("[data-admin-user-row]");
     if (!row || row.dataset.currentUserRow === "true") {
@@ -372,7 +386,7 @@
     rememberAdminUserValues(row);
     activeAdminUserRow = row;
     row.classList.add("is-editing");
-    row.querySelectorAll(".admin-input").forEach((control) => {
+    adminUserControls(row).forEach((control) => {
       control.disabled = false;
     });
     const saveButton = row.querySelector("[data-admin-user-save]");
@@ -389,7 +403,7 @@
     if (deleteButton) {
       deleteButton.disabled = true;
     }
-    const firstInput = row.querySelector(".admin-input");
+    const firstInput = adminUserControls(row)[0];
     if (firstInput) {
       firstInput.focus();
       if (typeof firstInput.select === "function") {
@@ -399,13 +413,13 @@
   }
 
   function rememberAdminUserValues(row) {
-    row.querySelectorAll(".admin-input").forEach((control) => {
+    adminUserControls(row).forEach((control) => {
       control.dataset.adminOriginalValue = control.value;
     });
   }
 
   function restoreAdminUserValues(row) {
-    row.querySelectorAll(".admin-input").forEach((control) => {
+    adminUserControls(row).forEach((control) => {
       if (Object.prototype.hasOwnProperty.call(control.dataset, "adminOriginalValue")) {
         control.value = control.dataset.adminOriginalValue;
       }
@@ -428,7 +442,7 @@
     const deleteButton = row.querySelector(".admin-delete-button");
     row.classList.remove("is-editing", "is-saving");
     row.removeAttribute("aria-busy");
-    row.querySelectorAll(".admin-input").forEach((control) => {
+    adminUserControls(row).forEach((control) => {
       control.disabled = true;
     });
     if (editButton) {
@@ -469,7 +483,7 @@
     formData.set("action", "update");
 
     try {
-      const response = await window.fetch(row.action, {
+      const response = await window.fetch(row.getAttribute("action"), {
         method: "POST",
         body: formData,
         credentials: "same-origin",
@@ -598,7 +612,7 @@
       const isCurrentUser = row.dataset.currentUserRow === "true";
       row.classList.remove("is-editing", "is-saving");
       row.removeAttribute("aria-busy");
-      row.querySelectorAll(".admin-input").forEach((control) => {
+      adminUserControls(row).forEach((control) => {
         control.disabled = true;
       });
       const editButton = row.querySelector("[data-admin-user-edit]");

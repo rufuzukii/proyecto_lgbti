@@ -329,6 +329,8 @@ def _home_legal_country_section() -> Component:
                 ),
                 dcc.Dropdown(
                     id="home-legal-country-select",
+                    persistence=True,
+                    persistence_type="session",
                     options=_home_legal_country_options(),
                     value=None,
                     clearable=True,

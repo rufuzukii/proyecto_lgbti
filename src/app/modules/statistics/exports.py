@@ -231,6 +231,10 @@ def prepare_figure_for_export(
             "export_height": export_height,
             "export_scale": EXPORT_SCALE,
             "export_source": source_label,
+            "language": language,
+            "context_title": str(chart_title or chart_type),
+            "context_subtitle": subtitle,
+            "export_title": title_text,
         },
     )
     return figure

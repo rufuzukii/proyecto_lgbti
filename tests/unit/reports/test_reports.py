@@ -76,6 +76,34 @@ def _configuration(**overrides: Any) -> ReportConfiguration:
     return ReportConfiguration.from_mapping(values)
 
 
+@pytest.mark.parametrize("language,label", [("es", "Sin datos"), ("en", "No data")])
+def test_legal_pdf_figures_and_missing_data_legend_use_report_language(
+    monkeypatch, tmp_path, language, label
+):
+    from PIL import ImageDraw
+
+    configuration = _configuration(source="ilga", category="Ranking total", language=language)
+    content = HRReportBuilder().build(configuration, ReportDataset(_ilga_result(), query_seconds=0))
+    figure = next(chart.figure for chart in content.charts if chart.key.startswith("map_"))
+    assert figure is not None
+    if language == "en":
+        assert "Ranking total" not in str(figure.layout.title.text)
+    drawn = []
+    original = ImageDraw.ImageDraw.text
+
+    def draw_text(self, xy, text, *args, **kwargs):
+        drawn.append(text)
+        return original(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(ImageDraw.ImageDraw, "text", draw_text)
+    target = tmp_path / "map.png"
+    with ReportChartRenderer() as renderer:
+        renderer.write("map", figure, target)
+    assert target.stat().st_size > 1000
+    assert label in drawn
+    assert ("Sin datos" if language == "en" else "No data") not in drawn
+
+
 def test_report_fields_associate_labels_without_targeting_composite_containers() -> None:
     text_field = reports_page._field("Título", "Title", dcc.Input(id="report-title-test"))
     group_field = reports_page._field(
@@ -938,6 +966,13 @@ def test_pdf_export_contains_sections_charts_and_automatic_generation_date(
     printable_right = page_width - printable_left
     assert all(widget.rect.x0 >= printable_left - 1 for widget in widgets)
     assert all(widget.rect.x1 <= printable_right + 1 for widget in widgets)
+    for page in document:
+        for widget in page.widgets() or ():
+            if cast(Any, widget).field_name != "chart_ranking_what_shows":
+                continue
+            words = page.get_text("words", clip=widget.rect)
+            assert "persona" in {word[4] for word in words}
+            assert len({round(float(word[1]), 1) for word in words}) >= 2
     image_rects = [
         rect
         for page in document
@@ -1316,6 +1351,12 @@ def test_report_plan_summary_shows_indicator_name_instead_of_internal_code() -> 
 
     assert "Cancer prevention medical checks: last colonoscopy" in rendered_text
     assert "H6_C" not in rendered_text
+    assert "Salud y salud mental" in rendered_text
+    legal = callback(
+        "ilga", 2026, None, [], None, "en", "Ranking total", None, [], "All", "All", "All", "All"
+    )
+    assert "Overall ranking" in " ".join(_collect_text(legal))
+    assert "Ranking total" not in " ".join(_collect_text(legal))
 
 
 def test_social_indicator_validation_and_filter_scope_are_explicit() -> None:

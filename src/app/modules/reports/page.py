@@ -448,16 +448,16 @@ def register_reports_callbacks(app: Dash) -> None:
             not social_enabled,
             "reports-field" if _requires_social_indicator(source) else "reports-field is-hidden",
             "reports-filters-section" if source == "fra" else "reports-filters-section is-hidden",
-            segmentations,
+            _localized_filter_options(segmentations, "fra_filter"),
             a_name,
             not filters_enabled,
-            a_options,
+            _localized_filter_options(a_options, "fra_filter_value"),
             a_value,
             not filters_enabled or a_name == "All",
-            segmentations,
+            _localized_filter_options(segmentations, "fra_filter"),
             b_name,
             not b_enabled,
-            b_options,
+            _localized_filter_options(b_options, "fra_filter_value"),
             b_value,
             not b_enabled or b_name == "All",
         )
@@ -504,7 +504,8 @@ def register_reports_callbacks(app: Dash) -> None:
             country for country in [primary_country, *(comparison_countries or [])] if country
         ]
         filters = [
-            f"{name}: {value}"
+            f"{taxonomy_pair('fra_filter', name)[1 if clean_language == 'en' else 0]}: "
+            f"{taxonomy_pair('fra_filter_value', value)[1 if clean_language == 'en' else 0]}"
             for name, value in (
                 (filter_a_name, filter_a_value),
                 (filter_b_name, filter_b_value),
@@ -528,7 +529,13 @@ def register_reports_callbacks(app: Dash) -> None:
             html.Dt(_t(clean_language, "Encuesta / año", "Survey / year")),
             html.Dd(str(year or "—")),
             html.Dt(_t(clean_language, "Categoría", "Category")),
-            html.Dd(category or "—"),
+            html.Dd(
+                taxonomy_pair("ilga_category" if source == "ilga" else "fra_category", category)[
+                    1 if clean_language == "en" else 0
+                ]
+                if category
+                else "—"
+            ),
         ]
         if _requires_social_indicator(source):
             summary_items.extend(
@@ -884,6 +891,7 @@ def _configuration_panel(
         {"label": name, "value": name}
         for name in dict.fromkeys(name for name in segmentation_names if name)
     ]
+    segmentations = _localized_filter_options(segmentations, "fra_filter")
     values_by_type = {
         "All": [{"label": "All", "value": "All"}],
         config.filter_a_name: [{"label": config.filter_a_value, "value": config.filter_a_value}],
@@ -1043,7 +1051,10 @@ def _configuration_panel(
                                 "Value",
                                 dcc.Dropdown(
                                     id="report-filter-a-value",
-                                    options=list(values_by_type.get(config.filter_a_name) or []),
+                                    options=_localized_filter_options(
+                                        list(values_by_type.get(config.filter_a_name) or []),
+                                        "fra_filter_value",
+                                    ),
                                     value=config.filter_a_value,
                                     disabled=not social_source or config.filter_a_name == "All",
                                     clearable=False,
@@ -1065,7 +1076,10 @@ def _configuration_panel(
                                 "Second filter value",
                                 dcc.Dropdown(
                                     id="report-filter-b-value",
-                                    options=list(values_by_type.get(config.filter_b_name) or []),
+                                    options=_localized_filter_options(
+                                        list(values_by_type.get(config.filter_b_name) or []),
+                                        "fra_filter_value",
+                                    ),
                                     value=config.filter_b_value,
                                     disabled=(
                                         not social_source
@@ -1532,6 +1546,15 @@ def _year_options(source: str) -> list[dict[str, Any]]:
             if year in {2023, 2019}
         ]
     return [{"label": str(year), "value": year} for year in values]
+
+
+def _localized_filter_options(
+    options: list[dict[str, Any]], namespace: str
+) -> list[dict[str, Any]]:
+    return [
+        {**option, "label": text(*taxonomy_pair(namespace, str(option["value"])))}
+        for option in options
+    ]
 
 
 def _category_options(source: str, year: int | None) -> list[dict[str, Any]]:

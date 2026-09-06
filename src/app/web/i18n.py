@@ -830,6 +830,10 @@ UI_TEXT = {
         "es": "No hay datos disponibles para esta selección.",
         "en": "No data is available for this selection.",
     },
+    "statistics_awaiting_filter": {
+        "es": "Selecciona un valor para el filtro elegido.",
+        "en": "Select a value for the chosen filter.",
+    },
     "statistics_error": {
         "es": "No se han podido cargar las estadísticas. Inténtalo de nuevo.",
         "en": "Statistics could not be loaded. Please try again.",

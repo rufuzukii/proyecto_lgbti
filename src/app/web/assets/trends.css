@@ -102,6 +102,7 @@
 .trend-range-field .dash-range-slider-min-input,
 .trend-range-field .dash-range-slider-max-input {
   font: inherit;
+  min-width: calc(4ch + 2.5rem);
 }
 
 .trend-range-field .dash-range-slider-input:hover:not(:disabled) {

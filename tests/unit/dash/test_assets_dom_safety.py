@@ -291,7 +291,7 @@ def test_rrhh_navbar_exposes_upload_without_admin_navigation(monkeypatch) -> Non
         component for component in components if getattr(component, "href", None) == "/es/importar"
     )
 
-    assert upload_link.className == "nav-link"
+    assert cast(Any, upload_link).className == "nav-link"
     assert not any(
         "nav-admin-cta" in getattr(component, "className", "") for component in components
     )
@@ -302,7 +302,7 @@ def test_rrhh_navbar_exposes_upload_without_admin_navigation(monkeypatch) -> Non
         for component in active_components
         if getattr(component, "href", None) == "/es/importar"
     )
-    assert active_upload_link.className == "nav-link is-active"
+    assert cast(Any, active_upload_link).className == "nav-link is-active"
 
 
 def test_navbar_icon_controls_have_initial_accessible_names(monkeypatch) -> None:

@@ -108,7 +108,7 @@ def build_user_page_layout(
     is_editing = mode == "edit"
     username = getattr(current_user, "username", None) or ""
     email = getattr(current_user, "email", None) or ""
-    organization = getattr(current_user, "organization", None) or "Sin organización"
+    organization = getattr(current_user, "organization", None) or ""
     role = getattr(current_user, "role", UserRole.COMMON)
     user_type = getattr(current_user, "user_type", UserType.COMUN) or UserType.COMUN
     return html.Div(
@@ -373,6 +373,7 @@ def _privacy_zone(
                                 "Organización",
                                 "Organization",
                                 organization or "Sin organización",
+                                organization or "No organization",
                             ),
                             *_privacy_summary_row(
                                 "Rol actual",
