@@ -141,7 +141,17 @@ def test_home_map_export_reuses_the_rendered_plot_without_a_server_callback(monk
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is unavailable")
-def test_home_map_download_composes_the_2026_legal_ranking_into_the_image() -> None:
+@pytest.mark.parametrize(
+    ("width", "height", "ranking_title"),
+    (
+        (LEGAL_MAP_EXPORT_WIDTH, LEGAL_MAP_EXPORT_HEIGHT, "Ranking legal · 2026"),
+        (1600, 900, "Ranking de países"),
+        (1600, 900, "Country ranking"),
+    ),
+)
+def test_map_download_places_the_ranking_title_above_its_table(
+    width: int, height: int, ranking_title: str
+) -> None:
     script_path = Path("src/app/web/assets/js/35_chart_export.js").resolve()
     harness = f"""
 const fs = require("fs");
@@ -153,11 +163,11 @@ const graph = {{
     geo: {{}},
     meta: {{
       export_filename: "rainbowlens_mapa_legal_europa_2026",
-      export_width: {LEGAL_MAP_EXPORT_WIDTH},
-      export_height: {LEGAL_MAP_EXPORT_HEIGHT},
+      export_width: {width},
+      export_height: {height},
       export_scale: {LEGAL_MAP_EXPORT_SCALE},
       export_map_title: "Mapa europeo LGBTIQ+",
-      export_ranking_title: "Ranking legal · 2026",
+      export_ranking_title: {json.dumps(ranking_title)},
       export_country_label: "País",
       export_score_label: "Puntuación legal",
       export_map_ranking: [
@@ -207,12 +217,16 @@ const button = {{
   const table = captured.data.find((trace) => trace.type === "table");
   if (!table) throw new Error("legal ranking table missing from export");
   if (table.cells.values[1].join(",") !== "Malta,España") throw new Error("ranking rows missing");
-  if (!captured.layout.annotations.some((item) => item.text.includes("Ranking legal · 2026"))) {{
+  if (!captured.layout.annotations.some((item) => item.text.includes({json.dumps(ranking_title)}))) {{
     throw new Error("ranking title missing");
   }}
+  const heading = captured.layout.annotations.find((item) => item.text.includes({json.dumps(ranking_title)}));
+  if (heading.yanchor !== "bottom" || heading.y < table.domain.y[1] || heading.yshift < 8) {{
+    throw new Error("ranking heading overlaps the table header");
+  }}
   if (captured.layout.geo.domain.x[1] !== 0.7) throw new Error("map was not resized");
-  if (captured.options.width !== {LEGAL_MAP_EXPORT_WIDTH}
-      || captured.options.height !== {LEGAL_MAP_EXPORT_HEIGHT}) throw new Error("export size mismatch");
+  if (captured.options.width !== {width}
+      || captured.options.height !== {height}) throw new Error("export size mismatch");
 }})().catch((error) => {{console.error(error); process.exitCode = 1;}});
 """
 

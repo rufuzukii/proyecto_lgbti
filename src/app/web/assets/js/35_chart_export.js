@@ -269,9 +269,13 @@
     layout.annotations.push({
       text: `<b>${String(meta.export_ranking_title || "")}</b>`,
       x: 0.88,
-      y: 1.02,
+      y: 1,
       xref: "paper",
       yref: "paper",
+      xanchor: "center",
+      // Anchor the bottom above the table's top, independently of export height.
+      yanchor: "bottom",
+      yshift: 12,
       showarrow: false,
       font: {size: 16, color: colors.font},
     });
