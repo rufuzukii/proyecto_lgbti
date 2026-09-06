@@ -523,6 +523,8 @@ def _register_client_preferences_callbacks(app: Dash) -> None:
     app.clientside_callback(
         """
         function(initTick, nClicks, pathname, search, hash, routeConfig) {
+            // Match the central route helper's trailing-slash normalization before lookup.
+            pathname = (pathname || "/").replace(/[/]+$/, "") || "/";
             const appState = window.RainbowLens || {};
             const state = appState.state || {};
             const i18n = appState.i18n || {};
