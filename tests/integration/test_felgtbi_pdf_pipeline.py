@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 import fitz
+import pytest
 
 from app.modules.imports.felgtbi import batch as felgtbi_batch
 from app.modules.imports.felgtbi import importer, mongo
@@ -13,13 +15,69 @@ class RecordingCollection:
     def __init__(self) -> None:
         self.deleted: list[dict[str, Any]] = []
         self.updates: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        self.documents: list[dict[str, Any]] = []
 
     def delete_many(self, query):
         self.deleted.append(query)
+        self.documents = [
+            doc for doc in self.documents if not all(doc.get(k) == v for k, v in query.items())
+        ]
 
     def update_one(self, query, update, *, upsert=False):
         assert upsert is True
         self.updates.append((query, update))
+        document = next(
+            (doc for doc in self.documents if all(doc.get(k) == v for k, v in query.items())),
+            None,
+        )
+        if document is None:
+            document = {**query, **update.get("$setOnInsert", {})}
+            self.documents.append(document)
+        document.update(update.get("$set", {}))
+        for key in update.get("$unset", {}):
+            document.pop(key, None)
+
+
+@pytest.mark.parametrize("old_id", [None, "old-pdf-hash", "new-pdf-hash"])
+def test_reimport_replaces_old_report_content_without_touching_other_reports(
+    monkeypatch, old_id
+) -> None:
+    collection = RecordingCollection()
+    original = {
+        "source": "felgtbi_estado_lgtbi",
+        "source_document_id": old_id,
+        "original_filename": "estado-odio-2026.pdf",
+        "year": 2026,
+        "code": "old-section",
+        "question": "Orientacion sexual",
+        "paragraphs": ["Los resultados se muestran en laEl estudio analiza los datos"],
+    }
+    untouched = [
+        {**original, "original_filename": "otro-informe.pdf"},
+        {**original, "year": 2025},
+        {**original, "source": "other-source"},
+    ]
+    # Other reports have their own IDs; legacy entries can lack one altogether.
+    for index, document in enumerate(untouched):
+        document["source_document_id"] = f"other-{index}"
+    collection.documents = deepcopy([original, {**original, "code": "obsolete"}, *untouched])
+    monkeypatch.setattr(mongo, "get_mongo_collection", lambda _: collection)
+    corrected = {
+        **original,
+        "source_document_id": "new-pdf-hash",
+        "code": "corrected-section",
+        "paragraphs": ["Los resultados se muestran en la Figura 1. El estudio analiza los datos"],
+    }
+
+    for _ in range(2):
+        assert mongo.insert_indicator_felgtbi_json([corrected]) == 1
+        assert len(collection.documents) == 4
+        assert all(document in collection.documents for document in untouched)
+        imported = next(
+            doc for doc in collection.documents if doc["code"] == "corrected-section"
+        )
+        assert imported["paragraphs"] == corrected["paragraphs"]
+        assert not any(doc["code"] == "obsolete" for doc in collection.documents)
 
 
 def test_pdf_extraction_storage_identity_and_mongo_persistence(monkeypatch) -> None:
@@ -52,7 +110,12 @@ def test_pdf_extraction_storage_identity_and_mongo_persistence(monkeypatch) -> N
     assert documents[0]["year"] == 2026
     assert documents[0]["source_document_id"].startswith("felgtbi_pdf_")
     assert collection.deleted == [
-        {"source": "felgtbi_estado_lgtbi", "source_document_id": documents[0]["source_document_id"]}
+        {"source": "felgtbi_estado_lgtbi", "source_document_id": documents[0]["source_document_id"]},
+        {
+            "source": "felgtbi_estado_lgtbi",
+            "year": 2026,
+            "original_filename": "estado-odio-2026.pdf",
+        },
     ]
     assert collection.updates[0][1]["$set"]["import_status"] == "processed"
 

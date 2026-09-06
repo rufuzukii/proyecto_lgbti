@@ -148,10 +148,16 @@ def _report_replacement_scopes(documents: list[dict[str, Any]]) -> list[dict[str
         if source_document_id:
             key = ("source_document_id", source, source_document_id)
             scope = {"source": source, "source_document_id": source_document_id}
-        elif original_filename and year is not None:
+            if key not in seen:
+                seen.add(key)
+                scopes.append(scope)
+        # The content hash can change, and legacy imports may have a metadata
+        # identity instead. Replace the previous extraction of this same file
+        # and year as well, including sections no longer present in the PDF.
+        if original_filename and year is not None:
             key = ("original_filename", source, int(year), original_filename)
             scope = {"source": source, "year": int(year), "original_filename": original_filename}
-        elif report_title and year is not None:
+        elif not source_document_id and report_title and year is not None:
             key = ("report_title", source, int(year), report_title, report_type)
             scope = {
                 "source": source,
