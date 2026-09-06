@@ -221,3 +221,80 @@ def test_unknown_route_is_a_localized_http_404(monkeypatch) -> None:
     # Assert
     assert response.status_code == 404
     assert "404 — Page not found" in response.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("language", ["es", "en"])
+@pytest.mark.parametrize("scenario", ["valid", "invalid_document", "common", "csrf"])
+def test_felgtbi_approval_route_checks_permissions_and_keeps_failed_proposals(
+    monkeypatch, language, scenario
+) -> None:
+    from app.modules.imports import felgtbi, fra
+    from app.modules.imports.felgtbi.mongo import _prepare_indicator_document
+    from app.modules.imports.import_log import PendingImportLog
+    from app.web.routes import route_path
+
+    role = UserRole.COMMON if scenario == "common" else UserRole.ADMIN
+    events = []
+    document = {
+        "source": "felgtbi_estado_lgtbi",
+        "code": "report-section",
+        "year": None if scenario == "invalid_document" else 2026,
+        "question": "Contexto del informe",
+        "paragraphs": ["Texto de prueba sin estadisticas FRA"],
+    }
+    pending = PendingImportLog(
+        id="controlled-import",
+        user_id=USER_ID,
+        user_label="Test",
+        file_name="report.pdf",
+        file_json=[document],
+    )
+
+    def persist(documents, *, original_filename):
+        for item in documents:
+            _prepare_indicator_document(item, original_filename=original_filename)
+        events.append("persist")
+
+    monkeypatch.setattr(dash_app_module, "authenticate_user", lambda *_: _record(role=role))
+    monkeypatch.setattr(dash_app_module, "get_user_record", lambda _: _record(role=role))
+    monkeypatch.setattr(dash_app_module, "get_pending_import_log", lambda _: pending)
+    monkeypatch.setattr(dash_app_module, "delete_import_log", lambda _: events.append("delete"))
+    monkeypatch.setattr(
+        dash_app_module, "invalidate_analytics_cache", lambda _: events.append("cache")
+    )
+    monkeypatch.setattr(felgtbi, "insert_indicator_felgtbi_json", persist)
+    monkeypatch.setattr(
+        fra, "upsert_indicators_from_json", lambda _: pytest.fail("FELGTBI sent to FRA catalog")
+    )
+    client = _app(monkeypatch).server.test_client()
+    client.post(
+        "/auth/login",
+        data={"csrf_token": "valid", "email": "admin@example.test", "password": "password"},
+    )
+    if scenario == "csrf":
+        monkeypatch.setattr(dash_app_module, "validate_csrf_token", lambda _: False)
+
+    response = client.post(
+        "/admin/imports",
+        data={
+            "csrf_token": "valid",
+            "action": "insert",
+            "import_id": pending.id,
+            "language": language,
+        },
+    )
+
+    assert response.status_code == 302
+    target = route_path("admin_imports", language)
+    assert target is not None
+    if scenario == "valid":
+        assert response.headers["Location"] == target + "?status=import_inserted"
+        assert events == ["persist", "cache", "delete"]
+    else:
+        error = {
+            "invalid_document": "invalid_felgtbi_payload",
+            "common": "access_denied",
+            "csrf": "csrf",
+        }[scenario]
+        assert response.headers["Location"] == target + "?error=" + error
+        assert events == []

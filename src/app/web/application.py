@@ -1081,9 +1081,9 @@ def _insert_approved_import(
         return "ilga"
     if sources == {"felgtbi_estado_lgtbi"}:
         from app.modules.imports.felgtbi import insert_indicator_felgtbi_json
-        from app.modules.imports.fra import upsert_indicators_from_json
 
-        upsert_indicators_from_json(file_json)
+        # Spain reads report sections from MongoDB; these are not FRA survey
+        # indicators and must not enter its relational catalog or validation.
         insert_indicator_felgtbi_json(file_json, original_filename=original_filename)
         return "felgtbi"
     raise ValueError("unsupported_import_dataset")

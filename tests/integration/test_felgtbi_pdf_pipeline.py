@@ -149,6 +149,38 @@ def test_reimport_replaces_old_report_content_without_touching_other_reports(
         assert not any(doc["code"] == "obsolete" for doc in collection.documents)
 
 
+def test_felgtbi_approval_persists_narrative_and_figures_without_fra_catalog(monkeypatch) -> None:
+    from app.modules.imports.fra import indicators
+    from app.web.application import _insert_approved_import
+
+    collection = RecordingCollection()
+    monkeypatch.setattr(mongo, "get_mongo_collection", lambda _: collection)
+    monkeypatch.setattr(
+        indicators, "postgres_connection", lambda **_: pytest.fail("FELGTBI sent to FRA catalog")
+    )
+    narrative = {
+        "source": "felgtbi_estado_lgtbi",
+        "year": 2026,
+        "code": "narrative",
+        "question": "Contexto del informe",
+        "paragraphs": ["Texto del informe"],
+    }
+    figure = {
+        **narrative,
+        "code": "figure",
+        "question": "Distribucion",
+        "answers": [{"country": "Spain", "answer": "Total", "percentage": 0}],
+        "figure": {"storage_path": "2026/report/figure.webp"},
+    }
+
+    assert _insert_approved_import([narrative, figure], original_filename="report.pdf") == "felgtbi"
+    assert len(collection.documents) == 2
+    assert collection.documents[0]["paragraphs"] == narrative["paragraphs"]
+    assert "answers" not in collection.documents[0]
+    assert collection.documents[1]["answers"][0]["percentage"] == 0
+    assert collection.documents[1]["figure"]["storage_path"] == "2026/report/figure.webp"
+
+
 def test_pdf_extraction_storage_identity_and_mongo_persistence(monkeypatch) -> None:
     # Arrange
     pdf = fitz.open()
