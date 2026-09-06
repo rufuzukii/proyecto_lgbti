@@ -633,7 +633,14 @@ def _attach_page_assets(
                 clip=rect,
                 alpha=False,
             )
-            image_bytes, width, height, mime_type = _pixmap_image_bytes(pixmap)
+            try:
+                image_bytes, width, height, mime_type = _pixmap_image_bytes(pixmap)
+            finally:
+                # MuPDF also caches decoded page images independently of the
+                # Python pixmap. Release them before processing another figure
+                # or waiting for storage, so a long report cannot fill the store.
+                del pixmap, page
+                fitz.TOOLS.store_shrink(100)
             checksum = hashlib.sha256(image_bytes).hexdigest()
             upload_started = time.perf_counter()
             upload = _upload_figure_with_retries(
@@ -669,7 +676,7 @@ def _attach_page_assets(
                     "size": len(image_bytes),
                     "checksum": checksum,
                 }
-                del pixmap, image_bytes
+                del image_bytes
                 continue
 
             rendered_assets[asset_id] = {
@@ -683,7 +690,7 @@ def _attach_page_assets(
                 "size": len(image_bytes),
                 "checksum": checksum,
             }
-            del pixmap, image_bytes
+            del image_bytes
             if require_storage:
                 raise StorageUploadError(
                     f"figure_upload_failed:{upload.get('error') or 'unknown'}:{storage_path}"

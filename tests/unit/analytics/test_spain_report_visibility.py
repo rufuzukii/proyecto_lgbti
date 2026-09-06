@@ -322,6 +322,7 @@ def test_successful_figure_upload_attaches_storage_path_and_dimensions(monkeypat
         open=lambda **_kwargs: FakeDocument(),
         Rect=lambda *values: values,
         Matrix=lambda *values: values,
+        TOOLS=SimpleNamespace(store_shrink=lambda _percent: None),
     )
     monkeypatch.setitem(sys.modules, "fitz", fake_fitz)
     monkeypatch.setattr(

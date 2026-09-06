@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import weakref
 from copy import deepcopy
 from typing import Any
 
@@ -9,6 +11,75 @@ import pytest
 from app.modules.imports.felgtbi import batch as felgtbi_batch
 from app.modules.imports.felgtbi import importer, mongo
 from app.modules.imports.felgtbi.pipeline import parse_felgtbi_pdf_bytes
+
+
+@pytest.mark.parametrize("encoding_fails", [False, True])
+def test_figure_resources_are_released_before_storage_even_if_encoding_fails(
+    monkeypatch, encoding_fails
+) -> None:
+    pdf = fitz.open()
+    documents = []
+    expected = []
+    for index in range(3):
+        page = pdf.new_page(width=120, height=90)
+        page.draw_rect(page.rect, fill=(index / 3, 0.2, 0.4))
+        documents.append(
+            {
+                "year": 2026,
+                "code": f"figure-{index}",
+                "page": index + 1,
+                "figure": {"caption": f"Figure {index}"},
+                "visual_context": {"page": index + 1, "bbox": [0, 0, 120, 90]},
+            }
+        )
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        expected.append(importer._pixmap_image_bytes(pixmap)[0])
+        del pixmap
+    pdf_bytes = pdf.tobytes()
+    pdf.close()
+    fitz.TOOLS.store_shrink(100)
+    released = []
+    pixmap_refs = []
+    uploads = []
+    original_render = fitz.Page.get_pixmap
+    original_release = fitz.TOOLS.store_shrink
+
+    def render(page, **kwargs):
+        pixmap = original_render(page, **kwargs)
+        pixmap_refs.append(weakref.ref(pixmap))
+        return pixmap
+
+    def release(percent):
+        released.append(percent)
+        return original_release(percent)
+
+    def upload(**kwargs):
+        assert all(reference() is None for reference in pixmap_refs)
+        assert released and released[-1] == 100
+        image = kwargs["image_bytes"]
+        assert image == expected[len(uploads)]
+        assert kwargs["checksum"] == hashlib.sha256(image).hexdigest()
+        uploads.append(kwargs)
+        return {"status": "reused", "storage_path": kwargs["storage_path"]}
+
+    monkeypatch.setattr(fitz.Page, "get_pixmap", render)
+    monkeypatch.setattr(fitz.TOOLS, "store_shrink", release)
+    monkeypatch.setattr(importer, "_upload_figure_to_supabase", upload)
+    if encoding_fails:
+
+        def fail_encoding(_pixmap):
+            raise OSError("controlled encoding failure")
+
+        monkeypatch.setattr(importer, "_pixmap_image_bytes", fail_encoding)
+        with pytest.raises(OSError, match="controlled encoding failure"):
+            importer._attach_page_assets(pdf_bytes, "controlled.pdf", documents)
+        assert released == [100]
+        assert uploads == []
+    else:
+        result = importer._attach_page_assets(pdf_bytes, "controlled.pdf", documents)
+        assert result["reused"] == 3
+        assert len(uploads) == 3
+        assert all(document["figure"]["checksum"] for document in documents)
 
 
 class RecordingCollection:
@@ -73,9 +144,7 @@ def test_reimport_replaces_old_report_content_without_touching_other_reports(
         assert mongo.insert_indicator_felgtbi_json([corrected]) == 1
         assert len(collection.documents) == 4
         assert all(document in collection.documents for document in untouched)
-        imported = next(
-            doc for doc in collection.documents if doc["code"] == "corrected-section"
-        )
+        imported = next(doc for doc in collection.documents if doc["code"] == "corrected-section")
         assert imported["paragraphs"] == corrected["paragraphs"]
         assert not any(doc["code"] == "obsolete" for doc in collection.documents)
 
@@ -110,7 +179,10 @@ def test_pdf_extraction_storage_identity_and_mongo_persistence(monkeypatch) -> N
     assert documents[0]["year"] == 2026
     assert documents[0]["source_document_id"].startswith("felgtbi_pdf_")
     assert collection.deleted == [
-        {"source": "felgtbi_estado_lgtbi", "source_document_id": documents[0]["source_document_id"]},
+        {
+            "source": "felgtbi_estado_lgtbi",
+            "source_document_id": documents[0]["source_document_id"],
+        },
         {
             "source": "felgtbi_estado_lgtbi",
             "year": 2026,
