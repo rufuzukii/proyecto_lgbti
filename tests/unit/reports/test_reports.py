@@ -1330,6 +1330,40 @@ def test_reports_layout_contains_accessible_flow_and_lightweight_store(monkeypat
     assert "children': 'FRA'" not in source_labels
 
 
+@pytest.mark.parametrize(
+    "a_name,b_name,expected_a,expected_b,a_disabled,b_disabled",
+    [
+        ("Age", "All", "Age", "All", False, True),
+        ("All", "Sexual Orientation", "All", "Sexual Orientation", True, False),
+        ("Age", "Sexual Orientation", "Age", "All", False, True),
+        ("Sexual Orientation", "Age", "All", "All", False, False),
+    ],
+)
+def test_report_initial_filter_controls_respect_groups_and_exclusion(
+    a_name, b_name, expected_a, expected_b, a_disabled, b_disabled
+) -> None:
+    config = _configuration(
+        filter_a_name=a_name,
+        filter_a_value="25-39",
+        filter_b_name=b_name,
+        filter_b_value="Lesbian",
+    )
+    panel = reports_page._configuration_panel(config, [], 2023, [], "Discrimination", [], [])
+    demographic = _component_by_id(panel, "report-filter-a-name")
+    identity = _component_by_id(panel, "report-filter-b-name")
+    assert demographic.value == expected_a
+    assert identity.value == expected_b
+    assert demographic.disabled is a_disabled
+    assert identity.disabled is b_disabled
+    assert "Sexual Orientation" not in {option["value"] for option in demographic.options}
+    assert "Age" not in {option["value"] for option in identity.options}
+    for group, name in (("a", expected_a), ("b", expected_b)):
+        if name == "All":
+            value = _component_by_id(panel, f"report-filter-{group}-value")
+            assert value.value == "All"
+            assert value.disabled is True
+
+
 def test_reports_callbacks_register_preview_and_download() -> None:
     app = Dash(__name__, suppress_callback_exceptions=True)
     reports_page.register_reports_callbacks(app)
@@ -1471,6 +1505,7 @@ def test_report_filter_changes_refresh_values_and_exclusive_filter_state(monkeyp
     input_ids = {item["id"] for item in registration["inputs"]}
     assert {"report-filter-a-name", "report-filter-b-name"} <= input_ids
     age_options = [{"label": "25-39", "value": "25-39"}]
+    identity_options = [{"label": "Lesbian", "value": "Lesbian"}]
     monkeypatch.setattr(
         reports_page,
         "get_fra_control_payload",
@@ -1480,23 +1515,132 @@ def test_report_filter_changes_refresh_values_and_exclusive_filter_state(monkeyp
             "segmentations": [
                 {"label": "All", "value": "All"},
                 {"label": "Age", "value": "Age"},
+                {"label": "Sexual Orientation", "value": "Sexual Orientation"},
             ],
-            "values": {"All": [{"label": "All", "value": "All"}], "Age": age_options},
+            "values": {
+                "All": [{"label": "All", "value": "All"}],
+                "Age": age_options,
+                "Sexual Orientation": identity_options,
+            },
         },
     )
     callback = registration["callback"].__wrapped__
-    primary = callback("fra", "EMP_1", "Discrimination", 2023, "Age", "Age", "Yes", "All", "25-39")
+    primary = callback(
+        "fra",
+        "EMP_1",
+        "Discrimination",
+        2023,
+        "Age",
+        "Sexual Orientation",
+        "Yes",
+        "All",
+        "Lesbian",
+    )
+    assert [option["value"] for option in primary[5]] == ["All", "Age"]
+    assert [option["value"] for option in primary[11]] == ["All", "Sexual Orientation"]
     assert [option["value"] for option in primary[8]] == ["25-39"]
+    assert primary[7] is False
+    assert primary[9] is None
     assert primary[10] is False
     assert primary[12] == "All"
     assert primary[13] is True
+    assert primary[15] == "All"
     assert primary[16] is True
 
-    secondary = callback("fra", "EMP_1", "Discrimination", 2023, "All", "Age", "Yes", "All", "All")
-    assert secondary[10] is True
-    assert [option["value"] for option in secondary[14]] == ["25-39"]
-    assert secondary[13] is False
-    assert secondary[16] is False
+    identity = callback(
+        "fra",
+        "EMP_1",
+        "Discrimination",
+        2023,
+        "All",
+        "Sexual Orientation",
+        "Yes",
+        "25-39",
+        "Lesbian",
+    )
+    assert identity[7] is True
+    assert identity[9] == "All"
+    assert identity[10] is True
+    assert [option["value"] for option in identity[14]] == ["Lesbian"]
+    assert identity[13] is False
+    assert identity[15] == "Lesbian"
+    assert identity[16] is False
+
+    reset = callback(
+        "fra", "EMP_1", "Discrimination", 2023, "All", "All", "Yes", "25-39", "Lesbian"
+    )
+    assert reset[7] is reset[13] is False
+    assert reset[9] == reset[15] == "All"
+    assert reset[10] is reset[16] is True
+
+    wrong_groups = callback(
+        "fra",
+        "EMP_1",
+        "Discrimination",
+        2023,
+        "Sexual Orientation",
+        "Age",
+        "Yes",
+        "Lesbian",
+        "25-39",
+    )
+    assert wrong_groups[6] == wrong_groups[9] == "All"
+    assert wrong_groups[12] == wrong_groups[15] == "All"
+
+    monkeypatch.setattr(reports_page, "get_fra_control_payload", lambda *_args: {})
+    unavailable = callback(
+        "fra", "EMP_1", "Discrimination", 2019, "Age", "All", "Yes", "25-39", "All"
+    )
+    assert unavailable[6] == unavailable[9] == "All"
+    assert unavailable[12] == unavailable[15] == "All"
+
+
+@pytest.mark.parametrize(
+    "a_name,a_value,b_name,b_value",
+    [("Age", None, "All", "All"), ("All", "All", "Sexual Orientation", "All")],
+)
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_report_preview_requests_a_filter_value_before_querying(
+    monkeypatch, a_name, a_value, b_name, b_value, language
+) -> None:
+    app = Dash("report-incomplete-filter", suppress_callback_exceptions=True)
+    reports_page.register_reports_callbacks(app)
+    callback = next(
+        item["callback"].__wrapped__
+        for item in app.callback_map.values()
+        if getattr(item.get("callback"), "__wrapped__", None)
+        and item["callback"].__wrapped__.__name__ == "preview_report"
+    )
+    monkeypatch.setattr(
+        reports_page,
+        "build_report_preview",
+        lambda *_args: pytest.fail("An incomplete filter must not query report data"),
+    )
+    result = callback(
+        1,
+        "Informe",
+        None,
+        None,
+        "fra",
+        "Discrimination",
+        "EMP_1",
+        2023,
+        "ES",
+        [],
+        language,
+        "Yes",
+        a_name,
+        a_value,
+        b_name,
+        b_value,
+        None,
+    )
+    assert result[2] == (
+        "Selecciona un valor para el filtro antes de generar la vista previa."
+        if language == "es"
+        else "Select a filter value before generating the preview."
+    )
+    assert result[5] is True
 
 
 def test_preview_is_blocked_when_social_indicator_is_missing() -> None:

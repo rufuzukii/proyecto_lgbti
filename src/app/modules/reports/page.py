@@ -26,6 +26,7 @@ from app.modules.reports.service import (
     generate_report_pdf,
 )
 from app.modules.statistics.exports import chart_graph_config
+from app.modules.statistics.models import FRA_FILTER_GROUP_A, FRA_FILTER_GROUP_B
 from app.modules.statistics.service import get_fra_control_payload
 from app.shared.components.loading import contextual_loading
 from app.shared.components.page_structure import build_page_header
@@ -426,35 +427,40 @@ def register_reports_callbacks(app: Dash) -> None:
             current_answer if current_answer in answer_values else payload.get("default_answer")
         )
         segmentations = list(payload.get("segmentations") or []) if filters_enabled else []
-        segmentation_values = {item["value"] for item in segmentations}
-        a_name = current_a_name if current_a_name in segmentation_values else "All"
-        b_name = current_b_name if current_b_name in segmentation_values else "All"
+        a_types = [item for item in segmentations if item["value"] in FRA_FILTER_GROUP_A]
+        b_types = [item for item in segmentations if item["value"] in FRA_FILTER_GROUP_B]
+        a_name = current_a_name if current_a_name in {item["value"] for item in a_types} else "All"
+        b_name = current_b_name if current_b_name in {item["value"] for item in b_types} else "All"
+        # FRA permite un único filtro. Una selección heredada incompatible no
+        # debe dejar ambos grupos activos ni conservar valores del otro grupo.
+        if a_name != "All":
+            b_name = "All"
         values_by_type = dict(payload.get("values") or {})
         a_options = list(values_by_type.get(a_name) or [])
         b_options = list(values_by_type.get(b_name) or [])
         a_values = {item["value"] for item in a_options}
         b_values = {item["value"] for item in b_options}
-        a_value = current_a_value if current_a_value in a_values else "All"
-        b_value = current_b_value if current_b_value in b_values else "All"
+        a_value = (
+            "All" if a_name == "All" else current_a_value if current_a_value in a_values else None
+        )
+        b_value = (
+            "All" if b_name == "All" else current_b_value if current_b_value in b_values else None
+        )
+        a_enabled = filters_enabled and b_name == "All"
         b_enabled = filters_enabled and a_name == "All"
-        if not filters_enabled:
-            a_name, a_value, a_options = "All", "All", []
-            b_name, b_value, b_options = "All", "All", []
-        if not b_enabled:
-            b_name, b_value, b_options = "All", "All", list(values_by_type.get("All") or [])
         return (
             answers,
             answer,
             not social_enabled,
             "reports-field" if _requires_social_indicator(source) else "reports-field is-hidden",
             "reports-filters-section" if source == "fra" else "reports-filters-section is-hidden",
-            _localized_filter_options(segmentations, "fra_filter"),
+            _localized_filter_options(a_types, "fra_filter"),
             a_name,
-            not filters_enabled,
+            not a_enabled,
             _localized_filter_options(a_options, "fra_filter_value"),
             a_value,
-            not filters_enabled or a_name == "All",
-            _localized_filter_options(segmentations, "fra_filter"),
+            not a_enabled or a_name == "All",
+            _localized_filter_options(b_types, "fra_filter"),
             b_name,
             not b_enabled,
             _localized_filter_options(b_options, "fra_filter_value"),
@@ -628,6 +634,25 @@ def register_reports_callbacks(app: Dash) -> None:
                     language,
                     "Selecciona un indicador social para continuar.",
                     "Select a social indicator to continue.",
+                ),
+                "reports-status reports-status-error",
+                no_update,
+                True,
+            )
+        if source == "fra" and any(
+            name not in {None, "All"} and value in {None, "", "All"}
+            for name, value in (
+                (filter_a_name, filter_a_value),
+                (filter_b_name, filter_b_value),
+            )
+        ):
+            return (
+                no_update,
+                no_update,
+                _t(
+                    language,
+                    "Selecciona un valor para el filtro antes de generar la vista previa.",
+                    "Select a filter value before generating the preview.",
                 ),
                 "reports-status reports-status-error",
                 no_update,
@@ -886,16 +911,27 @@ def _configuration_panel(
         "answers": ([{"label": config.answer, "value": config.answer}] if config.answer else []),
         "default_answer": config.answer or None,
     }
-    segmentation_names = ["All", config.filter_a_name, config.filter_b_name]
+    filters_enabled = config.source == "fra" and bool(config.indicator_id)
+    a_name = (
+        config.filter_a_name
+        if filters_enabled and config.filter_a_name in FRA_FILTER_GROUP_A
+        else "All"
+    )
+    b_name = (
+        config.filter_b_name
+        if filters_enabled and config.filter_b_name in FRA_FILTER_GROUP_B and a_name == "All"
+        else "All"
+    )
+    a_value = config.filter_a_value if a_name != "All" else "All"
+    b_value = config.filter_b_value if b_name != "All" else "All"
     segmentations = [
-        {"label": name, "value": name}
-        for name in dict.fromkeys(name for name in segmentation_names if name)
+        {"label": name, "value": name} for name in dict.fromkeys(["All", a_name, b_name])
     ]
     segmentations = _localized_filter_options(segmentations, "fra_filter")
     values_by_type = {
         "All": [{"label": "All", "value": "All"}],
-        config.filter_a_name: [{"label": config.filter_a_value, "value": config.filter_a_value}],
-        config.filter_b_name: [{"label": config.filter_b_value, "value": config.filter_b_value}],
+        a_name: [{"label": a_value, "value": a_value}],
+        b_name: [{"label": b_value, "value": b_value}],
     }
     return html.Section(
         [
@@ -1032,59 +1068,73 @@ def _configuration_panel(
             ),
             html.Section(
                 [
-                    html.H3(text("Filtros", "Filters"), className="reports-subheading"),
+                    html.H3(text("Filtro", "Filter"), className="reports-subheading"),
+                    html.P(
+                        text(
+                            "Aplica un filtro demográfico o de identidad. Selecciona Todos en el filtro activo para cambiar al otro grupo.",
+                            "Apply a demographic or identity filter. Select All in the active filter to switch to the other group.",
+                        ),
+                    ),
                     html.Div(
                         [
                             _field(
-                                "Tipo de filtro",
-                                "Filter type",
+                                "Filtro demográfico",
+                                "Demographic filter",
                                 dcc.Dropdown(
                                     id="report-filter-a-name",
-                                    options=segmentations,
-                                    value=config.filter_a_name,
-                                    disabled=not social_source or not config.indicator_id,
+                                    options=[
+                                        item
+                                        for item in segmentations
+                                        if item["value"] in FRA_FILTER_GROUP_A
+                                    ],
+                                    value=a_name,
+                                    disabled=not filters_enabled or b_name != "All",
                                     clearable=False,
                                 ),
                             ),
                             _field(
-                                "Valor",
-                                "Value",
+                                "Valor del filtro demográfico",
+                                "Demographic filter value",
                                 dcc.Dropdown(
                                     id="report-filter-a-value",
                                     options=_localized_filter_options(
-                                        list(values_by_type.get(config.filter_a_name) or []),
+                                        list(values_by_type.get(a_name) or []),
                                         "fra_filter_value",
                                     ),
-                                    value=config.filter_a_value,
-                                    disabled=not social_source or config.filter_a_name == "All",
+                                    value=a_value,
+                                    disabled=not filters_enabled
+                                    or b_name != "All"
+                                    or a_name == "All",
                                     clearable=False,
                                 ),
                             ),
                             _field(
-                                "Segundo filtro",
-                                "Second filter",
+                                "Filtro de identidad",
+                                "Identity filter",
                                 dcc.Dropdown(
                                     id="report-filter-b-name",
-                                    options=segmentations,
-                                    value=config.filter_b_name,
-                                    disabled=not social_source or config.filter_a_name != "All",
+                                    options=[
+                                        item
+                                        for item in segmentations
+                                        if item["value"] in FRA_FILTER_GROUP_B
+                                    ],
+                                    value=b_name,
+                                    disabled=not filters_enabled or a_name != "All",
                                     clearable=False,
                                 ),
                             ),
                             _field(
-                                "Valor del segundo filtro",
-                                "Second filter value",
+                                "Valor del filtro de identidad",
+                                "Identity filter value",
                                 dcc.Dropdown(
                                     id="report-filter-b-value",
                                     options=_localized_filter_options(
-                                        list(values_by_type.get(config.filter_b_name) or []),
+                                        list(values_by_type.get(b_name) or []),
                                         "fra_filter_value",
                                     ),
-                                    value=config.filter_b_value,
+                                    value=b_value,
                                     disabled=(
-                                        not social_source
-                                        or config.filter_a_name != "All"
-                                        or config.filter_b_name == "All"
+                                        not filters_enabled or a_name != "All" or b_name == "All"
                                     ),
                                     clearable=False,
                                 ),
