@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
 class PersonalDataInventory:
-    """Counts of records that are actually linked to one application user."""
+    """Recuentos de registros vinculados realmente a un usuario de la aplicación."""
 
     profile: bool
     account_security: int = 0
@@ -40,10 +40,3 @@ class DeletionOutcome:
     deleted: dict[str, int] = field(default_factory=dict)
     anonymized: dict[str, int] = field(default_factory=dict)
     retained: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True, slots=True)
-class DeletionStageResult:
-    deleted: dict[str, int] = field(default_factory=dict)
-    anonymized: dict[str, int] = field(default_factory=dict)
-    details: dict[str, Any] = field(default_factory=dict)

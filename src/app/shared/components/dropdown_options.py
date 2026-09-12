@@ -16,10 +16,10 @@ def build_dropdown_options(
     *,
     context: str = "dropdown",
 ) -> list[dict[str, DropdownValue]]:
-    """Return stable Dash options containing only primitive labels and values.
+    """Devuelve opciones Dash estables con etiquetas y valores primitivos.
 
-    Invalid rows are discarded instead of receiving invented fallback text. The
-    first occurrence of a value wins so callback updates remain deterministic.
+    Descarta las filas inválidas sin inventar textos alternativos. Prevalece la primera
+    aparición de cada valor para mantener actualizaciones deterministas.
     """
     options: list[dict[str, DropdownValue]] = []
     seen: set[str] = set()
@@ -72,7 +72,7 @@ def option_value_or_none(
     options: Iterable[Mapping[str, Any]],
     current: Any,
 ) -> DropdownValue | None:
-    """Keep a selection only while its primitive value exists in the new options."""
+    """Conserva la selección solo si su valor primitivo existe en las nuevas opciones."""
     current_value = _option_value(current)
     if current_value is None:
         return None

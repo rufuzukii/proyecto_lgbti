@@ -271,6 +271,7 @@ TEXT = {
     ),
     "back_teacher_space": ("Volver a Espacio Docente", "Back to Educator space"),
     "share_link": ("Enlace para compartir", "Share link"),
+    "copy_suffix": ("copia", "copy"),
     "copy_link": ("Copiar enlace", "Copy link"),
     "activity_unavailable": ("Actividad no disponible", "Activity unavailable"),
     "activity_unavailable_desc": (

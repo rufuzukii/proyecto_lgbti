@@ -47,13 +47,10 @@ def test_statistics_route_returns_503_when_database_is_unavailable(monkeypatch) 
 
 
 def test_unknown_route_returns_real_localized_404() -> None:
-    # Arrange
     app = create_dash_app()
 
-    # Act
     response = app.server.test_client().get("/this-route-does-not-exist?lang=en")
 
-    # Assert
     assert response.status_code == 404
     body = response.get_data(as_text=True)
     assert "404 \u2014 Page not found" in body
@@ -62,10 +59,8 @@ def test_unknown_route_returns_real_localized_404() -> None:
 
 
 def test_error_pages_do_not_expose_internal_details() -> None:
-    # Arrange / Act
     bodies = [render_error_response(kind)[0] for kind in ("401", "403", "404", "500")]
 
-    # Assert
     for body in bodies:
         assert "MONGO_URI" not in body
         assert "postgresql://" not in body

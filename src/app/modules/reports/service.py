@@ -30,7 +30,7 @@ report_generation_lock = threading.Lock()
 
 
 class ReportGenerationError(RuntimeError):
-    """Safe report-generation failure for presentation layers."""
+    """Fallo de generación de informes seguro para las capas de presentación."""
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class GeneratedReport:
 
 
 def load_report_dataset(configuration: ReportConfiguration) -> ReportDataset:
-    """Use one optimized statistics query for the complete report dataset."""
+    """Carga el conjunto completo del informe mediante una consulta estadística optimizada."""
     started = time.perf_counter()
     if configuration.source in {"fra", "combined"}:
         query = FraStatisticsQuery(
@@ -144,7 +144,7 @@ def generate_report_pdf(
     chart_narratives: dict[str, dict[str, str]] | None = None,
     section_narratives: dict[str, str] | None = None,
 ) -> GeneratedReport:
-    """Build all report artifacts and guarantee temporary-file cleanup."""
+    """Genera los elementos del informe y garantiza la limpieza de los archivos temporales."""
     wait_started = time.perf_counter()
     logger.info(
         "report_generation_started source=%s year=%s country_count=%s",
@@ -281,7 +281,7 @@ def apply_chart_narratives(
     content: ReportContent,
     narratives: dict[str, dict[str, str]],
 ) -> ReportContent:
-    """Apply the user's preview edits without changing report calculations."""
+    """Aplica las ediciones de la vista previa sin modificar los cálculos del informe."""
     for chart in content.charts:
         edits = narratives.get(chart.key)
         if edits is None:
@@ -296,7 +296,7 @@ def apply_section_narratives(
     content: ReportContent,
     narratives: dict[str, str],
 ) -> ReportContent:
-    """Apply editable prose sections while preserving untouched generated content."""
+    """Aplica las secciones narrativas editadas y conserva el contenido generado sin cambios."""
     for section in ("executive", "context", "recommendations"):
         if section not in narratives:
             continue
@@ -307,7 +307,7 @@ def apply_section_narratives(
 
 
 def default_section_narrative(content: ReportContent, section: str) -> str:
-    """Return the generated text used to initialise an editable report section."""
+    """Devuelve el texto generado que inicializa una sección editable del informe."""
     language = content.configuration.language
     if section == "executive":
         return "\n\n".join(content.executive_summary)
@@ -329,7 +329,7 @@ def default_section_narrative(content: ReportContent, section: str) -> str:
 
 
 def sanitize_report_narrative(value: object, *, max_length: int = 2_000) -> str:
-    """Keep multiline prose while removing unsafe control characters."""
+    """Conserva los saltos de línea y elimina caracteres de control no seguros."""
     text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
     return text[:max_length]

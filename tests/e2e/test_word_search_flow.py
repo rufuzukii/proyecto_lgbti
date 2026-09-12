@@ -32,7 +32,6 @@ def _callback(app, name: str):
 
 
 def test_anonymous_bilingual_word_search_full_game_and_restart(monkeypatch) -> None:
-    # Arrange
     anonymous = SimpleNamespace(
         is_authenticated=False,
         role=UserRole.ANONYMOUS,
@@ -47,7 +46,7 @@ def test_anonymous_bilingual_word_search_full_game_and_restart(monkeypatch) -> N
     display_page = app.callback_map["page-content.children"]["callback"].__wrapped__
     play = _callback(app, "play_word_search")
 
-    # Act: open the public Spanish route and obtain the generated glossary-backed game.
+    # Abre la ruta pública española y obtiene el juego basado en el glosario.
     page = display_page(route_path("word_search", "es"), "")
     store = next(
         item for item in _walk(page) if getattr(item, "id", None) == "didactica-word-search-state"
@@ -55,11 +54,11 @@ def test_anonymous_bilingual_word_search_full_game_and_restart(monkeypatch) -> N
     state = store.data
     original_game_id = state["game_id"]
 
-    # Assert the visible terms all come from the canonical dictionary.
+    # Los términos visibles deben proceder del diccionario canónico.
     assert state["words"]
     assert all(get_glossary_term(word["id"]) is not None for word in state["words"])
 
-    # Act: select every correct word using the same two-tap flow as mouse and touch users.
+    # Selecciona cada palabra mediante los dos extremos, igual que con ratón o pantalla táctil.
     for word in state["words"]:
         start = word["start"][0] * state["columns"] + word["start"][1]
         end = word["end"][0] * state["columns"] + word["end"][1]
@@ -77,7 +76,7 @@ def test_anonymous_bilingual_word_search_full_game_and_restart(monkeypatch) -> N
         result = play(None, [1], "es", state)
         state = result[5]
 
-    # Assert completion, English translation, and a genuinely new game.
+    # Comprueba la finalización, la traducción inglesa y una partida distinta.
     assert result[3] == "¡Has encontrado todas las palabras!"
     assert len(state["found"]) == len(state["words"])
     monkeypatch.setattr(
@@ -98,7 +97,7 @@ def test_anonymous_bilingual_word_search_full_game_and_restart(monkeypatch) -> N
     assert restarted["found"] == []
     assert restarted["grid"] != state["grid"]
 
-    # The English canonical route is public too.
+    # La ruta canónica inglesa también es pública.
     english_page = display_page(route_path("word_search", "en"), "")
     assert any(
         getattr(item, "id", None) == "didactica-word-search-state" for item in _walk(english_page)

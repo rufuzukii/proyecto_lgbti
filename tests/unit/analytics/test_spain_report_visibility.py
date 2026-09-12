@@ -171,13 +171,10 @@ def test_semantic_usefulness_distinguishes_chart_noise_from_real_prose(
     expected: bool,
     reason: str,
 ) -> None:
-    # Arrange
     context = ExtractionContext(near_figure=True)
 
-    # Act
     useful = is_semantically_useful_text(value, context)
 
-    # Assert
     assert useful is expected
     assert semantic_noise_reason(value, context) == reason
 

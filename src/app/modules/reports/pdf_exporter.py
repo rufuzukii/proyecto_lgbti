@@ -38,7 +38,7 @@ PRINTABLE_WIDTH = A4[0] - (2 * REPORT_MARGIN)
 
 
 class _MultilineTextField(Flowable):
-    """Printable AcroForm textarea with a visible default value."""
+    """Área de texto AcroForm imprimible con un valor inicial visible."""
 
     def __init__(self, name: str, value: str, tooltip: str) -> None:
         super().__init__()
@@ -80,7 +80,7 @@ class _MultilineTextField(Flowable):
 
 
 class PDFExporter:
-    """Render a ReportContent model to a self-contained PDF byte stream."""
+    """Convierte ReportContent en un PDF autónomo y devuelve sus bytes."""
 
     def __init__(self) -> None:
         self.page_count = 0
@@ -110,9 +110,9 @@ class PDFExporter:
             onLaterPages=lambda canvas, doc: _page_decorations(canvas, doc, cover=False),
         )
         self.page_count = document.page
-        # ReportLab sets the multiline flag but draws a single-line appearance.
-        # Regenerate appearances so PDF viewers and printouts show wrapped text
-        # immediately, while preserving the editable fields and their values.
+        # ReportLab marca el campo como multilínea, pero dibuja una apariencia de una línea.
+        # Regenerarla permite ver e imprimir el texto ajustado desde el principio
+        # y conserva los campos editables y sus valores.
         with pymupdf.open(stream=buffer.getvalue(), filetype="pdf") as pdf:
             for page in pdf:
                 for widget in page.widgets() or ():
@@ -355,8 +355,8 @@ class PDFExporter:
                     bullets=True,
                 )
             )
-        # Attribution is mandatory whenever the report contains external data,
-        # even if the optional narrative sections were customised by the user.
+        # La atribución es obligatoria si hay datos externos, aunque el usuario
+        # haya personalizado las secciones narrativas opcionales.
         if report.sources:
             section_number += 1
             story.extend(

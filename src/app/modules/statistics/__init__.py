@@ -1,4 +1,4 @@
-"""Small, reusable building blocks for the Statistics feature."""
+"""Componentes pequeños y reutilizables del módulo de Estadísticas."""
 
 from app.modules.statistics.ranking import (
     RANKING_PAGE_SIZE,

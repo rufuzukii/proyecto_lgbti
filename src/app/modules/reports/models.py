@@ -47,7 +47,7 @@ ALLOWED_REPORT_CHARTS: tuple[str, ...] = (
 
 
 def sanitize_report_text(value: Any, *, maximum: int = 160) -> str:
-    """Strip markup/control characters and bound user-provided report text."""
+    """Elimina marcado y controles, y acota los textos del informe aportados por el usuario."""
     clean = bleach.clean(str(value or ""), tags=[], attributes={}, strip=True)
     clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", clean)
     return " ".join(clean.split())[:maximum].strip()
@@ -195,7 +195,7 @@ class ReportChart:
 
     @property
     def figures(self) -> tuple[go.Figure, ...]:
-        """All static pages belonging to this conceptual visualization."""
+        """Devuelve todas las páginas estáticas de esta visualización conceptual."""
         return tuple(
             figure for figure in (self.figure, *self.additional_figures) if figure is not None
         )
@@ -239,9 +239,3 @@ def _safe_year(value: Any) -> int | None:
     except TypeError, ValueError:
         return None
     return year if 1900 <= year <= 2200 else None
-
-
-def _safe_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    return str(value or "").strip().casefold() in {"1", "true", "yes", "on", "sí", "si"}

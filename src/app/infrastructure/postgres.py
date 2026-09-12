@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import atexit
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any
 
+from psycopg import Connection
 from psycopg_pool import ConnectionPool
 
 from app.core.config import get_postgres_connect_timeout, get_postgres_dsn
@@ -13,7 +15,7 @@ from app.core.config import get_postgres_connect_timeout, get_postgres_dsn
 
 @lru_cache(maxsize=1)
 def get_postgres_pool() -> ConnectionPool:
-    """Return a lazy, process-local PostgreSQL pool sized for the Render thread count."""
+    """Devuelve el pool PostgreSQL diferido, local al proceso y ajustado a los hilos de Render."""
     return ConnectionPool(
         conninfo=get_postgres_dsn(),
         min_size=0,
@@ -27,7 +29,8 @@ def get_postgres_pool() -> ConnectionPool:
 
 
 @contextmanager
-def postgres_connection(*, row_factory: Any | None = None):
+def postgres_connection(*, row_factory: Any | None = None) -> Iterator[Connection[Any]]:
+    """Presta una conexión y restaura su formato de filas antes de devolverla al pool."""
     pool = get_postgres_pool()
     if pool.closed:
         pool.open(wait=False)

@@ -50,7 +50,7 @@ def initialize_new_account(user_id: str) -> AccountSecurityState:
 
 
 def migrate_account_security_schema() -> None:
-    """Remove obsolete account-verification data while retaining session security."""
+    """Elimina datos de verificación obsoletos y conserva la seguridad de las sesiones."""
     now = datetime.now(UTC)
     try:
         collection = get_mongo_collection(ACCOUNT_COLLECTION)

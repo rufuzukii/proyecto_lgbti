@@ -1,4 +1,4 @@
-"""Unit coverage for environment-backed application configuration."""
+"""Pruebas unitarias de la configuración de aplicación mediante variables de entorno."""
 
 import pytest
 

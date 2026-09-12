@@ -1,7 +1,7 @@
 /*
- * Responsive overrides are intentionally loaded last. Page-specific layout
- * remains next to each page; this file coordinates shared shells and the
- * primary navigation across breakpoints.
+ * Los ajustes adaptables se cargan al final. Cada página conserva su layout;
+ * este archivo coordina los contenedores compartidos y la navegación principal
+ * en los distintos tamaños de pantalla.
  */
 
 img,

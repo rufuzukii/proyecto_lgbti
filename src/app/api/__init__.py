@@ -1,4 +1,4 @@
-"""Optional FastAPI application exposing RainbowLens services."""
+"""Aplicación FastAPI opcional que expone los servicios de RainbowLens."""
 
 from fastapi import Depends, FastAPI
 from fastapi.exceptions import RequestValidationError

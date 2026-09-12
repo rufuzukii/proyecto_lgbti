@@ -116,7 +116,7 @@ _CANONICAL_PATHS: dict[str, RouteMatch] = {
     for language in SUPPORTED_LANGUAGES
 }
 
-# Historical and mixed-language URLs are redirects, never additional canonical pages.
+# Las URL históricas o de idioma mixto redirigen a las páginas canónicas.
 LEGACY_REDIRECTS: dict[str, str] = {
     "/": "/es",
     "/estadisticas": "/es/estadisticas",

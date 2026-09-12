@@ -1,1 +1,1 @@
-"""Authentication, authorization, CSRF, and rate-limit helpers."""
+"""Autenticación, autorización, CSRF y limitación de intentos."""

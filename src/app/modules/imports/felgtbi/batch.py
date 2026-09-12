@@ -19,7 +19,7 @@ def import_felgtbi_pdf_directory(
     require_storage: bool = True,
     batch_size: int = 200,
 ) -> dict[str, Any]:
-    """Process every PDF independently and atomically publish all successful reports."""
+    """Procesa cada PDF de forma independiente y publica los informes correctos de forma atómica."""
     root = Path(directory)
     pdf_paths = sorted(path for path in root.rglob("*.pdf") if path.is_file())
     if not pdf_paths:

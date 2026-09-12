@@ -77,7 +77,7 @@ from app.shared.data.legal_ranking import build_legal_ranking
 from app.shared.data.repository import get_ilga_document_by_year, get_ilga_years
 from app.web.i18n import attribute_attrs, country_labels, dash_attrs, text, text_attrs
 from app.web.navigation import build_navbar
-from app.web.routes import current_route_language, route_path
+from app.web.routes import current_route_language, localized_route_context, route_path
 
 
 def build_didactica_layout(notice: str | None = None) -> Component:
@@ -715,7 +715,11 @@ def build_activity_editor_layout(
                                 dcc.Dropdown(
                                     id="teacher-editor-term-ids",
                                     options=[
-                                        {"label": term.term, "value": term.id} for term in terms
+                                        {
+                                            "label": term.localized_term(current_route_language()),
+                                            "value": term.id,
+                                        }
+                                        for term in terms
                                     ],
                                     value=values["term_ids"],
                                     multi=True,
@@ -1406,7 +1410,7 @@ def _register_teacher_activity_callbacks(app: Dash) -> None:
             saved = save_owned_game(
                 current_user, activity_id, _teacher_activity_payload(values[:-1])
             )
-            public_path = f"{route_path('educator_public_activity')}/{saved['public_id']}"
+            public_path = f"{route_path('educator_public_activity', language)}/{saved['public_id']}"
             public_url = (
                 f"{request.host_url.rstrip('/')}{public_path}"
                 if has_request_context()
@@ -1454,10 +1458,11 @@ def _register_teacher_activity_callbacks(app: Dash) -> None:
                     return no_update, tr("activity_delete_failed", clean_language)
                 message = tr("game_deleted", clean_language)
             else:
-                duplicate_owned_game(current_user, activity_id)
+                duplicate_owned_game(current_user, activity_id, language=clean_language)
                 message = tr("game_duplicated", clean_language)
             activities = list_owned_games(current_user)
-            children = [_activity_card(item) for item in activities]
+            with localized_route_context(clean_language):
+                children = [_activity_card(item) for item in activities]
             return children or [translated("no_custom_activities", tag=html.P)], message
         except CustomGameAuthorizationError:
             return no_update, tr("docente_required_notice", clean_language)

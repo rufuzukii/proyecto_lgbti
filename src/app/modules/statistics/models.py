@@ -81,11 +81,10 @@ class ValidationResult:
 
 @dataclass(frozen=True)
 class StatisticsFilters:
-    """Canonical FRA segmentation selected by the user.
+    """Segmentación FRA canónica seleccionada por el usuario.
 
-    ``All`` is the only internal representation for an inactive group. A
-    missing value on an active filter remains invalid instead of becoming the
-    first available option.
+    ``All`` es la única representación interna de un grupo inactivo. Si falta el valor de un
+    filtro activo, este sigue siendo inválido: no se elige la primera opción disponible.
     """
 
     demographic_type: str = "All"

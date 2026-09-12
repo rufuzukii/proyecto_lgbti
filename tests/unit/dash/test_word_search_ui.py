@@ -38,10 +38,8 @@ def _user(
 def test_word_search_layout_contains_an_interactive_board_and_memory_only_state(
     monkeypatch,
 ) -> None:
-    # Arrange
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
 
-    # Act
     layout = didactica_page.build_word_search_layout(seed=1234)
     components = list(_walk(layout))
     store = next(
@@ -54,7 +52,6 @@ def test_word_search_layout_contains_an_interactive_board_and_memory_only_state(
         and item.id.get("type") == "didactica-word-search-cell"
     ]
 
-    # Assert
     assert store.storage_type == "memory"
     assert len(store.data["words"]) == 8
     assert 10 <= store.data["rows"] <= 15
@@ -79,7 +76,6 @@ def test_word_search_layout_contains_an_interactive_board_and_memory_only_state(
 def test_word_search_route_is_public_for_every_role(
     monkeypatch, authenticated, role, user_type
 ) -> None:
-    # Arrange
     monkeypatch.setattr(dash_app_module, "initialize_mongo_indexes", lambda: None)
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
     user = _user(authenticated=authenticated, role=role, user_type=user_type)
@@ -87,15 +83,12 @@ def test_word_search_route_is_public_for_every_role(
     app = dash_app_module.create_dash_app()
     display_page = app.callback_map["page-content.children"]["callback"].__wrapped__
 
-    # Act
     page = display_page(route_path("word_search", "es"), "")
 
-    # Assert
     assert any(getattr(item, "id", None) == "didactica-word-search-state" for item in _walk(page))
 
 
 def test_didactica_index_exposes_the_public_word_search_to_anonymous_users(monkeypatch) -> None:
-    # Arrange
     monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
     monkeypatch.setattr(
         didactica_page,
@@ -103,21 +96,17 @@ def test_didactica_index_exposes_the_public_word_search_to_anonymous_users(monke
         _user(authenticated=False, role=UserRole.ANONYMOUS, user_type=None),
     )
 
-    # Act
     layout = didactica_page.build_didactica_layout()
     hrefs = {getattr(item, "href", None) for item in _walk(layout)}
 
-    # Assert
     assert route_path("word_search", "es") in hrefs
     assert f"{route_path('games', 'es')}?game=guess_term" in hrefs
     assert f"{route_path('games', 'es')}?game=rank_countries" in hrefs
 
 
 def test_word_search_styles_cover_touch_mobile_and_dark_mode() -> None:
-    # Arrange / Act
     stylesheet = Path("src/app/web/assets/didactica.css").read_text(encoding="utf-8")
 
-    # Assert
     assert ".word-search-grid" in stylesheet
     assert "touch-action: manipulation" in stylesheet
     assert "aspect-ratio: 1" in stylesheet

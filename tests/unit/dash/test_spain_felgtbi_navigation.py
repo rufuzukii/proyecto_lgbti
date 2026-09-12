@@ -9,6 +9,70 @@ from dash import dcc
 from app.modules.spain import page as spain
 
 
+def test_initial_year_uses_latest_even_when_2026_is_available() -> None:
+    assert spain._resolve_initial_year([2025, 2026, 2027]) == 2027
+    assert spain._resolve_initial_year([]) is None
+
+
+def test_lazy_figure_identity_changes_with_its_source(monkeypatch) -> None:
+    monkeypatch.setattr(spain, "_figure_url", lambda document: document["url"])
+    first = spain._figure_component({"url": "https://example.org/first.webp"})
+    second = spain._figure_component({"url": "https://example.org/second.webp"})
+    images = [
+        next(
+            item
+            for item in _walk(figure)
+            if getattr(item, "className", "") == "report-figure-image"
+        )
+        for figure in (first, second)
+    ]
+    assert images[0].id != images[1].id
+    for image in images:
+        props = image.to_plotly_json()["props"]
+        assert props["id"] == {
+            "type": "spain-report-figure",
+            "source": props["data-lazy-src"],
+        }
+        assert "key" not in props
+        assert props["src"] is None
+
+
+def test_repeated_official_headings_remain_distinct_options() -> None:
+    indicators = [
+        SimpleNamespace(
+            question="Resumen",
+            specific_category="",
+            value=None,
+            report_title="Estado del odio",
+            code=code,
+        )
+        for code in ("section-a", "section-b")
+    ]
+    options = spain._indicator_options(indicators)
+    assert [item["value"] for item in options] == ["section-a", "section-b"]
+    assert [item["label"] for item in options] == ["Resumen · 1/2", "Resumen · 2/2"]
+    assert spain._resolve_topic_selection(options, "section-a", trigger_id="spain-topic-next") == (
+        "section-b",
+        "ok",
+    )
+
+
+def test_generated_report_heading_is_translatable_but_official_heading_is_preserved() -> None:
+    generated = spain._structured_report_content(
+        {"section_title": "Contenido del informe", "paragraphs": ["Texto oficial en español."]}
+    )
+    translated = [
+        item.to_plotly_json()["props"]
+        for item in _walk(generated)
+        if hasattr(item, "to_plotly_json")
+    ]
+    assert any(props.get("data-i18n-en") == "Report content" for props in translated)
+    official = spain._structured_report_content(
+        {"section_title": "La realidad social", "paragraphs": ["Texto oficial en español."]}
+    )
+    assert any(getattr(item, "children", None) == "La realidad social" for item in _walk(official))
+
+
 def _walk(component: Any):
     if component is None:
         return
@@ -25,7 +89,6 @@ def _find(component: Any, component_id: str) -> Any:
 
 
 def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) -> None:
-    # Arrange
     monkeypatch.setattr(spain, "get_felgtbi_years", lambda: [2026, 2025])
     document_queries = []
     monkeypatch.setattr(
@@ -41,7 +104,6 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     )
     monkeypatch.setattr(spain, "build_navbar", lambda **_kwargs: None)
 
-    # Act
     layout = spain.build_spain_layout()
     ids = {getattr(item, "id", None) for item in _walk(layout)}
     year = _find(layout, "spain-year-select")
@@ -49,7 +111,6 @@ def test_spain_layout_uses_year_document_radio_indicator_hierarchy(monkeypatch) 
     document_label = _find(layout, "spain-document-select-label")
     indicator = _find(layout, "spain-topic-select")
 
-    # Assert
     assert "spain-source-select" not in ids
     assert "spain-category-select" not in ids
     assert year.to_plotly_json()["props"]["value"] == 2026
@@ -93,6 +154,52 @@ def test_spain_layout_falls_back_to_most_recent_available_year(monkeypatch) -> N
     assert year.value == 2025
     assert [option["value"] for option in year.options] == [2025, 2024]
     assert requested_years == [2025]
+
+
+def test_saved_spain_selection_is_hydrated_before_dropdown_callbacks(monkeypatch) -> None:
+    monkeypatch.setattr(spain, "get_felgtbi_years", lambda: [2026, 2025])
+    monkeypatch.setattr(spain, "build_navbar", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        spain,
+        "get_felgtbi_document_options",
+        lambda **kwargs: [
+            {"label": "Documento", "value": f"doc-{kwargs['year']}"},
+            {"label": "Otro", "value": "other"},
+        ],
+    )
+    monkeypatch.setattr(
+        spain,
+        "get_felgtbi_indicators_by_document",
+        lambda *_args: [
+            SimpleNamespace(
+                question="Sección",
+                specific_category="",
+                value=None,
+                report_title="Documento",
+                code=code,
+            )
+            for code in ("first", "second")
+        ],
+    )
+    layout = spain.build_spain_layout({"year": 2025, "document": "doc-2025", "topic": "second"})
+    assert _find(layout, "spain-year-select").value == 2025
+    assert _find(layout, "spain-document-select").value == "doc-2025"
+    topic = _find(layout, "spain-topic-select")
+    assert topic.value == "second"
+    assert topic.value in {option["value"] for option in topic.options}
+    assert spain._resolve_topic_selection(
+        topic.options, topic.value, trigger_id="spain-document-select"
+    ) == ("second", "ok")
+
+
+def test_removed_saved_document_cannot_restore_a_stale_indicator(monkeypatch) -> None:
+    monkeypatch.setattr(spain, "get_felgtbi_years", lambda: [2026])
+    monkeypatch.setattr(spain, "build_navbar", lambda **_kwargs: None)
+    monkeypatch.setattr(spain, "get_felgtbi_document_options", lambda **_kwargs: [])
+    layout = spain.build_spain_layout({"year": 2025, "document": "removed", "topic": "stale"})
+    assert _find(layout, "spain-year-select").value == 2026
+    assert _find(layout, "spain-document-select").value is None
+    assert _find(layout, "spain-topic-select").value is None
 
 
 def test_document_selector_queries_only_the_selected_year_and_resets_selection(
@@ -153,7 +260,6 @@ def test_spain_indicator_dropdown_keeps_its_natural_height() -> None:
 
 
 def test_indicator_options_keep_canonical_value_and_clean_only_label() -> None:
-    # Arrange
     indicator = SimpleNamespace(
         question="Estado del odio - ¿Podría decirme cuál es su orientación sexual? - 9,60",
         specific_category="Identidad",
@@ -162,10 +268,8 @@ def test_indicator_options_keep_canonical_value_and_clean_only_label() -> None:
         code="canonical-indicator-42",
     )
 
-    # Act
     option = spain._indicator_options([indicator])[0]
 
-    # Assert
     assert option == {
         "label": "¿Podría decirme cuál es su orientación sexual?",
         "value": "canonical-indicator-42",
@@ -174,13 +278,11 @@ def test_indicator_options_keep_canonical_value_and_clean_only_label() -> None:
 
 
 def test_indicator_navigation_selects_first_option_when_document_is_chosen() -> None:
-    # Arrange
     options = [
         {"label": "Uno", "value": "one"},
         {"label": "Dos", "value": "two"},
     ]
 
-    # Act
     initial = spain._resolve_topic_selection(options, None, trigger_id="spain-document-select")
     next_value = spain._resolve_topic_selection(
         options,
@@ -193,7 +295,6 @@ def test_indicator_navigation_selects_first_option_when_document_is_chosen() -> 
         trigger_id="spain-topic-next",
     )
 
-    # Assert
     assert initial == ("one", "ok")
     assert next_value == ("two", "ok")
     assert bounded == ("two", "ok")

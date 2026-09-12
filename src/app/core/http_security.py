@@ -20,7 +20,7 @@ def configure_flask_security(
     cookie_name: str,
     max_auth_request_bytes: int = AUTH_REQUEST_MAX_BYTES,
 ) -> None:
-    """Apply shared production-safe HTTP, proxy and session settings."""
+    """Configura HTTP, proxy y sesiones con las protecciones compartidas de producción."""
     app.config.update(
         SESSION_COOKIE_NAME=f"__Host-{cookie_name}" if production else cookie_name,
         SESSION_COOKIE_HTTPONLY=True,
@@ -42,10 +42,10 @@ def configure_flask_security(
 
     @app.before_request
     def keep_authenticated_session_active() -> None:
-        # Flask-Login's strong protection removes a non-permanent session when
-        # the proxy-visible client identifier changes. Promote both new and
-        # pre-existing authenticated sessions before current_user is loaded so
-        # ordinary navigation cannot silently log the user out.
+        # La protección fuerte de Flask-Login elimina sesiones no permanentes cuando
+        # cambia el identificador del cliente visto por el proxy. Se hacen permanentes
+        # las sesiones autenticadas antes de cargar current_user para que la navegación
+        # habitual no cierre la sesión de forma inesperada.
         if session.get("_user_id") is not None and not session.permanent:
             session.permanent = True
 
@@ -97,12 +97,12 @@ def security_headers(*, production: bool) -> dict[str, str]:
 
 
 def client_ip() -> str:
-    """Return the proxy-normalized client address without trusting raw headers."""
+    """Devuelve la dirección normalizada por el proxy sin confiar en cabeceras sin validar."""
     return (request.remote_addr or "unknown").strip()[:64]
 
 
 def rate_limit_key(*, subject: str = "", scope: str = "") -> str:
-    """Build a non-identifying key suitable for the local rate limiter."""
+    """Genera una clave sin identificadores en claro para el limitador local."""
     identity = f"{scope}|{client_ip()}|{subject[:254]}"
     return hashlib.sha256(
         identity.encode("utf-8"),

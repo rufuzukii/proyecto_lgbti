@@ -1,4 +1,4 @@
-"""Reusable Dash components."""
+"""Componentes Dash reutilizables."""
 
 from app.shared.components.page_structure import build_page_header, page_section, surface
 from app.shared.components.source_attribution import (

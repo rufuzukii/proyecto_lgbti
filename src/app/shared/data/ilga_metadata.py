@@ -24,12 +24,12 @@ _NORMALIZED_SOURCE_SCALES: dict[int, dict[str, Any]] = {
 
 
 def ilga_normalization_metadata(year: int) -> dict[str, Any]:
-    """Return annual ILGA scale metadata without transforming any score."""
+    """Devuelve los metadatos anuales de la escala ILGA sin transformar puntuaciones."""
     return deepcopy(_NORMALIZED_SOURCE_SCALES.get(int(year), {"applied": False}))
 
 
 def normalized_ilga_source_scale(value: Any) -> dict[str, Any] | None:
-    """Return a validated normalized-scale payload, or ``None`` when not applicable."""
+    """Devuelve metadatos validados de normalización de escala, o ``None`` si no corresponde."""
     if not isinstance(value, dict) or value.get("applied") is not True:
         return None
     required = (

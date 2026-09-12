@@ -172,8 +172,8 @@ def _base_metadata(source: SourceKey, *, year: int | None) -> SourceAttributionM
 
 
 def _fra_metadata(year: int | None) -> SourceAttributionMetadata:
-    # Survey III was conducted in 2023 and published in 2024. Analytics uses
-    # the publication year, so both values identify the same source document.
+    # Survey III se realizó en 2023 y se publicó en 2024. El análisis usa el año
+    # de publicación: ambos valores identifican el mismo documento fuente.
     survey_year = 2023 if year == 2024 else year
     survey = FRA_SURVEYS.get(survey_year or 0)
     if survey:

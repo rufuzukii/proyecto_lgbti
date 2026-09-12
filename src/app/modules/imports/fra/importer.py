@@ -22,48 +22,6 @@ from app.shared.data.normalization import normalize_header
 FRA_SOURCE_NAME = "EU LGBTIQ+ Survey (FRA)"
 FRA_SOURCE_TYPE = "EU_SURVEY"
 
-COLUMN_ALIASES: dict[str, str] = {
-    "country": "country",
-    "country_name": "country",
-    "pais": "country",
-    "territory": "country",
-    "topic": "topic",
-    "tema": "topic",
-    "categoria": "category",
-    "category": "category",
-    "question": "question",
-    "pregunta": "question",
-    "indicator": "question",
-    "indicador": "question",
-    "answer": "answer",
-    "respuesta": "answer",
-    "value": "percentage",
-    "valor": "percentage",
-    "percentage": "percentage",
-    "percent": "percentage",
-    "porcentaje": "percentage",
-    "notes": "notes",
-    "notas": "notes",
-    "nota": "notes",
-    "note": "notes",
-    "source": "source",
-    "fuente": "source",
-    "question_code": "external_code",
-    "questioncode": "external_code",
-    "indicator_code": "external_code",
-    "external_code": "external_code",
-    "codigo_pregunta": "external_code",
-    "codigo": "external_code",
-    "date": "date",
-    "fecha": "date",
-    "year": "year",
-    "ano": "year",
-    "anio": "year",
-    "hyperlink": "hyperlink",
-    "link": "hyperlink",
-    "url": "hyperlink",
-}
-
 FILTER_KEY_ALIASES: dict[str, str] = {
     "age": "age_group",
     "age_group": "age_group",
@@ -110,95 +68,6 @@ PATH_FILTER_PREFIXES: dict[str, str] = {
     "op": "openness",
 }
 
-RESERVED_FIELDS: set[str] = {
-    "country",
-    "topic",
-    "category",
-    "question",
-    "answer",
-    "percentage",
-    "notes",
-    "source",
-    "external_code",
-    "date",
-    "year",
-    "hyperlink",
-}
-
-EXPLICIT_FILTER_FIELDS: set[str] = {
-    "filter",
-    "filters",
-    "filtro",
-    "filtros",
-    "filtro1",
-    "filtro2",
-    "filtro3",
-    "filter1",
-    "filter2",
-    "filter3",
-    "filter_1",
-    "filter_2",
-    "filter_3",
-}
-
-COUNTRY_CODES: dict[str, str] = {
-    "albania": "AL",
-    "andorra": "AD",
-    "austria": "AT",
-    "belarus": "BY",
-    "belgium": "BE",
-    "bosnia_and_herzegovina": "BA",
-    "bulgaria": "BG",
-    "croatia": "HR",
-    "cyprus": "CY",
-    "czech_republic": "CZ",
-    "czechia": "CZ",
-    "denmark": "DK",
-    "estonia": "EE",
-    "faroe_islands": "FO",
-    "finland": "FI",
-    "france": "FR",
-    "germany": "DE",
-    "gibraltar": "GI",
-    "greece": "GR",
-    "guernsey": "GG",
-    "holy_see": "VA",
-    "hungary": "HU",
-    "iceland": "IS",
-    "ireland": "IE",
-    "isle_of_man": "IM",
-    "italy": "IT",
-    "jersey": "JE",
-    "kosovo": "XK",
-    "latvia": "LV",
-    "liechtenstein": "LI",
-    "lithuania": "LT",
-    "luxembourg": "LU",
-    "malta": "MT",
-    "moldova": "MD",
-    "monaco": "MC",
-    "montenegro": "ME",
-    "netherlands": "NL",
-    "north_macedonia": "MK",
-    "norway": "NO",
-    "poland": "PL",
-    "portugal": "PT",
-    "romania": "RO",
-    "russia": "RU",
-    "san_marino": "SM",
-    "serbia": "RS",
-    "slovakia": "SK",
-    "slovenia": "SI",
-    "spain": "ES",
-    "sweden": "SE",
-    "switzerland": "CH",
-    "turkey": "TR",
-    "turkiye": "TR",
-    "tuerkiye": "TR",
-    "uk": "GB",
-    "united_kingdom": "GB",
-}
-
 ENCODINGS: tuple[str, ...] = ("utf-8-sig", "utf-8", "cp1252", "latin-1")
 
 
@@ -212,21 +81,12 @@ class FraPathContext:
     file_name: str = ""
 
 
-@dataclass(frozen=True)
-class IndicatorQuestionParts:
-    category: str
-    specific_category: str
-    topic: str
-    question: str
-    raw_question: str
-
-
 def parse_answer_survey_csv(
     file_path: Path | str,
     *,
     root: Path | str | None = None,
     survey_year: int | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     path = Path(file_path)
     csv_text = read_text_with_fallback(path)
     context = build_path_context(path, Path(root) if root else None)
@@ -244,7 +104,7 @@ def parse_answer_survey_csv_text(
     file_name: Path | str | None = None,
     path_context: FraPathContext | None = None,
     survey_year: int | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     context = path_context or (
         build_path_context(Path(file_name), None) if file_name else FraPathContext()
     )
@@ -308,7 +168,7 @@ def _parse_normalized_fra_dataframe(
     *,
     schema: FraCsvSchema,
     context: FraPathContext,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     documents: dict[tuple[str, str, str, str, str, str, int | None], dict[str, Any]] = {}
     fra_metadata = dict(dataframe.attrs.get("fra_metadata") or {})
     for row in dataframe.to_dict(orient="records"):
@@ -407,13 +267,8 @@ def build_path_context(file_path: Path, root: Path | None) -> FraPathContext:
     )
 
 
-def is_meaningful_path_part(value: str) -> bool:
-    ignored = {"data", "datos", "downloads", "imports", "csv", "fra"}
-    return normalize_header(value) not in ignored
-
-
 def _path_category(value: str) -> str:
-    """Remove the FRA explorer's display-only question count suffix."""
+    """Elimina el sufijo de recuento de preguntas que el explorador FRA añade para visualización."""
     return re.sub(r"\s*\(\d+\)\s*$", "", str(value or "")).strip()
 
 
@@ -458,7 +313,7 @@ def build_question_code(question: str) -> str:
     return f"fra_{digest}"
 
 
-def validate_fra_document(document: dict) -> dict:
+def validate_fra_document(document: dict[str, Any]) -> dict[str, Any]:
     warnings: list[str] = []
     if not document.get("code"):
         warnings.append("missing_code")

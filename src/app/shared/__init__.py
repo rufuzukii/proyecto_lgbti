@@ -1,1 +1,1 @@
-"""Stable code shared by functional modules."""
+"""Código estable compartido entre módulos funcionales."""

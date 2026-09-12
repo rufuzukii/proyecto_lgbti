@@ -356,7 +356,7 @@ def register_upload_callbacks(app: Dash) -> None:
                 exception_message=str(exc),
             )
             result = _upload_validation_message(str(exc), trace.get("filename"))
-        # This callback is the application boundary for PDF, storage and database failures.
+        # Este callback contiene los fallos de PDF, almacenamiento y base de datos.
         except Exception as exc:  # noqa: BLE001
             _upload_log(
                 logging.ERROR,
@@ -504,9 +504,9 @@ def _process_upload(
 
 
 def normalize_upload_values(contents: Any, filenames: Any) -> tuple[list[str], list[str]]:
-    # Dash supplies a mutable list when ``dcc.Upload(multiple=True)`` is used.
-    # Keep ownership of that list so replacing each processed entry releases
-    # the large base64 string from the callback frame before PDF extraction.
+    # Dash entrega una lista mutable con ``dcc.Upload(multiple=True)``.
+    # Se conserva esa lista para liberar cada cadena base64 ya procesada
+    # del contexto del callback antes de extraer el PDF.
     contents_list = (
         [contents]
         if isinstance(contents, str)

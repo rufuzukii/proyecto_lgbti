@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -39,10 +40,8 @@ def _confirmation(**overrides: object) -> dict[str, object]:
 
 
 def test_deletion_confirmation_accepts_only_current_credentials_and_exact_phrase() -> None:
-    # Arrange
     record = _record()
 
-    # Act / Assert
     service.validate_deletion_confirmation(record, **_confirmation())  # type: ignore[arg-type]
     for override, expected in (
         ({"email": "other@example.com"}, "invalid_email"),
@@ -58,28 +57,46 @@ def test_deletion_confirmation_accepts_only_current_credentials_and_exact_phrase
 
 
 def test_english_confirmation_uses_the_english_phrase() -> None:
-    # Arrange / Act / Assert
     service.validate_deletion_confirmation(
         _record(),
         **_confirmation(language="en", confirmation_text="DELETE MY ACCOUNT"),  # type: ignore[arg-type]
     )
 
 
+def test_deletion_confirmation_accepts_international_email() -> None:
+    service.validate_deletion_confirmation(
+        replace(_record(), email="álex@example.com"),
+        email="Álex@example.com",
+        password="correct-password",
+        confirmation_checked=True,
+        confirmation_text="ELIMINAR MI CUENTA",
+        language="es",
+    )
+
+
+def test_deletion_rejects_unicode_phrase_with_a_controlled_error() -> None:
+    with pytest.raises(service.AccountDeletionError, match="invalid_confirmation_text"):
+        service.validate_deletion_confirmation(
+            _record(),
+            email="alex@example.com",
+            password="correct-password",
+            confirmation_checked=True,
+            confirmation_text="ELIMÍNAR MI CUENTA",
+            language="es",
+        )
+
+
 def test_already_deleted_user_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
     monkeypatch.setattr(service, "get_user_record", lambda _user_id: None)
 
-    # Act
     result = service.delete_user_account(user_id=USER_ID, **_confirmation())  # type: ignore[arg-type]
 
-    # Assert
     assert result.status == "already_deleted"
 
 
 def test_deletion_orchestrates_all_stores_before_postgres(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     events: list[str] = []
     inventory = PersonalDataInventory(profile=True, teacher_games=2)
     monkeypatch.setattr(service, "get_personal_data_inventory", lambda _user_id: inventory)
@@ -116,10 +133,8 @@ def test_deletion_orchestrates_all_stores_before_postgres(
     monkeypatch.setattr(service, "_mark_stage_safely", lambda _user_id, _stage: None)
     monkeypatch.setattr(service, "_complete_job", lambda _user_id, _subject: events.append("done"))
 
-    # Act
     result = service._execute_account_deletion(_record(), actor_user_id=None)
 
-    # Assert
     assert result.status == "completed"
     assert events == [
         "guard",
@@ -139,7 +154,6 @@ def test_deletion_orchestrates_all_stores_before_postgres(
 def test_partial_failure_remains_pending_and_does_not_reach_postgres(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     events: list[str] = []
     monkeypatch.setattr(
         service,
@@ -156,14 +170,12 @@ def test_partial_failure_remains_pending_and_does_not_reach_postgres(
     monkeypatch.setattr(service, "_record_job_failure", lambda *_args: events.append("pending"))
     monkeypatch.setattr(service, "_delete_postgres_account", lambda _user_id: events.append("sql"))
 
-    # Act / Assert
     with pytest.raises(service.AccountDeletionError, match="deletion_incomplete"):
         service._execute_account_deletion(_record(), actor_user_id=None)
     assert events == ["job", "pending"]
 
 
 def test_last_administrator_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
     class _Connection:
         def __enter__(self):
             return self
@@ -181,7 +193,6 @@ def test_last_administrator_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda user_ids: {user_id: SimpleNamespace(active=True) for user_id in user_ids},
     )
 
-    # Act / Assert
     with pytest.raises(service.AccountDeletionError, match="last_admin"):
         service._assert_not_last_admin(_record(user_type=UserType.ADMIN))
 
@@ -191,7 +202,6 @@ def test_supabase_public_dataset_objects_are_not_treated_as_personal() -> None:
 
 
 def test_audit_anonymization_removes_direct_identifiers(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
     calls: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
 
     class _Collection:
@@ -204,10 +214,8 @@ def test_audit_anonymization_removes_direct_identifiers(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(service, "get_mongo_collection", lambda name: _Collection(name))
 
-    # Act
     result = service._anonymize_audits(USER_ID, "deleted:abc")
 
-    # Assert
     assert result["security_audit_events"] == 1
     updates = [update for items in calls.values() for _query, update in items]
     assert any("user_id" in update["$unset"] for update in updates)
@@ -215,7 +223,6 @@ def test_audit_anonymization_removes_direct_identifiers(monkeypatch: pytest.Monk
 
 
 def test_inventory_counts_only_real_user_linked_stores(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
     class _Connection:
         def __enter__(self):
             return self
@@ -239,10 +246,8 @@ def test_inventory_counts_only_real_user_linked_stores(monkeypatch: pytest.Monke
         lambda name: SimpleNamespace(count_documents=lambda _query: counts[name]),
     )
 
-    # Act
     inventory = service.get_personal_data_inventory(USER_ID)
 
-    # Assert
     assert inventory.profile is True
     assert inventory.import_logs == 2
     assert inventory.teacher_games == 3
@@ -254,7 +259,6 @@ def test_inventory_counts_only_real_user_linked_stores(monkeypatch: pytest.Monke
 def test_portability_export_excludes_passwords_tokens_and_internal_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     class _Result:
         def __init__(self, *, row: object = None, rows: object = None) -> None:
             self.row = row
@@ -302,11 +306,9 @@ def test_portability_export_excludes_passwords_tokens_and_internal_ids(
     monkeypatch.setattr(service, "postgres_connection", lambda **_kwargs: _Connection())
     monkeypatch.setattr(service, "get_mongo_collection", lambda name: _Collection(name))
 
-    # Act
     exported = service.build_personal_data_export(USER_ID)
     serialized = str(exported).casefold()
 
-    # Assert
     assert exported["account"]["email"] == "alex@example.com"
     assert "password_hash" not in serialized
     assert "token_hash" not in serialized
@@ -316,7 +318,6 @@ def test_portability_export_excludes_passwords_tokens_and_internal_ids(
 def test_deletion_job_upsert_does_not_update_the_same_path_twice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     captured: dict[str, Any] = {}
 
     class _Collection:
@@ -326,9 +327,7 @@ def test_deletion_job_upsert_does_not_update_the_same_path_twice(
 
     monkeypatch.setattr(service, "get_mongo_collection", lambda _name: _Collection())
 
-    # Act
     service._start_or_resume_job(USER_ID, PersonalDataInventory(profile=True))
 
-    # Assert
     assert "attempts" in captured["$inc"]
     assert "attempts" not in captured["$setOnInsert"]

@@ -10,7 +10,6 @@ from app.modules.account.users.schemas import UserType
 
 
 def test_postgresql_users_schema_and_service_are_compatible(monkeypatch) -> None:
-    # Arrange
     try:
         connection = psycopg.connect(
             get_postgres_dsn(), connect_timeout=get_postgres_connect_timeout()
@@ -30,7 +29,6 @@ def test_postgresql_users_schema_and_service_are_compatible(monkeypatch) -> None
         },
     )
 
-    # Act
     try:
         columns = connection.execute(
             """
@@ -46,7 +44,6 @@ def test_postgresql_users_schema_and_service_are_compatible(monkeypatch) -> None
     finally:
         connection.close()
 
-    # Assert
     schema = {row[0]: (row[1], row[2]) for row in columns}
     assert "user_type" in schema
     assert schema["user_type"][0] == "NO"

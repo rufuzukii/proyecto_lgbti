@@ -15,6 +15,7 @@ from app.infrastructure.mongo import get_mongo_collection
 from app.modules.didactics.game_service import new_game_state
 from app.modules.didactics.glossary_service import list_glossary_terms
 from app.modules.didactics.ranking_game_service import new_ranking_game
+from app.modules.didactics.translations import tr
 from app.modules.didactics.word_search_service import (
     MAX_BOARD_SIZE,
     MAX_WORD_COUNT,
@@ -117,7 +118,7 @@ def get_owned_game(user: object, game_id: str) -> dict[str, Any] | None:
 
 
 def get_public_game(public_id: str) -> dict[str, Any] | None:
-    """Load the read-only game configuration addressed by its public token."""
+    """Carga la configuración de solo lectura de un juego mediante su token público."""
     document = get_mongo_collection(COLLECTION_NAME).find_one(
         {"public_id": _public_identifier(public_id)},
         {"_id": 0, "owner_user_id": 0},
@@ -180,7 +181,7 @@ def save_owned_game(
     return {key: value for key, value in document.items() if key != "owner_user_id"}
 
 
-def duplicate_owned_game(user: object, game_id: str) -> dict[str, Any]:
+def duplicate_owned_game(user: object, game_id: str, *, language: str = "es") -> dict[str, Any]:
     source = get_owned_game(user, game_id)
     if source is None:
         raise CustomGameValidationError("activity_not_found")
@@ -189,7 +190,7 @@ def duplicate_owned_game(user: object, game_id: str) -> dict[str, Any]:
         for key, value in source.items()
         if key not in {"id", "public_id", "owner_user_id", "created_at", "updated_at"}
     }
-    copy_values["title"] = _text(f"{copy_values['title']} (copia)", 120)
+    copy_values["title"] = _text(f"{copy_values['title']} ({tr('copy_suffix', language)})", 120)
     copy_values["status"] = "DRAFT"
     return save_owned_game(user, None, copy_values)
 
@@ -227,7 +228,9 @@ def delete_owned_game(user: object, game_id: str) -> bool:
     return True
 
 
-def build_activity_game_state(activity: Mapping[str, Any], *, seed: int | None = None):
+def build_activity_game_state(
+    activity: Mapping[str, Any], *, seed: int | None = None,
+) -> dict[str, Any]:
     game_type = str(activity.get("game_type") or "")
     configuration = dict(activity.get("configuration") or {})
     if game_type == "guess_term":
@@ -256,7 +259,7 @@ def build_activity_game_state(activity: Mapping[str, Any], *, seed: int | None =
 
 
 def validate_activity(values: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate and sanitize an unsaved activity without trusting browser data."""
+    """Valida y sanea una actividad sin guardar, sin confiar en los datos del navegador."""
     return _validated_activity(values)
 
 

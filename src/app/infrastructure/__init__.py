@@ -1,1 +1,1 @@
-"""External storage and cache integrations."""
+"""Integraciones con almacenamiento externo y caché."""

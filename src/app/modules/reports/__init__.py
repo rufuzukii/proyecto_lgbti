@@ -1,4 +1,4 @@
-"""Diversity report generation built on the shared statistics services."""
+"""Generación de informes de diversidad a partir de los servicios estadísticos compartidos."""
 
 from app.modules.reports.models import (
     ReportChart,

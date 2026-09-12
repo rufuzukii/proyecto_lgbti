@@ -200,6 +200,25 @@ def test_short_selected_range_limits_horizon_to_one_year(monkeypatch) -> None:
     assert disabled is False
 
 
+def test_language_navigation_restores_trend_filters_and_rejects_stale_ranges(monkeypatch) -> None:
+    app = Dash("trend-restored-controls-test", suppress_callback_exceptions=True)
+    register_trend_callbacks(app)
+    monkeypatch.setattr(
+        trend_callbacks, "get_historical_series", lambda _country, _filters=None: _points(12)
+    )
+    selection = {"country": "ES", "years": [2014, 2022], "horizon": 3}
+    range_callback = _callback(app, "update_trend_range")
+    horizon_callback = _callback(app, "update_trend_horizon")
+    assert range_callback("ES", selection)[2] == [2014, 2022]
+    assert range_callback("DE", selection)[2] == [2011, 2022]
+    assert range_callback("ES", {**selection, "years": [2010, 2025]})[2] == [2011, 2022]
+    for language in ("es", "en"):
+        assert horizon_callback("ES", [2014, 2022], language, 1, False, True, selection)[1] == 3
+        assert horizon_callback("ES", [2011, 2012], language, 1, True, True, selection) == (
+            [], None, True
+        )
+
+
 def test_render_callback_returns_complete_result_and_methodology(monkeypatch) -> None:
     app = Dash("trend-render-test", suppress_callback_exceptions=True)
     register_trend_callbacks(app)

@@ -202,7 +202,7 @@ PLOTLY_TRANSPARENT = "rgba(0,0,0,0)"
 
 
 def country_color(iso: Any = None, country: Any = None) -> str:
-    """Return a stable country colour shared by every application chart."""
+    """Devuelve un color de país estable compartido por todas las gráficas."""
     clean_iso = None if _is_missing_country_value(iso) else iso
     normalized_code = normalize_country_code(clean_iso, country)
     normalized_code = ISO3_TO_ISO2.get(normalized_code, normalized_code)
@@ -257,7 +257,7 @@ def build_statistics_hover(
     language: str = "es",
     missing_message: str | None = None,
 ) -> str:
-    """Build the canonical map hover without changing the selected scope."""
+    """Construye el texto canónico al pasar el cursor por el mapa sin cambiar el ámbito."""
     value_text = format_percentage(value)
     lines = [f"<b>{country}</b>"]
     if value_text:
@@ -727,7 +727,7 @@ def prepare_fra_response_comparison_data(
     *,
     language: str = "es",
 ) -> pd.DataFrame:
-    """Normalize FRA response rows once for every dashboard consumer."""
+    """Normaliza una sola vez las respuestas FRA para todos los consumidores del panel."""
     return _response_comparison_dataframe(
         _append_missing_response_countries(
             data_rows,
@@ -866,7 +866,7 @@ def _response_comparison_dataframe(
 
 
 def _consolidate_response_rows(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Collapse exact source duplicates without averaging conflicting percentages."""
+    """Agrupa duplicados exactos de origen sin promediar porcentajes contradictorios."""
     if dataframe.empty:
         return dataframe
     dataframe = dataframe.copy()
@@ -1430,8 +1430,8 @@ def _stacked_country_order(
         normalized[matching_key] if matching_key is not None else normalized.max(axis=1)
     )
     order["country_name"] = [country for country, _iso in normalized.index]
-    # Plotly's category array runs from bottom to top. Ascending values here
-    # therefore render the highest percentage first at the top of the chart.
+    # Plotly recorre las categorías de abajo arriba. Ordenarlas por valor ascendente
+    # sitúa el porcentaje más alto en la parte superior de la gráfica.
     return order.sort_values(
         ["comparison_value", "country_name"],
         ascending=[True, False],
@@ -1855,6 +1855,10 @@ def build_comparative_ranking_chart(
     )
     dataframe["year_text"] = str(year) if year not in (None, "") else missing_label
     dataframe["indicator_text"] = str(indicator or missing_label)
+    dataframe["country_label"] = [
+        country_labels(str(row.iso), str(row.country))[1 if language == "en" else 0]
+        for row in dataframe.itertuples()
+    ]
     colors = [
         country_color(row.iso, row.country) if pd.notna(row.value) else MISSING_PERCENTAGE_COLOR
         for row in dataframe.itertuples()
@@ -1862,7 +1866,7 @@ def build_comparative_ranking_chart(
     figure = go.Figure(
         go.Bar(
             x=dataframe["plot_value"],
-            y=dataframe["country"],
+            y=dataframe["country_label"],
             orientation="h",
             marker={"color": colors},
             text=dataframe["value_text"],
@@ -1888,7 +1892,7 @@ def build_comparative_ranking_chart(
         figure.add_trace(
             go.Scatter(
                 x=[0.0] * len(missing),
-                y=missing["country"],
+                y=missing["country_label"],
                 mode="markers",
                 marker={"color": MISSING_PERCENTAGE_COLOR, "symbol": "x", "size": 10},
                 customdata=missing[
@@ -1905,7 +1909,7 @@ def build_comparative_ranking_chart(
     maximum = dataframe["value"].max()
     country_count = len(dataframe)
     chart_height = min(1500, max(500, country_count * 30 + 150))
-    longest_country = max((len(str(country)) for country in dataframe["country"]), default=0)
+    longest_country = max((len(str(country)) for country in dataframe["country_label"]), default=0)
     left_margin = min(260, max(125, longest_country * 7 + 28))
     figure.update_layout(
         xaxis={
@@ -1953,6 +1957,10 @@ def build_eu_average_comparison_chart(
             )
         )
     focus = focus.copy()
+    focus["country_label"] = [
+        country_labels(str(row.iso), str(row.country))[1 if language == "en" else 0]
+        for row in focus.itertuples()
+    ]
     focus["difference"] = focus["value"] - mean
     focus = focus.sort_values(["value", "country"], ascending=[True, False], na_position="first")
     missing_label = _chart_text(language, "Sin datos", "No data")
@@ -1992,7 +2000,7 @@ def build_eu_average_comparison_chart(
     figure.add_trace(
         go.Bar(
             x=focus["plot_value"],
-            y=focus["country"],
+            y=focus["country_label"],
             orientation="h",
             marker={"color": colors, "line": {"color": "#ffffff", "width": 1}},
             text=focus["bar_text"],
@@ -2029,7 +2037,7 @@ def build_eu_average_comparison_chart(
         figure.add_trace(
             go.Scatter(
                 x=[0.0] * len(missing),
-                y=missing["country"],
+                y=missing["country_label"],
                 mode="markers",
                 marker={"color": MISSING_PERCENTAGE_COLOR, "symbol": "x", "size": 10},
                 customdata=missing[["value_text"]].to_numpy(),
@@ -2042,7 +2050,7 @@ def build_eu_average_comparison_chart(
     focus_values = pd.to_numeric(focus["value"], errors="coerce").dropna()
     maximum = max(float(focus_values.max()) if not focus_values.empty else 0.0, mean)
     longest_label = max(
-        [len(str(value)) for value in focus["country"].tolist()] + [len(mean_label)],
+        [len(str(value)) for value in focus["country_label"].tolist()] + [len(mean_label)],
         default=0,
     )
     figure.update_layout(
@@ -2075,7 +2083,7 @@ def build_response_country_comparison_chart(
     year: int | str | None = None,
     prepared_data: pd.DataFrame | None = None,
 ) -> go.Figure:
-    """Render dynamic responses on X and one vertical bar per country."""
+    """Representa respuestas dinámicas en X y una barra vertical por país."""
     dataframe = (
         prepared_data
         if prepared_data is not None
@@ -2222,7 +2230,7 @@ def build_ilga_response_details_chart(
     indicator: str | None = None,
     year: int | str | None = None,
 ) -> go.Figure:
-    """Render legal scores or semantic compliance states for every country."""
+    """Representa puntuaciones legales o estados semánticos de cumplimiento por país."""
     started_at = time.perf_counter()
     dataframe = pd.DataFrame(detail_rows)
     required = {"country_code", "country_name", "value", "indicator_id", "response"}
@@ -2312,9 +2320,9 @@ def build_ilga_response_details_chart(
     country_count = len(country_frame)
     response_count = max(1, len(visible_responses))
     chart_height = min(max(560, country_count * 8 + response_count * 32), 1000)
-    # Keep country labels readable without making the Plotly canvas several
-    # viewport widths larger than the section. Any remaining excess is handled
-    # by the section's local horizontal scroller.
+    # Los nombres de países deben ser legibles sin ampliar el lienzo de Plotly
+    # a varias veces el ancho de la ventana. El desplazamiento horizontal local
+    # de la sección absorbe el exceso restante.
     minimum_width = min(2400, max(760, 190 + country_count * 44))
     _apply_base_layout(figure, margin={"l": 72, "r": 30, "t": 70, "b": 175})
     figure.update_layout(
@@ -2678,7 +2686,7 @@ def build_temporal_evolution_chart(
             "itemdoubleclick": "toggleothers",
         },
     )
-    # Plotly's runtime ``data`` property is a tuple; its generated typing is incomplete.
+    # En ejecución, ``data`` de Plotly es una tupla; su tipado generado es incompleto.
     series_rendered = len(cast(tuple[Any, ...], figure.data))
     logger.info(
         "legal_temporal_figure countries_loaded=%d years_loaded=%d series_rendered=%d figure_ms=%.2f",
@@ -2992,7 +3000,7 @@ def build_ranking_position_gap_chart(
     *,
     answer: str = "",
 ) -> go.Figure:
-    """Show legal and social positions with one connected row per country."""
+    """Muestra las posiciones legales y sociales conectadas en una fila por país."""
     rows = list(comparison.get("rows") or [])
     if not comparison.get("available") or not rows:
         raise ValueError("ranking_position_gap_requires_interpretable_rows")
@@ -3094,7 +3102,7 @@ def build_experience_legal_radar(
     country_iso: str | None,
     language: str = "es",
 ) -> tuple[go.Figure, bool, str, str]:
-    """Compare explicitly mapped lived-experience and legal-protection dimensions."""
+    """Compara dimensiones de experiencia y protección legal emparejadas explícitamente."""
     rows = pd.DataFrame(payload.get("rows") or [])
     empty_message = _chart_text(
         language,
@@ -3219,14 +3227,6 @@ def build_experience_legal_radar(
             f"The two series have a similar average level. The largest descriptive gap is in {largest_label}. These sources do not support causal inference.",
         )
     return figure, True, metadata, interpretation
-
-
-def _numeric_ranking_dataframe(ranking_rows: list[dict[str, Any]]) -> pd.DataFrame:
-    return (
-        _ranking_dataframe_with_missing(ranking_rows)
-        .dropna(subset=["value"])
-        .sort_values("value", ascending=False)
-    )
 
 
 def _ranking_dataframe_with_missing(

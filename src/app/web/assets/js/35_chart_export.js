@@ -273,7 +273,7 @@
       xref: "paper",
       yref: "paper",
       xanchor: "center",
-      // Anchor the bottom above the table's top, independently of export height.
+      // Ancla el borde inferior sobre la tabla, con independencia de la altura exportada.
       yanchor: "bottom",
       yshift: 12,
       showarrow: false,

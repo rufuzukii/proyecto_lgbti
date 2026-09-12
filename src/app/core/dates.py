@@ -4,7 +4,7 @@ from datetime import UTC, date, datetime
 
 
 def utc_today() -> date:
-    """Return the current calendar date using Render's UTC reference timezone."""
+    """Devuelve la fecha actual según la zona horaria UTC de referencia en Render."""
     return datetime.now(UTC).date()
 
 

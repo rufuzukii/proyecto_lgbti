@@ -11,7 +11,7 @@ from app.core.config import get_mongo_config
 
 @lru_cache(maxsize=1)
 def get_mongo_client() -> MongoClient:
-    """Return the single Mongo client shared by the current process."""
+    """Devuelve el único cliente MongoDB compartido por el proceso actual."""
     config = get_mongo_config()
     return MongoClient(
         config.dsn(),

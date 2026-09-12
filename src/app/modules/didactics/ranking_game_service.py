@@ -22,7 +22,7 @@ def new_ranking_game(
     year: int = HOME_LEGAL_YEAR,
     country_codes: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a short ILGA legal-ranking round from the cached map dataset."""
+    """Crea una ronda breve del ranking legal ILGA a partir de los datos del mapa en caché."""
     source = document
     if source is None:
         source = get_ilga_document_by_year(year)

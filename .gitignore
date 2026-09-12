@@ -82,6 +82,7 @@ venv.bak/
 *.dump
 *.dmp
 *.bak
+*.tmp
 # mkdocs documentation
 /site
 
@@ -125,6 +126,3 @@ Desktop.ini
 
 # Local browser-test artifacts
 .playwright-mcp/
-
-# Local functionality registry
-registro_funcionalidades/

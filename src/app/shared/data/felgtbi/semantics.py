@@ -163,7 +163,7 @@ def is_semantically_useful_text(
     *,
     seen_texts: Iterable[str] = (),
 ) -> bool:
-    """Reject chart residue and document chrome while preserving real numeric prose."""
+    """Descarta residuos de gráficas y elementos de página, conservando la prosa con cifras."""
     clean = _plain_text(text)
     if not clean or FOOTER_PATTERN.search(clean):
         return False
@@ -202,7 +202,7 @@ def semantic_noise_reason(text: str, context: ExtractionContext | None = None) -
 
 
 def clean_semantic_text(text: str) -> str:
-    """Remove transport-only references without altering meaningful sentences."""
+    """Elimina referencias de transporte sin alterar las frases con significado."""
     clean = _plain_text(text)
     clean = URL_PATTERN.sub("", clean)
     clean = re.sub(r"\bchrome-extension:\S+", "", clean, flags=re.IGNORECASE)
@@ -393,7 +393,7 @@ def clean_figure_paragraphs(
 
 
 def sanitize_report_document(document: dict[str, Any]) -> dict[str, Any]:
-    """Defensive read filter; new imports are already cleaned before persistence."""
+    """Filtra defensivamente en lectura; las importaciones nuevas ya se limpian al guardar."""
     cleaned = deepcopy(document)
     figure_value = cleaned.get("figure")
     figure: dict[str, Any] = figure_value if isinstance(figure_value, dict) else {}

@@ -21,7 +21,7 @@ YEAR_PATTERN = re.compile(r"(?<!\d)(20\d{2})(?!\d)")
 
 
 class IlgaValidationError(ValueError):
-    """Stable import error with structured details for batch summaries."""
+    """Error estable de importación con detalles estructurados para el resumen del lote."""
 
     def __init__(self, errors: Iterable[str]):
         self.errors = tuple(str(error) for error in errors)

@@ -31,6 +31,11 @@ def generate_forecast(
     country_name: str,
     horizon: int = 1,
 ) -> ForecastResult:
+    """Normaliza la serie, selecciona por validación temporal y reentrena con todo el histórico.
+
+    Acota el horizonte entre uno y tres años según la evidencia disponible. Los límites
+    basados en RMSE describen el error observado; no son intervalos de confianza calibrados.
+    """
     requested_horizon = max(1, min(3, int(horizon)))
     normalized, validation_error = normalize_historical_series(points)
     summary = summarize_historical_series(normalized) if normalized else None
@@ -107,6 +112,7 @@ def generate_forecast(
 def normalize_historical_series(
     points: list[HistoricalPoint] | tuple[HistoricalPoint, ...],
 ) -> tuple[tuple[HistoricalPoint, ...], str]:
+    """Ordena años válidos, conserva ceros y rechaza duplicados con valores incompatibles."""
     by_year: dict[int, list[HistoricalPoint]] = defaultdict(list)
     for point in points:
         if point.year is None or point.value is None or isinstance(point.value, bool):
@@ -171,7 +177,7 @@ def classify_historical_trend(
     *,
     robust_slope: float | None = None,
 ) -> TrendDirection:
-    """Classify the whole observed period without relying on the final year alone."""
+    """Clasifica todo el periodo observado sin depender únicamente del último año."""
     if len(years) < 2 or len(years) != len(values):
         return TrendDirection.STABLE
     slope = theil_sen_slope(years, values) if robust_slope is None else robust_slope

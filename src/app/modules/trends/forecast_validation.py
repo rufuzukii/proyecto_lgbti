@@ -42,6 +42,11 @@ def walk_forward_validation(
     *,
     minimum_training_size: int | None = None,
 ) -> ModelValidation:
+    """Valida con ventanas crecientes: cada predicción utiliza solo observaciones anteriores.
+
+    Las métricas usan el mismo recorte a [0, 100] que la previsión publicada.
+    La predicción original se conserva en cada partición para poder auditar ese recorte.
+    """
     if len(points) <= minimum_observations(model):
         raise ValueError("insufficient_walk_forward_observations")
     default_training_size = 2 if len(points) <= 5 else max(4, len(points) // 2)
@@ -97,6 +102,7 @@ def evaluate_candidate_models(
     results: list[ModelValidation] = []
     models = candidate_models(len(points))
     common_training_size = 2 if len(points) <= 5 else max(4, len(points) // 2)
+    # Todos los candidatos se evalúan sobre los mismos años para comparar errores equivalentes.
     for model in models:
         try:
             results.append(
@@ -121,6 +127,7 @@ def select_best_forecasting_model(
         key=lambda item: (item.mae, item.rmse, MODEL_COMPLEXITY[item.model]),
     )
     raw_best = ranked[0]
+    # Se prefiere el modelo más sencillo si su MAE está a 0,25 puntos o al 5 % del mejor.
     tolerance = max(0.25, raw_best.mae * 0.05)
     competitive = [item for item in ranked if item.mae <= raw_best.mae + tolerance]
     selected = min(

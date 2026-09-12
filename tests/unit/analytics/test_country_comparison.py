@@ -55,11 +55,11 @@ def test_ranking_uses_all_europe_without_selection_and_only_selected_with_select
     europe = build_comparative_ranking_chart(rows)
     selected = build_comparative_ranking_chart(rows, ["ES", "PT"])
 
-    assert set(_trace(europe).y) == {"Spain", "France", "Portugal"}
-    assert set(_trace(selected).y) == {"Spain", "Portugal"}
+    assert set(_trace(europe).y) == {"España", "Francia", "Portugal"}
+    assert set(_trace(selected).y) == {"España", "Portugal"}
     assert "Sin datos" in set(_trace(selected).text)
     selected_values = dict(zip(_trace(selected).y, _trace(selected).x, strict=True))
-    assert selected_values == {"Portugal": None, "Spain": 62.0}
+    assert selected_values == {"Portugal": None, "España": 62.0}
     missing_trace = _traces(selected)[1]
     assert missing_trace.type == "scatter"
     assert list(missing_trace.y) == ["Portugal"]
@@ -75,7 +75,7 @@ def test_ranking_distinguishes_a_real_zero_from_missing_data() -> None:
     )
 
     values = dict(zip(_trace(figure).y, _trace(figure).x, strict=True))
-    assert values["Spain"] == 0.0
+    assert values["España"] == 0.0
     assert values["Portugal"] is None
     assert list(_traces(figure)[1].y) == ["Portugal"]
 
@@ -200,7 +200,7 @@ def test_average_chart_renders_selected_countries_and_a_distinct_european_averag
     )
 
     countries_trace, mean_trace, missing_trace = _traces(figure)
-    spain = list(countries_trace.y).index("Spain")
+    spain = list(countries_trace.y).index("España")
     portugal = list(countries_trace.y).index("Portugal")
     assert countries_trace.customdata[spain].tolist() == [
         "60 %",

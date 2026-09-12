@@ -119,8 +119,8 @@ def test_removed_email_routes_return_not_found(
 ) -> None:
     app = _app(monkeypatch)
     response = getattr(app.server.test_client(), method)(path)
-    # Dash owns a generic GET route, so a removed POST endpoint may resolve as
-    # either not found or method not allowed. In both cases no legacy handler runs.
+    # Dash tiene una ruta GET genérica; un POST eliminado puede devolver 404 o 405.
+    # En ambos casos se comprueba que no se ejecute ningún manejador antiguo.
     assert response.status_code in {404, 405}
 
 

@@ -3,7 +3,6 @@ from __future__ import annotations
 import hmac
 import json
 import logging
-from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any, cast
@@ -39,7 +38,7 @@ EXPECTED_CONFIRMATIONS = {
 
 
 class AccountDeletionError(RuntimeError):
-    """Safe error code for a rejected or incomplete erasure request."""
+    """Código seguro de error para una eliminación rechazada o incompleta."""
 
     def __init__(self, code: str) -> None:
         super().__init__(code)
@@ -47,7 +46,7 @@ class AccountDeletionError(RuntimeError):
 
 
 class PrivacyStorageError(RuntimeError):
-    """A required personal-data store could not be inventoried safely."""
+    """No se ha podido inventariar con seguridad un almacén de datos personales necesario."""
 
 
 def get_personal_data_inventory(user_id: str) -> PersonalDataInventory:
@@ -104,13 +103,16 @@ def validate_deletion_confirmation(
         normalized_email = validate_email(email, check_deliverability=False).normalized.casefold()
     except EmailNotValidError as exc:
         raise AccountDeletionError("invalid_email") from exc
-    if not hmac.compare_digest(normalized_email, record.email.casefold()):
+    # Los correos internacionales son válidos; la comparación segura requiere bytes.
+    if not hmac.compare_digest(
+        normalized_email.encode("utf-8"), record.email.casefold().encode("utf-8")
+    ):
         raise AccountDeletionError("invalid_email")
     stored_hash = record.password_hash or ""
     if not stored_hash or not password or not check_password_hash(stored_hash, password):
         raise AccountDeletionError("invalid_password")
     expected = EXPECTED_CONFIRMATIONS[clean_language]
-    if not hmac.compare_digest(confirmation_text.strip(), expected):
+    if not hmac.compare_digest(confirmation_text.strip().encode("utf-8"), expected.encode("utf-8")):
         raise AccountDeletionError("invalid_confirmation_text")
 
 
@@ -359,13 +361,13 @@ def _delete_private_mongo_data(user_id: str) -> dict[str, int]:
 
 
 def _teacher_activity_owner_query(user_id: str) -> dict[str, Any]:
-    """Include pre-schema-v2 records while treating owner_user_id as canonical."""
+    """Incluye registros anteriores al esquema v2 y usa owner_user_id como referencia canónica."""
     return {"$or": [{"owner_user_id": user_id}, {"owner_id": user_id}]}
 
 
 def _delete_personal_supabase_objects(_user_id: str) -> int:
-    # Supabase currently stores only public FELGTBI+ source figures. There is no
-    # user-owned object key to delete and public research datasets must remain.
+    # Supabase solo guarda figuras públicas de FELGTBI+: no hay objetos propiedad
+    # del usuario que borrar y deben conservarse los datos públicos de investigación.
     return 0
 
 
@@ -471,7 +473,3 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_json_safe(item) for item in value]
     return value
-
-
-def inventory_as_dict(inventory: PersonalDataInventory) -> dict[str, Any]:
-    return asdict(inventory)

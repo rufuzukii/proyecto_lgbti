@@ -368,7 +368,7 @@
   }
 
   function adminUserControls(row) {
-    // Dash 4 puts className on a wrapper; only native controls own value/disabled.
+    // Dash 4 coloca className en un contenedor; value/disabled pertenecen al control nativo.
     return row.querySelectorAll("input.admin-input, .admin-input input, select.admin-input");
   }
 

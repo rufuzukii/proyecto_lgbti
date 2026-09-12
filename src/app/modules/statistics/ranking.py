@@ -11,7 +11,7 @@ RANKING_PAGE_SIZE = 5
 
 @dataclass(frozen=True, slots=True)
 class RankingPage:
-    """A clamped page over an already-loaded, deterministically sorted ranking."""
+    """Página acotada de un ranking ya cargado y ordenado de forma determinista."""
 
     rows: list[dict[str, Any]]
     page: int
@@ -36,18 +36,18 @@ def paginate_ranking(
     selected_countries: list[str] | None = None,
     page_size: int = RANKING_PAGE_SIZE,
 ) -> RankingPage:
-    """Sort and paginate ranking rows without issuing another data query.
+    """Ordena y pagina el ranking sin realizar otra consulta.
 
-    Numeric values are ordered from highest to lowest. Missing values remain
-    missing, are placed after numeric rows and never become a synthetic zero.
+    Los valores numéricos van de mayor a menor. Los valores ausentes conservan su ausencia, se
+    colocan al final y nunca se convierten en ceros artificiales.
     """
 
     if page_size <= 0:
         raise ValueError("page_size_must_be_positive")
 
-    # Positions belong to the complete ranking, not to an individual page or
-    # to the current selection.  Attach them before filtering so pagination
-    # cannot reset positions or split ties incorrectly.
+    # Las posiciones pertenecen al ranking completo, no a la página ni a la selección.
+    # Se asignan antes de filtrar para que la paginación no reinicie posiciones
+    # ni separe incorrectamente los empates.
     ordered = _with_global_positions(sorted(rows, key=_ranking_sort_key))
     selected = _selected_country_keys(selected_countries)
     candidates = [row for row in ordered if not selected or _row_country_key(row) in selected]

@@ -38,7 +38,7 @@ def _geometry_path() -> Path:
 
 @lru_cache(maxsize=1)
 def load_europe_geodataframe() -> gpd.GeoDataFrame:
-    """Load and validate the canonical Europe geometry once in each process."""
+    """Carga y valida una sola vez por proceso la geometría canónica de Europa."""
     import geopandas as gpd
 
     started_at = time.perf_counter()
@@ -64,17 +64,17 @@ def load_europe_geodataframe() -> gpd.GeoDataFrame:
 
 @lru_cache(maxsize=1)
 def europe_geojson() -> dict[str, Any]:
-    """Return the static, optimized GeoJSON without serializing it per callback."""
+    """Devuelve el GeoJSON estático optimizado sin serializarlo en cada callback."""
     return json.loads(_geometry_path().read_text(encoding="utf-8"))
 
 
 @lru_cache(maxsize=1)
 def europe_country_catalog() -> tuple[dict[str, str], ...]:
-    """Return lightweight static country metadata without loading GeoPandas.
+    """Devuelve metadatos estáticos ligeros de países sin cargar GeoPandas.
 
-    The choropleth only needs geometry in GeoJSON form.  Keeping the country
-    catalogue separate avoids reading and merging a GeoDataFrame on the first
-    statistics request; GeoPandas remains lazy for centroid-only interactions.
+    El mapa coroplético solo necesita geometría GeoJSON. Separar el catálogo evita leer y unir
+    un GeoDataFrame en la primera consulta estadística; GeoPandas se carga de forma diferida
+    para las interacciones con centroides.
     """
     rows: list[dict[str, str]] = []
     for feature in europe_geojson().get("features", []):
@@ -101,7 +101,7 @@ def europe_bounds() -> tuple[float, float, float, float]:
 def europe_view_bounds(
     selected_country_codes: tuple[str, ...] | list[str] | None = None,
 ) -> tuple[float, float, float, float]:
-    """Return the European extent, gently focused on selected countries."""
+    """Devuelve la extensión europea, con un ajuste suave hacia los países seleccionados."""
     base = europe_bounds()
     selected = {
         normalize_country_code(code) or str(code or "").strip().upper()
@@ -134,7 +134,7 @@ def europe_view_bounds(
 
 @lru_cache(maxsize=1)
 def europe_centroids() -> dict[str, tuple[float, float]]:
-    """Calculate stable in-country marker points once in a projected CRS."""
+    """Calcula una sola vez puntos estables dentro de cada país usando un CRS proyectado."""
     frame = load_europe_geodataframe()
     projected = frame.to_crs("EPSG:3035")
     points = projected.geometry.representative_point().to_crs("EPSG:4326")
@@ -152,7 +152,7 @@ def prepare_europe_map_data(
     *,
     fra_survey_year: int | None = None,
 ) -> EuropeMapData:
-    """Left-join statistics onto every canonical European country using ISO codes."""
+    """Une estadísticas por ISO conservando todos los países europeos canónicos."""
     started_at = time.perf_counter()
     iso3_to_iso2 = {iso3: iso2 for iso2, iso3 in ISO2_TO_ISO3.items()}
     statistics_by_code: dict[str, dict[str, Any]] = {}

@@ -17,7 +17,7 @@ def record_user_admin_event(
     before: dict[str, Any] | None = None,
     after: dict[str, Any] | None = None,
 ) -> None:
-    """Persist a security audit event without passwords, hashes or tokens."""
+    """Registra un evento de seguridad sin contraseñas, hashes ni tokens."""
 
     now = datetime.now(UTC)
     get_mongo_collection(COLLECTION_NAME).insert_one(

@@ -16,8 +16,8 @@ from app.shared.data.fra_validation import (
     is_valid_fra_category,
 )
 
-# Reserved for reviewed methodological mappings. Exact code and exact normalized
-# question/category matching do not need entries here.
+# Reservado para correspondencias metodológicas revisadas. La coincidencia exacta
+# por código o por pregunta y categoría normalizadas no necesita entradas aquí.
 FRA_INDICATOR_EQUIVALENCE_MAP: dict[tuple[int, str], str] = {}
 
 
@@ -39,10 +39,10 @@ def upsert_indicators_from_json(file_json: dict[str, Any] | list[Any]) -> int:
 def resolve_and_upsert_indicators_from_json(
     file_json: dict[str, Any] | list[Any],
 ) -> tuple[dict[str, Any] | list[dict[str, Any]], list[IndicatorResolution]]:
-    """Resolve canonical indicators through the official relational catalog.
+    """Resuelve indicadores canónicos mediante el catálogo relacional oficial.
 
-    Matching is deliberately conservative: exact canonical code, an explicit
-    reviewed mapping, or one unambiguous normalized question/category match.
+    Solo admite el código canónico exacto, una correspondencia revisada explícitamente o una
+    coincidencia inequívoca entre pregunta y categoría normalizadas.
     """
     documents = _normalize_documents(file_json)
     resolved_documents = [deepcopy(document) for document in documents]
@@ -205,7 +205,7 @@ def _resolved_document(document: dict[str, Any], resolution: IndicatorResolution
 def _consolidate_catalog_documents(
     documents: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Apply one catalog upsert per code while retaining every response label."""
+    """Actualiza o inserta cada código una sola vez y conserva todas sus etiquetas de respuesta."""
     consolidated: dict[str, dict[str, Any]] = {}
     for document in documents:
         code = str(document.get("code") or "").strip()

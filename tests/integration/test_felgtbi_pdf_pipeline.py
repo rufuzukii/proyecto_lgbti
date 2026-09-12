@@ -128,7 +128,7 @@ def test_reimport_replaces_old_report_content_without_touching_other_reports(
         {**original, "year": 2025},
         {**original, "source": "other-source"},
     ]
-    # Other reports have their own IDs; legacy entries can lack one altogether.
+    # Otros informes tienen sus propios IDs; los registros antiguos pueden carecer de uno.
     for index, document in enumerate(untouched):
         document["source_document_id"] = f"other-{index}"
     collection.documents = deepcopy([original, {**original, "code": "obsolete"}, *untouched])
@@ -182,7 +182,6 @@ def test_felgtbi_approval_persists_narrative_and_figures_without_fra_catalog(mon
 
 
 def test_pdf_extraction_storage_identity_and_mongo_persistence(monkeypatch) -> None:
-    # Arrange
     pdf = fitz.open()
     page = pdf.new_page(width=595, height=842)
     page.insert_text((85, 90), "Estado LGTBI+ 2026", fontsize=14)
@@ -200,13 +199,11 @@ def test_pdf_extraction_storage_identity_and_mongo_persistence(monkeypatch) -> N
     )
     monkeypatch.setattr(mongo, "get_mongo_collection", lambda _name: collection)
 
-    # Act
     documents = parse_felgtbi_pdf_bytes(pdf_bytes, file_name="estado-odio-2026.pdf")
     inserted = mongo.insert_indicator_felgtbi_json(
         documents, original_filename="estado-odio-2026.pdf"
     )
 
-    # Assert
     assert inserted == len(documents) == 1
     assert documents[0]["year"] == 2026
     assert documents[0]["source_document_id"].startswith("felgtbi_pdf_")
@@ -228,7 +225,6 @@ def test_directory_batch_continues_after_failure_and_publishes_complete_reports(
     monkeypatch,
     tmp_path,
 ) -> None:
-    # Arrange
     report_directory = tmp_path / "2026"
     report_directory.mkdir()
     pdf = fitz.open()
@@ -263,14 +259,12 @@ def test_directory_batch_continues_after_failure_and_publishes_complete_reports(
 
     monkeypatch.setattr(felgtbi_batch, "replace_indicator_felgtbi_documents", record_publish)
 
-    # Act
     report = felgtbi_batch.import_felgtbi_pdf_directory(
         tmp_path,
         require_storage=True,
         batch_size=25,
     )
 
-    # Assert
     assert report["pdf_found"] == 2
     assert report["pdf_imported"] == 1
     assert report["pdf_rejected"] == 1

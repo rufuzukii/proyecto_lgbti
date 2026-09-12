@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass
 from typing import Any, cast
 
 import plotly.graph_objects as go
-import plotly.io as pio
 from plotly.subplots import make_subplots
 
 from app.shared.data.normalization import normalize_country_code
@@ -21,7 +20,7 @@ CountryNameResolver = Callable[[str, str], str]
 
 
 class LegalMapExportError(RuntimeError):
-    """Raised when the combined legal map image cannot be rendered."""
+    """No se ha podido representar la imagen combinada del mapa legal y su ranking."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +39,7 @@ def build_legal_ranking(
     *,
     country_name_resolver: CountryNameResolver | None = None,
 ) -> list[LegalRankingEntry]:
-    """Build one stable descending ranking from an ILGA map document."""
+    """Construye un ranking descendente estable desde un documento del mapa ILGA."""
     countries = document.get("countries") if isinstance(document, Mapping) else None
     if not isinstance(countries, list):
         return []
@@ -75,12 +74,12 @@ def build_legal_ranking(
 
 
 def legal_ranking_payload(entries: Sequence[LegalRankingEntry]) -> list[dict[str, Any]]:
-    """Return the small JSON-safe payload shared with the export callback."""
+    """Devuelve datos pequeños y serializables como JSON para el callback de exportación."""
     return [asdict(entry) for entry in entries]
 
 
 def legal_ranking_from_payload(rows: Sequence[Mapping[str, Any]] | None) -> list[LegalRankingEntry]:
-    """Validate and order a ranking received back from a Dash store."""
+    """Valida y ordena el ranking recibido de un almacén Dash."""
     entries: list[LegalRankingEntry] = []
     for row in rows or ():
         if not isinstance(row, Mapping):
@@ -102,7 +101,7 @@ def build_legal_map_export_figure(
     language: str,
     theme: str = "light",
 ) -> go.Figure:
-    """Compose the visible legal map and its ranking into one Plotly figure."""
+    """Compone el mapa legal visible y su ranking en una única figura Plotly."""
     source_figure = go.Figure(map_figure)
     ranking = legal_ranking_from_payload(ranking_rows)
     english = language == "en"
@@ -229,15 +228,15 @@ def build_legal_map_export_figure(
 
 
 def export_legal_map_png(figure: go.Figure) -> bytes:
-    """Render the combined map/ranking figure as a PNG with Kaleido."""
+    """Genera el PNG del mapa y ranking combinados mediante Pillow y el GeoJSON local."""
+    from app.shared.data.legal_map_image import render_legal_map_png
+
     try:
-        return pio.to_image(
+        return render_legal_map_png(
             figure,
-            format="png",
             width=LEGAL_MAP_EXPORT_WIDTH,
             height=LEGAL_MAP_EXPORT_HEIGHT,
             scale=LEGAL_MAP_EXPORT_SCALE,
-            validate=True,
         )
     except Exception as exc:
         raise LegalMapExportError("The legal map image could not be generated.") from exc

@@ -183,13 +183,11 @@ def test_ilga_index_upgrade_checks_duplicates_before_replacing_non_unique(monkey
 
 
 def test_felgtbi_indexes_match_catalog_navigation_and_indicator_queries() -> None:
-    # Arrange / Act
     indexes = {
         str(index.document["name"]): list(index.document["key"].items())
         for index in mongo_indexes.felgtbi_index_models()
     }
 
-    # Assert
     assert indexes == {
         "felgtbi_year_documents": [
             ("source", 1),

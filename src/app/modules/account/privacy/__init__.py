@@ -1,1 +1,1 @@
-"""Privacy, data portability and account-erasure services."""
+"""Servicios de privacidad, portabilidad de datos y eliminación de cuentas."""

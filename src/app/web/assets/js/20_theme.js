@@ -26,7 +26,7 @@
     try {
       window.localStorage.setItem(config.THEME_KEY, selected);
     } catch (_error) {
-      /* The explicit selection still applies for this session. */
+      /* La selección explícita sigue aplicándose durante esta sesión. */
     }
     applyTheme(selected);
   }

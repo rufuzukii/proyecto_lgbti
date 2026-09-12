@@ -1,1 +1,1 @@
-"""Administration module."""
+"""Módulo de administración."""

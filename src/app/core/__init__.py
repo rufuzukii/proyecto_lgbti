@@ -1,1 +1,1 @@
-"""Cross-cutting configuration and security."""
+"""Configuración y seguridad transversales."""

@@ -17,14 +17,11 @@ from app.shared.data.geography_service import (
 
 
 def test_europe_geometry_is_loaded_once_with_canonical_iso_codes() -> None:
-    # Arrange
     clear_geography_caches()
 
-    # Act
     first = load_europe_geodataframe()
     second = load_europe_geodataframe()
 
-    # Assert
     assert first is second
     assert len(first) == 49
     assert first["country_code"].is_unique
@@ -36,17 +33,14 @@ def test_europe_geometry_is_loaded_once_with_canonical_iso_codes() -> None:
 
 
 def test_geopandas_merge_keeps_countries_without_statistics_as_missing() -> None:
-    # Arrange
     ranking = [
         {"country": "Spain", "iso": "ES", "value": 63.5},
         {"country": "France", "iso": "FRA", "value": None},
     ]
 
-    # Act
     prepared = prepare_europe_map_data(ranking)
     rows = {row["country_code"]: row for row in prepared.rows}
 
-    # Assert
     assert len(rows) == 49
     assert rows["ES"]["value"] == 63.5
     assert rows["FR"]["value"] is None
@@ -55,16 +49,13 @@ def test_geopandas_merge_keeps_countries_without_statistics_as_missing() -> None
 
 
 def test_geography_metadata_and_geojson_are_cached_and_complete() -> None:
-    # Arrange
     clear_geography_caches()
 
-    # Act
     first_geojson = europe_geojson()
     second_geojson = europe_geojson()
     centroids = europe_centroids()
     bounds = europe_bounds()
 
-    # Assert
     assert first_geojson is second_geojson
     assert len(first_geojson["features"]) == 49
     assert len(centroids) == 49
@@ -88,21 +79,18 @@ def test_selected_country_bounds_gently_focus_and_reset_to_europe() -> None:
 
 
 def test_warm_country_merge_has_a_non_fragile_performance_budget() -> None:
-    # Arrange
     ranking = [
         {"country": f"Country {index}", "iso": code, "value": float(index)}
         for index, code in enumerate(("ES", "FR", "PT", "DE", "IT"), start=1)
     ]
     prepare_europe_map_data(ranking)
 
-    # Act
     durations = []
     for _ in range(5):
         started_at = time.perf_counter()
         prepare_europe_map_data(ranking)
         durations.append((time.perf_counter() - started_at) * 1000)
 
-    # Assert
     assert statistics.median(durations) < 500
 
 

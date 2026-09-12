@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from dash.development.base_component import Component
@@ -86,9 +87,9 @@ def test_navbar_has_a_border_but_no_lower_shadow() -> None:
 
 def test_statistics_buttons_fit_their_labels_at_all_breakpoints() -> None:
     statistics = (ASSETS / "statistics.css").read_text(encoding="utf-8")
-    fit_rule = statistics.split("/* Keep every Statistics action proportional to its label. */", 1)[
-        1
-    ].split("}", 1)[0]
+    match = re.search(r"\.stats-shell\s+:is\(\s*\.stats-create-report-link,[^}]+}", statistics)
+    assert match is not None
+    fit_rule = match.group()
 
     for selector in (
         ".stats-create-report-link",

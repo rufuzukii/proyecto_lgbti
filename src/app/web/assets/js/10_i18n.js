@@ -47,13 +47,13 @@
   }
 
   function setLanguage(language) {
-    window.localStorage.setItem(config.LANGUAGE_KEY, language);
-    applyLanguage(language);
-  }
-
-  function applySelectTranslations(_language) {
-    // Dash owns dropdown internals. Mutating .Select-* text nodes here can
-    // race React unmounts and trigger removeChild errors.
+    const selected = state.isSupportedLanguage(language) ? language : "es";
+    try {
+      window.localStorage.setItem(config.LANGUAGE_KEY, selected);
+    } catch (_error) {
+      // El idioma sigue aplicándose aunque el navegador impida guardar preferencias.
+    }
+    applyLanguage(selected);
   }
 
   function applyTranslatedAttributes(language) {
@@ -141,7 +141,6 @@
 
   app.i18n = {
     applyLanguage,
-    applySelectTranslations,
     setTextNodeValue,
     setLanguage,
   };

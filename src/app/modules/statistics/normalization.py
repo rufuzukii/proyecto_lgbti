@@ -1,17 +1,16 @@
 from __future__ import annotations
 
+import math
 from typing import Any
-
-import pandas as pd
 
 
 def safe_chart_float(value: Any) -> float | None:
-    """Return a finite chart number while preserving missing values as missing."""
+    """Devuelve un número finito para gráficas y conserva la ausencia de datos."""
     try:
         numeric = float(value)
-    except TypeError, ValueError:
+    except TypeError, ValueError, OverflowError:
         return None
-    return numeric if pd.notna(numeric) else None
+    return numeric if math.isfinite(numeric) else None
 
 
 def safe_chart_int(value: Any) -> int | None:

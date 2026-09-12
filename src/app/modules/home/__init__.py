@@ -1,1 +1,1 @@
-"""Home module."""
+"""Módulo de inicio."""

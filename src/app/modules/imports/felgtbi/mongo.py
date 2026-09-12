@@ -59,7 +59,7 @@ def replace_indicator_felgtbi_documents(
     *,
     batch_size: int = 200,
 ) -> int:
-    """Atomically replace the FELGTBI+ collection through a fully built staging collection."""
+    """Sustituye atómicamente la colección FELGTBI+ mediante una colección provisional completa."""
     documents = _normalize_documents(file_json)
     prepared = [_prepare_indicator_document(document) for document in documents]
     identities: set[tuple[str, str, str]] = set()
@@ -151,9 +151,9 @@ def _report_replacement_scopes(documents: list[dict[str, Any]]) -> list[dict[str
             if key not in seen:
                 seen.add(key)
                 scopes.append(scope)
-        # The content hash can change, and legacy imports may have a metadata
-        # identity instead. Replace the previous extraction of this same file
-        # and year as well, including sections no longer present in the PDF.
+        # El hash del contenido puede cambiar; las importaciones antiguas también pueden
+        # usar una identidad basada en metadatos. Se sustituye la extracción anterior
+        # del mismo archivo y año, incluidas las secciones que ya no figuran en el PDF.
         if original_filename and year is not None:
             key = ("original_filename", source, int(year), original_filename)
             scope = {"source": source, "year": int(year), "original_filename": original_filename}
@@ -242,7 +242,7 @@ def _prepare_indicator_document(
 
 
 def _remove_derived_image_fields(value: Any) -> None:
-    """Keep image identity in MongoDB limited to the object storage key."""
+    """Limita la identidad de las imágenes en MongoDB a la clave del objeto almacenado."""
     if isinstance(value, list):
         for item in value:
             _remove_derived_image_fields(item)

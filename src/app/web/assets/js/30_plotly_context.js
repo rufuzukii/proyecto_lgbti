@@ -49,7 +49,7 @@
         if (graph.layout.title.text === text && graph.layout.margin.t === top) return;
         await window.Plotly.relayout(graph, {"title.text": text, "margin.t": top});
       } catch (error) {
-        // Navigating away can remove the plot while Plotly finishes a resize.
+        // La navegación puede retirar la gráfica mientras Plotly termina de redimensionarla.
         if (graph.isConnected) throw error;
       } finally {
         pending.delete(graph);

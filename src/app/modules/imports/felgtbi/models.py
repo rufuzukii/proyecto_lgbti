@@ -2,8 +2,8 @@ from __future__ import annotations
 
 
 class PdfExtractionError(RuntimeError):
-    """The PDF cannot be processed safely or within configured limits."""
+    """El PDF no puede procesarse con seguridad o dentro de los límites configurados."""
 
 
 class StorageUploadError(RuntimeError):
-    """A required figure could not be persisted in object storage."""
+    """No se ha podido guardar una figura necesaria en el almacenamiento de objetos."""

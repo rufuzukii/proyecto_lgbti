@@ -755,7 +755,7 @@ def register_reports_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def invalidate_report_download(*_values: Any) -> bool:
-        """A PDF is only valid for the exact configuration last previewed."""
+        """Un PDF solo es válido para la configuración exacta de la última vista previa."""
         return True
 
     @app.callback(
@@ -880,8 +880,8 @@ def _configuration_panel(
     country_options: list[dict[str, Any]],
 ) -> Component:
     social_source = config.source in {"fra", "combined"}
-    # Keep the layout query-free. The callback loads valid options after Dash
-    # mounts the stable controls; inherited values remain visible meanwhile.
+    # El layout no consulta datos: el callback carga las opciones válidas una vez
+    # montados los controles; los valores heredados siguen visibles mientras tanto.
     controls: dict[str, Any] = {
         "answers": ([{"label": config.answer, "value": config.answer}] if config.answer else []),
         "default_answer": config.answer or None,
@@ -1397,8 +1397,8 @@ def _preview_content(content) -> list[Component]:
                 content.methodology,
             )
         )
-    # Source attribution is not an optional report section: every generated
-    # preview must identify the external dataset it actually contains.
+    # La atribución de fuentes es obligatoria: cada vista previa debe identificar
+    # el conjunto de datos externo que contiene.
     if content.sources:
         components.append(
             _preview_section(

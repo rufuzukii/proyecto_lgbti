@@ -12,7 +12,7 @@ def build_empty_state(
     *,
     class_name: str = "app-empty-state",
 ) -> Component:
-    """Build an accessible, presentation-only state for deferred or empty results."""
+    """Construye un estado accesible de presentación para resultados pendientes o vacíos."""
 
     children: list[Component] = [html.H2(title)]
     if description:

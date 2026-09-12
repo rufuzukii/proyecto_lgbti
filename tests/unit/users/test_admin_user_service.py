@@ -55,7 +55,6 @@ def _user_row(*, user_type: str = "admin") -> dict[str, Any]:
 
 
 def test_last_administrator_cannot_be_demoted(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
     current = _user_row()
 
     def handler(query: str, _params: tuple[Any, ...] | None) -> _Result:
@@ -68,7 +67,6 @@ def test_last_administrator_cannot_be_demoted(monkeypatch: pytest.MonkeyPatch) -
     connection = _Connection(handler)
     monkeypatch.setattr(service, "_connect", lambda: connection)
 
-    # Act / Assert
     with pytest.raises(ValueError, match="last_admin"):
         service.update_user_as_admin(
             user_id=current["id"],
@@ -83,7 +81,6 @@ def test_last_administrator_cannot_be_demoted(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_concurrent_admin_edit_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
     current = _user_row(user_type="docente")
     connection = _Connection(
         lambda query, _params: (
@@ -92,7 +89,6 @@ def test_concurrent_admin_edit_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
     )
     monkeypatch.setattr(service, "_connect", lambda: connection)
 
-    # Act / Assert
     with pytest.raises(ValueError, match="concurrent_update"):
         service.update_user_as_admin(
             user_id=current["id"],
@@ -151,10 +147,8 @@ def test_admin_update_returns_normalized_row_and_new_concurrency_version(
 
 
 def test_admin_cannot_delete_their_own_account() -> None:
-    # Arrange
     user_id = "00000000-0000-0000-0000-000000000001"
 
-    # Act / Assert
     with pytest.raises(privacy_service.AccountDeletionError, match="self_delete"):
         privacy_service.delete_user_account_as_admin(
             user_id=user_id,
@@ -163,7 +157,6 @@ def test_admin_cannot_delete_their_own_account() -> None:
 
 
 def test_user_page_uses_one_count_and_one_paged_query(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Arrange
     rows = [_user_row(user_type="comun")]
 
     def handler(query: str, _params: tuple[Any, ...] | None) -> _Result:
@@ -179,10 +172,8 @@ def test_user_page_uses_one_count_and_one_paged_query(monkeypatch: pytest.Monkey
         },
     )
 
-    # Act
     page = service.list_users_page(search="admin", page=3, page_size=20)
 
-    # Assert
     assert (page.page, page.page_count, page.total) == (3, 3, 49)
     assert len(page.users) == 1
     assert len(connection.calls) == 2

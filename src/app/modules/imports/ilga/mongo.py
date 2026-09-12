@@ -37,7 +37,7 @@ class IlgaWriteSummary:
 
 
 def insert_indicator_ilga_json(file_json: dict[str, Any] | list[Any]) -> int:
-    """Persist validated annual documents without upserts or per-country queries."""
+    """Persiste documentos anuales validados sin upserts ni consultas por país."""
     return write_indicator_ilga_json(file_json).inserted_documents
 
 
@@ -114,7 +114,7 @@ def _prepare_ilga_document(document: dict[str, Any]) -> dict[str, Any]:
     except ValueError as exc:
         raise ValueError("invalid_ilga_payload") from exc
     if isinstance(prepared, list):
-        # Persistence callers expose one stable exception for malformed payloads.
+        # Los consumidores de persistencia esperan una excepción estable para datos malformados.
         raise ValueError("invalid_ilga_payload")  # noqa: TRY004
 
     object_id = _resolve_object_id(document.get("id"))

@@ -6,7 +6,6 @@ from app.shared.components.loading import contextual_loading
 
 
 def test_contextual_loading_delays_spinner_and_announces_specific_operation() -> None:
-    # Arrange / Act
     loading = cast(
         Any,
         contextual_loading(
@@ -16,7 +15,6 @@ def test_contextual_loading_delays_spinner_and_announces_specific_operation() ->
         ),
     )
 
-    # Assert
     assert loading.id == "statistics-loading"
     assert loading.delay_show == 200
     assert loading.delay_hide == 120

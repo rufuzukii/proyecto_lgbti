@@ -32,6 +32,38 @@ def language_callback():
     return registrations[0][0]
 
 
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_language_survives_privacy_storage_cleanup(language):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the actual language-state helper")
+    source = (Path(application.__file__).parent / "assets" / "js" / "00_state.js").read_text(
+        encoding="utf-8"
+    )
+    script = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const window = {
+    document: {documentElement: {lang: payload.language}},
+    localStorage: {getItem: () => null},
+};
+vm.runInNewContext(payload.source, {window});
+const afterDeletion = window.RainbowLens.state.currentLanguage();
+window.localStorage.getItem = () => {throw new Error('storage unavailable');};
+const withoutStorage = window.RainbowLens.state.currentLanguage();
+console.log(JSON.stringify([afterDeletion, withoutStorage]));
+"""
+    result = subprocess.run(
+        [node, "-e", script],
+        input=json.dumps({"source": source, "language": language}),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    assert json.loads(result.stdout) == [language, language]
+
+
 @pytest.fixture(scope="module")
 def run_switch(language_callback):
     node = shutil.which("node")
@@ -42,8 +74,8 @@ def run_switch(language_callback):
     )
 
     def run(path, search, fragment):
-        # Execute the registered callback and real language-state helper, not a
-        # Python reimplementation of the client navigation logic.
+        # Ejecuta el callback registrado y el helper real de idioma para comprobar
+        # la navegación del cliente con su implementación JavaScript.
         payload = {
             "callback": language_callback,
             "state": state_source,
@@ -63,6 +95,47 @@ def run_switch(language_callback):
         return json.loads(result.stdout)
 
     return run
+
+
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_language_can_change_when_preference_storage_is_unavailable(language):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js es necesario para ejecutar el cambio de idioma real")
+    assets = Path(application.__file__).parent / "assets" / "js"
+    script = r"""
+const vm = require('node:vm');
+const payload = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+const document = {
+    documentElement: {lang: 'es'}, body: {dataset: {}},
+    querySelectorAll: () => [], getElementById: () => null,
+};
+const window = {
+    document, location: {pathname: '/'},
+    localStorage: {
+        getItem: () => {throw new Error('storage unavailable');},
+        setItem: () => {throw new Error('storage unavailable');},
+    },
+};
+const context = vm.createContext({window, document});
+vm.runInContext(payload.state, context);
+vm.runInContext(payload.i18n, context);
+window.RainbowLens.i18n.setLanguage(payload.language);
+console.log(JSON.stringify([document.documentElement.lang, window.RainbowLens.state.currentLanguage()]));
+"""
+    result = subprocess.run(
+        [node, "-e", script],
+        input=json.dumps({
+            "language": language,
+            "state": (assets / "00_state.js").read_text(encoding="utf-8"),
+            "i18n": (assets / "10_i18n.js").read_text(encoding="utf-8"),
+        }),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    assert json.loads(result.stdout) == [language, language]
 
 
 _SWITCH_RUNNER = r"""
@@ -128,7 +201,7 @@ def _assert_round_trip(run_switch, path, language):
         assert step["result"] == [selected, expected_path + search + fragment]
         assert step["appliedLanguage"] == step["persisted"] == selected
         assert urlsplit(step["result"][1]).netloc == ""
-    # Location's follow-up must synchronize the page without another redirect.
+    # La actualización posterior de Location debe sincronizar la página sin otra redirección.
     assert result["settled"]["result"] == [other, "NO_UPDATE"]
     assert result["values"]["rainbowlens-theme"] == "dark"
     assert result["values"]["unrelated-preference"] == "keep-me"
@@ -143,8 +216,8 @@ def navigation_client(request):
         patch.setattr(application, "initialize_mongo_indexes", lambda: None)
         patch.setattr(application, "migrate_account_security_schema", lambda: None)
         patch.setattr(application, "assert_analytics_databases_available", lambda: None)
-        # Isolate data access while exercising Dash's real HTTP callback dispatch
-        # and the language context passed to each page builder.
+        # Aísla el acceso a datos y conserva el despacho HTTP real del callback Dash
+        # y el contexto de idioma entregado a cada constructor de página.
         patch.setattr(
             application,
             "_build_page_for_route",
@@ -192,7 +265,10 @@ def test_switch_destinations_render_without_redirects(navigation_client, route_i
                     {"id": "url", "property": "pathname", "value": path},
                     {"id": "url", "property": "search", "value": search},
                 ],
-                "state": [{"id": "statistics-selection", "property": "data", "value": None}],
+                "state": [
+                    {"id": "statistics-selection", "property": "data", "value": None},
+                    {"id": "spain-selection", "property": "data", "value": None},
+                ],
                 "changedPropIds": ["url.pathname"],
             },
         )

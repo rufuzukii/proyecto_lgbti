@@ -80,16 +80,13 @@ def test_required_privacy_translations_exist_in_both_languages() -> None:
 
 
 def test_privacy_page_describes_only_real_stores_and_links_rights(monkeypatch) -> None:
-    # Arrange
     monkeypatch.setattr(privacy, "current_user", _User())
     monkeypatch.setattr(privacy, "build_navbar", lambda **_kwargs: "navbar")
 
-    # Act
     layout = privacy.build_privacy_layout()
     body = str(layout.to_plotly_json())
     hrefs = {getattr(item, "href", None) for item in _walk(layout)}
 
-    # Assert
     assert "PostgreSQL" in body
     assert "MongoDB" in body
     assert "Supabase" in body
@@ -113,7 +110,6 @@ def test_privacy_page_describes_only_real_stores_and_links_rights(monkeypatch) -
 
 
 def test_recipients_card_omits_transfer_paragraph_without_configured_location() -> None:
-    # Arrange
     config = privacy.PrivacyPolicyConfig(
         controller_name="RainbowLens DataHub",
         contact_email="privacy@example.test",
@@ -128,26 +124,21 @@ def test_recipients_card_omits_transfer_paragraph_without_configured_location() 
         transfer_safeguards=None,
     )
 
-    # Act
     card = privacy._recipients_card(config)
     paragraphs = [item for item in _walk(card) if item.__class__.__name__ == "P"]
 
-    # Assert
     assert paragraphs == []
 
 
 def test_privacy_controller_is_production_ready_and_bilingual(monkeypatch) -> None:
-    # Arrange
     monkeypatch.setattr(privacy, "current_user", _User())
     monkeypatch.setattr(privacy, "build_navbar", lambda **_kwargs: "navbar")
 
-    # Act
     layout = privacy.build_privacy_layout()
     body = str(layout.to_plotly_json())
     ids = {getattr(item, "id", None) for item in _walk(layout)}
     classes = {getattr(item, "className", None) for item in _walk(layout)}
 
-    # Assert
     assert "Málaga, España" in body
     assert "Málaga, Spain" in body
     assert "NIF:" in body
@@ -176,7 +167,6 @@ def test_privacy_controller_is_production_ready_and_bilingual(monkeypatch) -> No
 
 
 def test_personal_panel_has_export_and_reinforced_deletion_controls(monkeypatch) -> None:
-    # Arrange
     monkeypatch.setattr(user_page, "current_user", _User())
     monkeypatch.setattr(user_page, "build_navbar", lambda **_kwargs: "navbar")
     monkeypatch.setattr(user_page, "get_csrf_token", lambda: "csrf-token")
@@ -189,13 +179,11 @@ def test_personal_panel_has_export_and_reinforced_deletion_controls(monkeypatch)
         ),
     )
 
-    # Act
     layout = user_page.build_user_page_layout()
     rendered = str(layout)
     ids = {getattr(item, "id", None) for item in _walk(layout)}
     actions = {getattr(item, "action", None) for item in _walk(layout)}
 
-    # Assert
     assert {
         "privacy-delete-dialog",
         "privacy-delete-email",

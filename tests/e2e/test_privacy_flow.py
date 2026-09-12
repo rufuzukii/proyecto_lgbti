@@ -48,11 +48,9 @@ def _app(monkeypatch):
 
 
 def test_privacy_route_footer_banner_and_personal_management_are_reachable(monkeypatch) -> None:
-    # Arrange
     app = _app(monkeypatch)
     client = app.server.test_client()
 
-    # Act
     privacy_response = client.get("/es/privacidad")
     privacy_response_en = client.get("/en/privacy")
     anonymous_layout = client.get("/_dash-layout").get_json()
@@ -69,7 +67,6 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
     )
     authenticated_layout = client.get("/_dash-layout").get_json()
 
-    # Assert
     assert privacy_response.status_code == 200
     assert privacy_response_en.status_code == 200
     assert "privacy-notice" not in str(anonymous_layout)
@@ -79,7 +76,6 @@ def test_privacy_route_footer_banner_and_personal_management_are_reachable(monke
 
 
 def test_reinforced_deletion_rejects_bad_credentials_then_closes_session(monkeypatch) -> None:
-    # Arrange
     app = _app(monkeypatch)
 
     def delete_account(**values: object) -> DeletionOutcome:
@@ -106,7 +102,6 @@ def test_reinforced_deletion_rejects_bad_credentials_then_closes_session(monkeyp
     with client.session_transaction() as browser_session:
         privacy_csrf = browser_session["_csrf_token"]
 
-    # Act
     rejected = client.post(
         "/privacy/delete-account",
         data={
@@ -132,7 +127,6 @@ def test_reinforced_deletion_rejects_bad_credentials_then_closes_session(monkeyp
     )
     session_after_completion = client.get("/_test/privacy-session").get_json()
 
-    # Assert
     assert "privacy_error=invalid_password" in rejected.headers["Location"]
     assert session_after_rejection == {"authenticated": True, "user_id": USER_ID}
     assert completed.headers["Location"].endswith("/es/privacidad/cuenta-eliminada")

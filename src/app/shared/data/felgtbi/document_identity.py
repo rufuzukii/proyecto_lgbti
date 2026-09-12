@@ -41,7 +41,7 @@ def safe_original_filename(file_name: str) -> str:
 
 
 def clean_felgtbi_document_label(file_name: str, report_title: str = "") -> str:
-    """Return a readable report label without changing its persistent identity."""
+    """Devuelve una etiqueta legible del informe sin cambiar su identidad persistente."""
     title = " ".join(str(report_title or "").split()).strip(f" ._{_DASHES}")
     if title and not _is_generic_report_title(title):
         return title
@@ -55,7 +55,7 @@ def clean_felgtbi_document_label(file_name: str, report_title: str = "") -> str:
 
 
 def clean_felgtbi_indicator_label(label: str, document_title: str = "") -> str:
-    """Clean only the user-facing label; canonical codes remain untouched."""
+    """Limpia solo la etiqueta visible y conserva los códigos canónicos."""
     clean = " ".join(str(label or "").split()).strip()
     title = " ".join(str(document_title or "").split()).strip()
     if title:

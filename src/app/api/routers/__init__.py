@@ -1,1 +1,1 @@
-"""HTTP routers for the optional RainbowLens API."""
+"""Rutas HTTP de la API opcional de RainbowLens."""

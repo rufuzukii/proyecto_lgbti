@@ -7,6 +7,7 @@ import re
 import textwrap
 import time
 from collections.abc import Iterable, Sequence
+from contextlib import closing
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Self
@@ -31,11 +32,11 @@ logger = logging.getLogger(__name__)
 
 
 class ReportChartRenderError(RuntimeError):
-    """Raised when a report chart cannot be drawn without a browser."""
+    """No se ha podido dibujar una gráfica del informe sin navegador."""
 
 
 class ReportChartRenderer:
-    """Draw report-only PNGs with Pillow, without Chrome or Kaleido."""
+    """Dibuja PNG para informes con Pillow."""
 
     def __init__(
         self, *, width: int = REPORT_CHART_WIDTH, height: int = REPORT_CHART_HEIGHT
@@ -59,11 +60,10 @@ class ReportChartRenderer:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
-            image = _render_figure(figure, self.width, self.height)
-            try:
+            # El contexto también cierra la imagen si falla el dibujo antes de guardarla.
+            with closing(Image.new("RGB", (self.width, self.height), _WHITE)) as image:
+                _draw_figure(figure, image)
                 image.save(target, format="PNG", compress_level=6)
-            finally:
-                image.close()
         except Exception as exc:
             raise ReportChartRenderError(
                 f"The report chart {chart_key!r} could not be generated."
@@ -82,8 +82,8 @@ class ReportChartRenderer:
         )
 
 
-def _render_figure(figure: go.Figure, width: int, height: int) -> Image.Image:
-    image = Image.new("RGB", (width, height), _WHITE)
+def _draw_figure(figure: go.Figure, image: Image.Image) -> None:
+    width, height = image.size
     draw = ImageDraw.Draw(image)
     plot_top = _draw_title(draw, figure, width)
     traces = [trace for trace in figure.data if getattr(trace, "visible", True) is not False]
@@ -119,7 +119,6 @@ def _render_figure(figure: go.Figure, width: int, height: int) -> Image.Image:
             _draw_scatter(draw, figure, points, (65, plot_top, width - 45, height - 55))
     else:
         raise ValueError(f"Unsupported report chart types: {sorted(trace_types)}")
-    return image
 
 
 def _draw_title(draw: ImageDraw.ImageDraw, figure: go.Figure, width: int) -> int:

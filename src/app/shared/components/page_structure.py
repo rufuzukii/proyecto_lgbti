@@ -29,7 +29,7 @@ def build_page_header(
     class_name: str | None = None,
     title_id: str | None = None,
 ) -> Component:
-    """Build the shared visual header used by application pages."""
+    """Construye la cabecera visual compartida de las páginas."""
 
     children: list[Component] = []
     if eyebrow is not None:
@@ -53,7 +53,7 @@ def surface(
     class_name: str | None = None,
     element_id: str | None = None,
 ) -> Component:
-    """Wrap related content in the shared visual surface."""
+    """Agrupa contenido relacionado en la superficie visual compartida."""
 
     props: dict[str, Any] = {"className": _class_names("app-surface", class_name)}
     if element_id is not None:
@@ -67,7 +67,7 @@ def page_section(
     class_name: str | None = None,
     element_id: str | None = None,
 ) -> Component:
-    """Provide consistent section rhythm without forcing a card treatment."""
+    """Mantiene un espaciado coherente entre secciones sin imponer una tarjeta."""
 
     props: dict[str, Any] = {"className": _class_names("app-page-section", class_name)}
     if element_id is not None:

@@ -88,8 +88,8 @@ def test_similar_accuracy_prefers_simpler_model() -> None:
 
 
 def test_polynomial_is_not_selected_for_training_fit_when_validation_is_worse() -> None:
-    # A late reversal lets a quadratic fit the full history closely but makes its
-    # expanding-window extrapolation less stable than the baseline.
+    # Un cambio tardío permite ajustar el histórico con una parábola, pero hace
+    # menos estable su extrapolación con ventana creciente que la del modelo base.
     points = tuple(_series([20, 24, 28, 32, 36, 40, 44, 48, 43, 47, 51, 55, 59]))
     validations = evaluate_candidate_models(points)
     selected, _reason = select_best_forecasting_model(validations)

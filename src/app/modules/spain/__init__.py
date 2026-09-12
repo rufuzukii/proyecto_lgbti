@@ -1,1 +1,1 @@
-"""Spain module."""
+"""Módulo de España."""

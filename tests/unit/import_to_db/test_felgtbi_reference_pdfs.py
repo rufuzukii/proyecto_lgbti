@@ -25,7 +25,9 @@ def test_narrative_keeps_figure_references_and_sentence_separators(cleaner, text
 
 @pytest.fixture
 def controlled_report_pdf() -> bytes:
-    """Small deterministic report covering text, caption, vector and metadata parsing."""
+    """Informe pequeño reproducible con texto, pies, vectores y metadatos para probar la
+    extracción.
+    """
     pdf = fitz.open()
     page = pdf.new_page(width=595, height=842)
     page.insert_text((85, 90), "Estado del odio", fontsize=18)

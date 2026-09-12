@@ -5,11 +5,11 @@ from pathlib import Path
 
 
 class PdfValidationError(ValueError):
-    """A PDF payload failed a cheap validation performed before extraction."""
+    """El contenido del PDF no supera una validación previa de bajo coste."""
 
 
 def validate_felgtbi_pdf(pdf_bytes: bytes, file_name: str) -> None:
-    """Validate filename, size and signature without parsing or retaining the file."""
+    """Valida nombre, tamaño y firma sin analizar ni retener el archivo."""
     if Path(file_name).suffix.casefold() != ".pdf":
         raise PdfValidationError("unsupported_file_type")
     if not pdf_bytes:

@@ -8,13 +8,13 @@ import os
 import pickle
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from threading import Lock, RLock
 from time import monotonic
 from typing import Any, ParamSpec, TypeVar
 
-from flask import Flask, request
+from flask import Flask, Response, request
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +29,18 @@ class _CacheEntry:
     expires_at: float | None
 
 
-class LocalTTLCache:
-    """Bounded, process-local cache with TTL and stampede protection.
+@dataclass
+class _CacheFlight:
+    lock: Lock = field(default_factory=Lock)
+    users: int = 0
 
-    Render workers intentionally do not share this cache. Values are serialized
-    so callers cannot mutate cached state and so memory limits can be enforced
-    using the actual payload size rather than an unreliable object estimate.
+
+class LocalTTLCache:
+    """Caché acotada, local al proceso, con TTL y protección ante cálculos simultáneos.
+
+    Los procesos de Render no comparten esta caché. La serialización impide que un consumidor
+    modifique los valores almacenados y permite limitar la memoria según el tamaño real del
+    contenido.
     """
 
     def __init__(self) -> None:
@@ -49,7 +55,7 @@ class LocalTTLCache:
         self._key_namespaces: dict[str, str] = {}
         self._total_bytes = 0
         self._lock = RLock()
-        self._flight_locks = tuple(Lock() for _ in range(64))
+        self._flight_locks: dict[str, _CacheFlight] = {}
 
     def init_app(self, app: Flask) -> None:
         self.app = app
@@ -151,15 +157,28 @@ class LocalTTLCache:
         cached = self.get(key)
         if cached is not None:
             return cached
-        lock = self._flight_locks[hash(self._key(key)) % len(self._flight_locks)]
-        with lock:
-            cached = self.get(key)
-            if cached is not None:
-                return cached
-            value = factory()
-            if cache_if is None or cache_if(value):
-                self.set(key, value, timeout=timeout)
-            return value
+        namespaced = self._key(key)
+        # Las fábricas anidadas (serie de un país e histórico) necesitan bloqueos propios;
+        # una colisión entre claves distintas no debe provocar un interbloqueo.
+        with self._lock:
+            flight = self._flight_locks.get(namespaced)
+            if flight is None:
+                flight = self._flight_locks[namespaced] = _CacheFlight()
+            flight.users += 1
+        try:
+            with flight.lock:
+                cached = self.get(key)
+                if cached is not None:
+                    return cached
+                value = factory()
+                if cache_if is None or cache_if(value):
+                    self.set(key, value, timeout=timeout)
+                return value
+        finally:
+            with self._lock:
+                flight.users -= 1
+                if not flight.users:
+                    del self._flight_locks[namespaced]
 
     def memoize(
         self,
@@ -296,7 +315,7 @@ def init_cache(app: Flask) -> None:
     )
 
     @app.after_request
-    def add_browser_cache_headers(response):
+    def add_browser_cache_headers(response: Response) -> Response:
         if request.path.startswith("/_dash-component-suites/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         elif request.path.startswith("/assets/"):
@@ -309,18 +328,17 @@ def init_cache(app: Flask) -> None:
 
 
 def local_cache_health_status() -> str:
-    """Return the process-local cache status without any network operation."""
+    """Devuelve el estado de la caché del proceso sin operaciones de red."""
     return "ok" if cache.app is not None else "unavailable"
 
 
-def _compress_response(response: Any) -> None:
+def _compress_response(response: Response) -> None:
     if (
         request.method == "HEAD"
         or response.direct_passthrough
-        or response.status_code < 200
-        or response.status_code >= 300
+        or response.status_code != 200
+        or response.headers.get("Content-Range")
         or response.headers.get("Content-Encoding")
-        or "gzip" not in request.headers.get("Accept-Encoding", "").casefold()
         or response.mimetype
         not in {
             "application/geo+json",
@@ -331,6 +349,11 @@ def _compress_response(response: Any) -> None:
         }
     ):
         return
+    # También la variante sin comprimir debe distinguirse en las cachés HTTP.
+    # El parser de Werkzeug respeta q=0 y los comodines de Accept-Encoding.
+    response.vary.add("Accept-Encoding")
+    if request.accept_encodings["gzip"] <= 0:
+        return
     payload = response.get_data()
     if len(payload) < _env_int("HTTP_GZIP_MIN_BYTES", 1024, minimum=256):
         return
@@ -339,14 +362,6 @@ def _compress_response(response: Any) -> None:
         return
     response.set_data(compressed)
     response.headers["Content-Encoding"] = "gzip"
-    response.headers["Vary"] = _append_vary(response.headers.get("Vary"), "Accept-Encoding")
-
-
-def _append_vary(current: str | None, value: str) -> str:
-    values = [item.strip() for item in str(current or "").split(",") if item.strip()]
-    if value.casefold() not in {item.casefold() for item in values}:
-        values.append(value)
-    return ", ".join(values)
 
 
 def _env_int(name: str, default: int, *, minimum: int) -> int:

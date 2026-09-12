@@ -114,7 +114,7 @@ _analytics_generation_lock = Lock()
 _analytics_generations: dict[str, int] = {}
 
 
-@dataclass(frozen=True)  # frozen=true significa que el objeto no puede ser modificado
+@dataclass(frozen=True)
 class FraIndicator:
     code: str
     category: str
@@ -426,7 +426,7 @@ def get_fra_indicator_control_document(
     category: str | None = None,
     year: int | None = None,
 ) -> dict[str, Any] | None:
-    """Return the distinct FRA control values without transferring the full answer array."""
+    """Obtiene valores únicos de controles FRA sin transferir todas las respuestas."""
     clean_code = str(code or "").strip()
     if not clean_code:
         return None
@@ -560,7 +560,7 @@ def get_fra_indicator_control_document(
 def get_fra_indicator_documents(
     codes: tuple[str, ...], year: int | None = None
 ) -> list[dict[str, Any]]:
-    """Load and merge several FRA indicators with one MongoDB query."""
+    """Carga y combina varios indicadores FRA mediante una única consulta MongoDB."""
     clean_codes = tuple(
         sorted({str(code or "").strip() for code in codes if str(code or "").strip()})
     )
@@ -1076,12 +1076,11 @@ def get_ilga_analysis_rows(
     category: str | None,
     criterion: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Load the complete ILGA time series and current-detail fields in one query.
+    """Carga el histórico ILGA y los campos de detalle actual con una sola consulta.
 
-    The projection deliberately keeps the country universe even when a criterion
-    is absent, while filtering the nested criteria array in MongoDB.  The
-    ``dataset, year`` index serves the leading match and no full source document
-    is transferred to the application.
+    La proyección conserva todos los países aunque falte un criterio y filtra los criterios
+    anidados en MongoDB. El índice ``dataset, year`` sirve al filtro inicial sin transferir
+    documentos completos a la aplicación.
     """
     clean_category = str(category or "Ranking total").strip() or "Ranking total"
     clean_criterion = str(criterion or "").strip()
@@ -1170,7 +1169,7 @@ def get_ilga_analysis_rows(
 
 
 def _get_ilga_overall_score_rows(collection: Any) -> list[dict[str, Any]]:
-    """Project and flatten overall scores without repeating metadata in MongoDB."""
+    """Proyecta y aplana puntuaciones globales sin repetir metadatos en MongoDB."""
     documents = list(
         collection.find(
             {"dataset": "ilga_rainbow_map"},
@@ -1365,7 +1364,7 @@ def analytics_cache_generation(source: str) -> int:
 
 
 def fra_cache_namespace(year: int | None) -> str:
-    """Keep each FRA edition in an independent cache generation namespace."""
+    """Mantiene cada edición FRA en un espacio independiente de generaciones de caché."""
     return f"fra:{int(year)}" if year is not None else "fra:catalog"
 
 

@@ -636,9 +636,9 @@ def _attach_page_assets(
             try:
                 image_bytes, width, height, mime_type = _pixmap_image_bytes(pixmap)
             finally:
-                # MuPDF also caches decoded page images independently of the
-                # Python pixmap. Release them before processing another figure
-                # or waiting for storage, so a long report cannot fill the store.
+                # MuPDF también almacena imágenes decodificadas fuera del pixmap de Python.
+                # Se liberan antes de procesar otra figura o esperar al almacenamiento
+                # para que un informe largo no agote la memoria de esa caché.
                 del pixmap, page
                 fitz.TOOLS.store_shrink(100)
             checksum = hashlib.sha256(image_bytes).hexdigest()
@@ -993,7 +993,7 @@ def _build_narrative_section_documents(
     sample_size: int | None,
     fieldwork: str,
 ) -> list[dict[str, Any]]:
-    """Keep high-value prose sections that contain no chart or extracted figure."""
+    """Conserva secciones narrativas relevantes aunque no contengan figuras extraídas."""
     documents: list[dict[str, Any]] = []
     seen_titles: set[str] = set()
     for section in toc_sections:
@@ -1138,12 +1138,11 @@ def _build_layout_page_documents(
     sample_size: int | None,
     fieldwork: str,
 ) -> list[dict[str, Any]]:
-    """Build one structured section per visual data page when captions are absent.
+    """Construye una sección por página de datos visuales cuando faltan pies de figura.
 
-    Many reports use vector charts and page headings instead of explicit ``Figura``
-    captions.  The previous percentage-only fallback lost those pages completely.
-    Font and position hints let us recognize the page structure without relying on
-    a report filename or a fixed list of section titles.
+    Muchos informes utilizan gráficas vectoriales y encabezados en vez de pies explícitos de
+    ``Figura``. Las pistas de fuente y posición permiten reconocer esas páginas sin depender del
+    nombre del fichero ni de una lista fija de títulos.
     """
     documents: list[dict[str, Any]] = []
     seen_codes: set[str] = set()
@@ -1954,7 +1953,7 @@ def _clean_block_paragraph(text: str) -> str:
     paragraph = clean_semantic_text(text)
     if not paragraph:
         return ""
-    # In-text references are part of the sentence, not chart captions.
+    # Las referencias dentro de una oración no son pies de gráfica.
     paragraph = re.sub(r"\s+([,.;:!?])", r"\1", paragraph).strip(" .:-")
     if len(paragraph) < 35 and not PERCENT_PATTERN.search(paragraph):
         return ""
@@ -2530,7 +2529,7 @@ def _next_page_leading_visual_bbox(
     pages: list[dict[str, Any]],
     caption: dict[str, Any],
 ) -> list[float] | None:
-    """Find a visual continued on the page after a bottom-of-page caption."""
+    """Localiza una figura que continúa tras un pie situado al final de la página anterior."""
     caption_page = _page_by_number(pages, int(caption.get("page") or 0))
     if not caption_page:
         return None
@@ -3238,7 +3237,7 @@ def _extract_toc_sections(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _linear_toc_entries(lines: list[str]) -> list[dict[str, Any]]:
-    """Parse TOCs whose words, dot leaders and page number occupy separate lines."""
+    """Interpreta índices con título, puntos guía y número de página en líneas separadas."""
     entries: list[dict[str, Any]] = []
     pending: list[str] = []
     saw_dot_leader = False

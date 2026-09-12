@@ -24,10 +24,10 @@ def resolve_statistics_view_state(
     category: str | None = None,
     indicator: str | None = None,
 ) -> StatisticsViewState:
-    """Resolve the persistent dashboard state from one completed query payload.
+    """Resuelve el estado persistente del panel a partir de una consulta terminada.
 
-    A successful query remains in ``LOADING_STATISTICS`` until the render callback
-    confirms that every dashboard output for the same query token is ready.
+    Una consulta correcta permanece en ``LOADING_STATISTICS`` hasta que el callback de
+    representación confirma todos los resultados correspondientes al mismo token.
     """
     active_phase = str((active_payload or {}).get("phase") or "").strip().casefold()
     has_category = bool(str(category or "").strip())
@@ -36,9 +36,9 @@ def resolve_statistics_view_state(
     if active_phase == StatisticsViewState.SURVEY_EMPTY:
         return StatisticsViewState.SURVEY_EMPTY
     if not payload:
-        # Direct category/indicator Inputs reach the server before the
-        # clientside query store in some browser schedules. Once both are
-        # selected, INITIAL is no longer a truthful state.
+        # En algunas secuencias del navegador, los Inputs de categoría e indicador
+        # llegan antes que el almacén de consulta del cliente. Si ambos están
+        # seleccionados, INITIAL ya no representa el estado real.
         if has_complete_selection:
             return StatisticsViewState.LOADING_STATISTICS
         if active_phase == StatisticsViewState.LOADING_INDICATORS:
@@ -48,8 +48,8 @@ def resolve_statistics_view_state(
         if has_category:
             if active_phase == StatisticsViewState.AWAITING_INDICATOR:
                 return StatisticsViewState.AWAITING_INDICATOR
-            # A category Input can reach the server before the clientside
-            # catalog state. It is loading indicators, never INITIAL.
+            # El Input de categoría puede adelantarse al catálogo del cliente:
+            # en ese momento se cargan indicadores, no se está en INITIAL.
             return StatisticsViewState.LOADING_INDICATORS
         return StatisticsViewState.INITIAL
     status = str(payload.get("status") or "").strip().casefold()

@@ -952,9 +952,9 @@ for _ground, _suffix, _es_ground, _en_ground in (
     )
 
 
-# Labels used by the current ILGA workbook that differ typographically from
-# the canonical taxonomy. Keeping them here makes the UI deterministic and
-# avoids dataset-specific conditionals in layouts or callbacks.
+# El libro ILGA actual usa etiquetas con diferencias tipográficas respecto a
+# la taxonomía canónica. Centralizarlas mantiene una UI determinista y evita
+# condiciones específicas del conjunto de datos en layouts o callbacks.
 ILGA_CRITERION_SOURCE_ALIASES: tuple[tuple[str, str, str], ...] = (
     (EQUALITY, "Goods & services (sexual orientation)", "goods_services_sexual_orientation"),
     (EQUALITY, "Goods & services (gender identity)", "goods_services_gender_identity"),

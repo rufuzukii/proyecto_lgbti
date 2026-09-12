@@ -108,6 +108,10 @@ def test_docente_crud_duplicate_and_owner_are_enforced(monkeypatch) -> None:
     }
     assert custom_game_service.get_owned_game(owner, duplicate["id"]) is None
 
+    english_copy = custom_game_service.duplicate_owned_game(owner, saved["id"], language="en")
+    assert english_copy["title"].endswith("(copy)")
+    assert english_copy["configuration"] == saved["configuration"]
+
 
 def test_admin_can_access_and_manage_another_owner_activity(monkeypatch) -> None:
     collection = Collection()

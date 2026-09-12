@@ -32,6 +32,23 @@ LARGE_HISTORICAL_CHANGE = 5.0
 
 
 def register_trend_callbacks(app: Dash) -> None:
+    app.clientside_callback(
+        """
+        function(horizon, disabled, country, years, rangeDisabled) {
+            if (disabled || rangeDisabled || !country || !horizon || !years) {
+                return window.dash_clientside.no_update;
+            }
+            return {country: country, years: years, horizon: horizon};
+        }
+        """,
+        Output("trends-selection", "data"),
+        Input("trend-horizon-select", "value"),
+        Input("trend-horizon-select", "disabled"),
+        State("trend-country-select", "value"),
+        State("trend-year-range", "value"),
+        State("trend-year-range", "disabled"),
+    )
+
     @app.callback(
         Output("trend-country-select", "options"),
         Output("trend-country-select", "value"),
@@ -39,8 +56,9 @@ def register_trend_callbacks(app: Dash) -> None:
         Output("trend-country-select", "placeholder"),
         Input("app-language-store", "data"),
         State("trend-country-select", "value"),
+        State("trends-selection", "data"),
     )
-    def update_trend_countries(language: str | None, current: str | None):
+    def update_trend_countries(language: str | None, current: str | None, selection=None):
         clean_language = _language(language)
         try:
             countries = get_trend_scope().countries
@@ -57,7 +75,8 @@ def register_trend_callbacks(app: Dash) -> None:
             ),
             context="trends-country",
         )
-        selected = option_value_or_none(options, current)
+        saved_country = selection.get("country") if isinstance(selection, dict) else None
+        selected = option_value_or_none(options, current or saved_country)
         return (
             options,
             selected,
@@ -72,8 +91,9 @@ def register_trend_callbacks(app: Dash) -> None:
         Output("trend-year-range", "marks"),
         Output("trend-year-range", "disabled"),
         Input("trend-country-select", "value"),
+        State("trends-selection", "data"),
     )
-    def update_trend_range(country_code: str | None):
+    def update_trend_range(country_code: str | None, selection=None):
         if not country_code:
             return 2011, 2012, [2011, 2012], {2011: "2011", 2012: "2012"}, True
         try:
@@ -85,7 +105,17 @@ def register_trend_callbacks(app: Dash) -> None:
         if not years:
             return 2011, 2012, [2011, 2012], {2011: "2011", 2012: "2012"}, True
         minimum, maximum = years[0], years[-1]
-        return minimum, maximum, [minimum, maximum], _year_marks(years), len(years) < 2
+        selected = [minimum, maximum]
+        if isinstance(selection, dict) and selection.get("country") == country_code:
+            saved = selection.get("years")
+            if (
+                isinstance(saved, list)
+                and len(saved) == 2
+                and all(isinstance(year, int) for year in saved)
+                and minimum <= saved[0] < saved[1] <= maximum
+            ):
+                selected = saved
+        return minimum, maximum, selected, _year_marks(years), len(years) < 2
 
     @app.callback(
         Output("trend-horizon-select", "options"),
@@ -95,15 +125,27 @@ def register_trend_callbacks(app: Dash) -> None:
         Input("trend-year-range", "value"),
         Input("app-language-store", "data"),
         State("trend-horizon-select", "value"),
+        State("trend-year-range", "disabled"),
+        State("trend-horizon-select", "disabled"),
+        State("trends-selection", "data"),
     )
     def update_trend_horizon(
         country_code: str | None,
         year_range: list[int] | None,
         language: str | None,
         current_horizon: int | None,
+        range_disabled: bool | None = False,
+        horizon_disabled: bool | None = False,
+        selection=None,
     ):
-        if not country_code:
+        if not country_code or range_disabled is True:
             return [], None, True
+        if (
+            horizon_disabled
+            and isinstance(selection, dict)
+            and selection.get("country") == country_code
+        ):
+            current_horizon = selection.get("horizon")
         clean_language = _language(language)
         start_year, end_year = _selected_range(year_range)
         try:

@@ -43,8 +43,8 @@ def _pair(es: tuple[str, ...], en: tuple[str, ...]) -> dict[str, tuple[str, ...]
     return {"es": es, "en": en}
 
 
-# Central, reviewable catalogue. Entries are general orientations, never
-# individual legal, medical or clinical advice.
+# Catálogo central revisable. Son orientaciones generales, sin asesoramiento
+# jurídico, médico ni clínico individual.
 HR_RECOMMENDATION_RULES: dict[str, dict[str, tuple[str, ...]]] = {
     "adverse": _pair(
         (
@@ -82,7 +82,7 @@ def indicator_semantics(indicator: str, answer: str = "", *, source: str = "fra"
 
 
 def indicator_direction(indicator: str, answer: str = "") -> str:
-    """Backward-compatible polarity label used by older callers and tests."""
+    """Etiqueta de polaridad compatible con consumidores y pruebas anteriores."""
     direction = indicator_semantics(indicator, answer)
     return {"adverse": "negative", "favourable": "positive"}.get(direction, "neutral")
 

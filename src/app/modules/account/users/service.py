@@ -34,7 +34,7 @@ from app.shared.data.taxonomy import canonical_taxonomy_value
 
 
 class UserStorageError(RuntimeError):
-    """Raised when the configured users table cannot support secure auth."""
+    """La tabla de usuarios configurada no permite una autenticación segura."""
 
 
 _DUMMY_PASSWORD_HASH = generate_password_hash("not-a-real-account-password")

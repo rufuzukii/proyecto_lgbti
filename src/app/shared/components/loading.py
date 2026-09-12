@@ -18,7 +18,7 @@ def contextual_loading(
     message_id: str | None = None,
     show_message: bool = True,
 ) -> Component:
-    """Accessible delayed loading overlay with optional visible context."""
+    """Superposición de carga accesible y diferida, con contexto visible opcional."""
     id_props: Any = {"id": element_id} if element_id else {}
     loading_label = text(ui_text(message_key, "es"), ui_text(message_key, "en"))
     label_props: dict[str, Any] = {"id": message_id} if message_id else {}

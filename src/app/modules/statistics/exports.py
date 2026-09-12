@@ -51,7 +51,7 @@ class SummaryTableExport:
 
 
 def chart_graph_config() -> Any:
-    """Return the shared interactive configuration for exportable charts."""
+    """Devuelve la configuración interactiva compartida de las gráficas exportables."""
     return {
         "displaylogo": False,
         "responsive": True,
@@ -67,7 +67,7 @@ def build_export_filename(
     *,
     file_format: str = EXPORT_FORMAT,
 ) -> str:
-    """Build a safe, descriptive export filename with a bounded length."""
+    """Construye un nombre de exportación seguro, descriptivo y de longitud acotada."""
     country_values = [str(country).strip() for country in countries or [] if str(country).strip()]
     parts = [
         "rainbowlens-datahub",
@@ -90,7 +90,7 @@ def export_summary_table(
     language: str,
     metadata: dict[str, Any],
 ) -> SummaryTableExport:
-    """Serialize the current AG Grid rows without exposing internal fields."""
+    """Serializa las filas actuales de AG Grid sin exponer campos internos."""
     if not rows:
         raise ValueError("Summary table rows are required for export.")
 
@@ -167,7 +167,7 @@ def prepare_figure_for_export(
     filters: Iterable[str] | None = None,
     language: str = "es",
 ) -> go.Figure:
-    """Attach visible context and client-export metadata to an existing figure."""
+    """Añade contexto visible y metadatos de exportación a una figura existente."""
     country_values = [str(country).strip() for country in countries or [] if str(country).strip()]
     scope = (
         ", ".join(country_values)

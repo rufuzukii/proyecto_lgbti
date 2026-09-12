@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from app.api import create_api_app
 from app.api.security import _load_api_keys, require_admin_api_key, require_api_key
 from app.core.auth.app import create_auth_app
+from app.core.auth.csrf import get_csrf_token, validate_csrf_token
 from app.core.config import get_app_config
 from app.core.http_security import client_ip, configure_flask_security, rate_limit_key
 from app.core.logging import redact_sensitive_text
@@ -22,6 +23,22 @@ from app.modules.account.users.schemas import (
     UserType,
 )
 from app.web.application import _safe_next
+
+
+def test_csrf_rejects_unicode_input_without_internal_error() -> None:
+    app = Flask(__name__)
+    app.secret_key = "test-csrf-only"
+    with app.test_request_context():
+        token = get_csrf_token()
+        assert validate_csrf_token(token)
+        assert not validate_csrf_token("token-inválido")
+
+
+def test_api_rejects_unicode_key_as_unauthorized(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_API_KEYS", "a" * 32)
+    with pytest.raises(HTTPException) as caught:
+        require_admin_api_key("clave-inválida")
+    assert caught.value.status_code == 401
 
 
 def test_flask_security_sets_headers_cookies_and_auth_request_limit() -> None:

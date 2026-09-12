@@ -97,7 +97,7 @@ _QUANTITATIVE_ANSWER_PATTERN = re.compile(
 
 
 def nearest_ilga_year(fra_year: int | None, available_years: list[int]) -> int | None:
-    """Return the closest legal-data year; ties prefer the earlier observation."""
+    """Devuelve el año legal más cercano; en caso de empate, el anterior."""
     years = sorted({int(year) for year in available_years})
     if not years:
         return None
@@ -107,7 +107,7 @@ def nearest_ilga_year(fra_year: int | None, available_years: list[int]) -> int |
 
 
 def infer_indicator_semantics(question: Any, answer: Any) -> dict[str, str]:
-    """Conservatively describe what a high selected-response percentage means."""
+    """Describe de forma conservadora el significado de un porcentaje alto de la respuesta."""
     question_key = _semantic_key(question)
     answer_key = _semantic_key(answer)
     question_tone = _matching_tone(question_key)
@@ -135,11 +135,11 @@ def infer_indicator_semantics(question: Any, answer: Any) -> dict[str, str]:
 
 
 def quadrant_eligibility(question: Any, answer: Any) -> dict[str, Any]:
-    """Decide whether a selected FRA response supports a quadrant comparison.
+    """Determina si la respuesta FRA admite una comparación por cuadrantes.
 
-    Yes/no answers additionally require question wording with a safely inferred
-    favourable/adverse direction. Numeric answers can be compared relative to
-    the median, but remain neutral unless their meaning is explicit.
+    Las respuestas sí/no requieren una pregunta cuya dirección favorable o adversa pueda
+    inferirse con seguridad. Las respuestas numéricas admiten comparación con la mediana, pero
+    mantienen sentido neutro si su significado no es explícito.
     """
     question_key = _semantic_key(question)
     answer_key = _semantic_key(answer)
@@ -213,11 +213,11 @@ def get_combined_analysis_capabilities(
     semantics: dict[str, str] | None = None,
     quadrant: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return the combined views that are defensible for one FRA selection.
+    """Devuelve las vistas combinadas justificables para una selección FRA.
 
-    Compatibility is kept here so UI callbacks never grow answer-specific
-    conditions.  A favourable/adverse comparison additionally requires a
-    direction that can be inferred safely from the question and answer.
+    Centraliza la compatibilidad para evitar condiciones específicas por respuesta en los
+    callbacks. Una comparación favorable/adversa exige poder inferir la dirección a partir de la
+    pregunta y la respuesta.
     """
     semantic_result = semantics or infer_indicator_semantics(question, answer)
     quadrant_result = quadrant or quadrant_eligibility(question, answer)
@@ -266,7 +266,7 @@ def get_supported_combined_analyses(
     semantics: dict[str, str] | None = None,
     quadrant: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Backward-compatible name for integrations using the previous helper."""
+    """Nombre compatible con las integraciones que utilizaban el helper anterior."""
     return get_combined_analysis_capabilities(
         question=question,
         answer=answer,
@@ -284,11 +284,10 @@ def classify_quadrant(
     ilga_median: Any,
     semantic_direction: str,
 ) -> dict[str, str] | None:
-    """Classify one paired observation relative to both medians.
+    """Clasifica una observación emparejada respecto a ambas medianas.
 
-    Equality belongs to the ``high`` side. This makes the rule deterministic
-    when several countries share the median without treating both scales as
-    interchangeable.
+    La igualdad pertenece al lado ``high``. Esto resuelve empates de forma determinista sin
+    tratar las dos escalas como intercambiables.
     """
     fra = _finite_float(fra_value)
     ilga = _finite_float(ilga_value)
@@ -331,10 +330,10 @@ def quadrant_rows(rows: list[dict[str, Any]], semantic_direction: str) -> list[d
 
 
 def ranking_position_rows(rows: list[dict[str, Any]], semantic_direction: str) -> dict[str, Any]:
-    """Compare dense legal and social ranks without breaking numeric ties.
+    """Compara posiciones legales y sociales con ranking denso, respetando los empates.
 
-    Legal scores always rank from high to low. FRA ranks from high to low for
-    favourable indicators and from low to high for adverse indicators.
+    Las puntuaciones legales se ordenan de mayor a menor. FRA utiliza ese orden en indicadores
+    favorables y el inverso en indicadores adversos.
     """
     if semantic_direction not in {"favourable", "adverse"}:
         return {

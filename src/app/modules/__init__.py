@@ -1,1 +1,1 @@
-"""Functional modules of RainbowLens DataHub."""
+"""Módulos funcionales de RainbowLens DataHub."""

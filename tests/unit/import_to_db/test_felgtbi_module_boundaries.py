@@ -15,10 +15,8 @@ from app.shared.data.felgtbi.document_identity import (
 
 
 def test_pdf_validation_rejects_wrong_extension_signature_and_size(monkeypatch) -> None:
-    # Arrange
     monkeypatch.setenv("UPLOAD_MAX_FILE_MB", "1")
 
-    # Act / Assert
     with pytest.raises(PdfValidationError, match="unsupported_file_type"):
         validate_felgtbi_pdf(b"%PDF-1.4", "report.csv")
     with pytest.raises(PdfValidationError, match="invalid_pdf_signature"):
@@ -33,10 +31,8 @@ def test_pipeline_stops_before_extraction_when_pdf_is_invalid() -> None:
 
 
 def test_document_identity_is_stable_and_metadata_is_non_destructive() -> None:
-    # Arrange
     documents = [{"source_document_id": "assigned", "import_status": "reviewed"}]
 
-    # Act
     first = build_pdf_source_document_id(b"%PDF-1.4", "folder/report.pdf")
     second = build_pdf_source_document_id(b"%PDF-1.4", "report.pdf")
     attach_source_document_metadata(
@@ -45,7 +41,6 @@ def test_document_identity_is_stable_and_metadata_is_non_destructive() -> None:
         source_document_id="replacement",
     )
 
-    # Assert
     assert first == second
     assert documents == [
         {
@@ -95,21 +90,17 @@ def test_indicator_label_cleanup_changes_only_display_text(
     document_title: str,
     expected: str,
 ) -> None:
-    # Arrange / Act
     cleaned = clean_felgtbi_indicator_label(raw_label, document_title)
 
-    # Assert
     assert cleaned == expected
 
 
 def test_document_label_prefers_pdf_title_and_cleans_technical_filename() -> None:
-    # Arrange / Act
     official = clean_felgtbi_document_label(
         "1b845c_FINAL_2025.pdf",
         "20 años de matrimonio igualitario",
     )
     fallback = clean_felgtbi_document_label("Informe-socio-economico_estado-lgrbi-2025_FINAL.pdf")
 
-    # Assert
     assert official == "20 años de matrimonio igualitario"
     assert fallback == "Socio economico estado"

@@ -117,7 +117,7 @@ def get_country_coverage() -> tuple[CountryCoverage, ...]:
 
 
 def invalidate_trend_cache() -> None:
-    """Invalidate series and forecasts after a Rainbow Map import."""
+    """Invalida series y previsiones tras una importación de Rainbow Map."""
     invalidate_analytics_cache("ilga")
 
 

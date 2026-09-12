@@ -504,7 +504,6 @@ def test_teacher_space_css_uses_theme_tokens_and_one_mobile_column() -> None:
 def test_ranking_game_callback_checks_and_starts_a_new_round_without_reload(
     dash_app, monkeypatch
 ) -> None:
-    # Arrange
     callback = _callback(dash_app, "play_ranking_game")
     monkeypatch.setattr(didactica_page, "current_user", _user())
     state = {
@@ -522,15 +521,13 @@ def test_ranking_game_callback_checks_and_starts_a_new_round_without_reload(
         didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-ranking-check")
     )
 
-    # Act
     checked = callback(None, 1, [0, 0, 0, 0], [0, 0, 0, 0], "en", state)
 
-    # Assert
     assert checked[2]["checked"] is True
     assert checked[2]["positions_correct"] == 4
     assert checked[3] is True
 
-    # Arrange / Act: a new round is supplied by the service without a page reload.
+    # El servicio entrega una nueva ronda sin recargar la página.
     replacement = {**state, "items": list(reversed(state["items"]))}
     monkeypatch.setattr(
         didactica_page,

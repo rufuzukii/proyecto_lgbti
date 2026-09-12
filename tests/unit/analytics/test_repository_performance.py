@@ -38,7 +38,6 @@ class _FindCollection:
 
 
 def test_fra_control_catalog_is_aggregated_in_mongodb(monkeypatch) -> None:
-    # Arrange
     collection = _AggregateCollection(
         {
             "code": "D1_1",
@@ -52,12 +51,10 @@ def test_fra_control_catalog_is_aggregated_in_mongodb(monkeypatch) -> None:
     )
     monkeypatch.setattr(repository, "_mongo_collection", lambda _name: collection)
 
-    # Act
     document = repository.get_fra_indicator_control_document.__wrapped__(
         "D1_1", "Discrimination", 2023
     )
 
-    # Assert
     assert document is not None
     assert [row["answer"] for row in document["answers"][:2]] == ["No", "Yes"]
     assert document["answers"][2]["filters"][0]["filter_name"] == "age"
@@ -99,7 +96,6 @@ def test_fra_indicator_query_is_scoped_by_year_and_uses_a_projection(monkeypatch
 def test_source_invalidation_changes_generation_without_global_clear(
     monkeypatch,
 ) -> None:
-    # Arrange
     application = Flask(__name__)
     monkeypatch.setenv("APP_ENV", "development")
     init_cache(application)
@@ -107,10 +103,8 @@ def test_source_invalidation_changes_generation_without_global_clear(
     deleted: list[Any] = []
     monkeypatch.setattr(cache, "delete_memoized", deleted.append)
 
-    # Act
     repository.invalidate_analytics_cache("fra")
 
-    # Assert
     assert repository.analytics_cache_generation("fra") == 1
     assert repository.analytics_cache_generation("fra:2019") == 1
     assert repository.analytics_cache_generation("fra:2023") == 1

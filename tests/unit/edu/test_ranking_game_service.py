@@ -23,7 +23,6 @@ def _document() -> dict:
 def test_new_round_uses_one_cached_dataset_read_and_only_valid_unique_countries(
     monkeypatch,
 ) -> None:
-    # Arrange
     calls: list[int] = []
     monkeypatch.setattr(
         service,
@@ -31,10 +30,8 @@ def test_new_round_uses_one_cached_dataset_read_and_only_valid_unique_countries(
         lambda year: calls.append(year) or _document(),
     )
 
-    # Act
     state = service.new_ranking_game(seed=7)
 
-    # Assert
     assert calls == [2026]
     assert len(state["items"]) == service.RANKING_GAME_COUNTRY_COUNT
     assert len({item["country_code"] for item in state["items"]}) == len(state["items"])
@@ -42,10 +39,8 @@ def test_new_round_uses_one_cached_dataset_read_and_only_valid_unique_countries(
 
 
 def test_zero_is_valid_null_is_excluded_and_distinct_scores_are_preferred() -> None:
-    # Arrange / Act
     states = [service.new_ranking_game(document=_document(), seed=seed) for seed in range(20)]
 
-    # Assert
     assert any(any(item["score"] == 0 for item in state["items"]) for state in states)
     assert all(
         len({item["score"] for item in state["items"]}) == len(state["items"]) for state in states
@@ -54,25 +49,21 @@ def test_zero_is_valid_null_is_excluded_and_distinct_scores_are_preferred() -> N
 
 
 def test_new_round_avoids_previous_countries_when_enough_alternatives_exist() -> None:
-    # Arrange
     first = service.new_ranking_game(document=_document(), seed=3)
     previous = [item["country_code"] for item in first["items"]]
 
-    # Act
     second = service.new_ranking_game(
         document=_document(),
         seed=3,
         previous_codes=previous,
     )
 
-    # Assert
     assert {item["country_code"] for item in first["items"]}.isdisjoint(
         item["country_code"] for item in second["items"]
     )
 
 
 def test_check_orders_descending_and_accepts_any_order_within_ties() -> None:
-    # Arrange
     state = {
         "items": [
             {"country_code": "BE", "country_name": "Belgium", "score": 80},
@@ -83,24 +74,19 @@ def test_check_orders_descending_and_accepts_any_order_within_ties() -> None:
         "checked": False,
     }
 
-    # Act
     result = service.check_ranking_game(state)
 
-    # Assert
     assert result["is_correct"] is True
     assert result["positions_correct"] == 4
     assert [item["score"] for item in result["correct_order"]] == [80, 80, 50, 20]
 
 
 def test_move_buttons_reorder_before_check_and_lock_after_check() -> None:
-    # Arrange
     state = service.new_ranking_game(document=_document(), seed=1)
     original = [item["country_code"] for item in state["items"]]
 
-    # Act
     moved = service.move_ranking_country(state, 1, -1)
     locked = service.move_ranking_country(service.check_ranking_game(moved), 0, 1)
 
-    # Assert
     assert [item["country_code"] for item in moved["items"]][:2] == original[1::-1]
     assert locked["items"] == service.check_ranking_game(moved)["items"]

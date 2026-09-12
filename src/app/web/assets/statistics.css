@@ -1226,7 +1226,7 @@
   min-height: var(--stats-map-min-height);
 }
 
-/* The slot owns sizing; Plotly fills the space already reserved before it mounts. */
+/* El contenedor reserva el tamaño antes del montaje y Plotly ocupa ese espacio. */
 .stats-mapbox-graph.europe-map-container {
   height: 100% !important;
   min-height: 100% !important;
@@ -1635,7 +1635,7 @@ body[data-theme="dark"] .stats-chart-export-error {
   opacity: 0.45;
 }
 
-/* Keep every Statistics action proportional to its label. */
+/* Cada acción de Estadísticas mantiene un tamaño proporcional a su etiqueta. */
 .stats-shell :is(
   .stats-create-report-link,
   .stats-chart-export-button,

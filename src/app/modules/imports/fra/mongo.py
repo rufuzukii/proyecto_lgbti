@@ -303,7 +303,7 @@ def _answer_identity_key(answer: dict[str, Any], *, survey_year: int) -> str:
 
 
 def fra_value_bucket(answer: dict[str, Any]) -> int:
-    """Keep one response/segmentation slice together while bounding document size."""
+    """Mantiene juntas las respuestas de una segmentación y acota el tamaño del documento."""
     identity = {
         "answer": answer.get("answer") or "",
         "filters": answer.get("filters") or [],

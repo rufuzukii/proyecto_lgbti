@@ -79,17 +79,14 @@ def test_authentication_rejects_incomplete_or_oversized_credentials(
     email: str,
     password: str,
 ) -> None:
-    # Arrange
     monkeypatch.setattr(
         service,
         "get_user_record_by_email",
         lambda _email: pytest.fail("storage must not be queried"),
     )
 
-    # Act
     result = service.authenticate_user(email, password)
 
-    # Assert
     assert result is None
 
 
@@ -108,20 +105,16 @@ def test_authentication_requires_a_valid_password_and_active_account(
     password: str,
     accepted: bool,
 ) -> None:
-    # Arrange
     monkeypatch.setattr(service, "get_user_record_by_email", lambda _email: record)
 
-    # Act
     result = service.authenticate_user("alex@example.test", password)
 
-    # Assert
     assert (result is not None) is accepted
 
 
 def test_profile_email_change_invalidates_existing_sessions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     record = _record()
     updated_row = {**_row(), "email": "new@example.com", "username": "Alex Updated"}
     connection = _Connection(_Result(row=updated_row))
@@ -141,7 +134,6 @@ def test_profile_email_change_invalidates_existing_sessions(
         lambda user_id: AccountSecurityState(user_id, True, 1),
     )
 
-    # Act
     updated = service.update_user_profile(
         user_id=record.id,
         username="Alex Updated",
@@ -149,7 +141,6 @@ def test_profile_email_change_invalidates_existing_sessions(
         current_password="valid-password",
     )
 
-    # Assert
     assert updated.email == "new@example.com"
     assert updated.session_version == 1
     assert incremented == [record.id]
@@ -160,13 +151,11 @@ def test_profile_email_change_invalidates_existing_sessions(
 def test_admin_deletion_maps_cross_store_error_to_public_validation_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     def fail(**_kwargs: str) -> None:
         raise privacy_service.AccountDeletionError("storage_unavailable")
 
     monkeypatch.setattr(privacy_service, "delete_user_account_as_admin", fail)
 
-    # Act / Assert
     with pytest.raises(privacy_service.AccountDeletionError, match="storage_unavailable"):
         privacy_service.delete_user_account_as_admin(
             user_id=_record().id,

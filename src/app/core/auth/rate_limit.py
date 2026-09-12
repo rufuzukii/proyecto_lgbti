@@ -8,7 +8,7 @@ from typing import Protocol
 
 
 class RateLimiter(Protocol):
-    """Structural contract implemented by the process-local limiter."""
+    """Contrato estructural del limitador local al proceso."""
 
     def is_blocked(self, key: str) -> bool: ...
 
@@ -18,7 +18,7 @@ class RateLimiter(Protocol):
 
 
 class InMemoryRateLimiter:
-    """Bounded fixed-window limiter local to one Gunicorn worker."""
+    """Limitador acotado de ventana deslizante, local a un proceso de Gunicorn."""
 
     def __init__(self, max_attempts: int, window_seconds: int, *, max_keys: int = 10_000) -> None:
         self.max_attempts = max(1, max_attempts)

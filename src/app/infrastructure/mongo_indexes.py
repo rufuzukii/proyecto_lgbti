@@ -38,7 +38,7 @@ def spain_report_collection_names() -> set[str]:
 
 @lru_cache(maxsize=1)
 def initialize_mongo_indexes() -> None:
-    """Create application indexes once at process startup or from the setup CLI."""
+    """Crea los índices una vez durante el arranque o mediante una llamada de configuración."""
     migrate_account_security_schema()
     ensure_fra_indexes()
     _ensure_collection_indexes(
@@ -58,7 +58,7 @@ def initialize_mongo_indexes() -> None:
 
 
 def ensure_fra_indexes() -> None:
-    """Create only the indexes required by FRA import and Statistics queries."""
+    """Crea únicamente los índices necesarios para importar FRA y consultar Estadísticas."""
     indexes = [
         IndexModel([("code", ASCENDING)], name="fra_code"),
         IndexModel(
@@ -112,7 +112,7 @@ def ensure_fra_indexes() -> None:
 
 
 def felgtbi_index_models() -> list[IndexModel]:
-    """Indexes aligned with the Spain catalog, navigation and detail queries."""
+    """Define índices para el catálogo, la navegación y el detalle de España."""
     return [
         IndexModel(
             [("source", ASCENDING), ("year", DESCENDING), ("source_document_id", ASCENDING)],
@@ -222,7 +222,7 @@ def _initialize_non_report_indexes() -> None:
 
 
 def ensure_ilga_unique_index() -> None:
-    """Safely upgrade the annual ILGA identity index after checking legacy data."""
+    """Actualiza el índice de identidad anual de ILGA tras comprobar los datos anteriores."""
     collection = get_mongo_collection("Indicator_ilga")
     duplicates = list(
         collection.aggregate(
@@ -269,7 +269,7 @@ def ensure_ilga_unique_index() -> None:
 
 
 def _backfill_audit_expiry(collection_name: str) -> None:
-    """Apply the configured retention to legacy audit rows once."""
+    """Aplica una sola vez la retención configurada a los registros de auditoría anteriores."""
 
     retention_days = get_privacy_policy_config().audit_retention_days
     try:
@@ -301,12 +301,11 @@ def _ensure_collection_indexes(
     collection_name: str,
     index_models: Iterable[IndexModel],
 ) -> None:
-    """Create only indexes not already covered by an equivalent key definition.
+    """Crea solo índices no cubiertos por una definición de claves equivalente.
 
-    MongoDB considers two indexes with the same keys and options equivalent even
-    when their names differ. Checking the key definition first keeps startup
-    idempotent for databases that already contain automatically named indexes
-    such as ``code_1``.
+    MongoDB considera equivalentes los índices con las mismas claves y opciones aunque sus
+    nombres difieran. Comprobar la definición mantiene el arranque idempotente cuando ya existen
+    índices con nombres automáticos como ``code_1``.
     """
     collection = get_mongo_collection(collection_name)
     existing = _list_indexes(collection)
@@ -367,7 +366,7 @@ def _ensure_collection_indexes(
 
 
 def _drop_obsolete_indexes(collection_name: str, names: set[str]) -> None:
-    """Remove only explicitly superseded indexes after replacements exist."""
+    """Elimina solo los índices sustituidos explícitamente, una vez creados sus reemplazos."""
     collection = get_mongo_collection(collection_name)
     existing_names = {str(index.get("name") or "") for index in _list_indexes(collection)}
     for name in sorted(names.intersection(existing_names)):
@@ -383,7 +382,7 @@ def _list_indexes(collection: Any) -> list[dict[str, Any]]:
     try:
         return [dict(index) for index in collection.list_indexes()]
     except OperationFailure as exc:
-        if exc.code == 26:  # NamespaceNotFound: the first index creates the collection.
+        if exc.code == 26:  # NamespaceNotFound: el primer índice crea la colección.
             return []
         raise
 

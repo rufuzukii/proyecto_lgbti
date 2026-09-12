@@ -6,7 +6,6 @@ from app.modules.statistics.exports import export_summary_table
 
 
 def test_report_metrics_flow_into_the_exported_summary_table() -> None:
-    # Arrange
     configuration = ReportConfiguration.from_mapping(
         {
             "source": "fra",
@@ -32,7 +31,6 @@ def test_report_metrics_flow_into_the_exported_summary_table() -> None:
         "methodology": "FRA survey data.",
     }
 
-    # Act
     report = HRReportBuilder().build(configuration, ReportDataset(result, query_seconds=0.01))
     exported = export_summary_table(
         report.table_rows,
@@ -45,7 +43,6 @@ def test_report_metrics_flow_into_the_exported_summary_table() -> None:
         metadata={"indicator": report.indicator, "countries": ["ES", "FR"], "year": 2024},
     )
 
-    # Assert
     metrics = {metric.key: metric.numeric_value for metric in report.metrics}
     assert metrics["eu_average"] == 56.0
     assert metrics["country_value"] == 64.0

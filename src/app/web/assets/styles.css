@@ -583,7 +583,7 @@ body {
   width: 100%;
 }
 
-/* Keep the footer out of the loading frame without changing its reserved space. */
+/* El pie queda fuera del área de carga sin alterar el espacio que tiene reservado. */
 #page-content:empty + .site-footer,
 #page-content[data-dash-is-loading="true"] + .site-footer {
   visibility: hidden;
@@ -977,9 +977,9 @@ body[data-theme="dark"] span.dash-options-list-option-text {
   color: #fff !important;
 }
 
-/* Dash gives the generated option label a light inverse fill.  Custom option
-   surfaces provide their own background, so this vendor default must remain
-   transparent in dark mode. */
+/* Dash añade un fondo claro a la etiqueta de opción generada. Las opciones
+   personalizadas ya definen su fondo: el predeterminado de Dash debe ser
+   transparente en modo oscuro. */
 :where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option,
 :where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option-wrapper,
 :where(:root[data-theme="dark"], body[data-theme="dark"]) .dash-options-list-option-text {

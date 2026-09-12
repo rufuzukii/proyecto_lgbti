@@ -181,20 +181,17 @@ Source:,"EU LGBTIQ Survey III, 2023",,,,,
 
 
 def test_fra_import_normalization_persistence_and_statistics_query(monkeypatch) -> None:
-    # Arrange
     collection = InMemoryFraCollection()
     monkeypatch.setattr(fra_mongo, "get_mongo_collection", lambda _name: collection)
     monkeypatch.setattr(repository, "_mongo_collection", lambda _name: collection)
     app = Flask("fra-integration")
     init_cache(app)
 
-    # Act
     payload = parse_fra_csv_text(_csv(), file_name="fra-survey.csv")
     inserted = fra_mongo.insert_indicator_fra_json(payload)
     with app.app_context():
         result = get_fra_statistics(_query())
 
-    # Assert
     assert inserted == 1
     assert collection.documents[0]["survey_year"] == 2023
     assert result["status"] == "ok"
@@ -205,7 +202,6 @@ def test_fra_import_normalization_persistence_and_statistics_query(monkeypatch) 
 
 
 def test_statistics_cache_is_invalidated_after_the_persisted_data_changes(monkeypatch) -> None:
-    # Arrange
     collection = InMemoryFraCollection()
     monkeypatch.setattr(fra_mongo, "get_mongo_collection", lambda _name: collection)
     monkeypatch.setattr(repository, "_mongo_collection", lambda _name: collection)
@@ -213,7 +209,6 @@ def test_statistics_cache_is_invalidated_after_the_persisted_data_changes(monkey
     init_cache(app)
     fra_mongo.insert_indicator_fra_json(parse_fra_csv_text(_csv(), file_name="fra.csv"))
 
-    # Act
     with app.app_context():
         before = get_fra_statistics(_query())
         collection.documents[0]["answers"][0]["percentage"] = 70.0
@@ -221,7 +216,6 @@ def test_statistics_cache_is_invalidated_after_the_persisted_data_changes(monkey
         repository.invalidate_analytics_cache()
         refreshed = get_fra_statistics(_query())
 
-    # Assert
     assert before["ranking"][0]["value"] == 62.0
     assert cached["ranking"][0]["value"] == 62.0
     assert refreshed["ranking"][0]["value"] == 70.0
@@ -241,7 +235,6 @@ def test_reimport_updates_same_natural_answer_without_duplication(monkeypatch) -
 
 
 def test_query_cache_geopandas_and_map_pipeline_reuses_database_result(monkeypatch) -> None:
-    # Arrange
     collection = InMemoryFraCollection()
     monkeypatch.setattr(fra_mongo, "get_mongo_collection", lambda _name: collection)
     monkeypatch.setattr(repository, "_mongo_collection", lambda _name: collection)
@@ -249,7 +242,6 @@ def test_query_cache_geopandas_and_map_pipeline_reuses_database_result(monkeypat
     init_cache(app)
     fra_mongo.insert_indicator_fra_json(parse_fra_csv_text(_csv(), file_name="fra.csv"))
 
-    # Act
     with app.app_context():
         first = get_fra_statistics(_query())
         calls_after_first_query = collection.find_calls
@@ -257,7 +249,6 @@ def test_query_cache_geopandas_and_map_pipeline_reuses_database_result(monkeypat
         geography = prepare_europe_map_data(second["ranking"])
         figure = build_europe_choropleth(second["ranking"], source="fra")
 
-    # Assert
     assert {key: value for key, value in first.items() if key != "_statistics_timings"} == {
         key: value for key, value in second.items() if key != "_statistics_timings"
     }

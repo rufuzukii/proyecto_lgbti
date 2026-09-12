@@ -30,7 +30,7 @@ FRA_METADATA_LABELS = frozenset(
 
 FRA_FOOTNOTE_SYMBOLS = frozenset({"¹", "‡"})
 
-# ``ą`` is the mojibake value already found in MongoDB for the superscript ``¹``.
+# ``ą`` es la corrupción de codificación observada en MongoDB para el superíndice ``¹``.
 FRA_FOOTNOTE_MOJIBAKE = frozenset({"ą"})
 
 INVALID_FRA_CATEGORIES = frozenset(

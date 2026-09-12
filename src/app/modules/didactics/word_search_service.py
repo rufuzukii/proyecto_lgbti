@@ -35,7 +35,7 @@ FILL_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def normalize_word_search_term(value: str) -> str:
-    """Return the ASCII letter representation used by the board."""
+    """Devuelve las letras ASCII utilizadas en el tablero."""
     decomposed = unicodedata.normalize("NFKD", str(value or "").upper())
     unaccented = "".join(
         character for character in decomposed if not unicodedata.combining(character)
@@ -51,7 +51,7 @@ def select_word_search_terms(
     max_length: int = MAX_BOARD_SIZE,
     seed: int | None = None,
 ) -> tuple[GlossaryTerm, ...]:
-    """Select unique, board-safe glossary entries without altering their display text."""
+    """Selecciona términos únicos aptos para el tablero sin alterar su texto visible."""
     requested = max(1, min(int(count), MAX_WORD_COUNT))
     unique: dict[str, GlossaryTerm] = {}
     for term in terms:
@@ -61,7 +61,7 @@ def select_word_search_terms(
         if normalized and len(normalized) <= max_length:
             unique.setdefault(normalized, term)
     candidates = list(unique.values())
-    # Deterministic game layout; this randomness has no security purpose.
+    # La aleatoriedad reproduce el tablero del juego; no tiene una función de seguridad.
     random.Random(seed).shuffle(candidates)  # nosec B311
     return tuple(candidates[: min(requested, len(candidates))])
 
@@ -74,7 +74,7 @@ def generate_word_search(
     *,
     directions: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Generate a deterministic word-search matrix when ``seed`` is provided."""
+    """Genera una sopa de letras reproducible cuando se proporciona ``seed``."""
     if rows < 1 or columns < 1:
         raise ValueError("invalid_word_search_dimensions")
     direction_names = tuple(directions or DIRECTIONS)
@@ -103,8 +103,8 @@ def generate_word_search(
             candidates = [
                 candidate
                 for candidate in _placement_candidates(word, grid, rows, columns, direction_names)
-                # A new word must contribute a cell of its own. This rejects
-                # placements such as GENERO entirely inside AGENERO.
+                # Cada palabra debe aportar una celda propia; así se rechazan colocaciones
+                # como GENERO completamente contenida en AGENERO.
                 if candidate[0] < len(word)
             ]
             if not candidates:
@@ -148,7 +148,7 @@ def create_word_search_game(
     term_ids: Sequence[str] | None = None,
     board_size: int | None = None,
 ) -> dict[str, Any]:
-    """Build a serializable game using the same cached catalog as the dictionary."""
+    """Construye un juego serializable con el mismo catálogo en caché que el diccionario."""
     effective_seed = seed if seed is not None else secrets.randbits(63)
     catalog = glossary_service.list_glossary_terms()
     allowed_ids = {str(identifier) for identifier in term_ids or ()}
@@ -247,7 +247,7 @@ def detect_word_selection(words: Sequence[dict[str, Any]], start: Cell, end: Cel
 def apply_word_search_selection(
     state: dict[str, Any], cell_index: int
 ) -> tuple[dict[str, Any], str]:
-    """Apply one endpoint selection and return the new state plus a UI status."""
+    """Aplica una selección de extremos y devuelve el nuevo estado y el resultado para la UI."""
     updated = deepcopy(state)
     rows = int(updated.get("rows") or 0)
     columns = int(updated.get("columns") or 0)
@@ -283,16 +283,8 @@ def is_word_search_complete(state: dict[str, Any]) -> bool:
     return bool(expected) and expected.issubset({str(item) for item in state.get("found", [])})
 
 
-def _board_size(longest_word: int) -> int:
-    if longest_word <= 10:
-        return 10
-    if longest_word <= 12:
-        return 12
-    return MAX_BOARD_SIZE
-
-
 def calculate_required_board_size(words: Sequence[str]) -> int:
-    """Choose a compact board from word lengths and expected placement density."""
+    """Calcula un tablero compacto según la longitud y la densidad esperada de las palabras."""
     normalized = [normalize_word_search_term(word) for word in words]
     normalized = [word for word in normalized if word]
     longest = max((len(word) for word in normalized), default=MIN_BOARD_SIZE)
@@ -301,7 +293,7 @@ def calculate_required_board_size(words: Sequence[str]) -> int:
 
 
 def placements_have_exclusive_cells(placements: Sequence[dict[str, Any]]) -> bool:
-    """Return whether every placed word owns at least one unshared board cell."""
+    """Comprueba si cada palabra colocada dispone de al menos una celda exclusiva."""
     counts: dict[Cell, int] = {}
     normalized_cells: list[list[Cell]] = []
     for placement in placements:

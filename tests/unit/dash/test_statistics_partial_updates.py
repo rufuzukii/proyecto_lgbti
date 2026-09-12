@@ -53,7 +53,7 @@ def test_partial_dashboard_update_does_not_touch_the_stable_map() -> None:
 
 
 def test_hidden_temporal_and_average_panels_accept_missing_figures() -> None:
-    """A hidden optional panel must not turn a valid dashboard into HTTP 500."""
+    """Un panel opcional oculto no debe convertir un panel válido en un error HTTP 500."""
     outputs: list[Any] = [no_update] * 33
     outputs[6] = None
     outputs[7] = "stats-panel-wrapper stats-temporal-wrapper is-hidden"
@@ -135,7 +135,7 @@ def test_component_mapping_failure_finishes_in_error_state_instead_of_http_500(
         lambda _outputs: (_ for _ in ()).throw(ValueError("invalid-output")),
     )
 
-    # The callback boundary logs the traceback and returns a terminal ERROR state.
+    # El límite del callback registra la traza y devuelve el estado terminal ERROR.
     returned = callback(
         {"status": "ok", "query_token": "q2"}, [], [], "es", 0, {"query_token": "q2"}
     )
@@ -182,7 +182,6 @@ def test_map_country_selection_supports_multiple_countries_and_clear() -> None:
 
 
 def test_ranking_pagination_updates_only_ranking_outputs(monkeypatch) -> None:
-    # Arrange
     ranking_figure = object()
     average_figure = object()
     monkeypatch.setattr(
@@ -194,10 +193,8 @@ def test_ranking_pagination_updates_only_ranking_outputs(monkeypatch) -> None:
     monkeypatch.setattr(statistics, "_ranking_graph_style", lambda _figure: {"display": "block"})
     monkeypatch.setattr(statistics, "_prepare_dashboard_exports", lambda *_args, **_kwargs: None)
 
-    # Act
     outputs = statistics._render_ranking_dashboard_update(_result(), ["ES"], "es", 0)
 
-    # Assert
     assert len(outputs) == 33
     assert outputs[8] is ranking_figure
     assert outputs[9] is average_figure
@@ -209,17 +206,14 @@ def test_ranking_pagination_updates_only_ranking_outputs(monkeypatch) -> None:
 
 
 def test_temporal_selector_updates_only_temporal_outputs(monkeypatch) -> None:
-    # Arrange
     temporal_figure = object()
     monkeypatch.setattr(
         statistics, "build_temporal_evolution_chart", lambda *_args, **_kwargs: temporal_figure
     )
     monkeypatch.setattr(statistics, "_prepare_dashboard_exports", lambda *_args, **_kwargs: None)
 
-    # Act
     outputs = statistics._render_temporal_dashboard_update(_result(), ["ES"], "es", ["ES"])
 
-    # Assert
     assert len(outputs) == 33
     assert outputs[6] is temporal_figure
     assert "stats-temporal-wrapper" in outputs[7]

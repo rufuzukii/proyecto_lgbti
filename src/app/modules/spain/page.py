@@ -3,11 +3,12 @@ from __future__ import annotations
 import logging
 import re
 import time
+from collections import Counter
 from html import escape as escape_html
 from typing import Any, cast
 
 import plotly.graph_objects as go
-from dash import Dash, Input, Output, ctx, dcc, html
+from dash import Dash, Input, Output, State, ctx, dcc, html
 from dash.development.base_component import Component
 
 from app.infrastructure.storage import supabase_public_image_url
@@ -62,14 +63,25 @@ SPAIN_IMAGE_CLASS = "spain-pdf-figure spain-content-slot"
 SPAIN_IMAGE_HIDDEN_CLASS = "spain-pdf-figure spain-content-slot is-hidden"
 SPAIN_GRAPH_CLASS = "spain-section-graph spain-content-slot"
 SPAIN_GRAPH_HIDDEN_CLASS = "spain-section-graph spain-content-slot is-hidden"
-SPAIN_DEFAULT_YEAR = 2026
 
 
-def build_spain_layout() -> Component:
+def build_spain_layout(selection: dict[str, Any] | None = None) -> Component:
     available_years = _available_years()
     years = _year_options(available_years)
     initial_year = _resolve_initial_year(available_years)
+    selection = selection if isinstance(selection, dict) else {}
+    saved_year = _clean_year(selection.get("year"))
+    if saved_year in available_years:
+        initial_year = saved_year
     documents, initial_document = _document_selector_state(initial_year)
+    if selection.get("document") in {option["value"] for option in documents}:
+        initial_document = selection["document"]
+    topics = (
+        _indicator_options(get_felgtbi_indicators_by_document(initial_document, initial_year))
+        if initial_document
+        else []
+    )
+    initial_topic, _ = _resolve_topic_selection(topics, selection.get("topic"), trigger_id=None)
 
     return html.Div(
         [
@@ -142,8 +154,8 @@ def build_spain_layout() -> Component:
                                         [
                                             dcc.Dropdown(
                                                 id="spain-topic-select",
-                                                options=[],
-                                                value=None,
+                                                options=topics,
+                                                value=initial_topic,
                                                 clearable=False,
                                                 className="spain-dropdown spain-topic-dropdown",
                                                 disabled=not bool(
@@ -209,6 +221,24 @@ def build_spain_layout() -> Component:
 
 
 def register_spain_callbacks(app: Dash) -> None:
+    app.clientside_callback(
+        """
+        function(year, document, topic, options) {
+            if (!year || !document || !topic ||
+                !(options || []).some(option => option.value === topic)) {
+                return window.dash_clientside.no_update;
+            }
+            return {year: year, document: document, topic: topic};
+        }
+        """,
+        Output("spain-selection", "data"),
+        Input("spain-year-select", "value"),
+        Input("spain-document-select", "value"),
+        Input("spain-topic-select", "value"),
+        Input("spain-topic-select", "options"),
+        prevent_initial_call=True,
+    )
+
     @app.callback(
         Output("spain-year-select", "placeholder"),
         Output("spain-topic-select", "placeholder"),
@@ -225,11 +255,19 @@ def register_spain_callbacks(app: Dash) -> None:
         Output("spain-document-select", "options"),
         Output("spain-document-select", "value"),
         Input("spain-year-select", "value"),
+        State("spain-document-select", "value"),
     )
     def update_document_selector(
         year: int | str | None,
+        current_document: str | None,
     ) -> tuple[list[dict[str, str]], str | None]:
-        return _document_selector_state(year)
+        options, default = _document_selector_state(year)
+        selected = (
+            current_document
+            if current_document in {option["value"] for option in options}
+            else default
+        )
+        return options, selected
 
     @app.callback(
         Output("spain-topic-select", "options"),
@@ -296,8 +334,6 @@ def register_spain_callbacks(app: Dash) -> None:
             )
         indicators = get_felgtbi_indicators_by_document(document_id, year)
         options = _indicator_options(indicators)
-        if ctx.triggered_id in {"spain-document-select", "spain-year-select"}:
-            current_code = None
         selected_code, selection_status = _resolve_topic_selection(
             options,
             current_code,
@@ -573,9 +609,7 @@ def _year_options(years: list[int] | None = None) -> list[dict[str, Any]]:
 
 
 def _resolve_initial_year(years: list[int]) -> int | None:
-    if SPAIN_DEFAULT_YEAR in years:
-        return SPAIN_DEFAULT_YEAR
-    return years[0] if years else None
+    return max(years, default=None)
 
 
 def _document_selector_state(
@@ -605,6 +639,13 @@ def _indicator_options(indicators: list[Any]) -> list[dict[str, str]]:
             report_title=indicator.report_title,
         )
         options.append({"label": label, "value": indicator.code, "title": label})
+    counts = Counter(option["label"] for option in options)
+    for index, option in enumerate(options, start=1):
+        if counts[option["label"]] > 1:
+            # Un encabezado oficial puede corresponder a varias secciones distintas.
+            # Se muestra su posición sin cambiar el identificador canónico.
+            option["label"] = f"{option['label']} · {index}/{len(options)}"
+            option["title"] = option["label"]
     return options
 
 
@@ -731,7 +772,11 @@ def _structured_report_content(document: dict[str, Any] | None) -> Any | None:
 
     section_children: list[Any] = []
     if section:
-        section_children.append(html.H2(section))
+        section_children.append(
+            html.H2(text("Contenido del informe", "Report content"))
+            if section == "Contenido del informe"
+            else html.H2(section)
+        )
     section_children.append(html.Article(article_children, className="report-subsection"))
     return html.Div(
         html.Section(section_children, className="report-section"),
@@ -760,6 +805,8 @@ def _figure_component(document: dict[str, Any]) -> Any | None:
 
     children: list[Any] = [
         html.Img(
+            # Dash usa el id para renovar el nodo; key es una propiedad reservada de React.
+            id={"type": "spain-report-figure", "source": url},
             src=None,
             alt=alt_text,
             width=width,
@@ -983,12 +1030,6 @@ def _answers(document: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(answers, list):
         return []
     return [answer for answer in answers if isinstance(answer, dict)]
-
-
-def _format_percent(value: Any) -> str:
-    if isinstance(value, (int, float)):
-        return f"{value:.2f}%"
-    return "-"
 
 
 def _content_html(document: dict[str, Any] | None) -> str:

@@ -94,7 +94,7 @@ FILTER_TYPE_TO_KEY = {
 
 
 def _fra_response_comparison_key(value: Any) -> str:
-    """Compare response labels while tolerating harmless punctuation loss in FRA exports."""
+    """Compara etiquetas tolerando la pérdida de puntuación irrelevante en las exportaciones FRA."""
     normalized = unicodedata.normalize("NFKD", normalize_header(value)).casefold()
     return "".join(character for character in normalized if character.isalnum())
 
@@ -134,7 +134,7 @@ COLUMN_ALIASES = {
     "pais": "country",
     "territory": "country",
     "country_code": "country_code",
-    # Survey II calls this field CountryCode although its values are names.
+    # Survey II llama CountryCode a este campo aunque sus valores son nombres.
     "countrycode": "country",
     "iso": "country_code",
     "iso2": "country_code",
@@ -241,7 +241,7 @@ COUNTRY_CODE_ALIASES = {"EL": "GR", "UK": "GB"}
 
 
 class FraCsvError(ValueError):
-    """Base class for CSV validation failures safe to expose in the UI."""
+    """Base de los errores de validación CSV que pueden mostrarse de forma segura en la UI."""
 
 
 class UnsupportedFraCsvSchemaError(FraCsvError):
@@ -751,7 +751,7 @@ def parse_fra_percentage(
 
 
 def _split_percentage_footnote(value: str) -> tuple[str, str]:
-    """Separate FRA significance markers appended to an otherwise numeric value."""
+    """Separa los marcadores de significación FRA añadidos a un valor numérico."""
     clean = str(value or "").strip()
     if not clean:
         return clean, ""
@@ -1056,7 +1056,7 @@ def _note_for_percentage(raw_percentage: str, metadata: FraCsvMetadata) -> str:
 
 
 def extract_fra_survey_year(source_text: object) -> int | None:
-    """Return one unambiguous, plausible four-digit FRA survey year."""
+    """Devuelve un único año de encuesta FRA plausible, expresado con cuatro cifras."""
     matches = {
         int(match)
         for match in re.findall(r"(?<!\d)(?:19|20|21)\d{2}(?!\d)", _clean(source_text))

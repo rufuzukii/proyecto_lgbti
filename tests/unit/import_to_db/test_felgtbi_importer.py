@@ -17,6 +17,20 @@ from app.modules.imports.felgtbi.pipeline import parse_felgtbi_pdf_bytes
 from app.modules.imports.felgtbi.storage import supabase_s3_client
 
 
+def test_spacing_repair_preserves_percentage_and_sentence_boundaries() -> None:
+    source = "Una amplia mayoría percibe una amenaza por los discursos de odio (78%).\n"
+    broken = source.replace(" ", "")
+    assert repair_block_text_spacing(broken, source) == source
+    assert repair_block_text_spacing(source, source) == source
+
+
+def test_spacing_repair_preserves_opening_punctuation_without_adjacent_text() -> None:
+    source = "Título anterior.\n¿Percibe una amenaza a sus derechos?\nOtra sección."
+    assert repair_block_text_spacing("¿Percibeunaamenazaasusderechos?", source) == (
+        "¿Percibe una amenaza a sus derechos?"
+    )
+
+
 def test_felgtbi_text_pages_extract_percentages_as_indicator_documents() -> None:
     pages = [
         {
@@ -217,14 +231,11 @@ def test_pdf_page_extraction_keeps_image_bbox_without_extracting_image_bytes(mon
 
 
 def test_block_spacing_is_restored_from_the_same_page_text_layer() -> None:
-    # Arrange
     broken = "La distribución dela población LGTBI+en función desu identidad"
     page_text = "La distribución\nde\nla población\nLGTBI+\nen función\nde\nsu identidad."
 
-    # Act
     restored = repair_block_text_spacing(broken, page_text)
 
-    # Assert
     assert " ".join(restored.split()) == (
         "La distribución de la población LGTBI+ en función de su identidad"
     )
@@ -406,7 +417,6 @@ def test_supabase_s3_client_is_reused_with_bounded_timeouts(monkeypatch) -> None
 
 
 def test_transient_figure_upload_is_retried_without_changing_storage_identity(monkeypatch) -> None:
-    # Arrange
     calls: list[str] = []
 
     def fake_upload(**kwargs):
@@ -421,7 +431,6 @@ def test_transient_figure_upload_is_retried_without_changing_storage_identity(mo
     )
     monkeypatch.setattr("app.modules.imports.felgtbi.importer.time.sleep", lambda _value: None)
 
-    # Act
     result = _upload_figure_with_retries(
         image_bytes=b"image",
         storage_path="2026/report/figure.webp",
@@ -429,7 +438,6 @@ def test_transient_figure_upload_is_retried_without_changing_storage_identity(mo
         checksum="abc",
     )
 
-    # Assert
     assert result["status"] == "reused"
     assert calls == ["2026/report/figure.webp"] * 3
 

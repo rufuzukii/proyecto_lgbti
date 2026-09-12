@@ -1,3 +1,12 @@
+"""Genera el recurso geográfico europeo mediante una ejecución manual como módulo."""
+
+# Ejecutar solo cuando sea necesario regenerar europe_countries.geojson: al cambiar
+# el catálogo de países, actualizar los límites de Natural Earth, ajustar el recorte
+# o el detalle de los contornos, o recuperar un archivo ausente o dañado.
+# No es necesario al actualizar estadísticas, generar informes ni desplegar la
+# aplicación: en producción se utiliza el GeoJSON ya generado.
+# Comando: python -m app.shared.data.build_europe_geojson
+
 from __future__ import annotations
 
 import argparse
@@ -14,14 +23,14 @@ from app.shared.data.geography import ISO2_TO_ISO3
 NATURAL_EARTH_URL = (
     "https://naturalearth.s3.amazonaws.com/50m_cultural/ne_50m_admin_0_countries.zip"
 )
-DEFAULT_OUTPUT = Path("src/app/shared/data/resources/europe_countries.geojson")
-# Keep the European parts of transcontinental countries and remove overseas
-# territories that would otherwise force Plotly to a world-wide extent.
+DEFAULT_OUTPUT = Path(__file__).resolve().parent / "resources" / "europe_countries.geojson"
+# Se conservan las partes europeas de países transcontinentales y se retiran
+# territorios de ultramar que obligarían a Plotly a mostrar una extensión mundial.
 EUROPE_WEB_BOUNDS = (-32.0, 25.0, 65.0, 82.0)
 
 
 def build_europe_geojson(source: str, output: Path, *, tolerance: float = 0.02) -> None:
-    """Build the web map geometry from Natural Earth using the app ISO catalogue."""
+    """Construye la geometría web desde Natural Earth con el catálogo ISO de la aplicación."""
     source_frame = gpd.read_file(f"zip://{source}")
     countries_by_iso3 = {
         str(row.ADM0_A3).strip().upper(): row for _, row in source_frame.iterrows()
@@ -46,8 +55,8 @@ def build_europe_geojson(source: str, output: Path, *, tolerance: float = 0.02) 
     europe.geometry = europe.geometry.simplify(tolerance, preserve_topology=True)
     geometry_values = europe.geometry.to_numpy()
     europe.geometry = shapely.set_precision(geometry_values, grid_size=0.00001)
-    # Plotly's spherical renderer expects clockwise exterior rings. Enforce the
-    # orientation so a country is not interpreted as a hole in the world.
+    # Plotly interpreta los anillos exteriores en sentido horario. Se impone esa
+    # orientación para que un país no se dibuje como un hueco en el resto del mundo.
     europe.geometry = shapely.orient_polygons(europe.geometry.to_numpy(), exterior_cw=True)
     if europe.geometry.is_empty.any() or not europe.geometry.is_valid.all():
         raise ValueError("Geometry simplification produced empty or invalid countries")
@@ -72,7 +81,7 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="rainbowlens-geodata-") as directory:
         archive = Path(directory) / "ne_50m_admin_0_countries.zip"
-        # The source is a fixed HTTPS Natural Earth endpoint, never user input.
+        # El origen es un endpoint HTTPS fijo de Natural Earth, no una entrada del usuario.
         urllib.request.urlretrieve(NATURAL_EARTH_URL, archive)  # nosec B310
         build_europe_geojson(str(archive), args.output, tolerance=args.tolerance)
 

@@ -35,7 +35,7 @@ _LIST_LABELS = {
 
 
 class CountryStatusMarkdownError(ValueError):
-    """Raised when the country-context Markdown does not match the expected schema."""
+    """El Markdown de contexto de países no cumple el esquema esperado."""
 
 
 def parse_country_status_markdown(path: str | Path) -> list[dict[str, Any]]:

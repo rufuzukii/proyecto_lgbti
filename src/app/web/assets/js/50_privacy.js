@@ -78,7 +78,7 @@
         }
       });
     } catch (_error) {
-      // Storage can be unavailable in privacy-restricted contexts.
+      // El navegador puede impedir el acceso al almacenamiento por motivos de privacidad.
     }
   }
 

@@ -31,7 +31,6 @@ def _app(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_registration_automatically_starts_the_session(monkeypatch) -> None:
-    # Arrange
     created = UserRead(
         id=USER_ID,
         username="E2E user",
@@ -47,7 +46,6 @@ def test_registration_automatically_starts_the_session(monkeypatch) -> None:
     )
     client = _app(monkeypatch).server.test_client()
 
-    # Act
     registration = client.post(
         "/auth/register",
         data={
@@ -60,7 +58,6 @@ def test_registration_automatically_starts_the_session(monkeypatch) -> None:
     )
     protected_page = client.get("/es/perfil")
 
-    # Assert
     assert registration.headers["Location"].endswith("/es/perfil")
     assert protected_page.status_code == 200
     with client.session_transaction() as user_session:
@@ -69,7 +66,6 @@ def test_registration_automatically_starts_the_session(monkeypatch) -> None:
 
 
 def test_admin_management_is_enforced_server_side_and_updates_a_user(monkeypatch) -> None:
-    # Arrange
     current = {"role": UserRole.COMMON}
     updates: list[dict[str, object]] = []
     monkeypatch.setattr(
@@ -93,7 +89,6 @@ def test_admin_management_is_enforced_server_side_and_updates_a_user(monkeypatch
         data={"csrf_token": "valid", "email": "admin@example.test", "password": "password"},
     )
 
-    # Act
     denied = client.post("/admin/users", data={"csrf_token": "valid", "action": "update"})
     current["role"] = UserRole.ADMIN
     client.post("/auth/logout", data={"csrf_token": "valid"})
@@ -115,7 +110,6 @@ def test_admin_management_is_enforced_server_side_and_updates_a_user(monkeypatch
         },
     )
 
-    # Assert
     assert "error=access_denied" in denied.headers["Location"]
     assert "status=user_updated" in accepted.headers["Location"]
     assert updates[0]["actor_user_id"] == USER_ID
@@ -212,13 +206,10 @@ def test_admin_ajax_update_failure_returns_json_for_an_in_place_retry(monkeypatc
 
 
 def test_unknown_route_is_a_localized_http_404(monkeypatch) -> None:
-    # Arrange
     client = _app(monkeypatch).server.test_client()
 
-    # Act
     response = client.get("/route-that-does-not-exist?lang=en")
 
-    # Assert
     assert response.status_code == 404
     assert "404 — Page not found" in response.get_data(as_text=True)
 

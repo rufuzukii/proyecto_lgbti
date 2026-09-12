@@ -73,7 +73,7 @@ src/app/
 ├── shared/          Componentes y lógica de datos reutilizada
 └── web/             Factory Dash, rutas, navegación y assets
 tests/               Pruebas unitarias, integración, E2E lógico y humo
-scripts/             Utilidades de mantenimiento verificables
+scripts/             Preparación y arranque del despliegue en Render
 render.yaml          Definición del servicio de producción
 wsgi.py              Entrada WSGI para Gunicorn
 ```
@@ -93,32 +93,41 @@ local como en Render.
 
 ### Exportación de gráficas para informes
 
-En local, Kaleido utiliza un Chrome o Chromium ya instalado y detectable. El diagnóstico
-reutilizable comprueba las versiones, el navegador, una figura mínima, el batch de Plotly y el
-helper de RainbowLens:
+Las figuras se preparan con Plotly y `ReportChartRenderer`, en
+`src/app/modules/reports/static_charts.py`, dibuja sus datos y elementos como imágenes PNG
+mediante Pillow. Los mapas utilizan las geometrías de `europe_countries.geojson`.
+
+`PDFExporter`, en `src/app/modules/reports/pdf_exporter.py`, compone el informe con ReportLab
+e incorpora las imágenes. Después, PyMuPDF actualiza la apariencia de los campos de texto
+editables para que su contenido se vea y se imprima correctamente.
+
+La generación de informes se realiza íntegramente en Python. Las pruebas de integración
+comprueban la creación de PNG y de informes PDF sociales y legales, con países seleccionados
+y con todos los países:
 
 ```bash
-python scripts/check_chart_export.py
+python -m pytest tests/integration/test_chart_export_production_like.py
 ```
 
-En Render se mantiene el runtime nativo de Python. `scripts/render_build.sh` descarga la versión
-de Chrome for Testing fijada por Choreographer dentro de `$VENV_ROOT/kaleido-chrome`, valida el
-binario, sus librerías y una ejecución headless, y ejecuta el diagnóstico completo. El archivo
-creado queda dentro del artefacto desplegable del virtualenv. `scripts/render_start.sh` vuelve a
-calcular la misma ruta, exporta `BROWSER_PATH` —la variable que Choreographer 1.3 consume— y exige
-una exportación PNG real antes de iniciar Gunicorn. Un fallo en cualquiera de estos pasos cancela
-el despliegue.
+### Exportación del mapa legal y despliegue en Render
 
-La prueba de integración que incluye batch e informes social, legal y legal con todos los países
-es opt-in para CI o un entorno production-like:
+La utilidad Python `app.shared.data.legal_ranking.export_legal_map_png` dibuja el mapa y su ranking
+con Pillow y las geometrías locales, con una salida PNG de 2700 × 1800 píxeles. Conserva los
+textos, la escala de colores y los temas claro y oscuro de la figura. Las descargas desde la
+interfaz utilizan Plotly.js en el
+navegador del usuario; los informes utilizan el mecanismo descrito en la sección anterior.
 
-```bash
-RUN_BROWSER_INTEGRATION=1 python -m pytest tests/integration/test_chart_export_production_like.py
-```
+En Render se mantiene el runtime nativo de Python. `scripts/render_build.sh` instala la aplicación
+y sus dependencias desde `pyproject.toml`. `scripts/render_start.sh` inicia Gunicorn.
+No se instala ni se configura un navegador en el servidor para las exportaciones.
 
 ## Configuración
 
 La configuración local puede cargarse desde un archivo `.env` no versionado. En Render, los mismos nombres se configuran desde el panel de variables de entorno.
+
+Para una instalación nueva, copia `.env.example` como `.env` y completa las credenciales de tus
+servicios. La plantilla incluye valores locales y opciones de almacenamiento, API y privacidad.
+Puedes incluir `.env.example` en la entrega del código fuente; conserva el `.env` real en privado.
 
 Variables principales:
 

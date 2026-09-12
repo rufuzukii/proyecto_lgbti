@@ -1,6 +1,6 @@
 /*
- * RainbowLens shared visual language.
- * Page files keep layout-specific behaviour; equivalent visual primitives live here.
+ * Lenguaje visual compartido de RainbowLens.
+ * Cada página conserva su layout; las reglas visuales equivalentes se reúnen aquí.
  */
 
 .app-page.app-page {
@@ -39,7 +39,7 @@
   background: var(--color-bg);
 }
 
-/* Page headers */
+/* Cabeceras de página */
 .app-page-header {
   background: transparent;
   border: 0;
@@ -117,7 +117,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-/* Surfaces and chart containers */
+/* Superficies y contenedores de gráficas */
 .app-surface,
 .stats-panel,
 .trend-controls,
@@ -183,7 +183,7 @@
   padding: clamp(1rem, 2vw, 1.5rem);
 }
 
-/* Controls */
+/* Controles */
 .dash-dropdown-wrapper {
   background: transparent;
   min-height: 0;
@@ -222,7 +222,7 @@ select:disabled {
   opacity: 0.62;
 }
 
-/* Buttons: utility variants and existing component aliases */
+/* Botones: variantes de utilidad y alias de componentes existentes */
 .app-button,
 .auth-button,
 .reports-primary-button,
@@ -329,7 +329,7 @@ select:disabled {
   transform: translateY(1px);
 }
 
-/* Feedback, loading and empty states */
+/* Mensajes, carga y estados vacíos */
 .app-alert,
 .auth-message,
 .didactica-feedback,
@@ -380,7 +380,7 @@ select:disabled {
   border-top-color: var(--link-green);
 }
 
-/* Small structural clean-ups that previously introduced a second design system. */
+/* Ajustes estructurales que mantienen un único sistema visual. */
 .privacy-header.app-page-header,
 .about-header.app-page-header,
 .reports-header.app-page-header,

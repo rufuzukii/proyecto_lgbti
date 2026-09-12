@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -19,6 +18,7 @@ from app.modules.account.users.schemas import UserRole
 from app.modules.reports import builder as report_builder
 from app.modules.reports import page as reports_page
 from app.modules.reports import service as report_service
+from app.modules.reports import static_charts
 from app.modules.reports.builder import HRReportBuilder
 from app.modules.reports.models import (
     ReportConfiguration,
@@ -27,7 +27,6 @@ from app.modules.reports.models import (
 )
 from app.modules.reports.pdf_exporter import PDFExporter
 from app.modules.reports.static_charts import ReportChartRenderer
-from app.modules.statistics.chart_export_runtime import configure_chart_export_browser
 from app.web.application import _report_params
 
 
@@ -984,7 +983,8 @@ def test_pdf_export_contains_sections_charts_and_automatic_generation_date(
     assert all(rect.x1 <= printable_right + 1 for rect in image_rects)
 
 
-def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
+@pytest.mark.parametrize("failure_stage", [None, "chart", "pdf"])
+def test_generate_report_cleans_temporary_directory(monkeypatch, failure_stage) -> None:
     observed_roots: list[Path] = []
 
     monkeypatch.setattr(
@@ -1004,14 +1004,25 @@ def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
             path = Path(path_value)
             observed_roots.append(path.parent)
             path.write_bytes(b"png")
+            if failure_stage == "chart":
+                raise static_charts.ReportChartRenderError("test-render-failure")
             return path
 
     monkeypatch.setattr(report_service, "ReportChartRenderer", FakeExporter)
-    monkeypatch.setattr(
-        report_service.PDFExporter,
-        "export",
-        lambda _self, _content, _images: b"%PDF-test",
-    )
+
+    def export_pdf(_self, _content, _images):
+        if failure_stage == "pdf":
+            raise RuntimeError("test-pdf-failure")
+        return b"%PDF-test"
+
+    monkeypatch.setattr(report_service.PDFExporter, "export", export_pdf)
+
+    if failure_stage:
+        with pytest.raises(report_service.ReportGenerationError):
+            report_service.generate_report_pdf(_configuration())
+        assert observed_roots
+        assert all(not root.exists() for root in observed_roots)
+        return
 
     generated = report_service.generate_report_pdf(_configuration())
 
@@ -1023,6 +1034,20 @@ def test_generate_report_cleans_temporary_directory(monkeypatch) -> None:
     second = report_service.generate_report_pdf(_configuration())
     assert second.pdf_bytes == b"%PDF-test"
     assert all(not root.exists() for root in observed_roots)
+
+
+def test_report_closes_image_when_drawing_fails(monkeypatch, tmp_path: Path) -> None:
+    allocated = Image.new("RGB", (100, 100))
+    monkeypatch.setattr(static_charts.Image, "new", lambda *_args: allocated)
+
+    def fail_drawing(*_args):
+        raise ValueError("test-drawing-failure")
+
+    monkeypatch.setattr(static_charts, "_draw_title", fail_drawing)
+    with pytest.raises(static_charts.ReportChartRenderError):
+        ReportChartRenderer().write("ranking", go.Figure(), tmp_path / "failed.png")
+    with pytest.raises(ValueError, match="closed image"):
+        allocated.getpixel((0, 0))
 
 
 def test_preview_and_pdf_build_each_report_figure_only_once(monkeypatch) -> None:
@@ -1488,7 +1513,7 @@ def test_report_route_params_keep_only_lightweight_whitelisted_filters() -> None
     }
 
 
-def test_render_dependencies_install_plotly_chrome() -> None:
+def test_render_installs_application_and_starts_gunicorn() -> None:
     root = Path(__file__).resolve().parents[3]
     render_config = (root / "render.yaml").read_text(encoding="utf-8")
 
@@ -1497,11 +1522,7 @@ def test_render_dependencies_install_plotly_chrome() -> None:
 
     assert "bash scripts/render_build.sh" in render_config
     assert "bash scripts/render_start.sh" in render_config
-    assert 'browser_root="${venv_root}/kaleido-chrome"' in build_script
-    assert 'plotly_get_chrome -y --path "${browser_root}"' in build_script
-    assert 'test -x "${BROWSER_PATH}"' in build_script
-    assert "python scripts/check_chart_export.py" in build_script
-    assert "check_chart_export.py" not in start_script
+    assert "python -m pip install -e ." in build_script
     assert "exec gunicorn wsgi:server" in start_script
     assert "healthCheckPath: /health" in render_config
     assert "type: keyvalue" not in render_config
@@ -1509,22 +1530,6 @@ def test_render_dependencies_install_plotly_chrome() -> None:
     assert "LOCAL_CACHE_MAX_TOTAL_BYTES" in render_config
     assert 'value: "256"' in render_config
     assert 'value: "16777216"' in render_config
-
-
-def test_chart_export_runtime_finds_bundled_chrome_when_environment_path_is_stale(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    browser = tmp_path / "kaleido-chrome" / "chrome-linux64" / "chrome"
-    browser.parent.mkdir(parents=True)
-    browser.write_bytes(b"chrome")
-    browser.chmod(0o755)
-    monkeypatch.setenv("BROWSER_PATH", "/missing/old-render-chrome")
-
-    configured = configure_chart_export_browser(tmp_path)
-
-    assert configured.path == browser.resolve()
-    assert os.environ["BROWSER_PATH"] == str(browser.resolve())
 
 
 def _walk(component):

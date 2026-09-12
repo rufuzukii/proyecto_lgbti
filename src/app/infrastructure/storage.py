@@ -12,7 +12,7 @@ DEFAULT_DIDACTIC_SLIDES_BUCKET = "slideshow-didactics"
 
 
 def supabase_public_object_url(storage_path: object, *, bucket: str | None = None) -> str:
-    """Build a public Supabase Storage URL without persisting that derived value."""
+    """Construye una URL pública de Supabase Storage sin persistir ese valor derivado."""
     clean_path = _clean_storage_path(storage_path)
     supabase_url = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
     clean_bucket = (
@@ -36,7 +36,7 @@ def supabase_public_object_url(storage_path: object, *, bucket: str | None = Non
 
 
 def supabase_public_image_url(storage_path: object, *, bucket: str | None = None) -> str:
-    """Backward-compatible alias for public image consumers."""
+    """Mantiene el alias de compatibilidad para los consumidores de imágenes públicas."""
     return supabase_public_object_url(storage_path, bucket=bucket)
 
 
@@ -47,7 +47,7 @@ def supabase_s3_client(
     secret_key: str,
     region: str,
 ) -> Any:
-    """Return the shared bounded-timeout Supabase S3 client."""
+    """Devuelve el cliente S3 de Supabase compartido, con tiempos de espera acotados."""
     import boto3
     from botocore.config import Config
 
@@ -68,7 +68,7 @@ def supabase_s3_client(
 
 
 def supabase_s3_config(*, bucket: str) -> dict[str, str] | None:
-    """Read shared Supabase S3 configuration without exposing credentials."""
+    """Lee la configuración S3 de Supabase sin exponer credenciales."""
     endpoint = os.getenv("SUPABASE_S3_ENDPOINT", "").strip()
     access_key = os.getenv("SUPABASE_S3_ACCESS_KEY", "").strip()
     secret_key = os.getenv("SUPABASE_S3_SECRET_KEY", "").strip()

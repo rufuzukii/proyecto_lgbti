@@ -1,1 +1,1 @@
-"""Account and privacy module."""
+"""Módulo de cuenta y privacidad."""

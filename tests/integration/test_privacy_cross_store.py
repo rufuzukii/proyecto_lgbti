@@ -49,14 +49,11 @@ class _Connection:
 def test_postgres_deletion_removes_private_imports_and_user_in_one_transaction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     connection = _Connection()
     monkeypatch.setattr(service, "postgres_connection", lambda **_kwargs: connection)
 
-    # Act
     result = service._delete_postgres_account(USER_ID)
 
-    # Assert
     assert result == {"import_logs": 2, "user_profile": 1}
     assert connection.committed is True
     assert next(i for i, query in enumerate(connection.queries) if "import_logs" in query) < next(
@@ -67,7 +64,6 @@ def test_postgres_deletion_removes_private_imports_and_user_in_one_transaction(
 def test_mongo_deletion_removes_private_content_and_account_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     deleted_queries: dict[str, list[dict[str, str]]] = {}
 
     class _Collection:
@@ -80,11 +76,9 @@ def test_mongo_deletion_removes_private_content_and_account_state(
 
     monkeypatch.setattr(service, "get_mongo_collection", lambda name: _Collection(name))
 
-    # Act
     content = service._delete_private_mongo_data(USER_ID)
     security = service._delete_security_state(USER_ID)
 
-    # Assert
     assert content == {"teacher_games": 1}
     assert security == {"account_security": 1}
     assert deleted_queries[service.GAMES_COLLECTION] == [
@@ -94,6 +88,6 @@ def test_mongo_deletion_removes_private_content_and_account_state(
 
 
 def test_supabase_stage_is_explicitly_idempotent_when_no_personal_objects_exist() -> None:
-    # Supabase contains public FELGTBI+ figures only in the current application.
+    # En la aplicación actual, Supabase solo contiene figuras públicas de FELGTBI+.
     assert service._delete_personal_supabase_objects(USER_ID) == 0
     assert service._delete_personal_supabase_objects(USER_ID) == 0

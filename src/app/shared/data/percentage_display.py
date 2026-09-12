@@ -16,11 +16,10 @@ def normalize_percentage(
     logger: Any | None = None,
     context: dict[str, Any] | None = None,
 ) -> float | None:
-    """Normalize percentage points stored by FRA and ILGA on a 0-100 scale.
+    """Normaliza puntos porcentuales FRA e ILGA almacenados en una escala de 0 a 100.
 
-    Decimal values such as ``0.42`` remain ``0.42`` percentage points. They are
-    never assumed to be proportions because the persisted fields already
-    represent percentages.
+    Un decimal como ``0.42`` sigue siendo ``0.42`` puntos porcentuales. No se interpreta como
+    proporción porque los campos persistidos ya representan porcentajes.
     """
     if is_missing_percentage_value(value):
         return None
@@ -61,7 +60,7 @@ def coerce_percentage(
     logger: Any | None = None,
     context: dict[str, Any] | None = None,
 ) -> float | None:
-    """Backward-compatible alias for the centralized percentage normalizer."""
+    """Alias de compatibilidad para el normalizador central de porcentajes."""
     return normalize_percentage(value, logger=logger, context=context)
 
 
@@ -71,7 +70,7 @@ def normalize_percentage_values(
     logger: Any | None = None,
     context: dict[str, Any] | None = None,
 ) -> list[float | None]:
-    """Normalize a batch and emit at most one contextual warning for it."""
+    """Normaliza un lote y emite como máximo un aviso contextual."""
     normalized: list[float | None] = []
     invalid_values: Counter[str] = Counter()
     for value in values:

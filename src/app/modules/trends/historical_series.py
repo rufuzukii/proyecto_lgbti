@@ -12,7 +12,7 @@ GLOBAL_RANKING_CATEGORY = "Ranking total"
 
 
 def load_ilga_global_history() -> tuple[HistoricalPoint, ...]:
-    """Load every overall Rainbow Map score with one projected MongoDB aggregation."""
+    """Carga las puntuaciones globales Rainbow Map con una agregación MongoDB proyectada."""
     rows = get_ilga_history_rows(GLOBAL_RANKING_CATEGORY, None)
     points: list[HistoricalPoint] = []
     for row in rows:

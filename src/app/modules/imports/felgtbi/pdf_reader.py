@@ -8,7 +8,7 @@ from app.modules.imports.felgtbi.models import PdfExtractionError
 
 
 def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
-    """Extract ordered text, style hints and visual regions without image payloads."""
+    """Extrae texto ordenado, estilos y regiones visuales sin cargar imágenes."""
     try:
         import fitz
     except ImportError as exc:
@@ -74,8 +74,8 @@ def extract_pdf_pages(pdf_bytes: bytes) -> list[dict[str, Any]]:
 
 
 def repair_block_text_spacing(block_text: str, page_text: str) -> str:
-    """Restore whitespace lost by PyMuPDF block extraction using the page text layer."""
-    target_key, _target_positions = _alnum_key_with_positions(block_text)
+    """Restaura espacios perdidos al extraer bloques de PyMuPDF mediante la capa de texto."""
+    target_key, target_positions = _alnum_key_with_positions(block_text)
     source_key, source_positions = _alnum_key_with_positions(page_text)
     if len(target_key) < 8 or not source_positions:
         return block_text
@@ -85,7 +85,11 @@ def repair_block_text_spacing(block_text: str, page_text: str) -> str:
     end = start + len(target_key) - 1
     if end >= len(source_positions):
         return block_text
-    restored = page_text[source_positions[start] : source_positions[end] + 1]
+    # La clave de comparación omite puntuación. Se conservan los límites del bloque
+    # para que una frase terminada en "(78%)." no quede truncada a "(78".
+    prefix = block_text[: target_positions[0]]
+    suffix = block_text[target_positions[-1] + 1 :]
+    restored = prefix + page_text[source_positions[start] : source_positions[end] + 1] + suffix
     return restored if restored.strip() else block_text
 
 

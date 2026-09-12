@@ -411,7 +411,7 @@ def register_statistics_callbacks(app: Dash) -> None:
         function(active) {
             if (!active || !active.query_token) return window.dash_clientside.no_update;
             const values = JSON.parse(active.query_token);
-            // Keep the last meaningful selection outside the page being remounted.
+            // Conserva la última selección válida fuera de la página que se vuelve a montar.
             if (values.length !== 9 || !values[1] || !values[2] || !values[3]) {
                 return window.dash_clientside.no_update;
             }
@@ -1034,8 +1034,8 @@ def register_statistics_callbacks(app: Dash) -> None:
             **get_fra_control_payload(code, category, survey.year),
             "language": language or "es",
         }
-        # FRA indicators and answers stay in their canonical English wording
-        # in both interfaces. Only category labels are localized.
+        # Los indicadores y respuestas FRA conservan su redacción canónica inglesa
+        # en ambas interfaces; solo se traducen las categorías.
         answers = build_dropdown_options(
             payload.get("answers") or [],
             context="statistics-fra-response",
@@ -1481,7 +1481,7 @@ def register_statistics_callbacks(app: Dash) -> None:
 
 
 def _restore_statistics_selection(controls: Component, selection: list[Any]) -> None:
-    """Hydrate options before values, so Dash cannot discard restored selections."""
+    """Carga opciones antes que valores para que Dash no descarte selecciones restauradas."""
     if not isinstance(selection, list) or len(selection) != 9:
         return
     (
@@ -1790,12 +1790,12 @@ def _combined_source_attribution(index: str) -> Component:
 
 
 def _deferred_graph_slot(graph_id: str) -> Component:
-    """Reserve layout space without mounting Plotly before a valid figure exists."""
+    """Reserva espacio sin montar Plotly hasta disponer de una figura válida."""
     return html.Div(id=f"{graph_id}-slot", className="stats-deferred-graph-slot")
 
 
 def _stable_map_graph_slot() -> Component:
-    """Keep the interactive map mounted while deferring its first Plotly figure."""
+    """Mantiene montado el mapa interactivo y aplaza su primera figura Plotly."""
     return html.Div(
         dcc.Graph(
             id="stats-map-graph",
@@ -1817,7 +1817,7 @@ def _map_graph_style(*, visible: bool) -> dict[str, str]:
 
 
 def _map_ranking_content(ranking: list[dict[str, Any]], language: str = "es") -> list[Component]:
-    """Build the map's accessible ranking from the already queried FRA rows."""
+    """Construye el ranking accesible del mapa con las filas FRA ya consultadas."""
     available = _map_ranking_rows(ranking, language)
     title = text("Ranking de países", "Country ranking", language=language)
     if not available:
@@ -1875,7 +1875,7 @@ def _map_ranking_content(ranking: list[dict[str, Any]], language: str = "es") ->
 
 
 def _map_ranking_rows(ranking: list[dict[str, Any]], language: str = "es") -> list[dict[str, Any]]:
-    """Return the localized valid rows shared by the map panel and its PNG export."""
+    """Devuelve las filas válidas localizadas que comparten el mapa y su exportación PNG."""
     language_index = 1 if language == "en" else 0
     available: list[dict[str, Any]] = []
     for row in ranking:
@@ -1932,7 +1932,7 @@ def _optional_graph_component(
     class_name: str = "stats-chart-graph",
     config: dcc.Graph.Config | None = None,
 ) -> Component | Any | None:
-    """Mount an optional graph, preserving partial updates and allowing cleanup."""
+    """Monta una gráfica opcional respetando las actualizaciones parciales y su limpieza."""
     if figure is no_update:
         return no_update
     if figure is None:
@@ -1947,7 +1947,7 @@ def _optional_graph_component(
 
 
 def _response_comparison_component(figure: Any, style: dict[str, str]) -> Component | Any:
-    """Render the country key outside Plotly's plotting canvas."""
+    """Representa la leyenda de países fuera del lienzo de Plotly."""
     if figure is no_update:
         return no_update
     legend_items: list[Component] = []
@@ -2547,7 +2547,7 @@ def _explicit_filter_value(
     options: list[dict[str, Any]],
     current: Any,
 ) -> Any:
-    """Keep an explicit value; never replace it with the first option."""
+    """Conserva un valor explícito; nunca lo sustituye por la primera opción."""
     if not _is_active_filter_type(filter_type):
         return option_value_or_none(options, "All")
     return option_value_or_none(options, current)
@@ -2593,7 +2593,7 @@ def _segmentation_catalog_options(
     available_options: list[dict[str, Any]],
     language: str = "es",
 ) -> list[dict[str, Any]]:
-    """Keep the FRA filter catalog stable while disabling unavailable entries."""
+    """Mantiene estable el catálogo de filtros FRA y desactiva las entradas no disponibles."""
     available = {
         str(option.get("value") or "")
         for option in available_options
@@ -2668,7 +2668,7 @@ def _segmentation_group(
 
 
 def _dashboard_component_outputs(outputs: tuple[Any, ...] | list[Any]) -> tuple[Any, ...]:
-    """Map render values to stable properties or first-mount visual graph slots."""
+    """Asigna resultados a propiedades estables o contenedores de gráficas recién montadas."""
     if len(outputs) != 33:
         raise ValueError("statistics_dashboard_output_contract_changed")
     return (
@@ -3736,7 +3736,7 @@ def _next_country_selection(
     data: dict[str, Any] | None,
     current: list[str] | None,
 ) -> list[str] | Any:
-    """Resolve map selection without coupling the state transition to Dash context."""
+    """Resuelve la selección del mapa sin acoplar la transición al contexto de Dash."""
     selected = _normalize_selected_countries(current)
     if triggered_id in {"stats-clear-countries", "stats-survey-select"}:
         return []
@@ -3802,7 +3802,7 @@ def _error_data_result() -> dict[str, Any]:
 
 
 def _browser_statistics_payload(result: dict[str, Any]) -> dict[str, Any]:
-    """Remove server-only intermediates before serializing data into ``dcc.Store``."""
+    """Retira datos intermedios exclusivos del servidor antes de serializar en ``dcc.Store``."""
     payload = dict(result)
     payload.pop("metrics", None)
     payload.pop("response_details_diagnostics", None)

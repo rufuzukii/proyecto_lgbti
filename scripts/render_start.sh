@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-venv_root="${VENV_ROOT:-$(python -c 'import sys; print(sys.prefix)')}"
-export BROWSER_PATH="${venv_root}/kaleido-chrome/chrome-linux64/chrome"
-
 exec gunicorn wsgi:server \
   --bind "0.0.0.0:${PORT}" \
   --worker-class gthread \

@@ -24,9 +24,9 @@ class FraResponseMetadata:
     help_key: str | None = None
 
 
-# Survey III was fielded in the EU-27 and the candidate countries Albania,
-# North Macedonia and Serbia.  Keep this edition-specific: a country's scope
-# must never be inferred from whether one particular query happens to return it.
+# Survey III abarca la UE-27 y los países candidatos Albania, Macedonia del Norte
+# y Serbia. El ámbito depende de la edición, no de que una consulta concreta
+# devuelva o no datos de un país.
 FRA_SURVEY_PARTICIPANT_COUNTRY_CODES_BY_YEAR: dict[int, frozenset[str]] = {
     2023: frozenset(
         {
@@ -62,7 +62,7 @@ FRA_SURVEY_PARTICIPANT_COUNTRY_CODES_BY_YEAR: dict[int, frozenset[str]] = {
             "SK",
         }
     ),
-    # Survey II contains the then EU-28 plus North Macedonia and Serbia.
+    # Survey II incluye la entonces UE-28, Macedonia del Norte y Serbia.
     2019: frozenset(
         {
             "AT",
@@ -110,7 +110,7 @@ RESPONSE_TYPES: dict[FraResponseType, FraResponseMetadata] = {
 
 
 def fra_survey_participant_codes(survey_year: int | None) -> frozenset[str] | None:
-    """Return verified edition scope, or ``None`` when no scope is registered."""
+    """Devuelve el ámbito verificado de una edición, o ``None`` si no está registrado."""
     if survey_year is None:
         return None
     return FRA_SURVEY_PARTICIPANT_COUNTRY_CODES_BY_YEAR.get(int(survey_year))
@@ -139,7 +139,7 @@ def detect_fra_response_type(
     question: Any = None,
     specific_category: Any = None,
 ) -> FraResponseType:
-    """Classify response semantics from values; titles are supporting metadata only."""
+    """Clasifica la semántica de respuesta por sus valores; los títulos solo aportan contexto."""
     keys = {normalize_fra_response_key(value) for value in responses}
     ranked_keys = {normalize_fra_response_key(value) for value in RANKED_REASON_RESPONSE_KEYS}
     if ranked_keys.issubset(keys):

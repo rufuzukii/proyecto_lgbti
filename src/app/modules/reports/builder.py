@@ -60,7 +60,7 @@ def _first_comparable_radar_country(payload: dict[str, Any]) -> str | None:
 
 
 class ReportBuilder:
-    """Build deterministic HR-oriented content from one analytical payload."""
+    """Construye contenido reproducible orientado a RR. HH. desde un único resultado analítico."""
 
     def build(
         self,
@@ -192,7 +192,7 @@ class ReportBuilder:
         dataset: ReportDataset,
         figure_consumer: ReportFigureConsumer,
     ) -> ReportContent:
-        """Build PDF content while each bounded chart page is exported immediately."""
+        """Construye el PDF exportando inmediatamente cada página acotada de gráficas."""
         return self.build(
             configuration,
             dataset,
@@ -202,7 +202,7 @@ class ReportBuilder:
         )
 
 
-# Compatibility alias for integrations that imported the original builder.
+# Alias de compatibilidad para las integraciones que importaban el constructor original.
 HRReportBuilder = ReportBuilder
 
 
@@ -1299,9 +1299,9 @@ def _chart_explanation(
         if key in {"scatter", "quadrants", "ranking_gap"}
         else []
     )
-    # A generic sentence repeated under every chart adds no evidence. Only use
-    # an observation when it is derived from the combined metrics; otherwise
-    # leave the editable field empty for the report author.
+    # Una frase genérica repetida bajo cada gráfica no aporta evidencia. Solo se
+    # incluye una observación derivada de las métricas combinadas; en caso contrario
+    # se deja el campo editable vacío para la persona que redacta el informe.
     observation = combined_notes[0] if combined_notes else ""
     return what_shows, how_to_read, observation
 

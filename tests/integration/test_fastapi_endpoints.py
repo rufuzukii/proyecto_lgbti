@@ -16,23 +16,19 @@ ADMIN_KEY = "a" * 32
 
 @pytest.fixture
 def api_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    # Arrange
     monkeypatch.setenv("APP_ENV", "local")
     monkeypatch.setenv("LOCAL_MODE", "true")
     monkeypatch.setenv("API_KEYS", GENERAL_KEY)
     monkeypatch.setenv("ADMIN_API_KEYS", ADMIN_KEY)
 
-    # Act
     app = create_api_app()
 
-    # Assert
     return TestClient(app)
 
 
 def test_fastapi_health_uses_the_real_health_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     report = {
         "status": "unavailable",
         "services": {
@@ -43,10 +39,8 @@ def test_fastapi_health_uses_the_real_health_contract(
     monkeypatch.setattr(api_module, "build_health_report", lambda: report)
     client = TestClient(create_api_app())
 
-    # Act
     response = client.get("/health")
 
-    # Assert
     assert response.status_code == 503
     assert response.json() == report
     assert "uri" not in response.text.casefold()
@@ -56,7 +50,6 @@ def test_report_endpoint_generates_a_pdf_from_validated_input(
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     captured = []
 
     def fake_generate(configuration):
@@ -65,7 +58,6 @@ def test_report_endpoint_generates_a_pdf_from_validated_input(
 
     monkeypatch.setattr(reports_router, "generate_report_pdf", fake_generate)
 
-    # Act
     response = api_client.post(
         "/reports",
         headers={"X-API-Key": GENERAL_KEY},
@@ -77,7 +69,6 @@ def test_report_endpoint_generates_a_pdf_from_validated_input(
         },
     )
 
-    # Assert
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.headers["content-disposition"] == 'attachment; filename="informe.pdf"'
@@ -88,17 +79,14 @@ def test_report_endpoint_generates_a_pdf_from_validated_input(
 def test_report_endpoint_rejects_invalid_input_before_generation(
     api_client: TestClient,
 ) -> None:
-    # Arrange
     payload = {"source": "fra", "year": 1800}
 
-    # Act
     response = api_client.post(
         "/reports",
         headers={"X-API-Key": GENERAL_KEY},
         json=payload,
     )
 
-    # Assert
     assert response.status_code == 422
     assert response.json() == {"detail": "invalid_request"}
 
@@ -107,31 +95,26 @@ def test_report_endpoint_hides_generation_details(
     api_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Arrange
     monkeypatch.setattr(
         reports_router,
         "generate_report_pdf",
         lambda _configuration: (_ for _ in ()).throw(ReportGenerationError("mongo secret")),
     )
 
-    # Act
     response = api_client.post(
         "/reports",
         headers={"X-API-Key": GENERAL_KEY},
         json={"source": "fra"},
     )
 
-    # Assert
     assert response.status_code == 422
     assert response.json() == {"detail": "report_generation_failed"}
     assert "mongo secret" not in response.text
 
 
 def test_fastapi_has_no_duplicate_application_routes(api_client: TestClient) -> None:
-    # Arrange
     ignored_paths = {"/docs", "/docs/oauth2-redirect", "/openapi.json", "/redoc"}
 
-    # Act
     registered: list[tuple[str, str]] = []
 
     def collect_routes(route: object) -> None:
@@ -146,7 +129,6 @@ def test_fastapi_has_no_duplicate_application_routes(api_client: TestClient) -> 
 
     collect_routes(api_client.app)
 
-    # Assert
     assert {
         ("GET", "/health"),
         ("POST", "/reports"),

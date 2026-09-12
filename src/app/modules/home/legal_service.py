@@ -12,7 +12,7 @@ HOME_LEGAL_CACHE_TIMEOUT_SECONDS = 24 * 60 * 60
 
 
 def get_home_legal_country_detail(country_code: str | None) -> dict[str, Any] | None:
-    """Return one ILGA/Rainbow Map 2026 country without coupling it to the map state."""
+    """Obtiene el detalle legal de un país de ILGA/Rainbow Map 2026 sin depender del mapa."""
     clean_code = normalize_country_code(country_code)
     if not clean_code:
         return None

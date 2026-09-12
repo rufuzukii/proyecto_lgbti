@@ -28,7 +28,9 @@ def _validate_api_key(api_key: str | None, allowed: set[str]) -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="api_key_not_configured",
         )
-    if not api_key or not any(hmac.compare_digest(api_key, key) for key in allowed):
+    if not api_key or not any(
+        hmac.compare_digest(api_key.encode("utf-8"), key.encode("utf-8")) for key in allowed
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid_api_key",

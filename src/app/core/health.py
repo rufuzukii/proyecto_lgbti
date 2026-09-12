@@ -23,7 +23,7 @@ def register_health_endpoint(app: Flask) -> None:
 
 
 def build_health_report() -> HealthReport:
-    """Return a liveness report without querying PostgreSQL, MongoDB or Supabase."""
+    """Informa de la actividad del proceso sin consultar PostgreSQL, MongoDB ni Supabase."""
     cache_status = _as_service_status(local_cache_health_status())
     services: dict[str, ServiceStatus] = {
         "application": "ok",

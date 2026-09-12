@@ -243,11 +243,11 @@ def ilga_document_to_dataframe(document: dict[str, Any] | None) -> pd.DataFrame:
 
 
 def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
-    """Normalize projected ILGA country rows into one canonical analysis frame.
+    """Normaliza filas ILGA proyectadas en una tabla analítica canónica.
 
-    Duplicate resolution is deterministic: the newest Mongo document id wins;
-    exact duplicates inside that document collapse to one row; conflicting
-    values inside the winning document become missing instead of being averaged.
+    Prevalece el documento MongoDB con el id más reciente. Sus duplicados exactos se agrupan;
+    los valores contradictorios dentro del documento elegido se consideran ausentes y no se
+    promedian.
     """
     normalized: list[dict[str, Any]] = []
     discarded: dict[str, int] = {
@@ -377,7 +377,7 @@ def ilga_analysis_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
 def _resolve_ilga_analysis_rows(
     normalized: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], int, int]:
-    """Resolve duplicate ILGA rows without constructing one DataFrame per group."""
+    """Resuelve duplicados ILGA sin construir un DataFrame por grupo."""
     groups: dict[tuple[Any, ...], list[tuple[int, dict[str, Any]]]] = {}
     for position, row in enumerate(normalized):
         key = (
@@ -503,7 +503,7 @@ def build_fra_filter_value_options(
 
 
 def build_fra_control_payload(document: dict[str, Any] | None) -> dict[str, Any]:
-    """Derive all FRA control options without constructing a pandas DataFrame."""
+    """Calcula todas las opciones de controles FRA sin construir un DataFrame."""
     if not isinstance(document, dict):
         return {
             "answers": [],
@@ -647,7 +647,7 @@ def get_combined_statistics_analysis(
     *,
     fra_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return one cached FRA/ILGA analytical dataset for all combined visuals."""
+    """Devuelve un único conjunto analítico FRA/ILGA en caché para las vistas combinadas."""
     started_at = time.perf_counter()
     query = normalize_fra_query(query)
     ilga_year = nearest_ilga_year(query.year, get_ilga_years())
@@ -865,11 +865,10 @@ def _prepare_fra_response_details(
     *,
     effective_answer: str | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
-    """Build the single canonical dataframe used by response details.
+    """Construye el DataFrame canónico utilizado por el detalle de respuestas.
 
-    The country universe is derived from the same year and sociodemographic
-    scope as the detail rows. It deliberately ignores map selection and keeps
-    rows with a missing percentage so absence is never converted to zero.
+    Los países proceden del mismo año y ámbito sociodemográfico que el detalle. Se ignora la
+    selección del mapa y se conservan los porcentajes ausentes para no convertirlos en cero.
     """
     rows_loaded = len(source_dataframe)
     countries_before = int(source_dataframe["iso"].replace("", pd.NA).nunique())
@@ -942,7 +941,7 @@ def _prepare_fra_response_details(
 
 
 def _fra_country_universe(dataframe: pd.DataFrame, year: int | None) -> pd.DataFrame:
-    """Canonical country universe represented by the supplied filtered rows."""
+    """Devuelve el conjunto canónico de países representado por las filas filtradas."""
     universe = dataframe.copy()
     if year is not None and "year" in universe:
         universe = universe[(universe["year"].isna()) | (universe["year"] == year)]
@@ -1081,12 +1080,11 @@ def _server_cache_get_or_compute(
 def get_experience_legal_radar(
     query: ExperienceLegalRadarQuery,
 ) -> dict[str, Any]:
-    """Build comparable FRA/ILGA dimensions without per-country queries.
+    """Construye dimensiones comparables FRA/ILGA sin consultas por país.
 
-    FRA scores use the stored final percentages. Only indicators explicitly
-    marked ``invert`` are transformed as ``100 - percentage``. ILGA legal
-    scores are the awarded criterion points divided by their available maximum
-    weight, expressed on a 0-100 scale.
+    FRA utiliza los porcentajes finales almacenados. Solo los indicadores marcados ``invert``
+    aplican ``100 - percentage``. La puntuación legal ILGA divide los puntos concedidos por el
+    peso máximo disponible, en una escala de 0 a 100.
     """
     identity = {
         "mapping_version": RADAR_MAPPING_VERSION,
@@ -1513,10 +1511,10 @@ def filter_fra_comparison_dataframe(
     dataframe: pd.DataFrame,
     query: FraStatisticsQuery,
 ) -> pd.DataFrame:
-    """Return every response using a comparable scope for each response label.
+    """Devuelve todas las respuestas con un ámbito comparable para cada etiqueta.
 
-    Some FRA questions store their aggregate response labels under different
-    technical filter scopes. Selecting one response must not hide the others.
+    Algunas preguntas FRA guardan respuestas agregadas bajo filtros técnicos distintos.
+    Seleccionar una respuesta no debe ocultar las demás.
     """
     filtered = dataframe.copy()
     if query.year is not None and "year" in filtered:
@@ -1940,7 +1938,7 @@ def _complete_country_ranking(
     *,
     countries: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Enrich one European result set once, retaining countries without values."""
+    """Enriquece una sola vez el resultado europeo y conserva los países sin valores."""
     universe = source_dataframe[["country", "iso"]].copy()
     universe["iso"] = universe["iso"].fillna("").astype(str).str.upper()
     universe = universe[

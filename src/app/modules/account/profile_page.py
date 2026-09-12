@@ -284,8 +284,8 @@ def _privacy_zone(
         user_id = str(getattr(current_user, "get_id", lambda: "")() or "")
         inventory = get_personal_data_inventory(user_id) if user_id else None
     except PrivacyStorageError:
-        # The deletion service performs the authoritative inventory again. A
-        # preview outage must not turn the complete dashboard into a 500 page.
+        # El servicio de eliminación vuelve a comprobar el inventario antes de actuar.
+        # Un fallo en la vista previa no debe convertir todo el perfil en un error 500.
         inventory = None
 
     content_items: list[Component] = []

@@ -92,7 +92,6 @@ from app.modules.reports.page import (
     register_reports_callbacks,
 )
 from app.modules.spain.page import build_spain_layout, register_spain_callbacks
-from app.modules.statistics.chart_export_runtime import log_chart_export_runtime
 from app.modules.statistics.page import (
     build_statistics_layout,
     register_statistics_callbacks,
@@ -175,7 +174,6 @@ class SessionUser(UserMixin):
 
 def create_dash_app() -> Dash:
     _configure_application_logging()
-    log_chart_export_runtime()
     config = get_app_config()
     assets_path = Path(__file__).resolve().parent / "assets"
     app = Dash(
@@ -227,8 +225,11 @@ def create_dash_app() -> Dash:
         Input("url", "pathname"),
         Input("url", "search"),
         State("statistics-selection", "data"),
+        State("spain-selection", "data"),
     )
-    def display_page(pathname: str | None, search: str | None, statistics_selection=None):
+    def display_page(
+        pathname: str | None, search: str | None, statistics_selection=None, spain_selection=None
+    ):
         params = _query_params(search)
         legacy_target = legacy_redirect_target(pathname)
         if legacy_target:
@@ -248,6 +249,8 @@ def create_dash_app() -> Dash:
             with localized_route_context(route.language):
                 if route.route_id == "statistics" and statistics_selection:
                     return build_statistics_layout(statistics_selection)
+                if route.route_id == "spain" and spain_selection:
+                    return build_spain_layout(spain_selection)
                 return _build_page_for_route(route.route_id, route.language, params, search)
         except DatabaseUnavailableError as exc:
             logger.warning(
@@ -436,26 +439,23 @@ def _build_page_for_route(
 
 def _build_application_shell() -> Component:
     config = get_privacy_policy_config()
-    footer_links: list[Component] = [
-        dcc.Link(
-            ui_text_component("privacy_title"),
-            href=route_path("privacy"),
-            refresh=False,
-            className="site-footer-link site-footer-link--privacy",
-        )
-    ]
-    footer_links.append(
-        html.A(
-            config.contact_email,
-            href=f"mailto:{config.contact_email}",
-            className="site-footer-link",
-        )
-    )
+    footer_links: list[Component] = [dcc.Link(
+        ui_text_component("privacy_title"),
+        href=route_path("privacy"),
+        refresh=False,
+        className="site-footer-link site-footer-link--privacy",
+    ), html.A(
+        config.contact_email,
+        href=f"mailto:{config.contact_email}",
+        className="site-footer-link",
+    )]
     return html.Div(
         [
             dcc.Location(id="url", refresh="callback-nav"),
             dcc.Store(id="app-language-store", storage_type="local"),
             dcc.Store(id="statistics-selection", storage_type="session"),
+            dcc.Store(id="spain-selection", storage_type="session"),
+            dcc.Store(id="trends-selection", storage_type="session"),
             dcc.Store(id="app-route-config", data=client_route_config()),
             dcc.Interval(id="app-language-init", interval=150, max_intervals=1),
             html.Button(
@@ -527,7 +527,7 @@ def _register_client_preferences_callbacks(app: Dash) -> None:
     app.clientside_callback(
         """
         function(initTick, nClicks, pathname, search, hash, routeConfig) {
-            // Match the central route helper's trailing-slash normalization before lookup.
+            // Normaliza la barra final como el helper central antes de buscar la ruta.
             pathname = (pathname || "/").replace(/[/]+$/, "") || "/";
             const appState = window.RainbowLens || {};
             const state = appState.state || {};
@@ -1082,8 +1082,8 @@ def _insert_approved_import(
     if sources == {"felgtbi_estado_lgtbi"}:
         from app.modules.imports.felgtbi import insert_indicator_felgtbi_json
 
-        # Spain reads report sections from MongoDB; these are not FRA survey
-        # indicators and must not enter its relational catalog or validation.
+        # España lee secciones de informes en MongoDB. No son indicadores de encuesta
+        # FRA y no deben entrar en su catálogo relacional ni en su validación.
         insert_indicator_felgtbi_json(file_json, original_filename=original_filename)
         return "felgtbi"
     raise ValueError("unsupported_import_dataset")

@@ -54,7 +54,7 @@ def didactic_slides_bucket() -> str:
 
 
 def list_didactic_presentations() -> tuple[DidacticPresentation, ...]:
-    """List compatible presentation metadata without downloading object bodies."""
+    """Lista metadatos de presentaciones compatibles sin descargar el contenido de los objetos."""
     bucket = didactic_slides_bucket()
     config = supabase_s3_config(bucket=bucket)
     if config is None:

@@ -1,4 +1,4 @@
-"""Smoke coverage for application startup and critical routes."""
+"""Pruebas de arranque y rutas críticas de la aplicación."""
 
 from __future__ import annotations
 
@@ -78,16 +78,13 @@ def test_basic_fra_catalog_query_smoke(monkeypatch) -> None:
 
 
 def test_dash_layout_and_callback_registry_smoke(smoke_app) -> None:
-    # Arrange
     app, _record = smoke_app
     client = app.server.test_client()
 
-    # Act
     layout_response = client.get("/_dash-layout")
     dependencies_response = client.get("/_dash-dependencies")
     dependencies = dependencies_response.get_json()
 
-    # Assert
     assert layout_response.status_code == 200
     assert dependencies_response.status_code == 200
     assert isinstance(dependencies, list)

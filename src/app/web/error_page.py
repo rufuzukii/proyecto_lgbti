@@ -90,6 +90,7 @@ def build_error_layout(
     include_navigation: bool = True,
     language: str | None = None,
 ) -> Component:
+    """Construye el error localizado sin incluir detalles de excepciones internas."""
     copy = ERROR_PAGES[kind]
     selected_language = normalize_language(language)
     is_english = selected_language == "en"
@@ -133,6 +134,7 @@ def render_error_response(
     *,
     language: str = "es",
 ) -> tuple[str, int, dict[str, str]]:
+    """Devuelve HTML autónomo, estado HTTP y cabeceras incluso si Dash no puede cargar."""
     copy = ERROR_PAGES[kind]
     is_english = language == "en"
     code = copy.code_en if is_english else copy.code_es
@@ -170,6 +172,7 @@ def render_error_response(
 def build_database_unavailable_layout(
     error: DatabaseUnavailableError | None = None,
 ) -> Component:
+    """Conserva la firma de compatibilidad sin exponer datos de conexión al usuario."""
     del error
     return build_error_layout("503")
 
@@ -177,5 +180,6 @@ def build_database_unavailable_layout(
 def render_database_unavailable_response(
     error: DatabaseUnavailableError | None = None,
 ) -> tuple[str, int, dict[str, str]]:
+    """Devuelve un 503 genérico; la excepción recibida nunca se incorpora al HTML."""
     del error
     return render_error_response("503")
