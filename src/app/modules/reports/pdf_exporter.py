@@ -189,15 +189,19 @@ class PDFExporter:
             section_number += 1
             story.extend(
                 [
-                    Paragraph(
-                        _escape(
-                            f"{section_number}. "
-                            f"{_t(language, 'Métricas principales', 'Key metrics')}"
-                        ),
-                        styles["h1"],
+                    KeepTogether(
+                        [
+                            Paragraph(
+                                _escape(
+                                    f"{section_number}. "
+                                    f"{_t(language, 'Métricas principales', 'Key metrics')}"
+                                ),
+                                styles["h1"],
+                            ),
+                            Spacer(1, 3 * mm),
+                            _metric_table(report, styles),
+                        ]
                     ),
-                    Spacer(1, 3 * mm),
-                    _metric_table(report, styles),
                     Spacer(1, 7 * mm),
                 ]
             )

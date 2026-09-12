@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from dash import no_update
+from dash import html, no_update
 from werkzeug.exceptions import Forbidden
 
 import app.modules.didactics.page as didactica_page
@@ -546,6 +546,58 @@ def test_didactica_callbacks_are_registered_without_duplicate_outputs(dash_app) 
     keys = [key for key in dash_app.callback_map if "didactica" in key]
     assert len(keys) == len(set(keys))
     assert len(keys) >= 6
+
+
+@pytest.mark.parametrize("custom_activity", [False, True])
+def test_ranking_pending_action_disables_all_controls_without_overriding_final_state(
+    dash_app, monkeypatch, custom_activity: bool
+) -> None:
+    state = {
+        "game_id": "rank_countries",
+        "year": 2026,
+        "items": [
+            {"country_code": "MT", "country_name": "Malta", "score": 89},
+            {"country_code": "ES", "country_name": "Spain", "score": 78},
+        ],
+        "checked": False,
+    }
+    monkeypatch.setattr(didactica_page, "build_navbar", lambda **_kwargs: "")
+    monkeypatch.setattr(didactica_page, "new_ranking_game", lambda **_kwargs: state)
+    layout = (
+        didactica_page._activity_engine({"game_type": "legal_ranking"}, state)
+        if custom_activity
+        else didactica_page.build_games_layout("rank_countries")
+    )
+    controls = next(
+        component
+        for component in _walk(layout)
+        if getattr(component, "id", None) == "didactica-ranking-controls"
+    )
+    assert isinstance(controls, html.Fieldset)
+    assert {"didactica-ranking-new", "didactica-ranking-check"} <= _ids(controls)
+    assert (
+        len([component for component in _walk(controls) if isinstance(component, html.Button)]) == 6
+    )
+    specification = next(
+        entry
+        for entry in dash_app._callback_list
+        if "didactica-ranking-list.children" in entry["output"]
+    )
+    assert specification["running"] == {
+        "running": {"didactica-ranking-controls.disabled": True},
+        "runningOff": {"didactica-ranking-controls.disabled": False},
+    }
+
+    monkeypatch.setattr(
+        didactica_page, "ctx", SimpleNamespace(triggered_id="didactica-ranking-check")
+    )
+    checked = _callback(dash_app, "play_ranking_game")(None, 1, [0, 0], [0, 0], "es", state)
+    assert checked[3] is True
+    assert all(
+        component.to_plotly_json()["props"].get("disabled") is True
+        for component in _walk(checked[0])
+        if isinstance(component, html.Button)
+    )
 
 
 def test_glossary_catalog_preserves_legacy_sources_and_institutional_provenance() -> None:

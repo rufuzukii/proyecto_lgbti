@@ -2657,8 +2657,20 @@ def _figure_bbox_for_caption(
             bottom = min(bottom, content_bottom + 18)
     if bottom - top < 80:
         return _text_chart_bbox(page, top, hard_bottom)
+    chart_blocks = [
+        block
+        for block in _raw_text_block_entries(page)
+        if float(block.get("y0") or 0) >= top
+        and float(block.get("y1") or 0) <= bottom
+        and str(block.get("text") or "").strip()
+    ]
+    # Las etiquetas de los gráficos pueden sobresalir de los márgenes del informe.
+    left = min([24.0, *(float(block.get("x0") or 0) - 6 for block in chart_blocks)])
+    right = max(
+        [page_width - 24.0, *(float(block.get("x1") or 0) + 6 for block in chart_blocks)]
+    )
     return _clamp_bbox(
-        [24.0, round(top, 2), page_width - 24.0, round(bottom, 2)],
+        [left, round(top, 2), right, round(bottom, 2)],
         page_width,
         page_height,
     )
@@ -2683,9 +2695,9 @@ def _text_chart_bbox(
         return None
     page_width = float(page.get("width") or 595)
     page_height = float(page.get("height") or 842)
-    x0 = max(24.0, min(float(block.get("x0") or 0) for block in blocks) - 12)
+    x0 = max(0.0, min(float(block.get("x0") or 0) for block in blocks) - 12)
     y0 = max(top, min(float(block.get("y0") or 0) for block in blocks) - 8)
-    x1 = min(page_width - 24.0, max(float(block.get("x1") or 0) for block in blocks) + 12)
+    x1 = min(page_width, max(float(block.get("x1") or 0) for block in blocks) + 12)
     y1 = min(bottom, max(float(block.get("y1") or 0) for block in blocks) + 12)
     if x1 - x0 < 120 or y1 - y0 < 60:
         return None

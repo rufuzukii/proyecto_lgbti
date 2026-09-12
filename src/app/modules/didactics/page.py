@@ -476,7 +476,7 @@ def _build_ranking_game_layout() -> Component:
                     translated("rank_countries_instructions"),
                     className="ranking-game-instructions",
                 ),
-                html.Article(
+                html.Fieldset(
                     [
                         html.Div(
                             ranking_game_rows(state, "es"),
@@ -510,6 +510,7 @@ def _build_ranking_game_layout() -> Component:
                             **dash_attrs({"aria-live": "assertive"}),
                         ),
                     ],
+                    id="didactica-ranking-controls",
                     className="didactica-game-card ranking-game-card",
                 ),
                 translated(
@@ -1147,6 +1148,7 @@ def register_didactica_callbacks(app: Dash) -> None:
         Input({"type": "didactica-ranking-down", "index": ALL}, "n_clicks"),
         Input("app-language-store", "data"),
         State("didactica-ranking-state", "data"),
+        running=[(Output("didactica-ranking-controls", "disabled"), True, False)],
     )
     def play_ranking_game(_new, _check, _up, _down, language, state):
         language = _language(language)
@@ -1846,7 +1848,7 @@ def _activity_engine(activity: dict[str, Any], state: dict[str, Any]) -> Compone
             translated(
                 "ranking_order_instruction", tag=html.P, class_name="ranking-game-instructions"
             ),
-            html.Article(
+            html.Fieldset(
                 [
                     html.Div(
                         ranking_game_rows(state, language),
@@ -1872,6 +1874,7 @@ def _activity_engine(activity: dict[str, Any], state: dict[str, Any]) -> Compone
                     ),
                     html.Div(id="didactica-ranking-result", className="ranking-game-result"),
                 ],
+                id="didactica-ranking-controls",
                 className="didactica-game-card ranking-game-card",
             ),
             translated("ranking_required_note", tag=html.P, class_name="ranking-game-note"),

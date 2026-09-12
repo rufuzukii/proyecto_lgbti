@@ -709,6 +709,27 @@ def register_statistics_callbacks(app: Dash) -> None:
         )
 
     @app.callback(
+        Output("stats-table-download-button", "disabled", allow_duplicate=True),
+        Output("stats-table-export-status", "children", allow_duplicate=True),
+        Output("stats-table-export-status", "className", allow_duplicate=True),
+        Input("stats-results-table", "virtualRowData"),
+        Input("stats-results-table", "rowData"),
+        Input("stats-results-table", "columnDefs"),
+        Input("app-language-store", "data"),
+        prevent_initial_call=True,
+    )
+    def update_summary_table_export_state(visible_rows, table_rows, columns, language):
+        rows = visible_rows if visible_rows is not None else table_rows
+        has_export_data = bool(rows and columns)
+        return (
+            not has_export_data,
+            "" if has_export_data else ui_text("no_export_data", language or "es"),
+            "stats-table-export-status is-hidden"
+            if has_export_data
+            else "stats-table-export-status",
+        )
+
+    @app.callback(
         Output("stats-summary-table-download", "data"),
         Input("stats-table-download-button", "n_clicks"),
         State("stats-results-table", "virtualRowData"),

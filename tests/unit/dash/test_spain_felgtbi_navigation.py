@@ -14,6 +14,23 @@ def test_initial_year_uses_latest_even_when_2026_is_available() -> None:
     assert spain._resolve_initial_year([]) is None
 
 
+def test_corrected_figure_is_available_without_modifying_stored_reports(monkeypatch) -> None:
+    storage_path = (
+        "2023/estado-socioecomico-lgtbi/orientacion-sexual-e-identidad-de-genero/"
+        "figura-4-7d6c497ad3.webp"
+    )
+    document = {"figure": {"storage_path": storage_path}}
+    monkeypatch.setattr(spain, "supabase_public_image_url", lambda path: f"storage:{path}")
+
+    url = spain._figure_url(document)
+    asset = Path("src/app/web") / url.lstrip("/")
+
+    assert asset.is_file()
+    assert asset.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert document == {"figure": {"storage_path": storage_path}}
+    assert spain._figure_url({"figure": {"storage_path": "other.webp"}}) == "storage:other.webp"
+
+
 def test_lazy_figure_identity_changes_with_its_source(monkeypatch) -> None:
     monkeypatch.setattr(spain, "_figure_url", lambda document: document["url"])
     first = spain._figure_component({"url": "https://example.org/first.webp"})

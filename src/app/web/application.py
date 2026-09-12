@@ -112,6 +112,7 @@ from app.web.routes import (
     PUBLIC_PAGE_PATHS,
     canonical_safe_next,
     client_route_config,
+    equivalent_path,
     language_from_path,
     legacy_redirect_target,
     localized_route_context,
@@ -195,6 +196,11 @@ def create_dash_app() -> Dash:
     )
     init_cache(app.server)
     register_health_endpoint(app.server)
+
+    @app.server.get("/favicon.ico")
+    def favicon():
+        return send_file(assets_path / "img" / "rainbow_lens_icono.png", mimetype="image/png")
+
     if _mongo_indexes_on_startup(config.local_mode):
         try:
             initialize_mongo_indexes()
@@ -707,7 +713,9 @@ def _register_auth_routes(app: Dash) -> None:
 
     @app.server.post("/auth/login")
     def login():
-        next_path = _safe_next(request.form.get("next"), "/user")
+        next_path = _safe_next(
+            request.form.get("next"), "/user", language=request.form.get("language")
+        )
         if not validate_csrf_token(request.form.get("csrf_token")):
             return _redirect("/login", error="csrf", next_path=next_path)
 
@@ -1157,8 +1165,15 @@ def _report_params(params: dict[str, list[str]]) -> dict[str, object]:
     return values
 
 
-def _safe_next(value: str | None, default: str = "/es/perfil") -> str:
-    return canonical_safe_next(value) or default
+def _safe_next(
+    value: str | None, default: str = "/es/perfil", *, language: str | None = None
+) -> str:
+    target = canonical_safe_next(value) or default
+    if language not in {"es", "en"}:
+        return target
+    parsed = urlsplit(target)
+    localized_path = equivalent_path(parsed.path, language)
+    return parsed._replace(path=localized_path).geturl() if localized_path else target
 
 
 def _is_admin() -> bool:

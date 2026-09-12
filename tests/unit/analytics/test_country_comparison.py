@@ -3,7 +3,9 @@ from __future__ import annotations
 import math
 from typing import Any, cast
 
+import pytest
 from dash import Dash, html
+from dash.exceptions import PreventUpdate
 
 from app.modules.statistics.figures import (
     COUNTRY_COLORS,
@@ -18,6 +20,7 @@ from app.modules.statistics.figures import (
 from app.modules.statistics.models import FraStatisticsQuery, IlgaStatisticsQuery
 from app.modules.statistics.page import _table_rows, register_statistics_callbacks
 from app.modules.statistics.service import get_fra_statistics, get_ilga_statistics
+from app.web.i18n import ui_text
 
 
 def _trace(figure: Any, index: int = 0) -> Any:
@@ -494,3 +497,61 @@ def test_summary_table_callback_reuses_visible_rows_for_consecutive_downloads() 
     assert first == second
     assert first["content"].index("Portugal;48.0") < first["content"].index("Spain;63.0")
     assert first["filename"].endswith("_europa_2024.csv")
+
+
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_summary_table_export_follows_empty_filter_and_recovers(language: str) -> None:
+    app = Dash(__name__, suppress_callback_exceptions=True)
+    app.layout = html.Div()
+    register_statistics_callbacks(app)
+    callback = next(
+        entry["callback"].__wrapped__
+        for entry in app.callback_map.values()
+        if "callback" in entry
+        and entry["callback"].__wrapped__.__name__ == "update_summary_table_export_state"
+    )
+    download = app.callback_map["stats-summary-table-download.data"]["callback"].__wrapped__
+    rows = [{"country": "Spain", "value": 63.0}]
+    columns = [{"field": "country"}, {"field": "value"}]
+
+    assert callback(None, rows, columns, language) == (
+        False,
+        "",
+        "stats-table-export-status is-hidden",
+    )
+    # An empty filtered view must not fall back to exporting the unfiltered data.
+    assert callback([], rows, columns, language) == (
+        True,
+        ui_text("no_export_data", language),
+        "stats-table-export-status",
+    )
+    with pytest.raises(PreventUpdate):
+        download(1, [], rows, columns, {}, [], language)
+
+    assert callback(rows, rows, columns, language) == (
+        False,
+        "",
+        "stats-table-export-status is-hidden",
+    )
+    assert "Spain;63.0" in download(2, rows, rows, columns, {}, [], language)["content"]
+
+
+@pytest.mark.parametrize(
+    "rows, columns", [(None, None), ([], [{"field": "country"}]), ([{"country": "Spain"}], [])]
+)
+def test_summary_table_export_stays_disabled_without_rows_or_columns(rows, columns) -> None:
+    app = Dash(__name__, suppress_callback_exceptions=True)
+    app.layout = html.Div()
+    register_statistics_callbacks(app)
+    callback = next(
+        entry["callback"].__wrapped__
+        for entry in app.callback_map.values()
+        if "callback" in entry
+        and entry["callback"].__wrapped__.__name__ == "update_summary_table_export_state"
+    )
+
+    assert callback(None, rows, columns, None) == (
+        True,
+        ui_text("no_export_data", "es"),
+        "stats-table-export-status",
+    )

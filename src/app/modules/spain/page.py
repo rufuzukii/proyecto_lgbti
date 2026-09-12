@@ -64,6 +64,24 @@ SPAIN_IMAGE_HIDDEN_CLASS = "spain-pdf-figure spain-content-slot is-hidden"
 SPAIN_GRAPH_CLASS = "spain-section-graph spain-content-slot"
 SPAIN_GRAPH_HIDDEN_CLASS = "spain-section-graph spain-content-slot is-hidden"
 
+# Derivado del gráfico 4, página 9, del PDF oficial: barras y cifras originales.
+# Copia pública: https://observatoriolgtbi.com/wp-content/uploads/2023/12/
+# lgtbi-informe-de-estado-socioeconomico-de-felgtbi.pdf
+# SHA-256 PDF: 183a089db75066c83a7215fb3a78fc671f9862e71c08926bfe6ded1f4465aabf
+# Recorte PDF [0.11, 439.58, 571.0, 772.14], escala 2: conserva las etiquetas
+# que la importación anterior cortaba al aplicar un margen fijo de 24 puntos.
+# Para evitar solapamientos se trasladan/escalan solo los XObjects de texto
+# 418, 420, 424, 430 y 436: 12,50%; 5,70%; 6,30%; 5,90%; 16,70%.
+# Escalas respectivas: 0.79365079, 0.77543424, 0.85297767, 0.89174938, 0.69444444;
+# x respectivas: 485, 489, 487, 455, 488 pt; misma línea base y glifos originales.
+# El XObject 438 (11,10% fuera de la barra Mujer Trans en el original) conserva
+# posición y texto, pasando de blanco a negro; no se le deduce una categoría.
+# SHA-256 PNG: 25bef484371847322fdf891ea43a520221d09460d40031394f254a614ecdbd30
+_CORRECTED_FIGURE_ASSETS = {
+    "2023/estado-socioecomico-lgtbi/orientacion-sexual-e-identidad-de-genero/"
+    "figura-4-7d6c497ad3.webp": "/assets/img/felgtbi-socioeconomico-2023-figura-4.png",
+}
+
 
 def build_spain_layout(selection: dict[str, Any] | None = None) -> Component:
     available_years = _available_years()
@@ -163,7 +181,7 @@ def build_spain_layout(selection: dict[str, Any] | None = None) -> Component:
                                                 ),
                                                 placeholder="Selecciona un indicador",
                                             ),
-                                            html.Div(
+                                            html.Fieldset(
                                                 [
                                                     html.Button(
                                                         text("Anterior", "Previous"),
@@ -182,6 +200,8 @@ def build_spain_layout(selection: dict[str, Any] | None = None) -> Component:
                                                         type="button",
                                                     ),
                                                 ],
+                                                id="spain-section-navigation",
+                                                disabled=False,
                                                 className="spain-section-navigation",
                                             ),
                                         ],
@@ -281,6 +301,7 @@ def register_spain_callbacks(app: Dash) -> None:
         Input("spain-topic-prev", "n_clicks"),
         Input("spain-topic-next", "n_clicks"),
         Input("spain-topic-select", "value"),
+        running=[(Output("spain-section-navigation", "disabled"), True, False)],
     )
     def update_topic_selector(
         document_id: str | None,
@@ -908,6 +929,9 @@ def _figure_url(document: dict[str, Any] | None) -> str:
     if not isinstance(document, dict):
         return ""
     figure = _dict_or_empty(document.get("figure"))
+    storage_path = str(figure.get("storage_path") or "").strip()
+    if storage_path in _CORRECTED_FIGURE_ASSETS:
+        return _CORRECTED_FIGURE_ASSETS[storage_path]
     return supabase_public_image_url(figure.get("storage_path"))
 
 

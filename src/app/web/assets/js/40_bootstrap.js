@@ -105,6 +105,12 @@
     }
   });
 
+  document.addEventListener("formdata", (event) => {
+    if (event.target.matches('form[action="/auth/login"]')) {
+      event.formData.set("language", document.documentElement.lang === "en" ? "en" : "es");
+    }
+  });
+
   document.addEventListener("submit", (event) => {
     const adminUserRow = event.target.closest("[data-admin-user-row]");
     const adminUserSubmitter = event.submitter;

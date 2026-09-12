@@ -771,7 +771,9 @@
 }
 
 .ranking-game-card {
+  margin: 0;
   min-height: 0;
+  min-width: 0;
 }
 
 .ranking-game-list {

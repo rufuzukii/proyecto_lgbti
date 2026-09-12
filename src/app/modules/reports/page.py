@@ -400,10 +400,10 @@ def register_reports_callbacks(app: Dash) -> None:
         Input("report-indicator-select", "value"),
         Input("report-category-select", "value"),
         Input("report-year-select", "value"),
+        Input("report-filter-a-name", "value"),
+        Input("report-filter-b-name", "value"),
         State("report-answer-select", "value"),
-        State("report-filter-a-name", "value"),
         State("report-filter-a-value", "value"),
-        State("report-filter-b-name", "value"),
         State("report-filter-b-value", "value"),
     )
     def update_report_social_controls(
@@ -411,10 +411,10 @@ def register_reports_callbacks(app: Dash) -> None:
         indicator: str | None,
         category: str | None,
         year: int | None,
-        current_answer: str | None,
         current_a_name: str | None,
-        current_a_value: str | None,
         current_b_name: str | None,
+        current_answer: str | None,
+        current_a_value: str | None,
         current_b_value: str | None,
     ):
         social_enabled = _requires_social_indicator(source) and bool(indicator)

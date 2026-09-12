@@ -69,6 +69,13 @@ def test_figure_storage_path_keeps_only_canonical_storage_path_data() -> None:
     ("raw_label", "document_title", "expected"),
     [
         (
+            "Sexilio, orientación sexual e identidad de género",
+            "Sexilio",
+            "Sexilio, orientación sexual e identidad de género",
+        ),
+        ("Sexilio", "Sexilio", "Sexilio"),
+        ("Sexilio en España", "Sexilio", "Sexilio en España"),
+        (
             "Estado del odio - ¿Podría decirme cuál es su orientación sexual? - 9,60",
             "Estado del odio",
             "¿Podría decirme cuál es su orientación sexual?",

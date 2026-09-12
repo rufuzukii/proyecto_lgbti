@@ -294,9 +294,13 @@
 }
 
 .spain-section-navigation {
+  border: 0;
   display: grid;
   gap: 0.55rem;
   grid-template-columns: repeat(2, minmax(112px, 1fr));
+  margin: 0;
+  min-width: 0;
+  padding: 0;
 }
 
 .spain-nav-button {

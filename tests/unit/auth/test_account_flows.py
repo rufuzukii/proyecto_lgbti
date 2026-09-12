@@ -104,6 +104,34 @@ def test_non_validated_account_can_sign_in_immediately(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize(
+    ("next_path", "language", "expected"),
+    [
+        ("/es/perfil", "en", "/en/profile"),
+        ("/en/profile", "es", "/es/perfil"),
+        ("/es/informe?source=fra&year=2023", "en", "/en/report?source=fra&year=2023"),
+        ("https://example.com/es/perfil", "en", "/en/profile"),
+    ],
+)
+def test_login_uses_selected_language_when_return_path_has_not_updated(
+    monkeypatch: pytest.MonkeyPatch, next_path: str, language: str, expected: str
+) -> None:
+    monkeypatch.setattr(dash_app_module, "authenticate_user", lambda *_args: _record())
+    client = _app(monkeypatch).server.test_client()
+    response = client.post(
+        "/auth/login",
+        data={
+            "csrf_token": "valid",
+            "email": "account@example.test",
+            "password": "a-secure-password",
+            "next": next_path,
+            "language": language,
+        },
+    )
+    assert response.status_code == 302
+    assert response.headers["Location"] == expected
+
+
+@pytest.mark.parametrize(
     ("method", "path"),
     [
         ("get", "/account/verify-email/obsolete-token"),

@@ -1439,10 +1439,10 @@ def test_legal_source_hides_and_clears_social_filters(monkeypatch) -> None:
         None,
         "Ranking total",
         2026,
-        "Yes",
         "Age",
-        "25-39",
         "Gender identity",
+        "Yes",
+        "25-39",
         "Trans woman",
     )
 
@@ -1457,6 +1457,46 @@ def test_legal_source_hides_and_clears_social_filters(monkeypatch) -> None:
     assert result[9] == "All"
     assert result[12] == "All"
     assert result[15] == "All"
+
+
+def test_report_filter_changes_refresh_values_and_exclusive_filter_state(monkeypatch) -> None:
+    app = Dash("report-filter-interaction", suppress_callback_exceptions=True)
+    reports_page.register_reports_callbacks(app)
+    registration = next(
+        item
+        for item in app.callback_map.values()
+        if getattr(item.get("callback"), "__wrapped__", None)
+        and item["callback"].__wrapped__.__name__ == "update_report_social_controls"
+    )
+    input_ids = {item["id"] for item in registration["inputs"]}
+    assert {"report-filter-a-name", "report-filter-b-name"} <= input_ids
+    age_options = [{"label": "25-39", "value": "25-39"}]
+    monkeypatch.setattr(
+        reports_page,
+        "get_fra_control_payload",
+        lambda *_args: {
+            "answers": [{"label": "Yes", "value": "Yes"}],
+            "default_answer": "Yes",
+            "segmentations": [
+                {"label": "All", "value": "All"},
+                {"label": "Age", "value": "Age"},
+            ],
+            "values": {"All": [{"label": "All", "value": "All"}], "Age": age_options},
+        },
+    )
+    callback = registration["callback"].__wrapped__
+    primary = callback("fra", "EMP_1", "Discrimination", 2023, "Age", "Age", "Yes", "All", "25-39")
+    assert [option["value"] for option in primary[8]] == ["25-39"]
+    assert primary[10] is False
+    assert primary[12] == "All"
+    assert primary[13] is True
+    assert primary[16] is True
+
+    secondary = callback("fra", "EMP_1", "Discrimination", 2023, "All", "Age", "Yes", "All", "All")
+    assert secondary[10] is True
+    assert [option["value"] for option in secondary[14]] == ["25-39"]
+    assert secondary[13] is False
+    assert secondary[16] is False
 
 
 def test_preview_is_blocked_when_social_indicator_is_missing() -> None:

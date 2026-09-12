@@ -328,6 +328,33 @@ def test_vector_chart_crop_stops_before_the_first_narrative_paragraph() -> None:
     assert segment["after_description"].startswith("El resultado muestra")
 
 
+def test_chart_crop_preserves_labels_outside_the_report_text_margins() -> None:
+    # El gráfico 4 del informe socioeconómico 2023 coloca etiquetas a 6 pt
+    # del borde. Los márgenes del texto del informe no delimitan el gráfico.
+    blocks = [
+        {"x0": 85, "y0": 426, "x1": 438, "y1": 436, "text": "Gráfico 4: Identidad"},
+        {"x0": 9, "y0": 485, "x1": 75, "y1": 495, "text": "Población LGTBI+"},
+        {"x0": 6, "y0": 705, "x1": 75, "y1": 715, "text": "Persona No binaria"},
+        {"x0": 87, "y0": 705, "x1": 590, "y1": 715, "text": "6,30% 25,00% 62,50% 12,50%"},
+    ]
+    page = {
+        "page": 9,
+        "width": 595,
+        "height": 842,
+        "text": "\n".join(block["text"] for block in blocks),
+        "blocks": blocks,
+        "figures": [],
+    }
+
+    segment = _extract_figure_segments([page])[0]
+    x0, y0, x1, y1 = segment["bbox"]
+
+    assert 0 <= x0 < 6
+    assert 590 < x1 <= 595
+    assert y0 >= 436
+    assert 715 < y1 < 790
+
+
 def test_side_by_side_captions_are_associated_by_horizontal_geometry() -> None:
     pages = [
         {

@@ -60,7 +60,7 @@ def clean_felgtbi_indicator_label(label: str, document_title: str = "") -> str:
     title = " ".join(str(document_title or "").split()).strip()
     if title:
         clean = re.sub(
-            rf"^\s*{re.escape(title)}\s*(?:[-\u2013\u2014·|:]\s*)?",
+            rf"^\s*{re.escape(title)}\s*[-\u2013\u2014·|:]\s*",
             "",
             clean,
             flags=re.IGNORECASE,
